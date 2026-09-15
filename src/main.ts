@@ -39,10 +39,12 @@ const QUICK_ADD_VIEW_TYPE = 'quartzo-quick-add-view';
 const SYNC_CENTER_VIEW_TYPE = 'quartzo-sync-center-view';
 const CONFLICT_CENTER_VIEW_TYPE = 'quartzo-conflict-center-view';
 
+const BUILD_CLIENT_ID: string = (typeof process !== 'undefined' && process.env && process.env.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID) || '';
+
 const OAUTH_CONFIG: OAuthConfig = {
   clientId: '',
   redirectUri: '',
-  scopes: ['https://www.googleapis.com/auth/drive.file'],
+  scopes: ['https://www.googleapis.com/auth/drive'],
   authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
   tokenUrl: 'https://oauth2.googleapis.com/token'
 };
@@ -221,16 +223,17 @@ export default class QuartzoCompanionPlugin extends Plugin {
     return '';
   }
 
-  private getSecretsPath(): string {
-    const adapter = this.app.vault.adapter;
-    if (adapter instanceof FileSystemAdapter) {
-      const pluginDir = path.join(adapter.getBasePath(), this.app.vault.configDir, 'plugins', this.manifest.id);
-      if (!fs.existsSync(pluginDir)) {
-        fs.mkdirSync(pluginDir, { recursive: true });
-      }
-      return path.join(pluginDir, 'secrets.json');
-    }
-    return '';
+  private getResolvedClientId(): string {
+    return BUILD_CLIENT_ID || this.settings.oauthClientId || '';
+  }
+
+  private getSecretStorage() {
+    const native = this.app.secretStorage;
+    return {
+      get: async (key: string) => native.getSecret(key),
+      set: async (key: string, value: string) => { native.setSecret(key, value); },
+      delete: async (key: string) => { native.setSecret(key, ''); }
+    };
   }
 
   private async initializeVaultIndex() {
@@ -382,8 +385,8 @@ export default class QuartzoCompanionPlugin extends Plugin {
   private async restoreSessionAndStartSync() {
     if (!this.driveAdapter) return;
 
-    const secrets = await this.loadSecrets();
-    const refreshToken = secrets?.oauth_refresh_token;
+    const secretStorage = this.getSecretStorage();
+    const refreshToken = await secretStorage.get('oauth_refresh_token');
     if (!refreshToken) {
       this.settings.isPaired = false;
       await this.saveSettings();
@@ -392,8 +395,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     }
 
     try {
-      const config = { ...OAUTH_CONFIG, clientId: this.settings.oauthClientId };
-      const secretStorage = this.createSecretStorage();
+      const config = { ...OAUTH_CONFIG, clientId: this.getResolvedClientId() };
       this.oauthClient = new GoogleOAuthDesktop(config, secretStorage);
       const tokenResponse = await this.oauthClient.refreshAccessToken();
       this.driveAdapter.setAccessToken(tokenResponse.access_token);
@@ -421,13 +423,14 @@ export default class QuartzoCompanionPlugin extends Plugin {
   }
 
   async startPairingFlow() {
-    if (this.settings.oauthClientId === 'PLACEHOLDER_CLIENT_ID') {
+    const clientId = this.getResolvedClientId();
+    if (!clientId || clientId === 'PLACEHOLDER_CLIENT_ID') {
       new Notice('Configure your Google OAuth Client ID in settings first.');
       return;
     }
 
-    const config = { ...OAUTH_CONFIG, clientId: this.settings.oauthClientId };
-    const secretStorage = this.createSecretStorage();
+    const config = { ...OAUTH_CONFIG, clientId };
+    const secretStorage = this.getSecretStorage();
     this.oauthClient = new GoogleOAuthDesktop(config, secretStorage);
 
     try {
@@ -443,30 +446,28 @@ export default class QuartzoCompanionPlugin extends Plugin {
         }
       });
 
-      new Notice('Google Drive authenticated. Select your vault folder.');
-
       this.settings.firstRunCompleted = true;
       await this.saveSettings();
 
-      if (this.driveAdapter && this.driveSyncCoordinator) {
-        const folders = await this.driveAdapter.listRootFolders();
-        if (folders.length > 0) {
-          this.settings.googleDriveFolderId = folders[0].id;
-          this.settings.googleDriveFolderName = folders[0].name;
-          this.settings.isPaired = true;
-          await this.saveSettings();
-          await this.driveSyncCoordinator.setDriveFolderId(folders[0].id);
-          new Notice(`Paired with folder: ${folders[0].name}`);
-        } else {
-          new Notice('No folders found in Google Drive. Please create a folder first.');
-          return;
-        }
-      }
-
-      this.startAutoSync();
+      new Notice('Google Drive authenticated. Select your vault folder.');
     } catch (error) {
       new Notice(`Authentication failed: ${error}`);
     }
+  }
+
+  async confirmPairing(folderId: string, folderName: string): Promise<void> {
+    if (!this.driveAdapter || !this.driveSyncCoordinator) {
+      new Notice('Drive not initialized.');
+      return;
+    }
+
+    this.settings.googleDriveFolderId = folderId;
+    this.settings.googleDriveFolderName = folderName;
+    this.settings.isPaired = true;
+    await this.saveSettings();
+    await this.driveSyncCoordinator.setDriveFolderId(folderId);
+    new Notice(`Paired with folder: ${folderName}`);
+    this.startAutoSync();
   }
 
   async disconnectDrive() {
@@ -486,19 +487,8 @@ export default class QuartzoCompanionPlugin extends Plugin {
       new Notice('Not connected to Google Drive.');
       return;
     }
-    const state = this.driveSyncCoordinator.getSyncState();
-    const normalizedPath = filePath.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/\/$/, '').replace(/^\//, '');
-    const syncFile = state.files.get(normalizedPath);
-    if (!syncFile) {
-      new Notice('File not found in sync state.');
-      return;
-    }
-    if (syncFile.remoteFileId) {
-      new Notice('File already has a remote counterpart.');
-      return;
-    }
     try {
-      await this.driveSyncCoordinator.triggerManualSync();
+      await this.driveSyncCoordinator.explicitAdopt(filePath);
       new Notice(`File adopted: ${filePath}`);
     } catch (error) {
       new Notice(`Adoption failed: ${error}`);
@@ -544,6 +534,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
 
   onunload() {
     this.stopAutoSync();
+    this.oauthClient?.abort();
     for (const ref of this.eventRefs) {
       this.app.vault.offref(ref);
     }
@@ -556,49 +547,6 @@ export default class QuartzoCompanionPlugin extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
-  }
-
-  private createSecretStorage() {
-    return {
-      get: async (key: string) => {
-        const secrets = await this.loadSecrets();
-        return secrets?.[key] || null;
-      },
-      set: async (key: string, value: string) => {
-        const secrets = await this.loadSecrets() || {};
-        secrets[key] = value;
-        await this.saveSecrets(secrets);
-      },
-      delete: async (key: string) => {
-        const secrets = await this.loadSecrets() || {};
-        delete secrets[key];
-        await this.saveSecrets(secrets);
-      }
-    };
-  }
-
-  private async loadSecrets(): Promise<Record<string, string> | null> {
-    const secretsPath = this.getSecretsPath();
-    if (!secretsPath) return null;
-    try {
-      const adapter = this.app.vault.adapter;
-      if (adapter instanceof FileSystemAdapter) {
-        const data = await adapter.read(secretsPath);
-        return JSON.parse(data);
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  }
-
-  private async saveSecrets(secrets: Record<string, string>): Promise<void> {
-    const secretsPath = this.getSecretsPath();
-    if (!secretsPath) return;
-    const adapter = this.app.vault.adapter;
-    if (adapter instanceof FileSystemAdapter) {
-      await adapter.write(secretsPath, JSON.stringify(secrets, null, 2));
-    }
   }
 }
 

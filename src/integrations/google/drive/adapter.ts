@@ -34,21 +34,46 @@ export class GoogleDriveAdapter implements DriveAdapter {
     return this.drive;
   }
 
-  private async withRetry<T>(operation: () => Promise<T>): Promise<T> {
-    try {
-      return await operation();
-    } catch (error: unknown) {
-      const err = error as { code?: number; status?: number; response?: { status?: number } };
-      const statusCode = err.code || err.status || err.response?.status;
-      if (statusCode === 401 && this.tokenRefreshCallback) {
-        const newToken = await this.tokenRefreshCallback();
-        if (newToken) {
-          this.setAccessToken(newToken);
-          return await operation();
+  private async withRetry<T>(operation: () => Promise<T>, maxRetries = 3): Promise<T> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error: unknown) {
+        lastError = error;
+        const err = error as { code?: number; status?: number; response?: { status?: number } };
+        const statusCode = err.code || err.status || err.response?.status;
+
+        if (statusCode === 401 || (statusCode === 403 && this.isCredentialError(err))) {
+          if (this.tokenRefreshCallback) {
+            const newToken = await this.tokenRefreshCallback();
+            if (newToken) {
+              this.setAccessToken(newToken);
+              continue;
+            }
+          }
+          throw error;
         }
+
+        if (statusCode === 429 || (statusCode && statusCode >= 500) || !statusCode) {
+          if (attempt < maxRetries) {
+            const baseMs = statusCode === 429 ? 2000 : 1000;
+            const delay = baseMs * Math.pow(2, attempt) + Math.random() * baseMs;
+            await new Promise(r => setTimeout(r, delay));
+            continue;
+          }
+        }
+
+        throw error;
       }
-      throw error;
     }
+    throw lastError;
+  }
+
+  private isCredentialError(err: { code?: number; status?: number; response?: { status?: number } }): boolean {
+    const statusCode = err.code || err.status || err.response?.status;
+    if (statusCode !== 403) return false;
+    return true;
   }
 
   private calculateQuartzoHash(content: Uint8Array): string {
@@ -94,10 +119,12 @@ export class GoogleDriveAdapter implements DriveAdapter {
   }
 
   async listAllFiles(folderId: string): Promise<DriveFileMetadata[]> {
-    const allFiles: DriveFileMetadata[] = [];
-    const drive = this.getDriveClient();
-    await this.listAllFilesRecursive(drive, folderId, allFiles);
-    return allFiles;
+    return this.withRetry(async () => {
+      const allFiles: DriveFileMetadata[] = [];
+      const drive = this.getDriveClient();
+      await this.listAllFilesRecursive(drive, folderId, allFiles);
+      return allFiles;
+    });
   }
 
   private async listAllFilesRecursive(drive: drive_v3.Drive, folderId: string, allFiles: DriveFileMetadata[]): Promise<void> {
@@ -136,32 +163,28 @@ export class GoogleDriveAdapter implements DriveAdapter {
   }
 
   async listRootFolders(): Promise<Array<{ id: string; name: string }>> {
-    const drive = this.getDriveClient();
-    try {
+    return this.withRetry(async () => {
+      const drive = this.getDriveClient();
       const response = await drive.files.list({
         q: "mimeType = 'application/vnd.google-apps.folder' and trashed = false",
         fields: 'files(id, name)',
         pageSize: 100
       });
       return (response.data.files || []).map(f => ({ id: f.id || '', name: f.name || '' }));
-    } catch {
-      return [];
-    }
+    });
   }
 
   async getStartPageToken(): Promise<string> {
-    const drive = this.getDriveClient();
-    try {
+    return this.withRetry(async () => {
+      const drive = this.getDriveClient();
       const response = await drive.changes.getStartPageToken();
       return response.data.startPageToken || '';
-    } catch (error) {
-      throw new Error(`Failed to get start page token: ${error}`);
-    }
+    });
   }
 
   async listChanges(pageToken: string): Promise<{ changes: DriveChange[]; newStartPageToken: string; nextPageToken: string | null }> {
-    const drive = this.getDriveClient();
-    try {
+    return this.withRetry(async () => {
+      const drive = this.getDriveClient();
       const response = await drive.changes.list({
         pageToken,
         fields: 'nextPageToken, newStartPageToken, changes(fileId, removed, file(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties))',
@@ -190,9 +213,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
         newStartPageToken: response.data.newStartPageToken || pageToken,
         nextPageToken: response.data.nextPageToken || null
       };
-    } catch (error) {
-      throw new Error(`Failed to list changes: ${error}`);
-    }
+    });
   }
 
   async downloadFile(fileId: string): Promise<Uint8Array> {
