@@ -10,8 +10,9 @@
     "lint": "eslint src/** tests/**",
     "test": "vitest run",
     "test:contracts": "vitest run tests/contracts",
-    "test:sync": "vitest run tests/sync",
+    "test:sync": "vitest run tests/contracts/sync.test.ts",
     "contracts:verify": "node scripts/sync-contracts.mjs verify",
+    "architecture:check": "node scripts/architecture-check.mjs",
     "release:validate": "node scripts/release-validate.mjs"
   },
   "keywords": [],

@@ -1,6 +1,10 @@
-import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, Notice, ItemView, View } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, Notice, ItemView } from 'obsidian';
 import { DailyScheduleEngine } from './core/daily_schedule';
 import { VaultIndexEngine } from './vault/index';
+import { DriveSyncCoordinator } from './sync/coordinator';
+import { GoogleDriveAdapter } from './integrations/google/drive';
+import { HomeView, PlannerView, DayDialView } from './ui';
+import { ViewContext } from './ui/types';
 
 interface QuartzoCompanionSettings {
   googleDriveFolderId: string | null;
@@ -18,67 +22,8 @@ const DEFAULT_SETTINGS: QuartzoCompanionSettings = {
 
 const HOME_VIEW_TYPE = 'quartzo-home-view';
 const PLANNER_VIEW_TYPE = 'quartzo-planner-view';
+const DAY_DIAL_VIEW_TYPE = 'quartzo-day-dial-view';
 const SYNC_CENTER_VIEW_TYPE = 'quartzo-sync-center-view';
-
-class HomeView extends ItemView {
-  getViewType() { return HOME_VIEW_TYPE; }
-  getDisplayText() { return 'Quartzo Home'; }
-  getIcon() { return 'calendar-clock'; }
-
-  async onOpen() {
-    this.contentEl.empty();
-    this.contentEl.innerHTML = `
-      <div class="quartzo-home">
-        <h2>Quartzo Home</h2>
-        <p>Welcome to Quartzo Companion</p>
-        <div id="daily-schedule-preview"></div>
-      </div>
-    `;
-    
-    // Use DailyScheduleEngine to show today's schedule
-    const today = new Date().toISOString().split('T')[0];
-    const schedule = DailyScheduleEngine.normalize({
-      date: today,
-      today,
-      objects: [],
-      googleEvents: []
-    });
-    
-    const previewEl = this.contentEl.querySelector('#daily-schedule-preview');
-    if (previewEl) {
-      previewEl.innerHTML = `
-        <p><strong>Today's Schedule:</strong></p>
-        <p>Kind: ${schedule.kind}</p>
-        <p>Items: ${schedule.count}</p>
-      `;
-    }
-  }
-
-  async onClose() {
-    this.contentEl.empty();
-  }
-}
-
-class PlannerView extends ItemView {
-  getViewType() { return PLANNER_VIEW_TYPE; }
-  getDisplayText() { return 'Quartzo Planner'; }
-  getIcon() { return 'calendar'; }
-
-  async onOpen() {
-    this.contentEl.empty();
-    this.contentEl.innerHTML = `
-      <div class="quartzo-planner">
-        <h2>Quartzo Planner</h2>
-        <p>Day/Week/Month views sharing normalized Daily Schedule snapshot</p>
-        <div id="planner-content"></div>
-      </div>
-    `;
-  }
-
-  async onClose() {
-    this.contentEl.empty();
-  }
-}
 
 class SyncCenterView extends ItemView {
   getViewType() { return SYNC_CENTER_VIEW_TYPE; }
@@ -111,13 +56,41 @@ class SyncCenterView extends ItemView {
 
 export default class QuartzoCompanionPlugin extends Plugin {
   settings!: QuartzoCompanionSettings;
+  vaultIndexEngine: VaultIndexEngine | null = null;
+  driveSyncCoordinator: DriveSyncCoordinator | null = null;
+  driveAdapter: GoogleDriveAdapter | null = null;
+  viewContext: ViewContext | null = null;
 
   async onload() {
     await this.loadSettings();
 
-    // Register views
-    this.registerView(HOME_VIEW_TYPE, (leaf) => new HomeView(leaf));
-    this.registerView(PLANNER_VIEW_TYPE, (leaf) => new PlannerView(leaf));
+    // Initialize vault runtime
+    this.vaultIndexEngine = new VaultIndexEngine();
+    
+    // Initialize Drive adapter (will be connected when OAuth is configured)
+    this.driveAdapter = new GoogleDriveAdapter();
+    
+    // Initialize sync coordinator
+    this.driveSyncCoordinator = new DriveSyncCoordinator(
+      this.driveAdapter,
+      this.app.vault.adapter.getResourcePath('')
+    );
+
+    // Create view context
+    this.viewContext = {
+      app: this.app,
+      plugin: this,
+      state: {
+        currentView: HOME_VIEW_TYPE,
+        dailyScheduleDate: new Date().toISOString().split('T')[0],
+        privacyMode: this.settings.privacyMode
+      }
+    };
+
+    // Register views using canonical UI layer
+    this.registerView(HOME_VIEW_TYPE, (leaf) => new HomeView(leaf, this.viewContext!));
+    this.registerView(PLANNER_VIEW_TYPE, (leaf) => new PlannerView(leaf, this.viewContext!));
+    this.registerView(DAY_DIAL_VIEW_TYPE, (leaf) => new DayDialView(leaf, this.viewContext!));
     this.registerView(SYNC_CENTER_VIEW_TYPE, (leaf) => new SyncCenterView(leaf));
 
     // Register ribbon icon
@@ -140,6 +113,12 @@ export default class QuartzoCompanionPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: 'quartzo-day-dial',
+      name: 'Quartzo: Open Day Dial',
+      callback: () => this.activateView(DAY_DIAL_VIEW_TYPE)
+    });
+
+    this.addCommand({
       id: 'quartzo-sync-center',
       name: 'Quartzo: Open Sync Center',
       callback: () => this.activateView(SYNC_CENTER_VIEW_TYPE)
@@ -148,10 +127,23 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.addCommand({
       id: 'quartzo-sync-now',
       name: 'Quartzo: Sync now',
-      callback: () => {
-        new Notice('Sync triggered (mock)');
+      callback: async () => {
+        if (this.driveSyncCoordinator) {
+          try {
+            const result = await this.driveSyncCoordinator.reconcile();
+            new Notice(`Sync complete: ${result.synced} files synced, ${result.conflicts} conflicts`);
+            if (result.errors.length > 0) {
+              console.error('Sync errors:', result.errors);
+            }
+          } catch (error) {
+            new Notice(`Sync failed: ${error}`);
+          }
+        }
       }
     });
+
+    // Initialize vault index
+    await this.initializeVaultIndex();
 
     // Show first-run pairing if needed
     if (!this.settings.firstRunCompleted) {
@@ -160,6 +152,23 @@ export default class QuartzoCompanionPlugin extends Plugin {
 
     // Settings tab
     this.addSettingTab(new QuartzoSettingTab(this.app, this));
+  }
+
+  private async initializeVaultIndex() {
+    if (!this.vaultIndexEngine) return;
+
+    // Scan vault files
+    const files = this.app.vault.getMarkdownFiles();
+    const vaultFiles = await Promise.all(files.map(async file => ({
+      path: file.path,
+      content: await this.app.vault.read(file),
+      modified: file.stat.mtime,
+      size: file.stat.size
+    })));
+
+    // Create initial index
+    const index = VaultIndexEngine.createInitialIndex(vaultFiles);
+    console.log('Vault index initialized with', index.objects.size, 'objects');
   }
 
   async activateView(viewType: string) {
@@ -237,6 +246,9 @@ class QuartzoSettingTab extends PluginSettingTab {
         .onChange(async (value) => {
           this.plugin.settings.googleDriveFolderId = value || null;
           await this.plugin.saveSettings();
+          if (this.plugin.driveSyncCoordinator) {
+            await this.plugin.driveSyncCoordinator.setDriveFolderId(value || '');
+          }
         }));
 
     new Setting(containerEl)
@@ -257,6 +269,9 @@ class QuartzoSettingTab extends PluginSettingTab {
         .onChange(async (value) => {
           this.plugin.settings.privacyMode = value;
           await this.plugin.saveSettings();
+          if (this.plugin.viewContext) {
+            this.plugin.viewContext.state.privacyMode = value;
+          }
         }));
   }
 }

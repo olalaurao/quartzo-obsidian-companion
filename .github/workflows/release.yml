@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '0.*.*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Verify contracts
+        run: npm run contracts:verify
+      
+      - name: Type check
+        run: npm run typecheck
+      
+      - name: Lint
+        run: npm run lint
+      
+      - name: Run tests
+        run: npm test
+      
+      - name: Run contract tests
+        run: npm run test:contracts
+      
+      - name: Run sync tests
+        run: npm run test:sync
+      
+      - name: Architecture check
+        run: npm run architecture:check
+      
+      - name: Build
+        run: npm run build
+      
+      - name: Release validate
+        run: npm run release:validate
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            main.js
+            manifest.json
+            styles.css
+          draft: false
+          prerelease: true
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

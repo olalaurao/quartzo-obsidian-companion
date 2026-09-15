@@ -40,6 +40,9 @@ jobs:
     - name: Run sync tests
       run: npm run test:sync
 
+    - name: Architecture check
+      run: npm run architecture:check
+
     - name: Build
       run: npm run build
 
