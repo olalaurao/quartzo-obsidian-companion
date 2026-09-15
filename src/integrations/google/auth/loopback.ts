@@ -123,7 +123,7 @@ export class GoogleOAuthDesktop {
             this.refreshToken = tokenResponse.refresh_token || null;
             this.expiresAt = Date.now() + (tokenResponse.expires_in * 1000);
             if (this.refreshToken) {
-              await this.secretStorage.set('oauth_refresh_token', this.refreshToken);
+              await this.secretStorage.set('quartzo_companion/refresh_token', this.refreshToken);
             }
             finish(() => resolve(tokenResponse));
           } catch (err) {
@@ -169,7 +169,7 @@ export class GoogleOAuthDesktop {
   }
 
   async refreshAccessToken(): Promise<TokenResponse> {
-    const storedRefreshToken = await this.secretStorage.get('oauth_refresh_token');
+    const storedRefreshToken = await this.secretStorage.get('quartzo_companion/refresh_token');
     if (!storedRefreshToken) throw new Error('No refresh token available');
     const params = new URLSearchParams();
     params.append('refresh_token', storedRefreshToken);
@@ -180,7 +180,7 @@ export class GoogleOAuthDesktop {
     this.expiresAt = Date.now() + (tokenResponse.expires_in * 1000);
     if (tokenResponse.refresh_token) {
       this.refreshToken = tokenResponse.refresh_token;
-      await this.secretStorage.set('oauth_refresh_token', this.refreshToken);
+      await this.secretStorage.set('quartzo_companion/refresh_token', this.refreshToken);
     }
     return tokenResponse;
   }
@@ -214,9 +214,9 @@ export class GoogleOAuthDesktop {
   }
 
   async disconnect(): Promise<void> {
-    const tokenToRevoke = this.accessToken || await this.secretStorage.get('oauth_refresh_token');
+    const tokenToRevoke = this.accessToken || await this.secretStorage.get('quartzo_companion/refresh_token');
     this.cleanup();
-    await this.secretStorage.delete('oauth_refresh_token');
+    await this.secretStorage.delete('quartzo_companion/refresh_token');
     this.accessToken = null;
     this.refreshToken = null;
     this.expiresAt = 0;

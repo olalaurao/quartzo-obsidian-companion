@@ -44,11 +44,14 @@ jobs:
       
       - name: Build
         run: npm run build
+        env:
+          QUARTZO_GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID }}
       
       - name: Release validate (production mode)
         run: RELEASE_MODE=true npm run release:validate
         env:
           RELEASE_MODE: 'true'
+          QUARTZO_GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID }}
       
       - name: Create Release
         uses: softprops/action-gh-release@v1

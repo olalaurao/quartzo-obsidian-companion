@@ -70,9 +70,13 @@ export class GoogleDriveAdapter implements DriveAdapter {
     throw lastError;
   }
 
-  private isCredentialError(err: { code?: number; status?: number; response?: { status?: number } }): boolean {
+  private isCredentialError(err: { code?: number; status?: number; response?: { status?: number; data?: { error?: string; error_description?: string } } }): boolean {
     const statusCode = err.code || err.status || err.response?.status;
     if (statusCode !== 403) return false;
+    const errorDesc = err.response?.data?.error_description || err.response?.data?.error || '';
+    if (errorDesc.includes('permission') || errorDesc.includes('denied') || errorDesc.includes('insufficientPermissions')) {
+      return false;
+    }
     return true;
   }
 
@@ -312,17 +316,13 @@ export class GoogleDriveAdapter implements DriveAdapter {
 
   private async findFolderByName(parentId: string, folderName: string): Promise<string | null> {
     const drive = this.getDriveClient();
-    try {
-      const response = await drive.files.list({
-        q: `'${parentId}' in parents and name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
-        fields: 'files(id)',
-        pageSize: 1
-      });
-      const files = response.data.files || [];
-      return files.length > 0 ? (files[0].id || null) : null;
-    } catch {
-      return null;
-    }
+    const response = await drive.files.list({
+      q: `'${parentId}' in parents and name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+      fields: 'files(id)',
+      pageSize: 1
+    });
+    const files = response.data.files || [];
+    return files.length > 0 ? (files[0].id || null) : null;
   }
 
   async deleteFile(fileId: string): Promise<void> {

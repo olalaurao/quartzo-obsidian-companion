@@ -6,6 +6,7 @@ import { GoogleOAuthDesktop, OAuthConfig } from './integrations/google/auth/loop
 import { HomeView, PlannerView, DayDialView, JournalView, BrowseView, SearchView, QuickAddView, ConflictCenterView } from './ui';
 import { ViewContext } from './ui/types';
 import { normalizeVaultPath } from './sync/coordinator/path-utils';
+import { ObjectParser } from './core/objects';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -47,6 +48,10 @@ const OAUTH_CONFIG: OAuthConfig = {
   scopes: ['https://www.googleapis.com/auth/drive'],
   authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
   tokenUrl: 'https://oauth2.googleapis.com/token'
+  // V1 decision: full Drive scope is required because the plugin uses Drive Changes API
+  // (global to user's Drive) and must list folders for vault selection.
+  // Narrow drive.file scope is insufficient without Google Picker integration.
+  // Google verification/testing requirements apply before production listing.
 };
 
 class SyncCenterView extends ItemView {
@@ -83,6 +88,53 @@ class SyncCenterView extends ItemView {
         controlsEl.querySelector('#connect-google-drive')?.addEventListener('click', () => {
           this.context.plugin.startPairingFlow();
         });
+
+        if (this.context.plugin.driveAdapter) {
+          const folders = await this.context.plugin.driveAdapter.listRootFolders().catch(() => []);
+          if (folders.length > 0) {
+            const selectHtml = `
+              <div id="folder-selection" style="margin-top: 16px;">
+                <label><strong>Select Quartzo vault folder:</strong></label>
+                <div id="folder-list" style="margin-top: 8px;"></div>
+                <button id="confirm-pairing-btn" style="margin-top: 8px; display: none;">Confirm Pairing</button>
+              </div>
+            `;
+            controlsEl.insertAdjacentHTML('beforeend', selectHtml);
+            const folderListEl = controlsEl.querySelector('#folder-list');
+            const confirmBtn = controlsEl.querySelector('#confirm-pairing-btn') as HTMLButtonElement;
+            let selectedFolderId: string | null = null;
+            let selectedFolderName: string | null = null;
+
+            if (folderListEl) {
+              for (const folder of folders) {
+                const itemEl = document.createElement('div');
+                itemEl.className = 'folder-option';
+                itemEl.textContent = folder.name;
+                itemEl.style.cursor = 'pointer';
+                itemEl.style.padding = '4px 8px';
+                itemEl.style.borderRadius = '4px';
+                itemEl.addEventListener('click', () => {
+                  folderListEl.querySelectorAll('.folder-option').forEach(el => el.classList.remove('selected'));
+                  itemEl.classList.add('selected');
+                  itemEl.style.backgroundColor = 'var(--interactive-accent-hover)';
+                  selectedFolderId = folder.id;
+                  selectedFolderName = folder.name;
+                  if (confirmBtn) confirmBtn.style.display = 'block';
+                });
+                folderListEl.appendChild(itemEl);
+              }
+            }
+
+            if (confirmBtn) {
+              confirmBtn.addEventListener('click', async () => {
+                if (selectedFolderId && selectedFolderName) {
+                  await this.context.plugin.confirmPairing(selectedFolderId, selectedFolderName);
+                  this.onOpen();
+                }
+              });
+            }
+          }
+        }
       } else {
         controlsEl.innerHTML = `
           <p>Connected to: ${this.context.plugin.settings.googleDriveFolderName || 'Google Drive'}</p>
@@ -255,21 +307,23 @@ export default class QuartzoCompanionPlugin extends Plugin {
         const idx = this.vaultIndexEngine.getIndex();
         if (idx) {
           this.app.vault.read(file).then(content => {
-            const result = ObjectParser_parse(content);
-            const object = result ? {
-              id: result.id,
-              type: result.type,
-              path: file.path,
-              frontmatter: result as Record<string, unknown>,
-              body: result.body || ''
-            } : undefined;
-            this.vaultIndexEngine!.setIndex(
-              VaultIndexEngine.updateIndex(idx, [{
-                type: 'added',
-                path: normalizeVaultPath(file.path),
-                object
-              }])
-            );
+            try {
+              const result = ObjectParser.parse(content);
+              const object = {
+                id: result.object.id,
+                type: result.object.type,
+                path: file.path,
+                frontmatter: result.object as Record<string, unknown>,
+                body: (result.object as { body?: string }).body || ''
+              };
+              this.vaultIndexEngine!.setIndex(
+                VaultIndexEngine.updateIndex(idx, [{
+                  type: 'added',
+                  path: normalizeVaultPath(file.path),
+                  object
+                }])
+              );
+            } catch { /* not a valid quartzo object */ }
           }).catch(() => {});
         }
       }
@@ -281,21 +335,23 @@ export default class QuartzoCompanionPlugin extends Plugin {
         const idx = this.vaultIndexEngine.getIndex();
         if (idx) {
           this.app.vault.read(file).then(content => {
-            const result = ObjectParser_parse(content);
-            const object = result ? {
-              id: result.id,
-              type: result.type,
-              path: file.path,
-              frontmatter: result as Record<string, unknown>,
-              body: result.body || ''
-            } : undefined;
-            this.vaultIndexEngine!.setIndex(
-              VaultIndexEngine.updateIndex(idx, [{
-                type: 'modified',
-                path: normalizeVaultPath(file.path),
-                object
-              }])
-            );
+            try {
+              const result = ObjectParser.parse(content);
+              const object = {
+                id: result.object.id,
+                type: result.object.type,
+                path: file.path,
+                frontmatter: result.object as Record<string, unknown>,
+                body: (result.object as { body?: string }).body || ''
+              };
+              this.vaultIndexEngine!.setIndex(
+                VaultIndexEngine.updateIndex(idx, [{
+                  type: 'modified',
+                  path: normalizeVaultPath(file.path),
+                  object
+                }])
+              );
+            } catch { /* not a valid quartzo object */ }
           }).catch(() => {});
         }
       }
@@ -386,7 +442,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     if (!this.driveAdapter) return;
 
     const secretStorage = this.getSecretStorage();
-    const refreshToken = await secretStorage.get('oauth_refresh_token');
+    const refreshToken = await secretStorage.get('quartzo_companion/refresh_token');
     if (!refreshToken) {
       this.settings.isPaired = false;
       await this.saveSettings();
@@ -548,19 +604,6 @@ export default class QuartzoCompanionPlugin extends Plugin {
   async saveSettings() {
     await this.saveData(this.settings);
   }
-}
-
-function ObjectParser_parse(content: string): { id: string; type: string; body: string; [key: string]: unknown } | null {
-  const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-  if (!frontmatterMatch) return null;
-  try {
-    const yaml = require('yaml');
-    const parsed = yaml.parse(frontmatterMatch[1]);
-    if (parsed && typeof parsed === 'object') {
-      return { ...parsed, id: String(parsed.id || ''), type: String(parsed.type || 'unknown'), body: content.slice(frontmatterMatch[0].length).trim() };
-    }
-  } catch {}
-  return null;
 }
 
 class QuartzoSettingTab extends PluginSettingTab {

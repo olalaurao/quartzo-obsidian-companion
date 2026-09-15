@@ -13,7 +13,6 @@ const context = await esbuild.context({
   external: [
     "obsidian",
     "electron",
-    "googleapis",
     "@codemirror/autocomplete",
     "@codemirror/collab",
     "@codemirror/commands",
@@ -25,7 +24,8 @@ const context = await esbuild.context({
     "@lezer/common",
     "@lezer/highlight",
     "@lezer/lr",
-    ...builtins],
+    ...builtins,
+    ...builtins.map(b => `node:${b}`)],
   define: {
     'process.env.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID': JSON.stringify(process.env.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID || '')
   },

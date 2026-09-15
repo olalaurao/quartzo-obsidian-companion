@@ -77,8 +77,9 @@ const KNOWN_FIELDS: Record<ObjectType, Set<string>> = {
 
 export class ObjectParser {
   static parseMarkdown(markdown: string): ParsedMarkdown {
+    const normalized = markdown.replace(/\r\n/g, '\n');
     const frontmatterRegex = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/;
-    const match = markdown.match(frontmatterRegex);
+    const match = normalized.match(frontmatterRegex);
     
     if (!match) {
       return { frontmatter: {}, body: markdown };

@@ -10,7 +10,6 @@ const EXCLUDED_DIRS = new Set([
   '.trash',
   '_backups',
   '_conflicts',
-  '_deleted',
   '_diagnostics',
   '_cache',
   'node_modules',

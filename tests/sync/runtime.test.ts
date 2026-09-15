@@ -359,6 +359,7 @@ describe('Runtime Sync Tests', () => {
     expect(VaultSyncFilePolicy.shouldSyncFile('node_modules/x/index.js')).toBe(false);
     expect(VaultSyncFilePolicy.shouldSyncFile('normal.md')).toBe(true);
     expect(VaultSyncFilePolicy.shouldSyncFile('_attachments/photo.jpg')).toBe(true);
+    expect(VaultSyncFilePolicy.shouldSyncFile('_deleted/foo.md')).toBe(true);
   });
 
   it('18: unknown attachment binary remains byte-safe', async () => {

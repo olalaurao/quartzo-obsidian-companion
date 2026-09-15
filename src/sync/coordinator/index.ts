@@ -431,6 +431,9 @@ export class DriveSyncCoordinator implements ConflictRegistry {
         const normalizedRemote = normalizeVaultPath(remotePath);
         if (!VaultSyncFilePolicy.shouldSyncFile(normalizedRemote)) continue;
 
+        const hasAncestry = await this.proveAncestryToRoot(change.file, driveFolderId);
+        if (!hasAncestry) continue;
+
         const localFile = localInventory.get(normalizedRemote);
         const syncFile = this.syncState.files.get(normalizedRemote) || this.createSyncFile(normalizedRemote, localFile || { hash: '', exists: false });
 
@@ -569,6 +572,45 @@ export class DriveSyncCoordinator implements ConflictRegistry {
   }
 
   private parentNameCache: Map<string, string> = new Map();
+  private ancestryCache: Map<string, boolean> = new Map();
+
+  private async proveAncestryToRoot(file: DriveFileMetadata, rootFolderId: string): Promise<boolean> {
+    const cacheKey = file.id;
+    if (this.ancestryCache.has(cacheKey)) {
+      return this.ancestryCache.get(cacheKey)!;
+    }
+
+    if (!file.parents || file.parents.length === 0) {
+      this.ancestryCache.set(cacheKey, false);
+      return false;
+    }
+
+    let currentParentId = file.parents[0];
+    let depth = 0;
+    const MAX_DEPTH = 20;
+
+    while (currentParentId && depth < MAX_DEPTH) {
+      if (currentParentId === rootFolderId) {
+        this.ancestryCache.set(cacheKey, true);
+        return true;
+      }
+      try {
+        const parentMeta = await this.driveAdapter.getFileMetadata(currentParentId);
+        if (!parentMeta.parents || parentMeta.parents.length === 0) {
+          this.ancestryCache.set(cacheKey, false);
+          return false;
+        }
+        currentParentId = parentMeta.parents[0];
+      } catch {
+        this.ancestryCache.set(cacheKey, false);
+        return false;
+      }
+      depth++;
+    }
+
+    this.ancestryCache.set(cacheKey, false);
+    return false;
+  }
 
   private async resolveRemotePath(file: DriveFileMetadata, rootFolderId: string): Promise<string | null> {
     if (file.name && file.name.includes('/')) return file.name;
@@ -679,11 +721,9 @@ export class DriveSyncCoordinator implements ConflictRegistry {
   private async deleteRemoteFile(filePath: string, syncFile: SyncFile): Promise<void> {
     if (syncFile.remoteFileId) {
       const deletedPath = `_deleted/${filePath}`;
-      try {
-        const content = await this.driveAdapter.downloadFile(syncFile.remoteFileId);
-        const folderId = this.syncState.driveFolderId || '';
-        await this.driveAdapter.uploadFile({ folderId, name: deletedPath, content, quartzoHash: syncFile.remoteHash || '' });
-      } catch { /* tombstone creation is best-effort */ }
+      const content = await this.driveAdapter.downloadFile(syncFile.remoteFileId);
+      const folderId = this.syncState.driveFolderId || '';
+      await this.driveAdapter.uploadFile({ folderId, name: deletedPath, content, quartzoHash: syncFile.remoteHash || '' });
       await this.driveAdapter.deleteFile(syncFile.remoteFileId);
     }
     this.syncState.files.delete(filePath);

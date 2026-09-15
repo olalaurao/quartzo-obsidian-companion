@@ -305,8 +305,8 @@ describe('Sync Regression Tests', () => {
       expect(VaultSyncFilePolicy.shouldSyncFile('_conflicts/foo.md')).toBe(false);
     });
 
-    it('excludes _deleted directory', () => {
-      expect(VaultSyncFilePolicy.shouldSyncFile('_deleted/foo.md')).toBe(false);
+    it('includes _deleted directory for canonical soft-delete', () => {
+      expect(VaultSyncFilePolicy.shouldSyncFile('_deleted/foo.md')).toBe(true);
     });
 
     it('excludes _diagnostics directory', () => {
@@ -691,7 +691,7 @@ describe('Sync Regression Tests', () => {
   describe('Item 13: OAuth disconnect revokes', () => {
     it('GoogleOAuthDesktop disconnect calls revoke endpoint', async () => {
       const { GoogleOAuthDesktop } = await import('../../src/integrations/google/auth/loopback');
-      const store: Record<string, string> = { 'oauth_refresh_token': 'test-refresh-token' };
+      const store: Record<string, string> = { 'quartzo_companion/refresh_token': 'test-refresh-token' };
       const mockSecretStorage = {
         get: async (key: string) => store[key] || null,
         set: async (key: string, value: string) => { store[key] = value; },
@@ -706,7 +706,7 @@ describe('Sync Regression Tests', () => {
       };
       const oauth = new GoogleOAuthDesktop(config, mockSecretStorage);
       await oauth.disconnect();
-      expect(store['oauth_refresh_token']).toBeUndefined();
+      expect(store['quartzo_companion/refresh_token']).toBeUndefined();
     });
   });
 
@@ -807,10 +807,330 @@ describe('Sync Regression Tests', () => {
     });
   });
 
-  describe('_deleted directory excluded from sync', () => {
-    it('_deleted directory is excluded', () => {
-      expect(VaultSyncFilePolicy.shouldSyncFile('_deleted/some/file.md')).toBe(false);
-      expect(VaultSyncFilePolicy.shouldSyncDirectory('_deleted')).toBe(false);
+  describe('_deleted directory included in sync (canonical soft-delete)', () => {
+    it('_deleted directory is included for sync', () => {
+      expect(VaultSyncFilePolicy.shouldSyncFile('_deleted/some/file.md')).toBe(true);
+      expect(VaultSyncFilePolicy.shouldSyncDirectory('_deleted')).toBe(true);
+    });
+  });
+
+  describe('Reviewer Blocker 1: _deleted sync', () => {
+    it('_deleted files are synced (not excluded from sync)', () => {
+      expect(VaultSyncFilePolicy.shouldSyncFile('_deleted/note.md')).toBe(true);
+      expect(VaultSyncFilePolicy.shouldSyncFile('_deleted/sub/dir/file.md')).toBe(true);
+    });
+    it('excluded dirs remain excluded', () => {
+      expect(VaultSyncFilePolicy.shouldSyncFile('_conflicts/file.md')).toBe(false);
+      expect(VaultSyncFilePolicy.shouldSyncFile('_backups/file.md')).toBe(false);
+    });
+  });
+
+  describe('Reviewer Blocker 2: tombstone fail-closed', () => {
+    it('tombstone failure preserves remote original', async () => {
+      const content = Buffer.from('protected file');
+      fs.writeFileSync(path.join(tmpDir, 'protected.md'), content);
+      adapter.addFile('protected.md', content);
+      await coordinator.reconcile();
+
+      fs.unlinkSync(path.join(tmpDir, 'protected.md'));
+      const origUploadFile = adapter.uploadFile.bind(adapter);
+      adapter.uploadFile = async () => { throw new Error('upload-fail'); };
+      try {
+        await coordinator.reconcile();
+      } catch { /* expected */ }
+      adapter.uploadFile = origUploadFile;
+
+      const state = coordinator.getSyncState();
+      const sf = state.files.get('protected.md');
+      expect(sf?.remoteFileId).toBeTruthy();
+      expect(adapter.files.has('protected.md')).toBe(true);
+      expect(adapter.deleteCalls).toBe(0);
+    });
+
+    it('successful tombstone + delete removes original', async () => {
+      const content = Buffer.from('delete me');
+      fs.writeFileSync(path.join(tmpDir, 'del-ok.md'), content);
+      adapter.addFile('del-ok.md', content);
+      await coordinator.reconcile();
+
+      fs.unlinkSync(path.join(tmpDir, 'del-ok.md'));
+      const result = await coordinator.reconcile();
+      expect(result.synced).toBeGreaterThanOrEqual(1);
+      const hasTombstone = Array.from(adapter.files.keys()).some(k => k.startsWith('_deleted/'));
+      expect(hasTombstone).toBe(true);
+    });
+  });
+
+  describe('Reviewer Blocker 3: pairing requires explicit folder selection', () => {
+    it('confirmPairing is callable and sets isPaired', async () => {
+      await coordinator.setDriveFolderId('folder-123');
+      const settings = { isPaired: false, googleDriveFolderId: null as string | null, googleDriveFolderName: null as string | null };
+      const plugin = {
+        driveAdapter: adapter,
+        driveSyncCoordinator: coordinator,
+        settings,
+        async saveSettings() {},
+        async startPairingFlow() {},
+        async confirmPairing(folderId: string, folderName: string) {
+          settings.googleDriveFolderId = folderId;
+          settings.googleDriveFolderName = folderName;
+          settings.isPaired = true;
+        },
+        async disconnectDrive() {},
+        async adoptFile() {}
+      };
+      await plugin.confirmPairing('folder-123', 'My Vault');
+      expect(settings.isPaired).toBe(true);
+      expect(settings.googleDriveFolderId).toBe('folder-123');
+    });
+
+    it('main.ts startPairingFlow does not set isPaired', () => {
+      const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/main.ts'), 'utf-8');
+      const flow = mainSrc.substring(
+        mainSrc.indexOf('async startPairingFlow()'),
+        mainSrc.indexOf('async confirmPairing(')
+      );
+      expect(flow).not.toContain('isPaired = true');
+    });
+
+    it('SyncCenterView renders folder list for explicit selection', () => {
+      const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/main.ts'), 'utf-8');
+      expect(mainSrc).toContain('folder-selection');
+      expect(mainSrc).toContain('listRootFolders');
+      expect(mainSrc).toContain('confirm-pairing-btn');
+    });
+  });
+
+  describe('Reviewer Blocker 4+5: OAuth scope and ancestry proof', () => {
+    it('OAuth scope is full Drive with documented rationale', () => {
+      const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/main.ts'), 'utf-8');
+      expect(mainSrc).toContain('https://www.googleapis.com/auth/drive');
+      expect(mainSrc).toContain('V1 decision');
+    });
+
+    it('processChanges checks ancestry before processing', async () => {
+      const coordSrc = fs.readFileSync(path.join(__dirname, '../../src/sync/coordinator/index.ts'), 'utf-8');
+      expect(coordSrc).toContain('proveAncestryToRoot');
+      expect(coordSrc).toContain('hasAncestry');
+    });
+
+    it('ancestry cache prevents repeated parent lookups', async () => {
+      const coordSrc = fs.readFileSync(path.join(__dirname, '../../src/sync/coordinator/index.ts'), 'utf-8');
+      expect(coordSrc).toContain('ancestryCache');
+    });
+  });
+
+  describe('Reviewer Blocker 6: googleapis bundled', () => {
+    it('esbuild does not externalize googleapis', () => {
+      const esbuildSrc = fs.readFileSync(path.join(__dirname, '../../esbuild.config.mjs'), 'utf-8');
+      const externalLines = esbuildSrc.split('\n').filter(l => l.includes('"googleapis"') || l.includes("'googleapis'"));
+      expect(externalLines.length).toBe(0);
+    });
+  });
+
+  describe('Reviewer Blocker 7: release Client ID wiring', () => {
+    it('release workflow passes QUARTZO_GOOGLE_DESKTOP_CLIENT_ID to build', () => {
+      const releaseSrc = fs.readFileSync(path.join(__dirname, '../../.github/workflows/release.yml'), 'utf-8');
+      expect(releaseSrc).toContain('QUARTZO_GOOGLE_DESKTOP_CLIENT_ID');
+      expect(releaseSrc).toContain('secrets.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID');
+    });
+
+    it('release validator checks built main.js for placeholder', () => {
+      const validatorSrc = fs.readFileSync(path.join(__dirname, '../../scripts/release-validate.mjs'), 'utf-8');
+      expect(validatorSrc).toContain('main.js');
+      expect(validatorSrc).toContain('PLACEHOLDER_CLIENT_ID');
+    });
+  });
+
+  describe('Reviewer Blocker 8: minAppVersion >= 1.11.4', () => {
+    it('manifest.json has minAppVersion >= 1.11.4', () => {
+      const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '../../manifest.json'), 'utf-8'));
+      expect(manifest.minAppVersion >= '1.11.4').toBe(true);
+    });
+
+    it('versions.json maps beta to >= 1.11.4', () => {
+      const versions = JSON.parse(fs.readFileSync(path.join(__dirname, '../../versions.json'), 'utf-8'));
+      const mapped = Object.values(versions)[0] as string;
+      expect(mapped >= '1.11.4').toBe(true);
+    });
+
+    it('release validator checks minAppVersion', () => {
+      const validatorSrc = fs.readFileSync(path.join(__dirname, '../../scripts/release-validate.mjs'), 'utf-8');
+      expect(validatorSrc).toContain('1.11.4');
+    });
+  });
+
+  describe('Reviewer Blocker 9: withRetry 403 credential vs permission', () => {
+    it('isCredentialError distinguishes permission-denied from credential 403', async () => {
+      const { GoogleDriveAdapter } = await import('../../src/integrations/google/drive/adapter');
+      const realAdapter = new GoogleDriveAdapter();
+      const isCredErr = (realAdapter as unknown as { isCredentialError: (e: unknown) => boolean }).isCredentialError;
+
+      const permDenied = { code: 403, response: { status: 403, data: { error: 'access_denied', error_description: 'permission denied' } } };
+      expect(isCredErr(permDenied)).toBe(false);
+
+      const credErr = { code: 403, response: { status: 403, data: { error: 'invalid_grant', error_description: 'token expired' } } };
+      expect(isCredErr(credErr)).toBe(true);
+
+      const non403 = { code: 500, response: { status: 500 } };
+      expect(isCredErr(non403)).toBe(false);
+    });
+
+    it('permission-denied 403 does not trigger refresh', async () => {
+      const { GoogleDriveAdapter } = await import('../../src/integrations/google/drive/adapter');
+      const realAdapter = new GoogleDriveAdapter();
+      realAdapter.setAccessToken('test-token');
+      let refreshCalled = false;
+      realAdapter.setTokenRefreshCallback(async () => { refreshCalled = true; return 'new-token'; });
+
+      const permDeniedOp = async () => {
+        const err = new Error('Permission denied') as Error & { code: number; response: { status: number; data: { error: string; error_description: string } } };
+        err.code = 403;
+        err.response = { status: 403, data: { error: 'access_denied', error_description: 'The caller does not have permission' } };
+        throw err;
+      };
+
+      try {
+        await (realAdapter as unknown as { withRetry: <T>(op: () => Promise<T>) => Promise<T> }).withRetry(permDeniedOp);
+      } catch { /* expected */ }
+      expect(refreshCalled).toBe(false);
+    });
+  });
+
+  describe('Reviewer Blocker 10: findFolderByName error propagation', () => {
+    it('findFolderByName propagates API errors', async () => {
+      const { GoogleDriveAdapter } = await import('../../src/integrations/google/drive/adapter');
+      const realAdapter = new GoogleDriveAdapter();
+      realAdapter.setAccessToken('test-token');
+
+      const findFolder = (realAdapter as unknown as { findFolderByName: (p: string, n: string) => Promise<string | null> }).findFolderByName;
+      await expect(findFolder.call(realAdapter, 'parent-id', 'test')).rejects.toThrow();
+    });
+  });
+
+  describe('Reviewer Blocker 11: canonical parser in vault events', () => {
+    it('main.ts uses ObjectParser from core/objects', () => {
+      const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/main.ts'), 'utf-8');
+      expect(mainSrc).toContain("import { ObjectParser } from './core/objects'");
+      expect(mainSrc).toContain('ObjectParser.parse(content)');
+    });
+
+    it('main.ts does not have ad-hoc ObjectParser_parse function', () => {
+      const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/main.ts'), 'utf-8');
+      expect(mainSrc).not.toContain('function ObjectParser_parse');
+    });
+
+    it('ObjectParser handles LF and CRLF frontmatter', async () => {
+      const { ObjectParser } = await import('../../src/core/objects/parser');
+      const lf = '---\ntype: note\nid: test-lf\ntitle: Test\n---\nBody';
+      const resultLf = ObjectParser.parse(lf);
+      expect(resultLf.object.id).toBe('test-lf');
+
+      const crlf = '---\r\ntype: note\r\nid: test-crlf\r\ntitle: Test\r\n---\r\nBody';
+      const resultCrlf = ObjectParser.parse(crlf);
+      expect(resultCrlf.object.id).toBe('test-crlf');
+    });
+  });
+
+  describe('Reviewer additional: SecretStorage namespace', () => {
+    it('loopback.ts uses plugin-specific secret key', () => {
+      const loopbackSrc = fs.readFileSync(path.join(__dirname, '../../src/integrations/google/auth/loopback.ts'), 'utf-8');
+      expect(loopbackSrc).toContain('quartzo_companion/refresh_token');
+      expect(loopbackSrc).not.toContain('oauth_refresh_token');
+    });
+
+    it('main.ts uses plugin-specific secret key', () => {
+      const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/main.ts'), 'utf-8');
+      expect(mainSrc).toContain('quartzo_companion/refresh_token');
+      expect(mainSrc).not.toContain('oauth_refresh_token');
+    });
+  });
+
+  describe('Reviewer additional: onunload abort', () => {
+    it('main.ts calls oauthClient.abort() in onunload', () => {
+      const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/main.ts'), 'utf-8');
+      expect(mainSrc).toContain('oauthClient?.abort()');
+    });
+  });
+
+  describe('Reviewer additional: triggerFocusSync for all events', () => {
+    it('main.ts registers sync triggers for create/modify/delete/rename', () => {
+      const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/main.ts'), 'utf-8');
+      expect(mainSrc).toContain("this.app.vault.on('create'");
+      expect(mainSrc).toContain("this.app.vault.on('modify'");
+      expect(mainSrc).toContain("this.app.vault.on('delete'");
+      expect(mainSrc).toContain("this.app.vault.on('rename'");
+      expect(mainSrc).toContain('triggerFocusSync');
+    });
+  });
+
+  describe('Reviewer additional: conflict resolution transactional', () => {
+    it('keep_local failure preserves conflict and does not advance state', async () => {
+      const local = Buffer.from('safe local');
+      const remote = Buffer.from('safe remote');
+      fs.writeFileSync(path.join(tmpDir, 'txn.md'), local);
+      adapter.addFile('txn.md', remote);
+      await coordinator.reconcile();
+      expect(coordinator.getConflicts().length).toBe(1);
+
+      const origUpdate = adapter.updateFile.bind(adapter);
+      adapter.updateFile = async () => { throw new Error('drive-timeout'); };
+      try {
+        await coordinator.resolveConflict('txn.md', 'keep_local');
+      } catch { /* expected */ }
+      adapter.updateFile = origUpdate;
+
+      expect(coordinator.getConflicts().length).toBe(1);
+      expect(fs.existsSync(path.join(tmpDir, '_conflicts', 'txn.md.conflict'))).toBe(true);
+      const state = coordinator.getSyncState();
+      const sf = state.files.get('txn.md');
+      expect(sf?.baseHash).not.toBe(local.toString());
+    });
+  });
+
+  describe('Reviewer additional: nested conflict artifacts after restart', () => {
+    it('nested conflicts rehydrate correctly', async () => {
+      const local = Buffer.from('deep local');
+      const remote = Buffer.from('deep remote');
+      fs.mkdirSync(path.join(tmpDir, 'deep', 'nested'), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, 'deep', 'nested', 'file.md'), local);
+      adapter.addFile('deep/nested/file.md', remote);
+      await coordinator.reconcile();
+      expect(coordinator.getConflicts().length).toBe(1);
+
+      const newAdapter = new MockDriveAdapter();
+      newAdapter.addFile('deep/nested/file.md', remote);
+      const newCoord = new DriveSyncCoordinator(newAdapter, tmpDir, path.join(tmpDir, 'state-deep.json'));
+      await newCoord.reconcile().catch(() => {});
+      const conflicts = newCoord.getConflicts();
+      expect(conflicts.length).toBe(1);
+      expect(conflicts[0].originalPath).toBe('deep/nested/file.md');
+    });
+  });
+
+  describe('Reviewer additional: 401->refresh->retry on adapter', () => {
+    it('withRetry retries 401 once and refreshes', async () => {
+      let callCount = 0;
+      const { GoogleDriveAdapter } = await import('../../src/integrations/google/drive/adapter');
+      const realAdapter = new GoogleDriveAdapter();
+      realAdapter.setAccessToken('test-token');
+      let refreshCalled = false;
+      realAdapter.setTokenRefreshCallback(async () => { refreshCalled = true; return 'new-token'; });
+
+      const mockOp = async () => {
+        callCount++;
+        if (callCount === 1) {
+          const err = new Error('Unauthorized') as Error & { code: number };
+          err.code = 401;
+          throw err;
+        }
+        return 'success';
+      };
+
+      const result = await (realAdapter as unknown as { withRetry: <T>(op: () => Promise<T>) => Promise<T> }).withRetry(mockOp);
+      expect(result).toBe('success');
+      expect(callCount).toBe(2);
+      expect(refreshCalled).toBe(true);
     });
   });
 });

@@ -56,6 +56,28 @@ function validateRelease() {
       }
     }
 
+    const mainJsPath = path.join(rootDir, 'main.js');
+    if (fs.existsSync(mainJsPath)) {
+      const mainJsContent = fs.readFileSync(mainJsPath, 'utf8');
+      if (clientIdEnv && clientIdEnv !== 'PLACEHOLDER_CLIENT_ID') {
+        if (!mainJsContent.includes(clientIdEnv)) {
+          errors.push(`Built main.js does not contain QUARTZO_GOOGLE_DESKTOP_CLIENT_ID value. Build must inject the env var.`);
+        }
+      }
+      if (mainJsContent.includes("require('googleapis')") && !mainJsContent.includes('const GoogleApis = require')) {
+        errors.push('Built main.js contains unresolved runtime require("googleapis"). googleapis must be bundled.');
+      }
+    }
+
+    const manifestPath2 = path.join(rootDir, 'manifest.json');
+    if (fs.existsSync(manifestPath2)) {
+      const manifest = JSON.parse(fs.readFileSync(manifestPath2, 'utf8'));
+      const minVersion = manifest.minAppVersion;
+      if (minVersion && minVersion < '1.11.4') {
+        errors.push(`minAppVersion ${minVersion} is too low. Must be >= 1.11.4 for app.secretStorage support.`);
+      }
+    }
+
     const isBetaRelease = version.match(/^\d+\.\d+\.\d+-beta\.\d+$/);
     const isStableRelease = version.match(/^\d+\.\d+\.\d+$/);
     if (!isBetaRelease && !isStableRelease) {
