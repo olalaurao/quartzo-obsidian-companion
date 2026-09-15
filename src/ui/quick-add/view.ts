@@ -150,17 +150,20 @@ export class QuickAddView extends ItemView {
     const date = dateInput?.value || new Date().toISOString().split('T')[0];
     const time = timeInput?.value || '';
 
-    const objectData: Record<string, unknown> = {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const baseObject: any = {
       id: `${type}-${Date.now()}`,
-      type,
+      type: type,
       title,
       body
     };
 
+    const objectData: Record<string, unknown> = { ...baseObject };
     if (date) objectData.date = date;
     if (time) objectData.time = time;
 
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const content = ObjectParser.serialize(objectData as any, {});
       const fileName = `${type}s/${date}-${title.replace(/[^a-zA-Z0-9]/g, '_')}.md`;
       
