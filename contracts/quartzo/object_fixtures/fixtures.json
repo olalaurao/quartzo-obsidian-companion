@@ -1,0 +1,432 @@
+[
+  {
+    "id": "task_basic",
+    "type": "task",
+    "path": "tasks/task-basic.md",
+    "markdown": "---\nid: task-basic\ntype: task\ntitle: Ship contract\narchived: false\norganizers:\n  - '[[project/companion]]'\nscheduler:\n  start_date: 2026-09-06T09:00:00.000\n  rules:\n    - repeat_type: number_of_days\n      interval: 1\nreminders:\n  - id: task-contract-reminder\n    minutes_before: 15\n    type: popup\n---\nBody task\n",
+    "expected": {
+      "id": "task-basic",
+      "type": "task",
+      "title": "Ship contract",
+      "archived": false,
+      "organizers": [
+        {"type": "project", "slug": "companion", "title": "Companion"}
+      ],
+      "scheduler": {
+        "start_date": "2026-09-06T09:00:00.000",
+        "rules": [{"repeat_type": "number_of_days", "interval": 1}]
+      },
+      "reminders": [
+        {"id": "task-contract-reminder", "minutes_before": 15, "type": "popup"}
+      ]
+    }
+  },
+  {
+    "id": "habit_slots",
+    "type": "habit",
+    "path": "habits/habit-slots.md",
+    "markdown": "---\nid: habit-slots\ntype: habit\ntitle: Water\ncolor: '#22aa88'\nstatus: active\n---\nHabit body\n",
+    "expected": {
+      "id": "habit-slots",
+      "type": "habit",
+      "title": "Water",
+      "color": "#22aa88",
+      "status": "active"
+    }
+  },
+  {
+    "id": "tracker_definition",
+    "type": "tracker",
+    "path": "trackers/energy.md",
+    "markdown": "---\nid: energy\ntype: tracker_definition\ntitle: Energy\nsections:\n  - id: score\n    name: Score\n    fields: []\n---\nTracker body\n",
+    "expected": {
+      "id": "energy",
+      "type": "tracker_definition",
+      "title": "Energy",
+      "sections": [{"title": "Score", "input_fields": []}],
+      "section_count": 1,
+      "field_count": 0
+    }
+  },
+  {
+    "id": "journal_entry",
+    "type": "entry",
+    "path": "daily/2026-09-06.md",
+    "markdown": "---\nid: entry-1\ntype: entry\ntitle: Morning\ndate: 2026-09-06\n---\nJournal body\n",
+    "expected": {
+      "id": "entry-1",
+      "type": "entry",
+      "title": "Morning",
+      "date": "2026-09-06",
+      "body": "Journal body"
+    }
+  },
+  {
+    "id": "note_links",
+    "type": "note",
+    "path": "notes/links.md",
+    "markdown": "---\nid: links\ntype: note\ntitle: Links\nnote_subtype: text\nlinks:\n  - '[[legacy-slug]]'\n---\nNote body\n",
+    "expected": {
+      "id": "links",
+      "type": "note",
+      "title": "Links",
+      "note_subtype": "text",
+      "links": ["[[legacy-slug]]"],
+      "body": "Note body"
+    }
+  },
+  {
+    "id": "reminder_scheduled",
+    "type": "reminder",
+    "path": "reminders/pay.md",
+    "markdown": "---\nid: pay\ntype: reminder\ntitle: Pay bill\ndate: 2026-09-06T09:30:00.000\ntime: 2026-09-06T09:30:00.000\nis_completed: false\n---\nReminder body\n",
+    "expected": {
+      "id": "pay",
+      "type": "reminder",
+      "title": "Pay bill",
+      "date": "2026-09-06",
+      "time": "09:30",
+      "is_completed": false,
+      "reminder_count": 1,
+      "body": "Reminder body"
+    }
+  },
+  {
+    "id": "goal_basic",
+    "type": "goal",
+    "path": "goals/ship.md",
+    "markdown": "---\nid: ship\ntype: goal\ntitle: Ship\nstate: active\nstart_date: 2026-09-01\ndeadline: 2026-09-30\ndescription: Goal body\n---\nGoal body\n",
+    "expected": {
+      "id": "ship",
+      "type": "goal",
+      "title": "Ship",
+      "state": "active",
+      "start_date": "2026-09-01",
+      "deadline": "2026-09-30",
+      "description": "Goal body"
+    }
+  },
+  {
+    "id": "event_basic",
+    "type": "event",
+    "path": "events/demo.md",
+    "markdown": "---\nid: demo\ntype: event\ntitle: Demo\ndate: 2026-09-06\ntime_of_day: '10:00'\nduration: 30\n---\nEvent body\n",
+    "expected": {
+      "id": "demo",
+      "type": "event",
+      "title": "Demo",
+      "date": "2026-09-06",
+      "time_of_day": "10:00",
+      "duration": 30,
+      "body": "Event body"
+    }
+  },
+  {
+    "id": "pomodoro_basic",
+    "type": "pomodoro",
+    "path": "pomodoros/focus.md",
+    "markdown": "---\nid: focus\ntype: pomodoro_session\ntitle: Focus\ndate: 2026-09-06\nwork_duration: 25\n---\nPomodoro body\n",
+    "expected": {
+      "id": "focus",
+      "type": "pomodoro_session",
+      "title": "Focus",
+      "date": "2026-09-06",
+      "work_duration": 25
+    }
+  },
+  {
+    "id": "system_basic",
+    "type": "system",
+    "path": "systems/weekly.md",
+    "markdown": "---\nid: weekly\ntype: system\ntitle: Weekly system\n---\nSystem body\n",
+    "expected": {
+      "id": "weekly",
+      "type": "system",
+      "title": "Weekly system",
+      "body": "System body"
+    }
+  },
+  {
+    "id": "routine_basic",
+    "type": "routine",
+    "path": "organizers/routines/morning.md",
+    "markdown": "---\nid: morning\ntype: routine\norganizer_type: routine\ntitle: Morning\nstatement: Routine body\n---\nRoutine body\n",
+    "expected": {
+      "id": "morning",
+      "type": "routine",
+      "title": "Morning",
+      "organizer_type": "routine",
+      "statement": "Routine body"
+    }
+  },
+  {
+    "id": "social_post_basic",
+    "type": "social_post",
+    "path": "social/post.md",
+    "markdown": "---\nid: post\ntype: social_post\ntitle: Post\nplatform: instagram\n---\nPost body\n",
+    "expected": {
+      "id": "post",
+      "type": "social_post",
+      "title": "Post",
+      "platform": "instagram",
+      "personal_note": "Post body"
+    }
+  },
+  {
+    "id": "mood_definition_basic",
+    "type": "mood_definition",
+    "path": "moods/calm.md",
+    "markdown": "---\nid: calm\ntype: mood_definition\ntitle: Calm\nnumeric_value: 3\n---\nMood body\n",
+    "expected": {
+      "id": "calm",
+      "type": "mood_definition",
+      "title": "Calm",
+      "numeric_value": 3,
+      "pleasantness": 3,
+      "body": "Mood body"
+    }
+  },
+  {
+    "id": "idea_basic",
+    "type": "idea",
+    "path": "ideas/idea.md",
+    "markdown": "---\nid: idea\ntype: idea\ntitle: Idea\nhorizon: soon\n---\nIdea body\n",
+    "expected": {
+      "id": "idea",
+      "type": "idea",
+      "title": "Idea",
+      "horizon": "soon",
+      "body": "Idea body"
+    }
+  },
+  {
+    "id": "inbox_basic",
+    "type": "inbox",
+    "path": "inbox/item.md",
+    "markdown": "---\nid: item\ntype: inbox\ntitle: Inbox item\ntemporal_intent: soon\n---\nInbox body\n",
+    "expected": {
+      "id": "item",
+      "type": "inbox",
+      "title": "Inbox item",
+      "temporal_intent": "soon",
+      "body": "Inbox body"
+    }
+  },
+  {
+    "id": "shopping_list_basic",
+    "type": "shopping_list",
+    "path": "shopping/list.md",
+    "markdown": "---\nid: list\ntype: shopping_list\ntitle: Groceries\nitems: []\n---\nShopping body\n",
+    "expected": {
+      "id": "list",
+      "type": "shopping_list",
+      "title": "Groceries",
+      "items": [],
+      "item_count": 0
+    }
+  },
+  {
+    "id": "template_basic",
+    "type": "template",
+    "path": "templates/default.md",
+    "markdown": "---\nid: default\ntype: template\ntitle: Default\ntemplate_type: note\n---\nTemplate body\n",
+    "expected": {
+      "id": "default",
+      "type": "template",
+      "title": "Default",
+      "template_type": "note",
+      "body": "Template body"
+    }
+  },
+  {
+    "id": "daily_note_basic",
+    "type": "daily_note",
+    "path": "daily/2026-09-06.md",
+    "markdown": "---\nid: daily-2026-09-06\ntype: daily_note\ntitle: 2026-09-06\n---\nDaily body\n",
+    "expected": {
+      "id": "daily-2026-09-06",
+      "type": "daily_note",
+      "title": "2026-09-06",
+      "body": "Daily body"
+    }
+  },
+  {
+    "id": "analysis_basic",
+    "type": "analysis",
+    "path": "analyses/weekly.md",
+    "markdown": "---\nid: weekly-analysis\ntype: combined_analysis\ntitle: Weekly analysis\ndescription: Analysis body\n---\nAnalysis body\n",
+    "expected": {
+      "id": "weekly-analysis",
+      "type": "combined_analysis",
+      "title": "Weekly analysis",
+      "description": "Analysis body",
+      "data_source_count": 0,
+      "chart_count": 0
+    }
+  },
+  {
+    "id": "wellbeing_indicator_basic",
+    "type": "wellbeing_indicator",
+    "path": "wellbeing/sleep.md",
+    "markdown": "---\nid: sleep\ntype: wellbeing_indicator\ntitle: Sleep\nsignals: []\n---\nWellbeing body\n",
+    "expected": {
+      "id": "sleep",
+      "type": "wellbeing_indicator",
+      "title": "Sleep",
+      "signal_count": 0
+    }
+  },
+  {
+    "id": "area_basic",
+    "type": "area",
+    "path": "organizers/areas/health.md",
+    "markdown": "---\nid: health\ntype: area\norganizer_type: area\ntitle: Health\n---\nArea body\n",
+    "expected": {
+      "id": "health",
+      "type": "area",
+      "title": "Health",
+      "organizer_type": "area"
+    }
+  },
+  {
+    "id": "project_basic",
+    "type": "project",
+    "path": "organizers/projects/companion.md",
+    "markdown": "---\nid: companion\ntype: project\norganizer_type: project\ntitle: Companion\nrotation_groups: []\n---\nProject body\n",
+    "expected": {
+      "id": "companion",
+      "type": "project",
+      "title": "Companion",
+      "organizer_type": "project",
+      "rotation_groups": [],
+      "rotation_group_count": 0
+    }
+  },
+  {
+    "id": "activity_basic",
+    "type": "activity",
+    "path": "organizers/activities/run.md",
+    "markdown": "---\nid: run\ntype: activity\norganizer_type: activity\ntitle: Run\n---\nActivity body\n",
+    "expected": {
+      "id": "run",
+      "type": "activity",
+      "title": "Run",
+      "organizer_type": "activity"
+    }
+  },
+  {
+    "id": "label_basic",
+    "type": "label",
+    "path": "organizers/labels/important.md",
+    "markdown": "---\nid: important\ntype: label\norganizer_type: label\ntitle: Important\n---\nLabel body\n",
+    "expected": {
+      "id": "important",
+      "type": "label",
+      "title": "Important",
+      "organizer_type": "label"
+    }
+  },
+  {
+    "id": "person_basic",
+    "type": "person",
+    "path": "organizers/people/alice.md",
+    "markdown": "---\nid: alice\ntype: person\norganizer_type: person\ntitle: Alice\n---\nPerson body\n",
+    "expected": {
+      "id": "alice",
+      "type": "person",
+      "title": "Alice",
+      "organizer_type": "person"
+    }
+  },
+  {
+    "id": "day_theme_basic",
+    "type": "day_theme",
+    "path": "organizers/day_themes/deep.md",
+    "markdown": "---\nid: deep\ntype: day_theme\norganizer_type: dayTheme\ntitle: Deep\n---\nTheme body\n",
+    "expected": {
+      "id": "deep",
+      "type": "day_theme",
+      "title": "Deep",
+      "organizer_type": "day_theme"
+    }
+  },
+  {
+    "id": "time_block_basic",
+    "type": "time_block",
+    "path": "organizers/time_blocks/morning.md",
+    "markdown": "---\nid: morning-block\ntype: time_block\norganizer_type: timeBlock\ntitle: Morning block\nranges: []\n---\nTime block body\n",
+    "expected": {
+      "id": "morning-block",
+      "type": "time_block",
+      "title": "Morning block",
+      "organizer_type": "time_block",
+      "time_ranges": []
+    }
+  },
+  {
+    "id": "value_basic",
+    "type": "value",
+    "path": "organizers/values/craft.md",
+    "markdown": "---\nid: craft\ntype: value\norganizer_type: value\ntitle: Craft\n---\nValue body\n",
+    "expected": {
+      "id": "craft",
+      "type": "value",
+      "title": "Craft",
+      "organizer_type": "value"
+    }
+  },
+  {
+    "id": "pillar_basic",
+    "type": "pillar",
+    "path": "pillars/health.md",
+    "markdown": "---\nid: health-pillar\ntype: pillar\ntitle: Health\nwhy: Pillar body\n---\nPillar body\n",
+    "expected": {
+      "id": "health-pillar",
+      "type": "pillar",
+      "title": "Health",
+      "why": "Pillar body",
+      "touch_count": 0
+    }
+  },
+  {
+    "id": "action_basic",
+    "type": "action",
+    "path": "actions/capture.md",
+    "markdown": "---\nid: capture\ntype: action\ntitle: Capture\nenergy_level: low\nenergy_cost: low\npriority: none\n---\nAction body\n",
+    "expected": {
+      "id": "capture",
+      "type": "action",
+      "title": "Capture",
+      "energy_level": "low",
+      "energy_cost": "low",
+      "priority": "none"
+    }
+  },
+  {
+    "id": "monthly_focus_basic",
+    "type": "monthly_focus",
+    "path": "monthly_focus/september.md",
+    "markdown": "---\nid: september\ntype: monthly_focus\ntitle: September\nmonth: 9\nyear: 2026\n---\nFocus body\n",
+    "expected": {
+      "id": "september",
+      "type": "monthly_focus",
+      "title": "September",
+      "month": 9,
+      "year": 2026,
+      "body": "Focus body"
+    }
+  },
+  {
+    "id": "quote_basic",
+    "type": "quote",
+    "path": "quotes/quote.md",
+    "markdown": "---\nid: quote\ntype: quote\ntitle: Quote\nsource_object_id: quartzo-source\n---\nQuote body\n",
+    "expected": {
+      "id": "quote",
+      "type": "quote",
+      "title": "Quote",
+      "source_object_id": "quartzo-source",
+      "body": "Quote body"
+    }
+  }
+]

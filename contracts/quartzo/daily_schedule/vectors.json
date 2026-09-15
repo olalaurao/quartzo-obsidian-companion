@@ -1,0 +1,332 @@
+[
+  {
+    "id": "reminder_before_date",
+    "kind": "reminder",
+    "input": {
+      "date": "2026-09-06",
+      "objects": [
+        {"type": "reminder", "id": "reminder-before", "title": "Pay bill", "scheduled_date": "2026-09-07", "time": "09:30"}
+      ]
+    },
+    "expectedNormalized": {"kind": "reminder", "count": 0, "items": []}
+  },
+  {
+    "id": "reminder_on_date",
+    "kind": "reminder",
+    "input": {
+      "date": "2026-09-06",
+      "objects": [
+        {"type": "reminder", "id": "reminder-on", "title": "Pay bill", "scheduled_date": "2026-09-06", "time": "09:30", "reminder_id": "reminder-on-primary"}
+      ]
+    },
+    "expectedNormalized": {
+      "kind": "reminder",
+      "count": 1,
+      "items": [
+        {"id": "reminder:reminder-on", "sourceId": "reminder-on", "reminderId": "reminder-on-primary", "date": "2026-09-06", "start": "09:30", "end": "09:45", "isTimed": true}
+      ]
+    }
+  },
+  {
+    "id": "reminder_after_date",
+    "kind": "reminder",
+    "input": {
+      "date": "2026-09-07",
+      "objects": [
+        {"type": "reminder", "id": "reminder-after", "title": "Pay bill", "scheduled_date": "2026-09-06", "time": "09:30"}
+      ]
+    },
+    "expectedNormalized": {"kind": "reminder", "count": 0, "items": []}
+  },
+  {
+    "id": "timed_reminder_overdue_today_only",
+    "kind": "reminder",
+    "input": {
+      "date": "2026-09-06",
+      "today": "2026-09-06",
+      "objects": [
+        {"type": "reminder", "id": "reminder-overdue", "title": "Call clinic", "scheduled_date": "2026-09-05", "time": "09:30", "reminder_id": "reminder-overdue-primary"}
+      ]
+    },
+    "expectedNormalized": {
+      "kind": "reminder",
+      "count": 1,
+      "items": [
+        {"id": "reminder:reminder-overdue", "sourceId": "reminder-overdue", "reminderId": "reminder-overdue-primary", "date": "2026-09-06", "start": "09:30", "end": "09:45", "isTimed": true}
+      ]
+    }
+  },
+  {
+    "id": "habit_multiple_timed_slots",
+    "kind": "habit",
+    "input": {
+      "date": "2026-09-06",
+      "objects": [
+        {"type": "habit", "id": "habit-water", "title": "Water", "slots": [{"time": "08:00", "label": "Morning"}, {"time": "18:00", "label": "Evening"}]}
+      ]
+    },
+    "expectedNormalized": {
+      "kind": "habit",
+      "count": 2,
+      "items": [
+        {"id": "legacyTime:habit:habit-water:slot:0:reminder:slot_time:2026-09-06T08:00:00.000", "sourceId": "habit-water", "slotIndex": 0, "date": "2026-09-06", "start": "08:00", "isTimed": true},
+        {"id": "legacyTime:habit:habit-water:slot:1:reminder:slot_time:2026-09-06T18:00:00.000", "sourceId": "habit-water", "slotIndex": 1, "date": "2026-09-06", "start": "18:00", "isTimed": true}
+      ]
+    }
+  },
+  {
+    "id": "habit_all_day_fallback",
+    "kind": "habit",
+    "input": {
+      "date": "2026-09-06",
+      "objects": [
+        {"type": "habit", "id": "habit-stretch", "title": "Stretch", "slots": []}
+      ]
+    },
+    "expectedNormalized": {
+      "kind": "habit",
+      "count": 1,
+      "items": [
+        {"id": "habit:habit-stretch", "sourceId": "habit-stretch", "date": "2026-09-06", "isTimed": false}
+      ]
+    }
+  },
+  {
+    "id": "negative_habit_exclusion",
+    "kind": "habit",
+    "input": {
+      "date": "2026-09-06",
+      "objects": [
+        {"type": "habit", "id": "habit-negative", "title": "Avoid caffeine", "negative": true, "slots": []}
+      ]
+    },
+    "expectedNormalized": {"kind": "habit", "count": 0, "items": []}
+  },
+  {
+    "id": "archived_global_exclusion",
+    "kind": "task",
+    "input": {
+      "date": "2026-09-06",
+      "objects": [
+        {"type": "task", "id": "task-archived", "title": "Archived", "start_date": "2026-09-06", "end_date": "2026-09-06", "archived": true}
+      ]
+    },
+    "expectedNormalized": {"kind": "task", "count": 0, "items": []}
+  },
+  {
+    "id": "deleted_global_exclusion",
+    "kind": "task",
+    "input": {
+      "date": "2026-09-06",
+      "objects": [
+        {"type": "task", "id": "task-deleted", "title": "Deleted", "start_date": "2026-09-06", "end_date": "2026-09-06", "deleted": true}
+      ]
+    },
+    "expectedNormalized": {"kind": "task", "count": 0, "items": []}
+  },
+  {
+    "id": "task",
+    "kind": "task",
+    "input": {
+      "date": "2026-09-06",
+      "objects": [
+        {"type": "task", "id": "task-fixture", "title": "Task", "start_date": "2026-09-06", "end_date": "2026-09-06", "time": "11:00", "duration": 45}
+      ]
+    },
+    "expectedNormalized": {
+      "kind": "task",
+      "count": 1,
+      "items": [
+        {"id": "task:task-fixture", "sourceId": "task-fixture", "occurrenceId": "task-fixture", "date": "2026-09-06", "start": "11:00", "end": "11:45", "isTimed": true}
+      ]
+    }
+  },
+  {
+    "id": "event",
+    "kind": "event",
+    "input": {
+      "date": "2026-09-06",
+      "objects": [
+        {"type": "event", "id": "event-fixture", "title": "Demo", "date": "2026-09-06", "time": "10:00", "duration": 30}
+      ]
+    },
+    "expectedNormalized": {
+      "kind": "event",
+      "count": 1,
+      "items": [
+        {"id": "event:event-fixture", "sourceId": "event-fixture", "occurrenceId": "event-fixture", "date": "2026-09-06", "start": "10:00", "end": "10:30", "isTimed": true}
+      ]
+    }
+  },
+  {
+    "id": "pomodoro",
+    "kind": "pomodoro",
+    "input": {
+      "date": "2026-09-06",
+      "objects": [
+        {"type": "pomodoro", "id": "pomodoro-fixture", "title": "Focus", "date": "2026-09-06", "start": "10:00", "duration": 25, "state": "completed"}
+      ]
+    },
+    "expectedNormalized": {
+      "kind": "pomodoro",
+      "count": 1,
+      "items": [
+        {"id": "pomodoro:pomodoro-fixture", "sourceId": "pomodoro-fixture", "date": "2026-09-06", "start": "10:00", "end": "10:25", "isTimed": true}
+      ]
+    }
+  },
+  {
+    "id": "google_calendar",
+    "kind": "googleCalendar",
+    "input": {
+      "date": "2026-09-06",
+      "googleEvents": [
+        {"id": "google-fixture", "summary": "Fixture Google event", "start": "2026-09-06T09:00:00.000", "end": "2026-09-06T10:00:00.000"}
+      ]
+    },
+    "expectedNormalized": {
+      "kind": "googleCalendar",
+      "count": 1,
+      "items": [
+        {"id": "google_calendar:google-fixture", "sourceId": "google-fixture", "date": "2026-09-06", "start": "09:00", "end": "10:00", "isTimed": true}
+      ]
+    }
+  },
+  {
+    "id": "tracker_record",
+    "kind": "trackerRecord",
+    "input": {
+      "date": "2026-09-06",
+      "objects": [
+        {"type": "tracker_record", "id": "tracker-record-fixture", "title": "Energy record", "tracker_id": "fixture-tracker", "date": "2026-09-06"}
+      ]
+    },
+    "expectedNormalized": {
+      "kind": "trackerRecord",
+      "count": 1,
+      "items": [
+        {"id": "tracker:tracker-record-fixture", "sourceId": "tracker-record-fixture", "date": "2026-09-06", "isAllDay": false}
+      ]
+    }
+  },
+  {
+    "id": "journal_entry",
+    "kind": "journalEntry",
+    "input": {
+      "date": "2026-09-06",
+      "objects": [
+        {"type": "journal_entry", "id": "entry-fixture", "title": "Morning", "date": "2026-09-06", "time": "07:45", "body": "Journal"}
+      ]
+    },
+    "expectedNormalized": {
+      "kind": "journalEntry",
+      "count": 1,
+      "items": [
+        {"id": "entry:entry-fixture", "sourceId": "entry-fixture", "date": "2026-09-06", "start": "07:45", "end": "08:00", "isTimed": true}
+      ]
+    }
+  },
+  {
+    "id": "time_block",
+    "kind": "timeBlock",
+    "input": {
+      "date": "2026-09-06",
+      "objects": [
+        {"type": "time_block", "id": "block-fixture", "title": "Deep work", "ranges": [{"id": "range-a", "start": "09:00", "end": "10:00"}]}
+      ]
+    },
+    "expectedNormalized": {
+      "kind": "timeBlock",
+      "count": 1,
+      "items": [
+        {"id": "time_block:block-fixture:range-a@2026-09-06", "sourceId": "block-fixture", "occurrenceId": "time_block:block-fixture:range-a@2026-09-06", "date": "2026-09-06", "start": "09:00", "end": "10:00", "isTimed": true}
+      ]
+    }
+  },
+  {
+    "id": "system",
+    "kind": "system",
+    "input": {
+      "date": "2026-09-06",
+      "objects": [
+        {"type": "system", "id": "system-fixture", "title": "Review", "time": "08:00", "scheduler": {"start_date": "2026-09-06T00:00:00.000", "rules": [{"repeat_type": "number_of_days", "interval": 1}]}}
+      ]
+    },
+    "expectedNormalized": {
+      "kind": "system",
+      "count": 1,
+      "items": [
+        {"id": "system:system-fixture", "sourceId": "system-fixture", "occurrenceId": "system-fixture", "date": "2026-09-06", "start": "08:00", "isTimed": true}
+      ]
+    }
+  },
+  {
+    "id": "routine",
+    "kind": "routine",
+    "input": {
+      "date": "2026-09-06",
+      "objects": [
+        {"type": "routine", "id": "routine-fixture", "title": "Morning routine", "start_date": "2026-09-06", "estimated_minutes": 20}
+      ]
+    },
+    "expectedNormalized": {
+      "kind": "routine",
+      "count": 1,
+      "items": [
+        {"id": "routine:routine-fixture", "sourceId": "routine-fixture", "occurrenceId": "routine:routine-fixture@2026-09-06", "date": "2026-09-06", "isAllDay": false}
+      ]
+    }
+  },
+  {
+    "id": "rotation_zone",
+    "kind": "rotationZone",
+    "input": {
+      "date": "2026-09-06",
+      "objects": [
+        {"type": "project", "id": "rotation-project", "title": "Rotation", "rotation_start_date": "2026-09-06", "rotation_time": "09:00", "rotation_duration_minutes": 60, "rotation_groups": [{"id": "zone-a", "name": "Zone A", "period_days": 1, "order": 0}], "task_links": ["rotation-task"]},
+        {"type": "task", "id": "rotation-task", "title": "Rotation task", "rotation_group_id": "zone-a", "rotation_frequency_type": "daily"}
+      ]
+    },
+    "expectedNormalized": {
+      "kind": "rotationZone",
+      "count": 1,
+      "items": [
+        {"id": "rotation:rotation-project:zone-a", "sourceId": "rotation-project", "date": "2026-09-06", "start": "09:00", "end": "10:00", "isTimed": true}
+      ]
+    }
+  },
+  {
+    "id": "person_contact",
+    "kind": "personContact",
+    "input": {
+      "date": "2026-09-06",
+      "objects": [
+        {"type": "person", "id": "person-alice", "title": "Alice", "last_contact": "2026-08-23", "frequency_days": 14}
+      ]
+    },
+    "expectedNormalized": {
+      "kind": "personContact",
+      "count": 1,
+      "items": [
+        {"id": "person_contact:person-alice", "sourceId": "person-alice", "date": "2026-09-06", "isAllDay": false}
+      ]
+    }
+  },
+  {
+    "id": "goal",
+    "kind": "goal",
+    "input": {
+      "date": "2026-09-06",
+      "objects": [
+        {"type": "goal", "id": "goal-fixture", "title": "Ship", "start_date": "2026-09-06"}
+      ]
+    },
+    "expectedNormalized": {
+      "kind": "goal",
+      "count": 1,
+      "items": [
+        {"id": "goalStart:goal-fixture", "sourceId": "goal-fixture", "date": "2026-09-06", "isAllDay": false}
+      ]
+    }
+  }
+]

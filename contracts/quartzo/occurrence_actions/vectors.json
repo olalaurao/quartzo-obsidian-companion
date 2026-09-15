@@ -1,0 +1,11 @@
+[
+  {"id":"done_now","action":"done","expected":"completed_once"},
+  {"id":"already_did","action":"already_did","expected":"completed_with_recorded_at"},
+  {"id":"skip","action":"skip","expected":"skipped_once"},
+  {"id":"clear","action":"clear","expected":"outcome_cleared"},
+  {"id":"snooze","action":"snooze","expected":"snoozed_until_set"},
+  {"id":"dismiss","action":"dismiss","expected":"dismissed_once"},
+  {"id":"duplicate_action_replay","action":"done","duplicateActionId":true,"expected":"idempotent_noop"},
+  {"id":"habit_slot_target","target":"habit_slot","expected":"slot_identity_preserved"},
+  {"id":"reminder_target","target":"reminder","expected":"reminder_identity_preserved"}
+]

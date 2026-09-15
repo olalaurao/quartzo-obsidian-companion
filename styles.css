@@ -1,0 +1,13 @@
+/* Quartzo Companion V1 CSS */
+
+.theme-dark {
+  --quartzo-accent: #8b5cf6;
+}
+
+.theme-light {
+  --quartzo-accent: #7c3aed;
+}
+
+.quartzo-ribbon-icon {
+  color: var(--quartzo-accent);
+}

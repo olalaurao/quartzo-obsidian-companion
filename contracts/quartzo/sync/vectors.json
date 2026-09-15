@@ -1,0 +1,21 @@
+[
+  {"id":"identical","baseHash":"h1","localHash":"h1","remoteHash":"h1","localExists":true,"remoteExists":true,"expected":"advance_baseline"},
+  {"id":"local_only_change","baseHash":"h1","localHash":"h2","remoteHash":"h1","localExists":true,"remoteExists":true,"expected":"push"},
+  {"id":"remote_only_change","baseHash":"h1","localHash":"h1","remoteHash":"h2","localExists":true,"remoteExists":true,"expected":"pull"},
+  {"id":"both_same_result","baseHash":"h1","localHash":"h2","remoteHash":"h2","localExists":true,"remoteExists":true,"expected":"advance_baseline"},
+  {"id":"true_conflict","baseHash":"h1","localHash":"h2","remoteHash":"h3","localExists":true,"remoteExists":true,"expected":"conflict"},
+  {"id":"null_base_identical","baseHash":null,"localHash":"h1","remoteHash":"h1","localExists":true,"remoteExists":true,"expected":"advance_baseline"},
+  {"id":"null_base_different","baseHash":null,"localHash":"h1","remoteHash":"h2","localExists":true,"remoteExists":true,"expected":"conflict"},
+  {"id":"remote_missing_hash","baseHash":"h1","localHash":"h2","remoteHash":null,"localExists":true,"remoteExists":true,"expected":"conflict"},
+  {"id":"remote_deletion_local_unchanged","baseHash":"h1","localHash":"h1","remoteHash":null,"localExists":true,"remoteExists":false,"expected":"delete_local"},
+  {"id":"local_edit_vs_remote_deletion","baseHash":"h1","localHash":"h2","remoteHash":null,"localExists":true,"remoteExists":false,"expected":"conflict"},
+  {"id":"remote_only_file","baseHash":null,"localHash":null,"remoteHash":"h1","localExists":false,"remoteExists":true,"expected":"pull"},
+  {"id":"local_only_unknown_pairing","baseHash":null,"localHash":"h1","remoteHash":null,"localExists":true,"remoteExists":false,"expected":"adoption_required"},
+  {"id":"duplicate_remote_identity","duplicateRemoteIdentity":true,"expected":"fail_closed"},
+  {"id":"watcher_write_back","postWriteExpectedHash":"h2","localHash":"h2","expected":"suppress_redundant_push"},
+  {"id":"text_file_scope","path":"notes/example.md","expected":"include_live"},
+  {"id":"base_file_scope","path":"notes/collection.base","expected":"include_live"},
+  {"id":"binary_attachment_scope","path":"_attachments/photo.jpg","expected":"include_live"},
+  {"id":"deleted_scope","path":"_deleted/tasks/old.md","expected":"include_deleted"},
+  {"id":"binary_conflict","baseHash":"sha256:base","localHash":"sha256:local","remoteHash":"sha256:remote","localExists":true,"remoteExists":true,"contentEncoding":"raw_bytes","expected":"conflict"}
+]

@@ -1,0 +1,358 @@
+[
+  {
+    "id": "number_of_days_basic",
+    "repeatType": "number_of_days",
+    "input": {
+      "scheduler": {
+        "start_date": "2024-01-01T00:00:00.000",
+        "rules": [{"repeat_type": "number_of_days", "interval": 1}]
+      },
+      "after": "2023-12-31T00:00:00.000",
+      "date": "2024-01-01"
+    },
+    "expected": {"next": "2024-01-01T00:00:00.000", "shouldFire": true}
+  },
+  {
+    "id": "start_end_bounds",
+    "repeatType": "number_of_days",
+    "input": {
+      "scheduler": {
+        "start_date": "2024-01-10T00:00:00.000",
+        "end_date": "2024-01-12T00:00:00.000",
+        "rules": [{"repeat_type": "number_of_days", "interval": 1}]
+      },
+      "after": "2024-01-12T00:00:00.000",
+      "date": "2024-01-13"
+    },
+    "expected": {"next": null, "shouldFire": false}
+  },
+  {
+    "id": "exclusion_rule",
+    "repeatType": "number_of_days",
+    "input": {
+      "scheduler": {
+        "start_date": "2024-01-01T00:00:00.000",
+        "rules": [{"repeat_type": "number_of_days", "interval": 1}],
+        "exclusions": [{"repeat_type": "days_of_week", "days_of_week": ["Tue"]}]
+      },
+      "after": "2024-01-01T00:00:00.000",
+      "date": "2024-01-02"
+    },
+    "expected": {"next": "2024-01-03T00:00:00.000", "shouldFire": false}
+  },
+  {
+    "id": "max_occurrences_limit",
+    "repeatType": "number_of_days",
+    "input": {
+      "scheduler": {
+        "start_date": "2024-01-01T00:00:00.000",
+        "max_occurrences": 2,
+        "rules": [{"repeat_type": "number_of_days", "interval": 1}]
+      },
+      "after": "2024-01-02T00:00:00.000",
+      "date": "2024-01-03"
+    },
+    "expected": {"next": null, "shouldFire": false}
+  },
+  {
+    "id": "weekdays_tue_thu",
+    "repeatType": "days_of_week",
+    "input": {
+      "scheduler": {
+        "start_date": "2024-01-01T00:00:00.000",
+        "rules": [{"repeat_type": "days_of_week", "days_of_week": ["Tue", "Thu"]}]
+      },
+      "after": "2024-01-01T00:00:00.000",
+      "date": "2024-01-04"
+    },
+    "expected": {"next": "2024-01-02T00:00:00.000", "shouldFire": true}
+  },
+  {
+    "id": "number_of_weeks_every_two_weeks",
+    "repeatType": "number_of_weeks",
+    "input": {
+      "scheduler": {
+        "start_date": "2024-01-01T00:00:00.000",
+        "rules": [{"repeat_type": "number_of_weeks", "interval": 2, "days_of_week": ["Mon"]}]
+      },
+      "after": "2024-01-01T00:00:00.000",
+      "date": "2024-01-08"
+    },
+    "expected": {"next": "2024-01-15T00:00:00.000", "shouldFire": false}
+  },
+  {
+    "id": "month_day_fifteenth",
+    "repeatType": "number_of_months",
+    "input": {
+      "scheduler": {
+        "start_date": "2024-01-01T00:00:00.000",
+        "rules": [{"repeat_type": "number_of_months", "interval": 1, "days_of_month": [15]}]
+      },
+      "after": "2024-01-01T00:00:00.000",
+      "date": "2024-01-15"
+    },
+    "expected": {"next": "2024-01-15T00:00:00.000", "shouldFire": true}
+  },
+  {
+    "id": "month_end_leap_february",
+    "repeatType": "number_of_months",
+    "input": {
+      "scheduler": {
+        "start_date": "2024-01-31T00:00:00.000",
+        "rules": [{"repeat_type": "number_of_months", "interval": 1, "days_of_month": [31]}]
+      },
+      "after": "2024-01-31T00:00:00.000",
+      "date": "2024-02-29"
+    },
+    "expected": {"next": "2024-02-29T00:00:00.000", "shouldFire": true}
+  },
+  {
+    "id": "month_end_non_leap_february",
+    "repeatType": "number_of_months",
+    "input": {
+      "scheduler": {
+        "start_date": "2025-01-31T00:00:00.000",
+        "rules": [{"repeat_type": "number_of_months", "interval": 1, "days_of_month": [31]}]
+      },
+      "after": "2025-01-31T00:00:00.000",
+      "date": "2025-02-28"
+    },
+    "expected": {"next": "2025-02-28T00:00:00.000", "shouldFire": true}
+  },
+  {
+    "id": "number_of_minutes_calendar_anchor",
+    "repeatType": "number_of_minutes",
+    "input": {
+      "scheduler": {
+        "start_date": "2024-01-01T08:00:00.000",
+        "rules": [{"repeat_type": "number_of_minutes", "interval": 30}]
+      },
+      "after": "2024-01-01T08:00:00.000",
+      "date": "2024-01-01"
+    },
+    "expected": {"next": "2024-01-01T08:30:00.000", "shouldFire": true}
+  },
+  {
+    "id": "number_of_hours_calendar_anchor",
+    "repeatType": "number_of_hours",
+    "input": {
+      "scheduler": {
+        "start_date": "2024-01-01T08:00:00.000",
+        "rules": [{"repeat_type": "number_of_hours", "interval": 2}]
+      },
+      "after": "2024-01-01T09:00:00.000",
+      "date": "2024-01-01"
+    },
+    "expected": {"next": "2024-01-01T10:00:00.000", "shouldFire": true}
+  },
+  {
+    "id": "completion_anchor_hourly",
+    "repeatType": "number_of_hours",
+    "input": {
+      "scheduler": {
+        "start_date": "2024-01-01T08:00:00.000",
+        "anchor_mode": "completion",
+        "rules": [{"repeat_type": "number_of_hours", "interval": 1}]
+      },
+      "after": "2024-01-01T09:00:00.000",
+      "date": "2024-01-01",
+      "context": {"lastCompletionDate": "2024-01-01T09:20:00.000"}
+    },
+    "expected": {"next": "2024-01-01T10:20:00.000", "shouldFire": true}
+  },
+  {
+    "id": "active_window_rolls_to_next_day",
+    "repeatType": "number_of_minutes",
+    "input": {
+      "scheduler": {
+        "start_date": "2024-01-01T08:00:00.000",
+        "anchor_mode": "completion",
+        "active_window": {"start_minute": 480, "end_minute": 1080},
+        "rules": [{"repeat_type": "number_of_minutes", "interval": 30}]
+      },
+      "after": "2024-01-01T18:00:00.000",
+      "date": "2024-01-02",
+      "context": {"lastCompletionDate": "2024-01-01T17:50:00.000"}
+    },
+    "expected": {"next": "2024-01-02T08:00:00.000", "shouldFire": true}
+  },
+  {
+    "id": "cross_midnight_active_window",
+    "repeatType": "number_of_minutes",
+    "input": {
+      "scheduler": {
+        "start_date": "2024-01-01T22:00:00.000",
+        "anchor_mode": "completion",
+        "active_window": {"start_minute": 1320, "end_minute": 120},
+        "rules": [{"repeat_type": "number_of_minutes", "interval": 30}]
+      },
+      "after": "2024-01-01T23:55:00.000",
+      "date": "2024-01-02",
+      "context": {"lastCompletionDate": "2024-01-01T23:50:00.000"}
+    },
+    "expected": {"next": "2024-01-02T00:20:00.000", "shouldFire": true}
+  },
+  {
+    "id": "days_after_last_start",
+    "repeatType": "days_after_last_start",
+    "input": {
+      "scheduler": {
+        "start_date": "2024-01-01T00:00:00.000",
+        "rules": [{"repeat_type": "days_after_last_start", "interval": 2}]
+      },
+      "after": "2024-01-01T00:00:00.000",
+      "date": "2024-01-07",
+      "context": {"lastStartDate": "2024-01-05T10:00:00.000"}
+    },
+    "expected": {"next": "2024-01-07T00:00:00.000", "shouldFire": true}
+  },
+  {
+    "id": "days_after_last_end",
+    "repeatType": "days_after_last_end",
+    "input": {
+      "scheduler": {
+        "start_date": "2024-01-01T00:00:00.000",
+        "rules": [{"repeat_type": "days_after_last_end", "interval": 3}]
+      },
+      "after": "2024-01-01T00:00:00.000",
+      "date": "2024-01-09",
+      "context": {"lastEndDate": "2024-01-06T11:00:00.000"}
+    },
+    "expected": {"next": "2024-01-09T00:00:00.000", "shouldFire": true}
+  },
+  {
+    "id": "days_per_period_week",
+    "repeatType": "days_per_period",
+    "input": {
+      "scheduler": {
+        "start_date": "2024-01-01T00:00:00.000",
+        "rules": [{"repeat_type": "days_per_period", "period": "week", "count_per_period": 2, "starting_day_offset": 1, "interval_between_days": 2}]
+      },
+      "after": "2024-01-01T00:00:00.000",
+      "date": "2024-01-04"
+    },
+    "expected": {"next": "2024-01-02T00:00:00.000", "shouldFire": true}
+  },
+  {
+    "id": "linked_item_appears",
+    "repeatType": "linked_item_appears",
+    "input": {
+      "scheduler": {
+        "start_date": "2024-01-01T00:00:00.000",
+        "rules": [{"repeat_type": "linked_item_appears", "linked_item_id": "fixture-linked"}]
+      },
+      "after": "2024-01-01T00:00:00.000",
+      "date": "2024-01-03",
+      "context": {"scheduledItems": {"fixture-linked": ["2024-01-03"]}}
+    },
+    "expected": {"next": "2024-01-03T00:00:00.000", "shouldFire": true}
+  },
+  {
+    "id": "n_days_after_linked_item",
+    "repeatType": "n_days_after_linked_item",
+    "input": {
+      "scheduler": {
+        "start_date": "2024-01-01T00:00:00.000",
+        "rules": [{"repeat_type": "n_days_after_linked_item", "linked_item_id": "fixture-linked", "interval": 2}]
+      },
+      "after": "2024-01-01T00:00:00.000",
+      "date": "2024-01-05",
+      "context": {"scheduledItems": {"fixture-linked": ["2024-01-03"]}}
+    },
+    "expected": {"next": "2024-01-05T00:00:00.000", "shouldFire": true}
+  },
+  {
+    "id": "first_business_day_of_month",
+    "repeatType": "first_business_day_of_month",
+    "input": {
+      "scheduler": {
+        "start_date": "2024-01-01T00:00:00.000",
+        "rules": [{"repeat_type": "first_business_day_of_month"}]
+      },
+      "after": "2024-01-31T00:00:00.000",
+      "date": "2024-02-01"
+    },
+    "expected": {"next": "2024-02-01T00:00:00.000", "shouldFire": true}
+  },
+  {
+    "id": "last_business_day_of_month",
+    "repeatType": "first_business_day_of_month",
+    "input": {
+      "scheduler": {
+        "start_date": "2024-01-01T00:00:00.000",
+        "rules": [{"repeat_type": "first_business_day_of_month", "monthly_rule": "business_day", "monthly_ordinal": -1}]
+      },
+      "after": "2024-01-01T00:00:00.000",
+      "date": "2024-01-31"
+    },
+    "expected": {"next": "2024-01-31T00:00:00.000", "shouldFire": true}
+  },
+  {
+    "id": "ordinal_weekday_of_month",
+    "repeatType": "first_business_day_of_month",
+    "input": {
+      "scheduler": {
+        "start_date": "2024-10-01T00:00:00.000",
+        "rules": [{"repeat_type": "first_business_day_of_month", "monthly_rule": "weekday", "monthly_ordinal": 2, "monthly_weekday": "Tue"}]
+      },
+      "after": "2024-10-01T00:00:00.000",
+      "date": "2024-10-08"
+    },
+    "expected": {"next": "2024-10-08T00:00:00.000", "shouldFire": true}
+  },
+  {
+    "id": "days_after_reference_field",
+    "repeatType": "days_after_reference_field",
+    "input": {
+      "scheduler": {
+        "start_date": "2024-01-01T00:00:00.000",
+        "rules": [{"repeat_type": "days_after_reference_field", "target_type": "person", "field_name": "last_contact", "interval": 14}]
+      },
+      "after": "2024-01-01T00:00:00.000",
+      "date": "2024-01-17",
+      "context": {"referenceFields": {"person.last_contact": "2024-01-03T00:00:00.000"}}
+    },
+    "expected": {"next": "2024-01-17T00:00:00.000", "shouldFire": true}
+  },
+  {
+    "id": "day_theme_context",
+    "repeatType": "days_of_theme",
+    "input": {
+      "scheduler": {
+        "start_date": "2024-01-01T00:00:00.000",
+        "rules": [{"repeat_type": "days_of_theme", "theme_id": "deep-work"}]
+      },
+      "after": "2024-01-01T00:00:00.000",
+      "date": "2024-01-04",
+      "context": {"themes": {"deep-work": ["2024-01-04"]}}
+    },
+    "expected": {"next": "2024-01-04T00:00:00.000", "shouldFire": true}
+  },
+  {
+    "id": "time_block_context",
+    "repeatType": "days_with_block",
+    "input": {
+      "scheduler": {
+        "start_date": "2024-01-01T00:00:00.000",
+        "rules": [{"repeat_type": "days_with_block", "block_id": "morning-block"}]
+      },
+      "after": "2024-01-01T00:00:00.000",
+      "date": "2024-01-05",
+      "context": {"blocks": {"morning-block": ["2024-01-05"]}}
+    },
+    "expected": {"next": "2024-01-05T00:00:00.000", "shouldFire": true}
+  },
+  {
+    "id": "timezone_dst_civil_date",
+    "repeatType": "number_of_days",
+    "input": {
+      "scheduler": {
+        "start_date": "2024-03-10T01:30:00.000-05:00",
+        "rules": [{"repeat_type": "number_of_days", "interval": 1}]
+      },
+      "after": "2024-03-10T00:00:00.000-05:00",
+      "date": "2024-03-10"
+    },
+    "expected": {"next": "2024-03-11T00:00:00.000", "shouldFire": true}
+  }
+]

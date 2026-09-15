@@ -1,0 +1,36 @@
+{
+  "name": "quartzo-obsidian-companion",
+  "version": "0.1.0-beta.1",
+  "description": "Quartzo Obsidian Companion V1",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "node esbuild.config.mjs production",
+    "typecheck": "tsc --noEmit -skipLibCheck",
+    "lint": "eslint src/** tests/**",
+    "test": "vitest run",
+    "test:contracts": "vitest run tests/contracts",
+    "test:sync": "vitest run tests/sync",
+    "contracts:verify": "node scripts/sync-contracts.mjs verify",
+    "release:validate": "node scripts/release-validate.mjs"
+  },
+  "keywords": [],
+  "author": "olalaurao",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "@typescript-eslint/eslint-plugin": "7.1.1",
+    "@typescript-eslint/parser": "7.1.1",
+    "builtin-modules": "3.3.0",
+    "esbuild": "0.20.1",
+    "eslint": "8.57.0",
+    "obsidian": "latest",
+    "tslib": "2.6.2",
+    "typescript": "5.3.3",
+    "vitest": "1.3.1",
+    "yaml": "^2.4.1"
+  },
+  "dependencies": {
+    "googleapis": "^133.0.0"
+  }
+}
