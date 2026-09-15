@@ -45,16 +45,21 @@ function validateRelease() {
   }
 
   if (isRelease) {
-    const configSrc = path.join(rootDir, 'src/main.ts');
-    if (fs.existsSync(configSrc)) {
-      const content = fs.readFileSync(configSrc, 'utf8');
-      if (content.includes('PLACEHOLDER_CLIENT_ID')) {
-        errors.push('OAuth Client ID is placeholder. Set real Desktop OAuth Client ID for release.');
+    const clientIdEnv = process.env.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID;
+    if (!clientIdEnv || clientIdEnv === 'PLACEHOLDER_CLIENT_ID') {
+      const configSrc = path.join(rootDir, 'src/main.ts');
+      if (fs.existsSync(configSrc)) {
+        const content = fs.readFileSync(configSrc, 'utf8');
+        if (content.includes('PLACEHOLDER_CLIENT_ID')) {
+          errors.push('OAuth Client ID is placeholder. Set QUARTZO_GOOGLE_DESKTOP_CLIENT_ID env or real Client ID for release.');
+        }
       }
     }
 
-    if (!version.match(/^\d+\.\d+\.\d+$/)) {
-      errors.push('Release version must not be pre-release (no -beta suffix).');
+    const isBetaRelease = version.match(/^\d+\.\d+\.\d+-beta\.\d+$/);
+    const isStableRelease = version.match(/^\d+\.\d+\.\d+$/);
+    if (!isBetaRelease && !isStableRelease) {
+      errors.push('Release version must be X.Y.Z or X.Y.Z-beta.N.');
     }
 
     const gitTag = process.env.GITHUB_REF_NAME || '';

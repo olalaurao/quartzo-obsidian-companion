@@ -34,6 +34,8 @@ class FakeDriveAdapter implements DriveAdapter {
     return this.buildMetadataList();
   }
 
+  async listRootFolders() { return []; }
+
   async getStartPageToken() { return String(this.changeToken); }
 
   async listChanges(pageToken: string): Promise<{ changes: DriveChange[]; newStartPageToken: string; nextPageToken: string | null }> {
@@ -479,6 +481,7 @@ describe('Runtime Sync Tests', () => {
       async setFolderId() {},
       async listFiles() { return { files: [], nextPageToken: null }; },
       async listAllFiles() { return []; },
+      async listRootFolders() { return []; },
       async getStartPageToken() { return ''; },
       async listChanges() { return { changes: [], newStartPageToken: '', nextPageToken: null }; },
       async downloadFile() { throw new Error('No token'); },
@@ -505,5 +508,85 @@ describe('Runtime Sync Tests', () => {
     const result = await coordinator.reconcile();
     expect(result.synced).toBe(0);
     expect(adapter.files.size).toBe(0);
+  });
+
+  it('31: local dirty detection pushes after incremental cycle', async () => {
+    const content = Buffer.from('initial');
+    fs.writeFileSync(path.join(tmpDir, 'dirty.md'), content);
+    adapter.addRemoteFile('dirty.md', content);
+    await coordinator.reconcile();
+
+    fs.writeFileSync(path.join(tmpDir, 'dirty.md'), 'edited');
+    const result = await coordinator.reconcile();
+    expect(result.synced).toBeGreaterThanOrEqual(1);
+    const state = coordinator.getSyncState();
+    const sf = state.files.get('dirty.md');
+    expect(sf?.localHash).toBe(crypto.createHash('sha256').update(Buffer.from('edited')).digest('hex'));
+  });
+
+  it('32: conflict rehydrate from artifacts on restart', async () => {
+    const local = Buffer.from('local');
+    const remote = Buffer.from('remote');
+    fs.writeFileSync(path.join(tmpDir, 'rehydrate.md'), local);
+    adapter.addRemoteFile('rehydrate.md', remote);
+    await coordinator.reconcile();
+
+    expect(coordinator.getConflicts().length).toBe(1);
+
+    expect(fs.existsSync(path.join(tmpDir, '_conflicts', 'rehydrate.md.conflict'))).toBe(true);
+
+    const newAdapter = new FakeDriveAdapter();
+    newAdapter.addRemoteFile('rehydrate.md', remote);
+    const newCoord = new DriveSyncCoordinator(newAdapter, tmpDir, path.join(tmpDir, 'state.json'));
+    await newCoord.reconcile().catch(() => {});
+    const conflicts = newCoord.getConflicts();
+    expect(conflicts.length).toBe(1);
+    expect(conflicts[0].originalPath).toBe('rehydrate.md');
+  });
+
+  it('33: keep_local pushes resolved content to drive', async () => {
+    const local = Buffer.from('local version');
+    const remote = Buffer.from('remote version');
+    fs.writeFileSync(path.join(tmpDir, 'push-resolve.md'), local);
+    adapter.addRemoteFile('push-resolve.md', remote);
+    await coordinator.reconcile();
+
+    coordinator.resolveConflict('push-resolve.md', 'keep_local');
+    expect(adapter.updateCalls).toBe(1);
+    const entry = adapter.files.get('push-resolve.md');
+    expect(entry).toBeDefined();
+    const contentBytes = new Uint8Array(entry!.content);
+    const decoded = new TextDecoder().decode(contentBytes);
+    expect(decoded).toBe('local version');
+  });
+
+  it('34: listAllFiles traverses subfolders recursively', async () => {
+    const subAdapter = new FakeDriveAdapter();
+    subAdapter.addRemoteFile('a.md', Buffer.from('a'));
+    subAdapter.addRemoteFile('sub/b.md', Buffer.from('b'));
+    subAdapter.addRemoteFile('sub/deep/c.md', Buffer.from('c'));
+
+    const subCoord = new DriveSyncCoordinator(subAdapter, tmpDir, path.join(tmpDir, 'state-sub.json'));
+    const result = await subCoord.reconcile();
+    expect(result.synced).toBe(3);
+  });
+
+  it('35: state store path uses plugin directory', () => {
+    const adapter = new FakeDriveAdapter();
+    const statePath = path.join(tmpDir, 'plugin-data', 'quartzo-sync-state.json');
+    fs.mkdirSync(path.join(tmpDir, 'plugin-data'), { recursive: true });
+    const coord = new DriveSyncCoordinator(adapter, tmpDir, statePath);
+    expect((coord as unknown as { stateStorePath: string }).stateStorePath).toBe(statePath);
+  });
+
+  it('36: conflict artifacts written to _conflicts directory', async () => {
+    const local = Buffer.from('local');
+    const remote = Buffer.from('remote');
+    fs.writeFileSync(path.join(tmpDir, 'artifacts.md'), local);
+    adapter.addRemoteFile('artifacts.md', remote);
+    await coordinator.reconcile();
+
+    expect(fs.existsSync(path.join(tmpDir, '_conflicts', 'artifacts.md.conflict'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'artifacts.md.conflict'))).toBe(false);
   });
 });

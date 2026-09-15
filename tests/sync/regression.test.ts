@@ -32,6 +32,8 @@ class MockDriveAdapter implements DriveAdapter {
     }));
   }
 
+  async listRootFolders() { return []; }
+
   async getStartPageToken() { return 'start-token'; }
 
   async listChanges(_pageToken: string) {

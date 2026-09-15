@@ -86,11 +86,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       fs.mkdirSync(dir, { recursive: true });
     }
 
-    if (fs.existsSync(localFilePath)) {
-      fs.writeFileSync(localFilePath, resolvedContent);
-    } else {
-      fs.writeFileSync(localFilePath, resolvedContent);
-    }
+    fs.writeFileSync(localFilePath, resolvedContent);
 
     const syncFile = this.syncState.files.get(normalized) || this.createSyncFile(normalized, { hash: resolvedHash, exists: true });
     syncFile.baseHash = resolvedHash;
@@ -98,9 +94,8 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     syncFile.remoteHash = resolvedHash;
     syncFile.localExists = true;
     syncFile.remoteExists = true;
-    syncFile.localExists = true;
 
-    if (resolution === 'keep_drive' && artifact.remoteFileId) {
+    if (artifact.remoteFileId) {
       syncFile.remoteFileId = artifact.remoteFileId;
     }
 
@@ -108,20 +103,82 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     this.conflicts.delete(normalized);
 
     this.removeConflictArtifacts(normalized);
+
+    if (resolution === 'keep_local' && syncFile.remoteFileId) {
+      this.driveAdapter.updateFile(syncFile.remoteFileId, resolvedContent, resolvedHash).catch(() => {
+      });
+    }
   }
 
   private removeConflictArtifacts(originalPath: string): void {
     const paths = [
-      pathModule.join(this.vaultPath, `${originalPath}.local`),
-      pathModule.join(this.vaultPath, `${originalPath}.remote`),
-      pathModule.join(this.vaultPath, `${originalPath}.conflict.json`),
-      pathModule.join(this.vaultPath, `${originalPath}.conflict`),
+      pathModule.join(this.vaultPath, '_conflicts', `${originalPath}.local`),
+      pathModule.join(this.vaultPath, '_conflicts', `${originalPath}.remote`),
+      pathModule.join(this.vaultPath, '_conflicts', `${originalPath}.conflict.json`),
+      pathModule.join(this.vaultPath, '_conflicts', `${originalPath}.conflict`),
     ];
     for (const p of paths) {
       if (fs.existsSync(p)) {
         try { fs.unlinkSync(p); } catch { /* ignore cleanup errors */ }
       }
     }
+  }
+
+  private rehydrateConflicts(): void {
+    const conflictDir = pathModule.join(this.vaultPath, '_conflicts');
+    if (!fs.existsSync(conflictDir)) return;
+
+    try {
+      const entries = fs.readdirSync(conflictDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isFile()) continue;
+        const fullPath = pathModule.join(conflictDir, entry.name);
+        const name = entry.name;
+
+        if (name.endsWith('.conflict.json')) {
+          try {
+            const meta = JSON.parse(fs.readFileSync(fullPath, 'utf-8'));
+            const originalPath = meta.originalPath;
+            if (!originalPath) continue;
+
+            const localPath = pathModule.join(this.vaultPath, '_conflicts', `${originalPath}.local`);
+            const remotePath = pathModule.join(this.vaultPath, '_conflicts', `${originalPath}.remote`);
+            const localContent = fs.existsSync(localPath) ? new Uint8Array(fs.readFileSync(localPath)) : new Uint8Array();
+            const remoteContent = fs.existsSync(remotePath) ? new Uint8Array(fs.readFileSync(remotePath)) : new Uint8Array();
+            const localSha256 = meta.local?.sha256 || crypto.createHash('sha256').update(localContent).digest('hex');
+            const remoteSha256 = meta.remote?.sha256 || crypto.createHash('sha256').update(remoteContent).digest('hex');
+
+            this.conflicts.set(originalPath, {
+              originalPath,
+              localContent,
+              remoteContent,
+              localSha256,
+              remoteSha256,
+              remoteFileId: meta.remote?.fileId || null,
+              isBinary: meta.conflictType === 'binary',
+              timestamp: meta.timestamp || new Date().toISOString()
+            });
+          } catch { /* skip corrupt artifact */ }
+        } else if (name.endsWith('.conflict') && !name.endsWith('.conflict.json')) {
+          const originalPath = name.slice(0, -'.conflict'.length);
+          if (this.conflicts.has(originalPath)) continue;
+          try {
+            const content = new Uint8Array(fs.readFileSync(fullPath));
+            const localSha256 = crypto.createHash('sha256').update(content).digest('hex');
+            this.conflicts.set(originalPath, {
+              originalPath,
+              localContent: content,
+              remoteContent: new Uint8Array(),
+              localSha256,
+              remoteSha256: '',
+              remoteFileId: null,
+              isBinary: false,
+              timestamp: new Date().toISOString()
+            });
+          } catch { /* skip corrupt artifact */ }
+        }
+      }
+    } catch { /* skip if can't read directory */ }
   }
 
   async reconcile(): Promise<SyncResult> {
@@ -135,6 +192,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
     try {
       await this.loadSyncState();
+      this.rehydrateConflicts();
 
       const driveFolderId = await this.driveAdapter.getFolderId();
       if (!driveFolderId) {
@@ -147,6 +205,8 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
       if (this.syncState.driveChangeToken) {
         await this.processChanges(localInventory, result);
+        const freshLocalInventory = await this.buildLocalInventory();
+        await this.processLocalDirty(freshLocalInventory, result);
       } else {
         await this.fullInventory(localInventory, result);
         const startToken = await this.driveAdapter.getStartPageToken();
@@ -385,6 +445,61 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
     if (newStartPageToken) {
       this.syncState.driveChangeToken = newStartPageToken;
+    }
+  }
+
+  private async processLocalDirty(
+    localInventory: Map<string, { hash: string; exists: boolean }>,
+    result: SyncResult
+  ): Promise<void> {
+    const processedPaths = new Set<string>();
+
+    for (const [localPath, localFile] of localInventory) {
+      const normalizedLocal = normalizeVaultPath(localPath);
+      if (!VaultSyncFilePolicy.shouldSyncFile(normalizedLocal)) continue;
+      if (processedPaths.has(normalizedLocal)) continue;
+
+      const syncFile = this.syncState.files.get(normalizedLocal);
+      if (!syncFile) continue;
+      if (!syncFile.remoteFileId) continue;
+
+      if (localFile.hash === syncFile.localHash) continue;
+
+      const vector = {
+        id: normalizedLocal,
+        baseHash: syncFile.baseHash,
+        localHash: localFile.hash,
+        remoteHash: syncFile.remoteHash,
+        localExists: true,
+        remoteExists: true,
+        expected: ''
+      };
+
+      const syncDecision = SyncEngine.reconcile(vector);
+      switch (syncDecision.action) {
+        case 'push':
+          await this.pushFile(normalizedLocal, localFile, syncFile);
+          result.synced++;
+          break;
+        case 'pull':
+          if (syncFile.remoteHash) {
+            const remoteMetadata = await this.driveAdapter.getFileMetadata(syncFile.remoteFileId);
+            await this.pullFile(normalizedLocal, remoteMetadata, syncFile);
+            result.synced++;
+          }
+          break;
+        case 'conflict':
+          result.conflicts++;
+          const remoteMetadata = await this.driveAdapter.getFileMetadata(syncFile.remoteFileId);
+          await this.handleConflict(normalizedLocal, localFile, remoteMetadata, syncFile);
+          break;
+        case 'advance_baseline':
+          syncFile.baseHash = localFile.hash;
+          syncFile.localHash = localFile.hash;
+          this.syncState.files.set(normalizedLocal, syncFile);
+          break;
+      }
+      processedPaths.add(normalizedLocal);
     }
   }
 
