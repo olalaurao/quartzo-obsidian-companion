@@ -1,5 +1,6 @@
 import { SyncEngine } from '../../core/sync';
-import { DriveAdapter, SyncFile, SyncState, SyncResult, DriveFileMetadata } from './types';
+import { DriveAdapter, SyncFile, SyncState, SyncResult, DriveFileMetadata, CURRENT_STATE_VERSION } from './types';
+import { VaultSyncFilePolicy } from './file-policy';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as pathModule from 'path';
@@ -13,6 +14,7 @@ export class DriveSyncCoordinator {
   private syncQueue: Array<() => Promise<void>> = [];
   private backoffMs: number = 1000;
   private maxBackoffMs: number = 30000;
+  private remoteSha256Cache: Map<string, string> = new Map(); // fileId -> SHA-256
 
   constructor(driveAdapter: DriveAdapter, vaultPath: string, stateStorePath?: string) {
     this.driveAdapter = driveAdapter;
@@ -22,7 +24,8 @@ export class DriveSyncCoordinator {
       files: new Map(),
       lastSyncTime: 0,
       pageToken: null,
-      driveFolderId: null
+      driveFolderId: null,
+      version: CURRENT_STATE_VERSION
     };
   }
 
@@ -59,8 +62,11 @@ export class DriveSyncCoordinator {
         }
       }
 
+      // Pre-compute SHA-256 for all remote files
+      await this.precomputeRemoteSha256(remoteFiles);
+
       for (const [localPath, localFile] of localInventory.entries()) {
-        if (!this.shouldSyncFile(localPath)) {
+        if (!VaultSyncFilePolicy.shouldSyncFile(localPath)) {
           continue;
         }
 
@@ -68,7 +74,7 @@ export class DriveSyncCoordinator {
         const syncFile = this.syncState.files.get(localPath) || this.createSyncFile(localPath, localFile);
 
         const localHash = localFile.hash;
-        const remoteHash = remoteFile ? remoteFile.md5Checksum || '' : null;
+        const remoteHash = remoteFile && remoteFile.id ? this.remoteSha256Cache.get(remoteFile.id) || null : null;
         const baseHash = syncFile.baseHash;
 
         const vector = {
@@ -104,8 +110,8 @@ export class DriveSyncCoordinator {
             break;
           case 'advance_baseline':
             syncFile.baseHash = localHash;
-            if (remoteFile) {
-              syncFile.remoteHash = remoteFile.md5Checksum || '';
+            if (remoteFile && remoteFile.id) {
+              syncFile.remoteHash = this.remoteSha256Cache.get(remoteFile.id) || null;
               syncFile.remoteFileId = remoteFile.id;
             }
             this.syncState.files.set(localPath, syncFile);
@@ -118,7 +124,7 @@ export class DriveSyncCoordinator {
       }
 
       for (const [remotePath, remoteFile] of remoteFileMap.entries()) {
-        if (!this.shouldSyncFile(remotePath)) {
+        if (!VaultSyncFilePolicy.shouldSyncFile(remotePath)) {
           continue;
         }
 
@@ -127,7 +133,7 @@ export class DriveSyncCoordinator {
             id: remotePath,
             baseHash: null,
             localHash: null,
-            remoteHash: remoteFile.md5Checksum || '',
+            remoteHash: remoteFile.id ? this.remoteSha256Cache.get(remoteFile.id) || null : null,
             localExists: false,
             remoteExists: true,
             expected: 'pull'
@@ -163,7 +169,12 @@ export class DriveSyncCoordinator {
 
     const metadata = await this.driveAdapter.uploadFile(folderId, filePath, content);
 
-    syncFile.remoteHash = metadata.md5Checksum || '';
+    // Calculate SHA-256 of uploaded content for canonical hash
+    const uploadedSha256 = this.calculateHash(content);
+    if (metadata.id) {
+      this.remoteSha256Cache.set(metadata.id, uploadedSha256);
+    }
+    syncFile.remoteHash = uploadedSha256;
     syncFile.remoteFileId = metadata.id;
     syncFile.baseHash = localFile.hash;
     syncFile.localHash = localFile.hash;
@@ -185,10 +196,11 @@ export class DriveSyncCoordinator {
     fs.writeFileSync(localFilePath, content);
 
     const localHash = this.calculateHash(content);
+    const remoteSha256 = this.remoteSha256Cache.get(remoteFile.id) || this.calculateHash(content);
 
     syncFile.localHash = localHash;
-    syncFile.remoteHash = remoteFile.md5Checksum || '';
-    syncFile.baseHash = remoteFile.md5Checksum || '';
+    syncFile.remoteHash = remoteSha256;
+    syncFile.baseHash = remoteSha256;
     syncFile.remoteFileId = remoteFile.id;
     syncFile.localExists = true;
     syncFile.remoteExists = true;
@@ -209,27 +221,59 @@ export class DriveSyncCoordinator {
 
   private async handleConflict(filePath: string, localFile: { hash: string; exists: boolean }, remoteFile: DriveFileMetadata | undefined, syncFile: SyncFile): Promise<void> {
     const localFilePath = pathModule.join(this.vaultPath, filePath);
-    const conflictPath = `${filePath}.conflict`;
+    const isBinary = this.isBinaryFile(filePath);
 
     if (fs.existsSync(localFilePath) && remoteFile) {
       const localContent = fs.readFileSync(localFilePath);
       const remoteContent = await this.driveAdapter.downloadFile(remoteFile.id);
+      const remoteSha256 = this.remoteSha256Cache.get(remoteFile.id) || this.calculateHash(remoteContent);
 
-      const conflictDir = pathModule.dirname(pathModule.join(this.vaultPath, conflictPath));
+      const conflictDir = pathModule.dirname(pathModule.join(this.vaultPath, filePath));
       if (!fs.existsSync(conflictDir)) {
         fs.mkdirSync(conflictDir, { recursive: true });
       }
 
-      const conflictContent = Buffer.concat([
-        Buffer.from(`# Conflict: ${filePath}\n\n`),
-        Buffer.from(`## Local Version (SHA-256: ${localFile.hash})\n\n`),
-        localContent,
-        Buffer.from('\n\n---\n\n'),
-        Buffer.from(`## Remote Version (MD5: ${remoteFile.md5Checksum})\n\n`),
-        remoteContent
-      ]);
+      if (isBinary) {
+        // Binary conflict: preserve bytes in separate files with metadata sidecar
+        const localConflictPath = `${filePath}.local`;
+        const remoteConflictPath = `${filePath}.remote`;
+        const metadataPath = `${filePath}.conflict.json`;
 
-      fs.writeFileSync(pathModule.join(this.vaultPath, conflictPath), conflictContent);
+        fs.writeFileSync(pathModule.join(this.vaultPath, localConflictPath), localContent);
+        fs.writeFileSync(pathModule.join(this.vaultPath, remoteConflictPath), remoteContent);
+
+        const metadata = {
+          originalPath: filePath,
+          conflictType: 'binary',
+          local: {
+            path: localConflictPath,
+            sha256: localFile.hash,
+            size: localContent.length
+          },
+          remote: {
+            path: remoteConflictPath,
+            sha256: remoteSha256,
+            size: remoteContent.length,
+            fileId: remoteFile.id
+          },
+          timestamp: new Date().toISOString()
+        };
+
+        fs.writeFileSync(pathModule.join(this.vaultPath, metadataPath), JSON.stringify(metadata, null, 2));
+      } else {
+        // Text conflict: use Markdown format
+        const conflictPath = `${filePath}.conflict`;
+        const conflictContent = Buffer.concat([
+          Buffer.from(`# Conflict: ${filePath}\n\n`),
+          Buffer.from(`## Local Version (SHA-256: ${localFile.hash})\n\n`),
+          localContent,
+          Buffer.from('\n\n---\n\n'),
+          Buffer.from(`## Remote Version (SHA-256: ${remoteSha256})\n\n`),
+          remoteContent
+        ]);
+
+        fs.writeFileSync(pathModule.join(this.vaultPath, conflictPath), conflictContent);
+      }
     }
 
     console.warn(`Conflict detected for ${filePath}, created conflict artifact`);
@@ -237,6 +281,20 @@ export class DriveSyncCoordinator {
 
   private calculateHash(content: Uint8Array): string {
     return crypto.createHash('sha256').update(content).digest('hex');
+  }
+
+  private async precomputeRemoteSha256(remoteFiles: DriveFileMetadata[]): Promise<void> {
+    for (const file of remoteFiles) {
+      if (file.id && !this.remoteSha256Cache.has(file.id)) {
+        try {
+          const content = await this.driveAdapter.downloadFile(file.id);
+          const sha256 = this.calculateHash(content);
+          this.remoteSha256Cache.set(file.id, sha256);
+        } catch (error) {
+          console.error(`Failed to compute SHA-256 for remote file ${file.id}:`, error);
+        }
+      }
+    }
   }
 
   private isBinaryFile(path: string): boolean {
@@ -268,11 +326,11 @@ export class DriveSyncCoordinator {
         const relativeFilePath = pathModule.join(relativePath, entry.name);
 
         if (entry.isDirectory()) {
-          if (this.shouldSyncDirectory(relativeFilePath)) {
+          if (VaultSyncFilePolicy.shouldSyncDirectory(relativeFilePath)) {
             scanDirectory(fullPath, relativeFilePath);
           }
         } else if (entry.isFile()) {
-          if (this.shouldSyncFile(relativeFilePath)) {
+          if (VaultSyncFilePolicy.shouldSyncFile(relativeFilePath)) {
             try {
               const content = fs.readFileSync(fullPath);
               const hash = this.calculateHash(content);
@@ -289,34 +347,6 @@ export class DriveSyncCoordinator {
     return inventory;
   }
 
-  private shouldSyncFile(filePath: string): boolean {
-    if (filePath.includes('.quartzo-sync-state.json')) {
-      return false;
-    }
-    if (filePath.includes('.obsidian')) {
-      return false;
-    }
-    if (filePath.includes('.DS_Store')) {
-      return false;
-    }
-    if (filePath.endsWith('.conflict')) {
-      return false;
-    }
-    return true;
-  }
-
-  private shouldSyncDirectory(dirPath: string): boolean {
-    if (dirPath.includes('.obsidian')) {
-      return false;
-    }
-    if (dirPath.includes('.git')) {
-      return false;
-    }
-    if (dirPath.includes('node_modules')) {
-      return false;
-    }
-    return true;
-  }
 
   private createSyncFile(filePath: string, localFile: { hash: string; exists: boolean }): SyncFile {
     return {
@@ -332,9 +362,34 @@ export class DriveSyncCoordinator {
   }
 
   private async handleAdoption(path: string, localFile: { hash: string; exists: boolean }, syncFile: SyncFile): Promise<void> {
+    // First pairing: local-only file needs to be pushed to remote
+    const localFilePath = pathModule.join(this.vaultPath, path);
+    
+    if (!fs.existsSync(localFilePath)) {
+      throw new Error(`Local file ${path} does not exist for adoption`);
+    }
+
+    const content = fs.readFileSync(localFilePath);
+    const folderId = this.syncState.driveFolderId || '';
+
+    // Upload to Drive to establish remote presence
+    const metadata = await this.driveAdapter.uploadFile(folderId, path, content);
+
+    // Calculate SHA-256 of uploaded content
+    const uploadedSha256 = this.calculateHash(content);
+    if (metadata.id) {
+      this.remoteSha256Cache.set(metadata.id, uploadedSha256);
+    }
+
+    // Establish baseline with both local and remote present
     syncFile.baseHash = localFile.hash;
     syncFile.localHash = localFile.hash;
+    syncFile.remoteHash = uploadedSha256;
+    syncFile.remoteFileId = metadata.id;
     syncFile.localExists = true;
+    syncFile.remoteExists = true;
+    syncFile.isBinary = this.isBinaryFile(path);
+
     this.syncState.files.set(path, syncFile);
   }
 
@@ -344,15 +399,31 @@ export class DriveSyncCoordinator {
         const content = fs.readFileSync(this.stateStorePath, 'utf-8');
         const data = JSON.parse(content);
 
+        // Version compatibility check
+        if (data.version && data.version !== CURRENT_STATE_VERSION) {
+          throw new Error(`Incompatible sync state version: ${data.version}. Expected: ${CURRENT_STATE_VERSION}`);
+        }
+
         this.syncState = {
           files: new Map(data.files || []),
           lastSyncTime: data.lastSyncTime || 0,
           pageToken: data.pageToken || null,
-          driveFolderId: data.driveFolderId || null
+          driveFolderId: data.driveFolderId || null,
+          version: data.version || CURRENT_STATE_VERSION
+        };
+      } else {
+        // Initialize with current version if no state file exists
+        this.syncState = {
+          files: new Map(),
+          lastSyncTime: 0,
+          pageToken: null,
+          driveFolderId: null,
+          version: CURRENT_STATE_VERSION
         };
       }
     } catch (error) {
-      console.error('Failed to load sync state:', error);
+      // Fail-closed: if state cannot be loaded, throw error to prevent destructive sync
+      throw new Error(`Failed to load sync state from ${this.stateStorePath}: ${error}. Sync aborted to prevent data loss.`);
     }
   }
 
@@ -362,13 +433,15 @@ export class DriveSyncCoordinator {
         files: Array.from(this.syncState.files.entries()),
         lastSyncTime: this.syncState.lastSyncTime,
         pageToken: this.syncState.pageToken,
-        driveFolderId: this.syncState.driveFolderId
+        driveFolderId: this.syncState.driveFolderId,
+        version: this.syncState.version
       };
 
       const content = JSON.stringify(data, null, 2);
-      fs.writeFileSync(this.stateStorePath, content);
+      fs.writeFileSync(this.stateStorePath, content, 'utf-8');
     } catch (error) {
-      console.error('Failed to save sync state:', error);
+      // Fail-closed: if state cannot be saved, throw error to prevent sync without persistence
+      throw new Error(`Failed to save sync state to ${this.stateStorePath}: ${error}. Sync aborted to prevent data loss.`);
     }
   }
 

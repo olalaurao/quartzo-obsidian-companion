@@ -14,7 +14,10 @@ export interface SyncState {
   lastSyncTime: number;
   pageToken: string | null;
   driveFolderId: string | null;
+  version: string; // State format version for compatibility checking
 }
+
+export const CURRENT_STATE_VERSION = '1.0.0';
 
 export interface SyncResult {
   synced: number;
@@ -35,8 +38,16 @@ export interface DriveAdapter {
   getFolderId(): Promise<string | null>;
   setFolderId(folderId: string): Promise<void>;
   listFiles(folderId: string, pageToken?: string): Promise<{ files: DriveFileMetadata[]; nextPageToken: string | null }>;
+  getStartPageToken(): Promise<string>;
+  listChanges(pageToken: string): Promise<{ changes: DriveChange[]; newPageToken: string }>;
   downloadFile(fileId: string): Promise<Uint8Array>;
   uploadFile(folderId: string, name: string, content: Uint8Array, parentId?: string): Promise<DriveFileMetadata>;
   deleteFile(fileId: string): Promise<void>;
   getFileMetadata(fileId: string): Promise<DriveFileMetadata>;
+}
+
+export interface DriveChange {
+  fileId: string;
+  removed: boolean;
+  file?: DriveFileMetadata;
 }
