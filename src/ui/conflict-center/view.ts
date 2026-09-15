@@ -74,7 +74,7 @@ export class ConflictCenterView extends ItemView {
     if (!this.syncCoordinator) return;
 
     try {
-      this.syncCoordinator.resolveConflict(conflictPath, resolution);
+      await this.syncCoordinator.resolveConflict(conflictPath, resolution);
       new Notice(`Conflict resolved: ${resolution === 'keep_local' ? 'kept local' : 'kept Drive'}`);
       this.scanConflicts();
     } catch (error) {

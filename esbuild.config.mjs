@@ -26,6 +26,9 @@ const context = await esbuild.context({
     "@lezer/highlight",
     "@lezer/lr",
     ...builtins],
+  define: {
+    'process.env.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID': JSON.stringify(process.env.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID || '')
+  },
   format: "cjs",
   target: "es2022",
   logLevel: "info",

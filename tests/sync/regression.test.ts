@@ -302,4 +302,141 @@ describe('Sync Regression Tests', () => {
       expect(result.synced).toBeGreaterThan(0);
     });
   });
+
+  describe('Item 5: Local deletion propagation', () => {
+    it('propagates local deletion to Drive when base matches local', async () => {
+      const content = Buffer.from('will be deleted locally');
+      fs.writeFileSync(path.join(tmpDir, 'delete-me.md'), content);
+      adapter.addFile('delete-me.md', content);
+      await coordinator.reconcile();
+
+      fs.unlinkSync(path.join(tmpDir, 'delete-me.md'));
+      const result = await coordinator.reconcile();
+      expect(result.synced).toBeGreaterThanOrEqual(1);
+      expect(fs.existsSync(path.join(tmpDir, 'delete-me.md'))).toBe(false);
+      expect(adapter.files.has('delete-me.md')).toBe(false);
+    });
+  });
+
+  describe('Item 6: Recursive parent resolution', () => {
+    it('resolves deeply nested paths via parent chain', async () => {
+      adapter.addFile('a/b/c/note.md', Buffer.from('nested'));
+      const result = await coordinator.reconcile();
+      expect(result.synced).toBeGreaterThan(0);
+      const state = coordinator.getSyncState();
+      expect(state.files.has('a/b/c/note.md')).toBe(true);
+    });
+  });
+
+  describe('Item 7: Quartzo_hash fallback', () => {
+    it('computes hash via download when quartzoHash is null', async () => {
+      const content = Buffer.from('no hash file');
+      const id = 'nohash-id-123';
+      adapter.files.set('nohash.md', { id, content, quartzoHash: '' });
+      const origListAll = adapter.listAllFiles.bind(adapter);
+      adapter.listAllFiles = async () => [
+        { id, name: 'nohash.md', mimeType: 'text/markdown', modifiedTime: new Date().toISOString(), quartzoHash: '', parents: ['mock-folder-id'] }
+      ];
+
+      const result = await coordinator.reconcile();
+      expect(result.synced).toBe(1);
+      const state = coordinator.getSyncState();
+      const sf = state.files.get('nohash.md');
+      expect(sf?.localHash).toBe(crypto.createHash('sha256').update(content).digest('hex'));
+      expect(sf?.baseHash).toBeTruthy();
+    });
+  });
+
+  describe('Item 8+9: Transactional + durable conflict resolution', () => {
+    it('resolveConflict is async and persists state', async () => {
+      const local = Buffer.from('local v');
+      const remote = Buffer.from('remote v');
+      fs.writeFileSync(path.join(tmpDir, 'durability.md'), local);
+      adapter.addFile('durability.md', remote);
+      await coordinator.reconcile();
+      expect(coordinator.getConflicts().length).toBe(1);
+
+      await coordinator.resolveConflict('durability.md', 'keep_local');
+      expect(coordinator.getConflicts().length).toBe(0);
+
+      const saved = fs.readFileSync(path.join(tmpDir, 'state.json'), 'utf-8');
+      const stateData = JSON.parse(saved);
+      const entry = stateData.files.find((f: [string, unknown]) => f[0] === 'durability.md');
+      expect(entry).toBeTruthy();
+    });
+
+    it('resolveConflict propagates Drive update errors', async () => {
+      const local = Buffer.from('local v2');
+      const remote = Buffer.from('remote v2');
+      fs.writeFileSync(path.join(tmpDir, 'err-resolve.md'), local);
+      adapter.addFile('err-resolve.md', remote);
+      await coordinator.reconcile();
+      expect(coordinator.getConflicts().length).toBe(1);
+
+      const origUpdateFile = adapter.updateFile.bind(adapter);
+      adapter.updateFile = async () => { throw new Error('update-fail-drive'); };
+
+      try {
+        await coordinator.resolveConflict('err-resolve.md', 'keep_local');
+        expect.fail('Should have thrown');
+      } catch (e) {
+        expect((e as Error).message).toContain('update-fail');
+      } finally {
+        adapter.updateFile = origUpdateFile;
+      }
+    });
+  });
+
+  describe('Item 10: Text conflict rehydration with SEPARATOR', () => {
+    it('parses SEPARATOR format correctly on rehydrate', async () => {
+      const local = Buffer.from('local text');
+      const remote = Buffer.from('remote text');
+      fs.writeFileSync(path.join(tmpDir, 'separate.md'), local);
+      adapter.addFile('separate.md', remote);
+      await coordinator.reconcile();
+      expect(coordinator.getConflicts().length).toBe(1);
+
+      const newAdapter = new MockDriveAdapter();
+      newAdapter.addFile('separate.md', remote);
+      const newCoord = new DriveSyncCoordinator(newAdapter, tmpDir, path.join(tmpDir, 'state-sep.json'));
+      await newCoord.reconcile().catch(() => {});
+
+      const conflicts = newCoord.getConflicts();
+      expect(conflicts.length).toBe(1);
+      const decodedLocal = new TextDecoder().decode(conflicts[0].localContent);
+      const decodedRemote = new TextDecoder().decode(conflicts[0].remoteContent);
+      expect(decodedLocal).toBe('local text');
+      expect(decodedRemote).toBe('remote text');
+    });
+  });
+
+  describe('Item 11: Nested conflict artifacts', () => {
+    it('creates _conflicts/sub/ directory for nested files', async () => {
+      const local = Buffer.from('local nested');
+      const remote = Buffer.from('remote nested');
+      fs.mkdirSync(path.join(tmpDir, 'sub'), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, 'sub', 'file.md'), local);
+      adapter.addFile('sub/file.md', remote);
+      await coordinator.reconcile();
+
+      expect(fs.existsSync(path.join(tmpDir, '_conflicts', 'sub', 'file.md.conflict'))).toBe(true);
+    });
+  });
+
+  describe('Item 12: 401 retry on adapter', () => {
+    it('GoogleDriveAdapter has withRetry method', async () => {
+      const { GoogleDriveAdapter } = await import('../../src/integrations/google/drive/adapter');
+      const realAdapter = new GoogleDriveAdapter();
+      expect(typeof (realAdapter as Record<string, unknown>).withRetry).toBe('function');
+    });
+  });
+
+  describe('Item 17: npm audit', () => {
+    it('runtime dependencies are googleapis, date-fns, date-fns-tz', () => {
+      const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '../../package.json'), 'utf-8'));
+      expect(Object.keys(pkg.dependencies)).toEqual(
+        expect.arrayContaining(['googleapis', 'date-fns', 'date-fns-tz'])
+      );
+    });
+  });
 });

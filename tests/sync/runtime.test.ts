@@ -391,7 +391,7 @@ describe('Runtime Sync Tests', () => {
     adapter.addRemoteFile('resolve.md', remote);
     await coordinator.reconcile();
 
-    coordinator.resolveConflict('resolve.md', 'keep_local');
+    await coordinator.resolveConflict('resolve.md', 'keep_local');
     expect(coordinator.getConflicts().length).toBe(0);
 
     const saved = fs.readFileSync(path.join(tmpDir, 'resolve.md'));
@@ -409,7 +409,7 @@ describe('Runtime Sync Tests', () => {
     adapter.addRemoteFile('resolve2.md', remote);
     await coordinator.reconcile();
 
-    coordinator.resolveConflict('resolve2.md', 'keep_drive');
+    await coordinator.resolveConflict('resolve2.md', 'keep_drive');
     expect(coordinator.getConflicts().length).toBe(0);
 
     const saved = fs.readFileSync(path.join(tmpDir, 'resolve2.md'));
@@ -423,7 +423,7 @@ describe('Runtime Sync Tests', () => {
     adapter.addRemoteFile('hashes.md', remote);
     await coordinator.reconcile();
 
-    coordinator.resolveConflict('hashes.md', 'keep_local');
+    await coordinator.resolveConflict('hashes.md', 'keep_local');
     const state = coordinator.getSyncState();
     const sf = state.files.get('hashes.md');
     expect(sf?.baseHash).toBeTruthy();
@@ -551,7 +551,7 @@ describe('Runtime Sync Tests', () => {
     adapter.addRemoteFile('push-resolve.md', remote);
     await coordinator.reconcile();
 
-    coordinator.resolveConflict('push-resolve.md', 'keep_local');
+    await coordinator.resolveConflict('push-resolve.md', 'keep_local');
     expect(adapter.updateCalls).toBe(1);
     const entry = adapter.files.get('push-resolve.md');
     expect(entry).toBeDefined();

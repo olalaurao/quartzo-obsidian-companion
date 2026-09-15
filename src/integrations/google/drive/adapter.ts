@@ -7,6 +7,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
   private accessToken: string | null = null;
   private folderId: string | null = null;
   private drive: drive_v3.Drive | null = null;
+  private tokenRefreshCallback: (() => Promise<string | null>) | null = null;
 
   constructor(accessToken?: string) {
     this.accessToken = accessToken || null;
@@ -15,6 +16,10 @@ export class GoogleDriveAdapter implements DriveAdapter {
   setAccessToken(token: string): void {
     this.accessToken = token;
     this.drive = null;
+  }
+
+  setTokenRefreshCallback(callback: () => Promise<string | null>): void {
+    this.tokenRefreshCallback = callback;
   }
 
   private getDriveClient(): drive_v3.Drive {
@@ -27,6 +32,23 @@ export class GoogleDriveAdapter implements DriveAdapter {
       this.drive = google.drive({ version: 'v3', auth });
     }
     return this.drive;
+  }
+
+  private async withRetry<T>(operation: () => Promise<T>): Promise<T> {
+    try {
+      return await operation();
+    } catch (error: unknown) {
+      const err = error as { code?: number; status?: number; response?: { status?: number } };
+      const statusCode = err.code || err.status || err.response?.status;
+      if (statusCode === 401 && this.tokenRefreshCallback) {
+        const newToken = await this.tokenRefreshCallback();
+        if (newToken) {
+          this.setAccessToken(newToken);
+          return await operation();
+        }
+      }
+      throw error;
+    }
   }
 
   private calculateQuartzoHash(content: Uint8Array): string {
@@ -42,32 +64,33 @@ export class GoogleDriveAdapter implements DriveAdapter {
   }
 
   async listFiles(folderId: string, pageToken?: string): Promise<{ files: DriveFileMetadata[]; nextPageToken: string | null }> {
-    const drive = this.getDriveClient();
+    return this.withRetry(async () => {
+      const drive = this.getDriveClient();
+      const response = await drive.files.list({
+        q: `'${folderId}' in parents and trashed = false`,
+        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties)',
+        pageSize: 100,
+        pageToken: pageToken
+      });
 
-    const response = await drive.files.list({
-      q: `'${folderId}' in parents and trashed = false`,
-      fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties)',
-      pageSize: 100,
-      pageToken: pageToken
+      const files: DriveFileMetadata[] = (response.data.files || []).map(file => ({
+        id: file.id || '',
+        name: file.name || '',
+        mimeType: file.mimeType || '',
+        modifiedTime: file.modifiedTime || new Date().toISOString(),
+        md5Checksum: file.md5Checksum || undefined,
+        parents: file.parents || undefined,
+        quartzoHash: (file as Record<string, unknown>).appProperties &&
+          typeof (file as Record<string, unknown>).appProperties === 'object'
+          ? ((file as Record<string, unknown>).appProperties as Record<string, string>).Quartzo_hash || null
+          : null
+      }));
+
+      return {
+        files,
+        nextPageToken: response.data.nextPageToken || null
+      };
     });
-
-    const files: DriveFileMetadata[] = (response.data.files || []).map(file => ({
-      id: file.id || '',
-      name: file.name || '',
-      mimeType: file.mimeType || '',
-      modifiedTime: file.modifiedTime || new Date().toISOString(),
-      md5Checksum: file.md5Checksum || undefined,
-      parents: file.parents || undefined,
-      quartzoHash: (file as Record<string, unknown>).appProperties &&
-        typeof (file as Record<string, unknown>).appProperties === 'object'
-        ? ((file as Record<string, unknown>).appProperties as Record<string, string>).Quartzo_hash || null
-        : null
-    }));
-
-    return {
-      files,
-      nextPageToken: response.data.nextPageToken || null
-    };
   }
 
   async listAllFiles(folderId: string): Promise<DriveFileMetadata[]> {
@@ -173,93 +196,97 @@ export class GoogleDriveAdapter implements DriveAdapter {
   }
 
   async downloadFile(fileId: string): Promise<Uint8Array> {
-    const drive = this.getDriveClient();
-    const response = await drive.files.get({
-      fileId,
-      alt: 'media'
-    }, { responseType: 'arraybuffer' });
-
-    return new Uint8Array(response.data as ArrayBuffer);
+    return this.withRetry(async () => {
+      const drive = this.getDriveClient();
+      const response = await drive.files.get({
+        fileId,
+        alt: 'media'
+      }, { responseType: 'arraybuffer' });
+      return new Uint8Array(response.data as ArrayBuffer);
+    });
   }
 
   async uploadFile(params: UploadFileParams): Promise<DriveFileMetadata> {
-    const drive = this.getDriveClient();
-    const pathParts = params.name.split('/');
-    const fileName = pathParts.pop() || params.name;
-    let currentParentId = params.parentId || params.folderId;
+    return this.withRetry(async () => {
+      const drive = this.getDriveClient();
+      const pathParts = params.name.split('/');
+      const fileName = pathParts.pop() || params.name;
+      let currentParentId = params.parentId || params.folderId;
 
-    for (const folderName of pathParts) {
-      if (!folderName) continue;
-      const existingFolder = await this.findFolderByName(currentParentId, folderName);
-      if (existingFolder) {
-        currentParentId = existingFolder;
-      } else {
-        const folderMetadata = await drive.files.create({
-          requestBody: {
-            name: folderName,
-            parents: [currentParentId],
-            mimeType: 'application/vnd.google-apps.folder'
-          },
-          fields: 'id'
-        });
-        currentParentId = folderMetadata.data.id || currentParentId;
-      }
-    }
-
-    const response = await drive.files.create({
-      requestBody: {
-        name: fileName,
-        parents: [currentParentId],
-        appProperties: {
-          Quartzo_hash: params.quartzoHash
+      for (const folderName of pathParts) {
+        if (!folderName) continue;
+        const existingFolder = await this.findFolderByName(currentParentId, folderName);
+        if (existingFolder) {
+          currentParentId = existingFolder;
+        } else {
+          const folderMetadata = await drive.files.create({
+            requestBody: {
+              name: folderName,
+              parents: [currentParentId],
+              mimeType: 'application/vnd.google-apps.folder'
+            },
+            fields: 'id'
+          });
+          currentParentId = folderMetadata.data.id || currentParentId;
         }
-      },
-      media: {
-        mimeType: 'application/octet-stream',
-        body: Buffer.from(params.content)
-      },
-      fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties'
-    });
+      }
 
-    const data = response.data;
-    return {
-      id: data.id || '',
-      name: params.name,
-      mimeType: data.mimeType || '',
-      modifiedTime: data.modifiedTime || new Date().toISOString(),
-      md5Checksum: data.md5Checksum || undefined,
-      parents: data.parents || undefined,
-      quartzoHash: params.quartzoHash
-    };
+      const response = await drive.files.create({
+        requestBody: {
+          name: fileName,
+          parents: [currentParentId],
+          appProperties: {
+            Quartzo_hash: params.quartzoHash
+          }
+        },
+        media: {
+          mimeType: 'application/octet-stream',
+          body: Buffer.from(params.content)
+        },
+        fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties'
+      });
+
+      const data = response.data;
+      return {
+        id: data.id || '',
+        name: params.name,
+        mimeType: data.mimeType || '',
+        modifiedTime: data.modifiedTime || new Date().toISOString(),
+        md5Checksum: data.md5Checksum || undefined,
+        parents: data.parents || undefined,
+        quartzoHash: params.quartzoHash
+      };
+    });
   }
 
   async updateFile(fileId: string, content: Uint8Array, quartzoHash: string): Promise<DriveFileMetadata> {
-    const drive = this.getDriveClient();
+    return this.withRetry(async () => {
+      const drive = this.getDriveClient();
+      const response = await drive.files.update({
+        fileId,
+        requestBody: {
+          appProperties: {
+            Quartzo_hash: quartzoHash
+          }
+        },
+        media: {
+          mimeType: 'application/octet-stream',
+          body: Buffer.from(content)
+        },
+        fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties'
+      });
 
-    const response = await drive.files.update({
-      fileId,
-      requestBody: {
-        appProperties: {
-          Quartzo_hash: quartzoHash
-        }
-      },
-      media: {
-        mimeType: 'application/octet-stream',
-        body: Buffer.from(content)
-      },
-      fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties'
+      const data = response.data;
+      return {
+        id: data.id || '',
+        name: data.name || '',
+        mimeType: data.mimeType || '',
+        modifiedTime: data.modifiedTime || new Date().toISOString(),
+        md5Checksum: data.md5Checksum || undefined,
+        parents: data.parents || undefined,
+        quartzoHash
+      };
     });
-
-    const data = response.data;
-    return {
-      id: data.id || '',
-      name: data.name || '',
-      mimeType: data.mimeType || '',
-      modifiedTime: data.modifiedTime || new Date().toISOString(),
-      md5Checksum: data.md5Checksum || undefined,
-      parents: data.parents || undefined,
-      quartzoHash
-    };
   }
 
   private async findFolderByName(parentId: string, folderName: string): Promise<string | null> {
@@ -278,29 +305,33 @@ export class GoogleDriveAdapter implements DriveAdapter {
   }
 
   async deleteFile(fileId: string): Promise<void> {
-    const drive = this.getDriveClient();
-    await drive.files.delete({ fileId });
+    return this.withRetry(async () => {
+      const drive = this.getDriveClient();
+      await drive.files.delete({ fileId });
+    });
   }
 
   async getFileMetadata(fileId: string): Promise<DriveFileMetadata> {
-    const drive = this.getDriveClient();
-    const response = await drive.files.get({
-      fileId,
-      fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties'
-    });
+    return this.withRetry(async () => {
+      const drive = this.getDriveClient();
+      const response = await drive.files.get({
+        fileId,
+        fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties'
+      });
 
-    const data = response.data;
-    return {
-      id: data.id || '',
-      name: data.name || '',
-      mimeType: data.mimeType || '',
-      modifiedTime: data.modifiedTime || new Date().toISOString(),
-      md5Checksum: data.md5Checksum || undefined,
-      parents: data.parents || undefined,
-      quartzoHash: (data as Record<string, unknown>).appProperties &&
-        typeof (data as Record<string, unknown>).appProperties === 'object'
-        ? ((data as Record<string, unknown>).appProperties as Record<string, string>).Quartzo_hash || null
-        : null
-    };
+      const data = response.data;
+      return {
+        id: data.id || '',
+        name: data.name || '',
+        mimeType: data.mimeType || '',
+        modifiedTime: data.modifiedTime || new Date().toISOString(),
+        md5Checksum: data.md5Checksum || undefined,
+        parents: data.parents || undefined,
+        quartzoHash: (data as Record<string, unknown>).appProperties &&
+          typeof (data as Record<string, unknown>).appProperties === 'object'
+          ? ((data as Record<string, unknown>).appProperties as Record<string, string>).Quartzo_hash || null
+          : null
+      };
+    });
   }
 }

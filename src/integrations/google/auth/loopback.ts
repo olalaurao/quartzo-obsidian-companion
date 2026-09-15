@@ -214,11 +214,23 @@ export class GoogleOAuthDesktop {
   }
 
   async disconnect(): Promise<void> {
+    const tokenToRevoke = this.accessToken || await this.secretStorage.get('oauth_refresh_token');
     this.cleanup();
     await this.secretStorage.delete('oauth_refresh_token');
     this.accessToken = null;
     this.refreshToken = null;
     this.expiresAt = 0;
+
+    if (tokenToRevoke) {
+      try {
+        const revokeUrl = `https://oauth2.googleapis.com/revoke?token=${tokenToRevoke}`;
+        await new Promise<void>((resolve) => {
+          const req = https.request(revokeUrl, { method: 'POST' }, () => { resolve(); });
+          req.on('error', () => { resolve(); });
+          req.end();
+        });
+      } catch { /* best effort revoke */ }
+    }
   }
 
   getAccessToken(): string | null {

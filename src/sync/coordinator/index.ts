@@ -41,7 +41,7 @@ export interface ConflictArtifact {
 
 export interface ConflictRegistry {
   getConflicts(): ConflictArtifact[];
-  resolveConflict(originalPath: string, resolution: 'keep_local' | 'keep_drive'): void;
+  resolveConflict(originalPath: string, resolution: 'keep_local' | 'keep_drive'): Promise<void>;
 }
 
 export class DriveSyncCoordinator implements ConflictRegistry {
@@ -72,7 +72,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     return Array.from(this.conflicts.values());
   }
 
-  resolveConflict(originalPath: string, resolution: 'keep_local' | 'keep_drive'): void {
+  async resolveConflict(originalPath: string, resolution: 'keep_local' | 'keep_drive'): Promise<void> {
     const normalized = normalizeVaultPath(originalPath);
     const artifact = this.conflicts.get(normalized);
     if (!artifact) return;
@@ -105,9 +105,10 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     this.removeConflictArtifacts(normalized);
 
     if (resolution === 'keep_local' && syncFile.remoteFileId) {
-      this.driveAdapter.updateFile(syncFile.remoteFileId, resolvedContent, resolvedHash).catch(() => {
-      });
+      await this.driveAdapter.updateFile(syncFile.remoteFileId, resolvedContent, resolvedHash);
     }
+
+    await this.saveSyncState();
   }
 
   private removeConflictArtifacts(originalPath: string): void {
@@ -163,18 +164,40 @@ export class DriveSyncCoordinator implements ConflictRegistry {
           const originalPath = name.slice(0, -'.conflict'.length);
           if (this.conflicts.has(originalPath)) continue;
           try {
-            const content = new Uint8Array(fs.readFileSync(fullPath));
-            const localSha256 = crypto.createHash('sha256').update(content).digest('hex');
-            this.conflicts.set(originalPath, {
-              originalPath,
-              localContent: content,
-              remoteContent: new Uint8Array(),
-              localSha256,
-              remoteSha256: '',
-              remoteFileId: null,
-              isBinary: false,
-              timestamp: new Date().toISOString()
-            });
+            const rawContent = new Uint8Array(fs.readFileSync(fullPath));
+            const SEPARATOR = Buffer.from('\n\n---QUARTZO_CONFLICT_SEPARATOR---\n\n');
+            const rawBuf = Buffer.from(rawContent);
+
+            const sepIdx = rawBuf.indexOf(SEPARATOR);
+            if (sepIdx >= 0) {
+              const localContent = new Uint8Array(rawBuf.subarray(0, sepIdx));
+              const remoteContent = new Uint8Array(rawBuf.subarray(sepIdx + SEPARATOR.length));
+              const localSha256 = crypto.createHash('sha256').update(localContent).digest('hex');
+              const remoteSha256 = crypto.createHash('sha256').update(remoteContent).digest('hex');
+
+              this.conflicts.set(originalPath, {
+                originalPath,
+                localContent,
+                remoteContent,
+                localSha256,
+                remoteSha256,
+                remoteFileId: null,
+                isBinary: false,
+                timestamp: new Date().toISOString()
+              });
+            } else {
+              const localSha256 = crypto.createHash('sha256').update(rawContent).digest('hex');
+              this.conflicts.set(originalPath, {
+                originalPath,
+                localContent: rawContent,
+                remoteContent: new Uint8Array(),
+                localSha256,
+                remoteSha256: '',
+                remoteFileId: null,
+                isBinary: false,
+                timestamp: new Date().toISOString()
+              });
+            }
           } catch { /* skip corrupt artifact */ }
         }
       }
@@ -273,8 +296,15 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       const remoteFile = remoteFileMap.get(normalizedLocal);
       const syncFile = this.syncState.files.get(normalizedLocal) || this.createSyncFile(normalizedLocal, localFile);
 
+      let remoteHash = remoteFile ? (remoteFile.quartzoHash || null) : null;
+      if (remoteFile && remoteFile.id && remoteHash === null) {
+        try {
+          const downloaded = await this.driveAdapter.downloadFile(remoteFile.id);
+          remoteHash = crypto.createHash('sha256').update(downloaded).digest('hex');
+          remoteFile.quartzoHash = remoteHash;
+        } catch { /* fallback to conflict */ }
+      }
       const localHash = localFile.hash;
-      const remoteHash = remoteFile ? (remoteFile.quartzoHash || null) : null;
       const baseHash = syncFile.baseHash;
 
       if (remoteFile && remoteFile.id) {
@@ -501,6 +531,24 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       }
       processedPaths.add(normalizedLocal);
     }
+
+    for (const [syncedPath, syncFile] of this.syncState.files) {
+      if (processedPaths.has(syncedPath)) continue;
+      if (!syncFile.remoteFileId) continue;
+      if (!syncFile.localExists) continue;
+
+      const localHash = localInventory.get(syncedPath)?.hash || null;
+      if (localHash !== null) continue;
+
+      if (syncFile.baseHash !== null && syncFile.baseHash === syncFile.localHash) {
+        await this.deleteRemoteFile(syncedPath, syncFile);
+        result.synced++;
+      } else {
+        result.conflicts++;
+        await this.handleConflict(syncedPath, { hash: syncFile.localHash, exists: false }, undefined, syncFile);
+      }
+      processedPaths.add(syncedPath);
+    }
   }
 
   private findSyncFileByRemoteId(remoteId: string): SyncFile | undefined {
@@ -510,17 +558,48 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     return undefined;
   }
 
+  private parentNameCache: Map<string, string> = new Map();
+
   private async resolveRemotePath(file: DriveFileMetadata, rootFolderId: string): Promise<string | null> {
     if (file.name && file.name.includes('/')) return file.name;
 
-    if (!file.parents || file.parents.length === 0) return file.name;
+    if (!file.parents || file.parents.length === 0) return file.name || null;
 
-    try {
-      const metadata = await this.driveAdapter.getFileMetadata(file.parents[0]);
-      return metadata.name ? `${metadata.name}/${file.name}` : file.name;
-    } catch {
-      return file.name;
+    const segments: string[] = [file.name || ''];
+    let currentParentId = file.parents[0];
+    let depth = 0;
+    const MAX_DEPTH = 20;
+
+    while (currentParentId && currentParentId !== rootFolderId && depth < MAX_DEPTH) {
+      let parentName: string | undefined;
+
+      if (this.parentNameCache.has(currentParentId)) {
+        parentName = this.parentNameCache.get(currentParentId);
+      } else {
+        try {
+          const metadata = await this.driveAdapter.getFileMetadata(currentParentId);
+          parentName = metadata.name || undefined;
+          if (parentName) {
+            this.parentNameCache.set(currentParentId, parentName);
+          }
+        } catch {
+          break;
+        }
+      }
+
+      if (!parentName) break;
+      segments.unshift(parentName);
+
+      try {
+        const parentMeta = await this.driveAdapter.getFileMetadata(currentParentId);
+        currentParentId = parentMeta.parents && parentMeta.parents.length > 0 ? parentMeta.parents[0] : '';
+      } catch {
+        break;
+      }
+      depth++;
     }
+
+    return segments.join('/');
   }
 
   private recordAdoptionPending(filePath: string, syncFile: SyncFile): void {
@@ -587,6 +666,13 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     this.syncState.files.delete(filePath);
   }
 
+  private async deleteRemoteFile(filePath: string, syncFile: SyncFile): Promise<void> {
+    if (syncFile.remoteFileId) {
+      await this.driveAdapter.deleteFile(syncFile.remoteFileId);
+    }
+    this.syncState.files.delete(filePath);
+  }
+
   private async handleConflict(
     filePath: string,
     localFile: { hash: string; exists: boolean },
@@ -610,12 +696,12 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     const localSha256 = crypto.createHash('sha256').update(localContent).digest('hex');
     const remoteSha256 = remoteFile?.quartzoHash || crypto.createHash('sha256').update(remoteContent).digest('hex');
 
-    const conflictDir = pathModule.join(this.vaultPath, '_conflicts');
-    if (!fs.existsSync(conflictDir)) {
-      fs.mkdirSync(conflictDir, { recursive: true });
-    }
-
     const conflictBase = `_conflicts/${filePath}`;
+
+    const conflictDirForFile = pathModule.dirname(pathModule.join(this.vaultPath, conflictBase));
+    if (!fs.existsSync(conflictDirForFile)) {
+      fs.mkdirSync(conflictDirForFile, { recursive: true });
+    }
 
     if (isBinary) {
       fs.writeFileSync(pathModule.join(this.vaultPath, `${conflictBase}.local`), Buffer.from(localContent));
@@ -630,12 +716,10 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       };
       fs.writeFileSync(pathModule.join(this.vaultPath, `${conflictBase}.conflict.json`), JSON.stringify(metadata, null, 2));
     } else {
+      const SEPARATOR = Buffer.from('\n\n---QUARTZO_CONFLICT_SEPARATOR---\n\n');
       const conflictContent = Buffer.concat([
-        Buffer.from(`# Conflict: ${filePath}\n\n`),
-        Buffer.from(`## Local Version (SHA-256: ${localSha256})\n\n`),
         Buffer.from(localContent),
-        Buffer.from('\n\n---\n\n'),
-        Buffer.from(`## Remote Version (SHA-256: ${remoteSha256})\n\n`),
+        SEPARATOR,
         Buffer.from(remoteContent)
       ]);
       fs.writeFileSync(pathModule.join(this.vaultPath, `${conflictBase}.conflict`), conflictContent);
