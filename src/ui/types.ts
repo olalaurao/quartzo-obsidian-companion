@@ -1,18 +1,32 @@
+import type { App, Plugin } from 'obsidian';
+import type { VaultIndexEngine } from '../vault/index';
+import type { DriveSyncCoordinator } from '../sync/coordinator';
+
 export interface UIState {
   currentView: string;
   dailyScheduleDate: string;
   privacyMode: boolean;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface ViewContext {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  app: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  plugin: any;
+  app: App;
+  plugin: Plugin & {
+    driveSyncCoordinator: DriveSyncCoordinator | null;
+    vaultIndexEngine: VaultIndexEngine | null;
+    settings: {
+      googleDriveFolderId: string | null;
+      googleDriveFolderName: string | null;
+      syncAuto: boolean;
+      privacyMode: boolean;
+      firstRunCompleted: boolean;
+      oauthClientId: string;
+      isPaired: boolean;
+    };
+    saveSettings(): Promise<void>;
+    startPairingFlow(): Promise<void>;
+    disconnectDrive(): Promise<void>;
+  };
   state: UIState;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  vaultIndexEngine?: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  driveSyncCoordinator?: any;
+  vaultIndexEngine?: VaultIndexEngine;
+  driveSyncCoordinator?: DriveSyncCoordinator;
 }

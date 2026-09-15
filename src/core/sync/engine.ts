@@ -45,14 +45,17 @@ export class SyncEngine {
 
     // Handle null base cases
     if (baseHash === null) {
-      if (localHash === remoteHash) {
-        return { action: 'advance_baseline' };
+      if (localHash === null && remoteHash === null) {
+        return remoteExists ? { action: 'pull' } : { action: 'advance_baseline' };
       }
       if (localHash === null && remoteHash) {
         return { action: 'pull' };
       }
       if (localHash && remoteHash === null) {
         return { action: 'adoption_required', adoptionRequired: true };
+      }
+      if (localHash === remoteHash) {
+        return { action: 'advance_baseline' };
       }
       if (localHash && remoteHash && localHash !== remoteHash) {
         return { action: 'conflict', conflict: true };

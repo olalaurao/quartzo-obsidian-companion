@@ -45,8 +45,10 @@ jobs:
       - name: Build
         run: npm run build
       
-      - name: Release validate
-        run: npm run release:validate
+      - name: Release validate (production mode)
+        run: RELEASE_MODE=true npm run release:validate
+        env:
+          RELEASE_MODE: 'true'
       
       - name: Create Release
         uses: softprops/action-gh-release@v1
