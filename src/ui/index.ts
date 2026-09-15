@@ -2,3 +2,8 @@ export * from './types';
 export * from './home/view';
 export * from './planner/view';
 export * from './day-dial/view';
+export * from './journal/view';
+export * from './browse/view';
+export * from './search/view';
+export * from './quick-add/view';
+export * from './conflict-center/view';

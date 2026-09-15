@@ -1,6 +1,7 @@
 import * as http from 'http';
+import * as https from 'https';
 import * as url from 'url';
-import { randomBytes, createHash } from 'crypto';
+import { randomBytes, createHash, timingSafeEqual } from 'crypto';
 import { OAuthEngine } from '../../../core/oauth';
 
 export interface OAuthConfig {
@@ -29,9 +30,11 @@ export class GoogleOAuthDesktop {
   private accessToken: string | null = null;
   private refreshToken: string | null = null;
   private expiresAt: number = 0;
+  private secretStorage: { get: (key: string) => Promise<string | null>; set: (key: string, value: string) => Promise<void> };
 
-  constructor(config: OAuthConfig) {
+  constructor(config: OAuthConfig, secretStorage: { get: (key: string) => Promise<string | null>; set: (key: string, value: string) => Promise<void> }) {
     this.config = config;
+    this.secretStorage = secretStorage;
   }
 
   generatePKCE(): { verifier: string; challenge: string; state: string } {
@@ -66,25 +69,45 @@ export class GoogleOAuthDesktop {
   }
 
   openBrowser(authUrl: string): void {
-    // In production, use Obsidian's openExternal or system browser abstraction
-    // For now, log the URL for testing
-    console.log('Open browser to:', authUrl);
+    const { exec } = require('child_process');
+    const platform = process.platform;
+
+    let command: string;
+    switch (platform) {
+      case 'darwin':
+        command = `open "${authUrl}"`;
+        break;
+      case 'win32':
+        command = `start "" "${authUrl}"`;
+        break;
+      default:
+        command = `xdg-open "${authUrl}"`;
+        break;
+    }
+
+    exec(command, (error: Error | null) => {
+      if (error) {
+        console.error('Failed to open browser:', error);
+      }
+    });
   }
 
   async startAuthLoopback(): Promise<TokenResponse> {
     return new Promise((resolve, reject) => {
-      this.server = http.createServer((req, res) => {
+      this.server = http.createServer(async (req, res) => {
         const parsedUrl = url.parse(req.url || '', true);
         const { code, state, error, error_description } = parsedUrl.query;
 
-        // Set timeout to 10 minutes
         this.timeoutId = setTimeout(() => {
           this.cleanup();
           reject(new Error('OAuth timeout'));
         }, 10 * 60 * 1000);
 
-        // Verify state matches (constant-time comparison)
-        if (state !== this.state) {
+        const stateBuffer = Buffer.from(this.state);
+        const receivedStateBuffer = Buffer.from(state as string || '');
+
+        if (stateBuffer.length !== receivedStateBuffer.length || 
+            !timingSafeEqual(stateBuffer, receivedStateBuffer)) {
           res.writeHead(400);
           res.end('State mismatch - possible CSRF attack');
           this.cleanup();
@@ -92,7 +115,6 @@ export class GoogleOAuthDesktop {
           return;
         }
 
-        // Handle error response
         if (error) {
           res.writeHead(400);
           res.end(`Authentication failed: ${error}`);
@@ -101,7 +123,6 @@ export class GoogleOAuthDesktop {
           return;
         }
 
-        // Handle successful response
         if (code) {
           res.writeHead(200, { 'Content-Type': 'text/html' });
           res.end(`
@@ -113,19 +134,22 @@ export class GoogleOAuthDesktop {
             </html>
           `);
 
-          // Exchange code for token
-          this.exchangeCodeForToken(code as string)
-            .then(tokenResponse => {
-              this.accessToken = tokenResponse.access_token;
-              this.refreshToken = tokenResponse.refresh_token || null;
-              this.expiresAt = Date.now() + (tokenResponse.expires_in * 1000);
-              this.cleanup();
-              resolve(tokenResponse);
-            })
-            .catch(err => {
-              this.cleanup();
-              reject(err);
-            });
+          try {
+            const tokenResponse = await this.exchangeCodeForToken(code as string);
+            this.accessToken = tokenResponse.access_token;
+            this.refreshToken = tokenResponse.refresh_token || null;
+            this.expiresAt = Date.now() + (tokenResponse.expires_in * 1000);
+            
+            if (this.refreshToken) {
+              await this.secretStorage.set('oauth_refresh_token', this.refreshToken);
+            }
+            
+            this.cleanup();
+            resolve(tokenResponse);
+          } catch (err) {
+            this.cleanup();
+            reject(err);
+          }
         } else {
           res.writeHead(400);
           res.end('Missing authorization code');
@@ -134,12 +158,10 @@ export class GoogleOAuthDesktop {
         }
       });
       
-      // Bind exclusively to 127.0.0.1 on a random port
       this.server.listen(0, '127.0.0.1', () => {
         const address = this.server?.address() as { port: number };
         this.port = address.port;
         
-        // Build and open authorization URL
         const authUrl = this.buildAuthUrl();
         this.openBrowser(authUrl);
       });
@@ -152,52 +174,128 @@ export class GoogleOAuthDesktop {
   }
 
   async exchangeCodeForToken(code: string): Promise<TokenResponse> {
-    // In production, make actual HTTP request to token endpoint
-    // For now, use mock from OAuthEngine
-    const mockTokenResponse = {
-      access_token: 'mock_access_token_' + Date.now(),
-      refresh_token: 'mock_refresh_token_' + Date.now(),
-      expires_in: 3600,
-      token_type: 'Bearer'
-    };
-
-    // Verify code verifier (in production, this would be sent to token endpoint)
     if (!this.codeVerifier) {
       throw new Error('Code verifier not set');
     }
 
-    return mockTokenResponse;
+    const params = new URLSearchParams();
+    params.append('code', code);
+    params.append('client_id', this.config.clientId);
+    params.append('redirect_uri', this.getRedirectUri());
+    params.append('grant_type', 'authorization_code');
+    params.append('code_verifier', this.codeVerifier);
+
+    return this.makeTokenRequest(params);
   }
 
   async refreshAccessToken(): Promise<TokenResponse> {
-    if (!this.refreshToken) {
+    const storedRefreshToken = await this.secretStorage.get('oauth_refresh_token');
+    if (!storedRefreshToken) {
       throw new Error('No refresh token available');
     }
 
-    // In production, make actual HTTP request to refresh endpoint
-    // For now, use mock
-    const mockTokenResponse = {
-      access_token: 'mock_refreshed_access_token_' + Date.now(),
-      refresh_token: this.refreshToken,
-      expires_in: 3600,
-      token_type: 'Bearer'
-    };
+    const params = new URLSearchParams();
+    params.append('refresh_token', storedRefreshToken);
+    params.append('client_id', this.config.clientId);
+    params.append('grant_type', 'refresh_token');
 
-    this.accessToken = mockTokenResponse.access_token;
-    this.expiresAt = Date.now() + (mockTokenResponse.expires_in * 1000);
+    if (this.config.clientSecret) {
+      params.append('client_secret', this.config.clientSecret);
+    }
 
-    return mockTokenResponse;
+    const tokenResponse = await this.makeTokenRequest(params);
+
+    this.accessToken = tokenResponse.access_token;
+    this.expiresAt = Date.now() + (tokenResponse.expires_in * 1000);
+
+    if (tokenResponse.refresh_token) {
+      this.refreshToken = tokenResponse.refresh_token;
+      await this.secretStorage.set('oauth_refresh_token', this.refreshToken);
+    }
+
+    return tokenResponse;
+  }
+
+  private async makeTokenRequest(params: URLSearchParams): Promise<TokenResponse> {
+    return new Promise((resolve, reject) => {
+      const isHttps = this.config.tokenUrl.startsWith('https://');
+      const httpModule = isHttps ? https : http;
+
+      const req = httpModule.request(this.config.tokenUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json'
+        }
+      }, (res) => {
+        let data = '';
+
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
+
+        res.on('end', () => {
+          try {
+            if (res.statusCode !== 200) {
+              reject(new Error(`Token request failed with status ${res.statusCode}: ${data}`));
+              return;
+            }
+
+            const tokenResponse = JSON.parse(data);
+            resolve(tokenResponse);
+          } catch (error) {
+            reject(new Error(`Failed to parse token response: ${error}`));
+          }
+        });
+      });
+
+      req.on('error', (error) => {
+        reject(new Error(`Token request failed: ${error}`));
+      });
+
+      req.write(params.toString());
+      req.end();
+    });
   }
 
   async revokeToken(): Promise<void> {
-    // In production, make actual HTTP request to revoke endpoint
-    this.accessToken = null;
-    this.refreshToken = null;
-    this.expiresAt = 0;
+    if (!this.accessToken) {
+      return;
+    }
+
+    const revokeUrl = 'https://oauth2.googleapis.com/revoke';
+    const params = new URLSearchParams();
+    params.append('token', this.accessToken);
+
+    return new Promise((resolve, reject) => {
+      const req = https.request(revokeUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      }, (res) => {
+        if (res.statusCode === 200) {
+          resolve();
+        } else {
+          reject(new Error(`Revoke failed with status ${res.statusCode}`));
+        }
+      });
+
+      req.on('error', (error) => {
+        reject(new Error(`Revoke request failed: ${error}`));
+      });
+
+      req.write(params.toString());
+      req.end();
+    });
   }
 
   async disconnect(): Promise<void> {
     await this.revokeToken();
+    await this.secretStorage.set('oauth_refresh_token', '');
+    this.accessToken = null;
+    this.refreshToken = null;
+    this.expiresAt = 0;
   }
 
   getAccessToken(): string | null {

@@ -1,6 +1,7 @@
 import { Notice } from 'obsidian';
 import { OccurrenceActionService } from '../occurrence_actions';
 import { DailyScheduleEngine } from '../daily_schedule';
+import { VaultIndexEngine } from '../../vault/index';
 
 export type ReminderMode = 'off' | 'in_obsidian_only' | 'desktop_notifications';
 
@@ -15,11 +16,13 @@ export class ReminderService {
   private actionService: OccurrenceActionService;
   private checkInterval: NodeJS.Timeout | null = null;
   private vaultAdapter: { read: (path: string) => Promise<string>; write: (path: string, content: string) => Promise<void>; list: (path: string) => Promise<string[]> };
+  private vaultIndex: VaultIndexEngine | null = null;
   private isRunning: boolean = false;
 
-  constructor(actionService: OccurrenceActionService, vaultAdapter: { read: (path: string) => Promise<string>; write: (path: string, content: string) => Promise<void>; list: (path: string) => Promise<string[]> }, config?: Partial<ReminderConfig>) {
+  constructor(actionService: OccurrenceActionService, vaultAdapter: { read: (path: string) => Promise<string>; write: (path: string, content: string) => Promise<void>; list: (path: string) => Promise<string[]> }, vaultIndex?: VaultIndexEngine, config?: Partial<ReminderConfig>) {
     this.actionService = actionService;
     this.vaultAdapter = vaultAdapter;
+    this.vaultIndex = vaultIndex || null;
     this.config = {
       mode: 'in_obsidian_only',
       soundEnabled: false,
@@ -68,11 +71,25 @@ export class ReminderService {
       const today = now.toISOString().split('T')[0];
       const currentTime = now.toTimeString().slice(0, 5); // HH:MM format
 
+      // Get objects from vault index
+      let objects: Record<string, unknown>[] = [];
+      if (this.vaultIndex) {
+        const index = this.vaultIndex.getIndex();
+        if (index) {
+          objects = Array.from(index.objects.values()).map(obj => ({
+            id: obj.id,
+            type: obj.type,
+            frontmatter: obj.frontmatter,
+            body: obj.body
+          }));
+        }
+      }
+
       // Get today's schedule
       const schedule = DailyScheduleEngine.normalize({
         date: today,
         today,
-        objects: [], // In production, this would come from vault index
+        objects,
         googleEvents: []
       });
 
@@ -130,7 +147,7 @@ export class ReminderService {
     console.log('Playing notification sound');
   }
 
-  async snoozeReminder(occurrenceId: string, minutes: number = 5): Promise<void> {
+  async snoozeReminder(occurrenceId: string, objectPath?: string, minutes: number = 5): Promise<void> {
     const snoozeUntil = new Date(Date.now() + minutes * 60 * 1000).toISOString();
     const today = new Date().toISOString().split('T')[0];
     
@@ -138,33 +155,36 @@ export class ReminderService {
       action: 'snooze',
       occurrenceId,
       date: today,
-      target: 'reminder'
+      target: 'reminder',
+      objectPath
     });
 
     new Notice(`Reminder snoozed for ${minutes} minutes`);
   }
 
-  async dismissReminder(occurrenceId: string): Promise<void> {
+  async dismissReminder(occurrenceId: string, objectPath?: string): Promise<void> {
     const today = new Date().toISOString().split('T')[0];
     
     await this.actionService.executeAction({
       action: 'dismiss',
       occurrenceId,
       date: today,
-      target: 'reminder'
+      target: 'reminder',
+      objectPath
     });
 
     new Notice('Reminder dismissed');
   }
 
-  async completeReminder(occurrenceId: string): Promise<void> {
+  async completeReminder(occurrenceId: string, objectPath?: string): Promise<void> {
     const today = new Date().toISOString().split('T')[0];
     
     await this.actionService.executeAction({
       action: 'done',
       occurrenceId,
       date: today,
-      target: 'reminder'
+      target: 'reminder',
+      objectPath
     });
 
     new Notice('Reminder marked as done');

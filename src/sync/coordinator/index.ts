@@ -1,15 +1,23 @@
 import { SyncEngine } from '../../core/sync';
 import { DriveAdapter, SyncFile, SyncState, SyncResult, DriveFileMetadata } from './types';
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as pathModule from 'path';
 
 export class DriveSyncCoordinator {
   private syncState: SyncState;
   private driveAdapter: DriveAdapter;
   private vaultPath: string;
+  private stateStorePath: string;
+  private syncMutex: boolean = false;
+  private syncQueue: Array<() => Promise<void>> = [];
+  private backoffMs: number = 1000;
+  private maxBackoffMs: number = 30000;
 
-  constructor(driveAdapter: DriveAdapter, vaultPath: string) {
+  constructor(driveAdapter: DriveAdapter, vaultPath: string, stateStorePath?: string) {
     this.driveAdapter = driveAdapter;
     this.vaultPath = vaultPath;
+    this.stateStorePath = stateStorePath || pathModule.join(vaultPath, '.quartzo-sync-state.json');
     this.syncState = {
       files: new Map(),
       lastSyncTime: 0,
@@ -19,83 +27,104 @@ export class DriveSyncCoordinator {
   }
 
   async reconcile(): Promise<SyncResult> {
+    if (this.syncMutex) {
+      this.queueSync();
+      return { synced: 0, conflicts: 0, errors: ['Sync already in progress, queued'] };
+    }
+
+    this.syncMutex = true;
     const result: SyncResult = { synced: 0, conflicts: 0, errors: [] };
 
     try {
-      // Get or create Drive folder
-      let driveFolderId = await this.driveAdapter.getFolderId();
+      await this.loadSyncState();
+
+      const driveFolderId = await this.driveAdapter.getFolderId();
       if (!driveFolderId) {
         throw new Error('Drive folder not configured');
       }
 
-      // List remote files
-      const { files: remoteFiles, nextPageToken } = await this.driveAdapter.listFiles(driveFolderId, this.syncState.pageToken || undefined);
-      this.syncState.pageToken = nextPageToken;
       this.syncState.driveFolderId = driveFolderId;
 
-      // Build remote file map
+      const localInventory = await this.buildLocalInventory();
+      const { files: remoteFiles, nextPageToken } = await this.driveAdapter.listFiles(driveFolderId, this.syncState.pageToken || undefined);
+      this.syncState.pageToken = nextPageToken;
+
       const remoteFileMap = new Map<string, DriveFileMetadata>();
+      const remoteIdMap = new Map<string, DriveFileMetadata>();
+
       for (const file of remoteFiles) {
         remoteFileMap.set(file.name, file);
-      }
-
-      // Process each local file
-      // In production, this would scan the vault directory
-      // For now, we process the sync state files
-      for (const [path, syncFile] of this.syncState.files.entries()) {
-        try {
-          const remoteFile = remoteFileMap.get(path);
-          const remoteHash = remoteFile ? remoteFile.md5Checksum || '' : null;
-          
-          const vector = {
-            id: path,
-            baseHash: syncFile.baseHash,
-            localHash: syncFile.localHash,
-            remoteHash: remoteHash,
-            localExists: syncFile.localExists,
-            remoteExists: remoteFile !== undefined,
-            expected: ''
-          };
-
-          const syncDecision = SyncEngine.reconcile(vector);
-
-          switch (syncDecision.action) {
-            case 'push':
-              await this.pushFile(path, syncFile);
-              result.synced++;
-              break;
-            case 'pull':
-              if (remoteFile) {
-                await this.pullFile(path, remoteFile);
-                result.synced++;
-              }
-              break;
-            case 'delete_local':
-              await this.deleteLocalFile(path);
-              result.synced++;
-              break;
-            case 'conflict':
-              result.conflicts++;
-              await this.handleConflict(path, syncFile, remoteFile);
-              break;
-            case 'advance_baseline':
-              syncFile.baseHash = syncFile.localHash;
-              if (remoteFile) {
-                syncFile.remoteHash = remoteFile.md5Checksum || '';
-                syncFile.remoteFileId = remoteFile.id;
-              }
-              break;
-          }
-        } catch (error) {
-          result.errors.push(`${path}: ${error}`);
+        if (file.id) {
+          remoteIdMap.set(file.id, file);
         }
       }
 
-      // Handle remote-only files
-      for (const [path, remoteFile] of remoteFileMap.entries()) {
-        if (!this.syncState.files.has(path)) {
+      for (const [localPath, localFile] of localInventory.entries()) {
+        if (!this.shouldSyncFile(localPath)) {
+          continue;
+        }
+
+        const remoteFile = remoteFileMap.get(localPath);
+        const syncFile = this.syncState.files.get(localPath) || this.createSyncFile(localPath, localFile);
+
+        const localHash = localFile.hash;
+        const remoteHash = remoteFile ? remoteFile.md5Checksum || '' : null;
+        const baseHash = syncFile.baseHash;
+
+        const vector = {
+          id: localPath,
+          baseHash,
+          localHash,
+          remoteHash,
+          localExists: true,
+          remoteExists: remoteFile !== undefined,
+          expected: ''
+        };
+
+        const syncDecision = SyncEngine.reconcile(vector);
+
+        switch (syncDecision.action) {
+          case 'push':
+            await this.pushFile(localPath, localFile, syncFile);
+            result.synced++;
+            break;
+          case 'pull':
+            if (remoteFile) {
+              await this.pullFile(localPath, remoteFile, syncFile);
+              result.synced++;
+            }
+            break;
+          case 'delete_local':
+            await this.deleteLocalFile(localPath);
+            result.synced++;
+            break;
+          case 'conflict':
+            result.conflicts++;
+            await this.handleConflict(localPath, localFile, remoteFile, syncFile);
+            break;
+          case 'advance_baseline':
+            syncFile.baseHash = localHash;
+            if (remoteFile) {
+              syncFile.remoteHash = remoteFile.md5Checksum || '';
+              syncFile.remoteFileId = remoteFile.id;
+            }
+            this.syncState.files.set(localPath, syncFile);
+            break;
+          case 'adoption_required':
+            await this.handleAdoption(localPath, localFile, syncFile);
+            result.synced++;
+            break;
+        }
+      }
+
+      for (const [remotePath, remoteFile] of remoteFileMap.entries()) {
+        if (!this.shouldSyncFile(remotePath)) {
+          continue;
+        }
+
+        if (!localInventory.has(remotePath)) {
           const vector = {
-            id: path,
+            id: remotePath,
             baseHash: null,
             localHash: null,
             remoteHash: remoteFile.md5Checksum || '',
@@ -106,63 +135,104 @@ export class DriveSyncCoordinator {
 
           const syncDecision = SyncEngine.reconcile(vector);
           if (syncDecision.action === 'pull') {
-            await this.pullFile(path, remoteFile);
+            const syncFile = this.createSyncFile(remotePath, { hash: '', exists: false });
+            await this.pullFile(remotePath, remoteFile, syncFile);
             result.synced++;
           }
         }
       }
 
       this.syncState.lastSyncTime = Date.now();
+      await this.saveSyncState();
+      this.backoffMs = 1000;
     } catch (error) {
       result.errors.push(`Sync failed: ${error}`);
+      this.backoffMs = Math.min(this.backoffMs * 2, this.maxBackoffMs);
+    } finally {
+      this.syncMutex = false;
+      this.processSyncQueue();
     }
 
     return result;
   }
 
-  private async pushFile(path: string, syncFile: SyncFile): Promise<void> {
-    // In production, read local file content
-    const content = new Uint8Array(); // Placeholder
+  private async pushFile(filePath: string, localFile: { hash: string; exists: boolean }, syncFile: SyncFile): Promise<void> {
+    const localFilePath = pathModule.join(this.vaultPath, filePath);
+    const content = fs.readFileSync(localFilePath);
     const folderId = this.syncState.driveFolderId || '';
-    
-    const metadata = await this.driveAdapter.uploadFile(folderId, path, content);
-    
+
+    const metadata = await this.driveAdapter.uploadFile(folderId, filePath, content);
+
     syncFile.remoteHash = metadata.md5Checksum || '';
     syncFile.remoteFileId = metadata.id;
-    syncFile.baseHash = syncFile.localHash;
+    syncFile.baseHash = localFile.hash;
+    syncFile.localHash = localFile.hash;
+    syncFile.localExists = true;
+    syncFile.remoteExists = true;
+
+    this.syncState.files.set(filePath, syncFile);
   }
 
-  private async pullFile(path: string, remoteFile: DriveFileMetadata): Promise<void> {
+  private async pullFile(filePath: string, remoteFile: DriveFileMetadata, syncFile: SyncFile): Promise<void> {
     const content = await this.driveAdapter.downloadFile(remoteFile.id);
-    
-    // In production, write content to local file
-    // For now, update sync state
+    const localFilePath = pathModule.join(this.vaultPath, filePath);
+
+    const localDir = pathModule.dirname(localFilePath);
+    if (!fs.existsSync(localDir)) {
+      fs.mkdirSync(localDir, { recursive: true });
+    }
+
+    fs.writeFileSync(localFilePath, content);
+
     const localHash = this.calculateHash(content);
-    
-    const syncFile: SyncFile = {
-      path,
-      localHash,
-      remoteHash: remoteFile.md5Checksum || '',
-      baseHash: remoteFile.md5Checksum || '',
-      remoteFileId: remoteFile.id,
-      localExists: true,
-      remoteExists: true,
-      isBinary: this.isBinaryFile(path)
-    };
-    
-    this.syncState.files.set(path, syncFile);
+
+    syncFile.localHash = localHash;
+    syncFile.remoteHash = remoteFile.md5Checksum || '';
+    syncFile.baseHash = remoteFile.md5Checksum || '';
+    syncFile.remoteFileId = remoteFile.id;
+    syncFile.localExists = true;
+    syncFile.remoteExists = true;
+    syncFile.isBinary = this.isBinaryFile(filePath);
+
+    this.syncState.files.set(filePath, syncFile);
   }
 
-  private async deleteLocalFile(path: string): Promise<void> {
-    // In production, delete local file
-    this.syncState.files.delete(path);
+  private async deleteLocalFile(filePath: string): Promise<void> {
+    const localFilePath = pathModule.join(this.vaultPath, filePath);
+
+    if (fs.existsSync(localFilePath)) {
+      fs.unlinkSync(localFilePath);
+    }
+
+    this.syncState.files.delete(filePath);
   }
 
-  private async handleConflict(path: string, syncFile: SyncFile, remoteFile: DriveFileMetadata | undefined): Promise<void> {
-    // Create conflict artifact
-    const conflictPath = `${path}.conflict`;
-    // In production, would create conflict file with both versions
-    console.warn(`Conflict detected for ${path}`);
+  private async handleConflict(filePath: string, localFile: { hash: string; exists: boolean }, remoteFile: DriveFileMetadata | undefined, syncFile: SyncFile): Promise<void> {
+    const localFilePath = pathModule.join(this.vaultPath, filePath);
+    const conflictPath = `${filePath}.conflict`;
+
+    if (fs.existsSync(localFilePath) && remoteFile) {
+      const localContent = fs.readFileSync(localFilePath);
+      const remoteContent = await this.driveAdapter.downloadFile(remoteFile.id);
+
+      const conflictDir = pathModule.dirname(pathModule.join(this.vaultPath, conflictPath));
+      if (!fs.existsSync(conflictDir)) {
+        fs.mkdirSync(conflictDir, { recursive: true });
+      }
+
+      const conflictContent = Buffer.concat([
+        Buffer.from(`# Conflict: ${filePath}\n\n`),
+        Buffer.from(`## Local Version (SHA-256: ${localFile.hash})\n\n`),
+        localContent,
+        Buffer.from('\n\n---\n\n'),
+        Buffer.from(`## Remote Version (MD5: ${remoteFile.md5Checksum})\n\n`),
+        remoteContent
+      ]);
+
+      fs.writeFileSync(pathModule.join(this.vaultPath, conflictPath), conflictContent);
+    }
+
+    console.warn(`Conflict detected for ${filePath}, created conflict artifact`);
   }
 
   private calculateHash(content: Uint8Array): string {
@@ -181,5 +251,153 @@ export class DriveSyncCoordinator {
   async setDriveFolderId(folderId: string): Promise<void> {
     await this.driveAdapter.setFolderId(folderId);
     this.syncState.driveFolderId = folderId;
+  }
+
+  private async buildLocalInventory(): Promise<Map<string, { hash: string; exists: boolean }>> {
+    const inventory = new Map<string, { hash: string; exists: boolean }>();
+
+    const scanDirectory = (dirPath: string, relativePath: string = '') => {
+      if (!fs.existsSync(dirPath)) {
+        return;
+      }
+
+      const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+
+      for (const entry of entries) {
+        const fullPath = pathModule.join(dirPath, entry.name);
+        const relativeFilePath = pathModule.join(relativePath, entry.name);
+
+        if (entry.isDirectory()) {
+          if (this.shouldSyncDirectory(relativeFilePath)) {
+            scanDirectory(fullPath, relativeFilePath);
+          }
+        } else if (entry.isFile()) {
+          if (this.shouldSyncFile(relativeFilePath)) {
+            try {
+              const content = fs.readFileSync(fullPath);
+              const hash = this.calculateHash(content);
+              inventory.set(relativeFilePath, { hash, exists: true });
+            } catch (error) {
+              console.error(`Failed to read file ${relativeFilePath}:`, error);
+            }
+          }
+        }
+      }
+    };
+
+    scanDirectory(this.vaultPath);
+    return inventory;
+  }
+
+  private shouldSyncFile(filePath: string): boolean {
+    if (filePath.includes('.quartzo-sync-state.json')) {
+      return false;
+    }
+    if (filePath.includes('.obsidian')) {
+      return false;
+    }
+    if (filePath.includes('.DS_Store')) {
+      return false;
+    }
+    if (filePath.endsWith('.conflict')) {
+      return false;
+    }
+    return true;
+  }
+
+  private shouldSyncDirectory(dirPath: string): boolean {
+    if (dirPath.includes('.obsidian')) {
+      return false;
+    }
+    if (dirPath.includes('.git')) {
+      return false;
+    }
+    if (dirPath.includes('node_modules')) {
+      return false;
+    }
+    return true;
+  }
+
+  private createSyncFile(filePath: string, localFile: { hash: string; exists: boolean }): SyncFile {
+    return {
+      path: filePath,
+      localHash: localFile.hash,
+      remoteHash: null,
+      baseHash: null,
+      remoteFileId: null,
+      localExists: localFile.exists,
+      remoteExists: false,
+      isBinary: this.isBinaryFile(filePath)
+    };
+  }
+
+  private async handleAdoption(path: string, localFile: { hash: string; exists: boolean }, syncFile: SyncFile): Promise<void> {
+    syncFile.baseHash = localFile.hash;
+    syncFile.localHash = localFile.hash;
+    syncFile.localExists = true;
+    this.syncState.files.set(path, syncFile);
+  }
+
+  private async loadSyncState(): Promise<void> {
+    try {
+      if (fs.existsSync(this.stateStorePath)) {
+        const content = fs.readFileSync(this.stateStorePath, 'utf-8');
+        const data = JSON.parse(content);
+
+        this.syncState = {
+          files: new Map(data.files || []),
+          lastSyncTime: data.lastSyncTime || 0,
+          pageToken: data.pageToken || null,
+          driveFolderId: data.driveFolderId || null
+        };
+      }
+    } catch (error) {
+      console.error('Failed to load sync state:', error);
+    }
+  }
+
+  private async saveSyncState(): Promise<void> {
+    try {
+      const data = {
+        files: Array.from(this.syncState.files.entries()),
+        lastSyncTime: this.syncState.lastSyncTime,
+        pageToken: this.syncState.pageToken,
+        driveFolderId: this.syncState.driveFolderId
+      };
+
+      const content = JSON.stringify(data, null, 2);
+      fs.writeFileSync(this.stateStorePath, content);
+    } catch (error) {
+      console.error('Failed to save sync state:', error);
+    }
+  }
+
+  private queueSync(): void {
+    this.syncQueue.push(async () => { await this.reconcile(); });
+  }
+
+  private async processSyncQueue(): Promise<void> {
+    if (this.syncQueue.length > 0 && !this.syncMutex) {
+      const nextSync = this.syncQueue.shift();
+      if (nextSync) {
+        await nextSync();
+      }
+    }
+  }
+
+  async triggerManualSync(): Promise<SyncResult> {
+    return this.reconcile();
+  }
+
+  async triggerStartupSync(): Promise<SyncResult> {
+    await new Promise(resolve => setTimeout(resolve, this.backoffMs));
+    return this.reconcile();
+  }
+
+  async triggerFocusSync(): Promise<SyncResult> {
+    if (!this.syncMutex) {
+      return this.reconcile();
+    }
+    return { synced: 0, conflicts: 0, errors: ['Sync already in progress'] };
   }
 }

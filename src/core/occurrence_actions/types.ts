@@ -13,4 +13,5 @@ export interface OccurrenceActionInput {
   target?: 'habit_slot' | 'reminder';
   duplicateActionId?: boolean;
   existingProcessedActions?: string[];
+  objectPath?: string;
 }

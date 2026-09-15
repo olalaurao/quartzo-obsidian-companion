@@ -8,4 +8,6 @@ export interface ViewContext {
   app: Record<string, unknown>;
   plugin: Record<string, unknown>;
   state: UIState;
+  vaultIndexEngine?: Record<string, unknown>;
+  driveSyncCoordinator?: Record<string, unknown>;
 }

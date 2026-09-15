@@ -2,6 +2,20 @@ import { ObjectParser } from '../../core/objects';
 import { VaultFile, IndexedObject, VaultIndex, IndexChange } from './types';
 
 export class VaultIndexEngine {
+  private index: VaultIndex | null = null;
+
+  constructor() {
+    this.index = null;
+  }
+
+  getIndex(): VaultIndex | null {
+    return this.index;
+  }
+
+  setIndex(index: VaultIndex): void {
+    this.index = index;
+  }
+
   static createInitialIndex(files: VaultFile[]): VaultIndex {
     const index: VaultIndex = {
       files: new Map(),

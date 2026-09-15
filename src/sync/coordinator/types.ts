@@ -27,8 +27,8 @@ export interface DriveFileMetadata {
   name: string;
   mimeType: string;
   modifiedTime: string;
-  md5Checksum?: string;
-  parents?: string[];
+  md5Checksum?: string | null;
+  parents?: string[] | null;
 }
 
 export interface DriveAdapter {

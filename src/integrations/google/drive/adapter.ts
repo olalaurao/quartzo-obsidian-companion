@@ -1,11 +1,27 @@
 import { DriveAdapter, DriveFileMetadata } from '../../../sync/coordinator/types';
+import { drive_v3, google } from 'googleapis';
 
 export class GoogleDriveAdapter implements DriveAdapter {
   private accessToken: string | null = null;
   private folderId: string | null = null;
+  private drive: drive_v3.Drive | null = null;
 
   constructor(accessToken?: string) {
     this.accessToken = accessToken || null;
+  }
+
+  private getDriveClient(): drive_v3.Drive {
+    if (!this.accessToken) {
+      throw new Error('No access token available');
+    }
+
+    if (!this.drive) {
+      const auth = new google.auth.OAuth2();
+      auth.setCredentials({ access_token: this.accessToken });
+      this.drive = google.drive({ version: 'v3', auth });
+    }
+
+    return this.drive;
   }
 
   async getFolderId(): Promise<string | null> {
@@ -17,93 +33,101 @@ export class GoogleDriveAdapter implements DriveAdapter {
   }
 
   async listFiles(folderId: string, pageToken?: string): Promise<{ files: DriveFileMetadata[]; nextPageToken: string | null }> {
-    if (!this.accessToken) {
-      throw new Error('No access token available');
-    }
+    const drive = this.getDriveClient();
 
-    // In production, this would call Google Drive API v3
-    // For now, return mock data
-    const mockFiles: DriveFileMetadata[] = [
-      {
-        id: 'file1',
-        name: 'test.md',
-        mimeType: 'text/markdown',
-        modifiedTime: new Date().toISOString(),
-        md5Checksum: 'abc123',
-        parents: [folderId]
-      }
-    ];
+    const response = await drive.files.list({
+      q: `'${folderId}' in parents and trashed = false`,
+      fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents)',
+      pageSize: 100,
+      pageToken: pageToken
+    });
+
+    const files: DriveFileMetadata[] = (response.data.files || []).map(file => ({
+      id: file.id || '',
+      name: file.name || '',
+      mimeType: file.mimeType || '',
+      modifiedTime: file.modifiedTime || new Date().toISOString(),
+      md5Checksum: file.md5Checksum || undefined,
+      parents: file.parents || undefined
+    }));
 
     return {
-      files: mockFiles,
-      nextPageToken: null
+      files,
+      nextPageToken: response.data.nextPageToken || null
     };
   }
 
   async downloadFile(fileId: string): Promise<Uint8Array> {
-    if (!this.accessToken) {
-      throw new Error('No access token available');
-    }
+    const drive = this.getDriveClient();
 
-    // In production, this would download from Google Drive
-    // For now, return empty buffer
-    return new Uint8Array();
+    const response = await drive.files.get({
+      fileId: fileId,
+      alt: 'media'
+    }, { responseType: 'stream' });
+
+    return new Promise((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      const stream = response.data as { on: (event: string, handler: (chunk: Buffer) => void) => void };
+      stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+      stream.on('end', () => resolve(Buffer.concat(chunks)));
+      stream.on('error', reject);
+    });
   }
 
   async uploadFile(folderId: string, name: string, content: Uint8Array, parentId?: string): Promise<DriveFileMetadata> {
-    if (!this.accessToken) {
-      throw new Error('No access token available');
-    }
+    const drive = this.getDriveClient();
 
-    // In production, this would upload to Google Drive
-    // For now, return mock metadata
-    const mockMetadata: DriveFileMetadata = {
-      id: `file_${Date.now()}`,
-      name,
-      mimeType: 'text/markdown',
-      modifiedTime: new Date().toISOString(),
-      md5Checksum: this.calculateMockHash(content),
-      parents: [folderId]
+    const media = {
+      mimeType: 'application/octet-stream',
+      body: Buffer.from(content)
     };
 
-    return mockMetadata;
+    const response = await drive.files.create({
+      requestBody: {
+        name: name,
+        parents: [parentId || folderId]
+      },
+      media: media,
+      fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents'
+    });
+
+    const data = await response;
+    return {
+      id: data.data.id || '',
+      name: data.data.name || '',
+      mimeType: data.data.mimeType || '',
+      modifiedTime: data.data.modifiedTime || new Date().toISOString(),
+      md5Checksum: data.data.md5Checksum || undefined,
+      parents: data.data.parents || undefined
+    };
   }
 
   async deleteFile(fileId: string): Promise<void> {
-    if (!this.accessToken) {
-      throw new Error('No access token available');
-    }
-
-    // In production, this would delete from Google Drive
-    console.log(`Deleted file ${fileId}`);
+    const drive = this.getDriveClient();
+    await drive.files.delete({ fileId: fileId });
   }
 
   async getFileMetadata(fileId: string): Promise<DriveFileMetadata> {
-    if (!this.accessToken) {
-      throw new Error('No access token available');
-    }
+    const drive = this.getDriveClient();
 
-    // In production, this would get metadata from Google Drive
-    // For now, return mock metadata
+    const response = await drive.files.get({
+      fileId: fileId,
+      fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents'
+    });
+
+    const data = await response;
     return {
-      id: fileId,
-      name: 'unknown',
-      mimeType: 'text/markdown',
-      modifiedTime: new Date().toISOString()
+      id: data.data.id || '',
+      name: data.data.name || '',
+      mimeType: data.data.mimeType || '',
+      modifiedTime: data.data.modifiedTime || new Date().toISOString(),
+      md5Checksum: data.data.md5Checksum || undefined,
+      parents: data.data.parents || undefined
     };
   }
 
   setAccessToken(token: string): void {
     this.accessToken = token;
-  }
-
-  private calculateMockHash(content: Uint8Array): string {
-    // Simple mock hash calculation
-    let hash = 0;
-    for (let i = 0; i < content.length; i++) {
-      hash = ((hash << 5) - hash) + content[i];
-      hash = hash & hash;
-    }
-    return Math.abs(hash).toString(16);
+    this.drive = null;
   }
 }

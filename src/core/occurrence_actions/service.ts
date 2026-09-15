@@ -6,6 +6,7 @@ import { QuartzoObject } from '../objects/types';
 export class OccurrenceActionService {
   private processedActionIds: Set<string> = new Set();
   private vaultAdapter: { read: (path: string) => Promise<string>; write: (path: string, content: string) => Promise<void>; list: (path: string) => Promise<string[]> };
+  private syncQueue: Array<{ path: string; action: string }> = [];
 
   constructor(vaultAdapter: { read: (path: string) => Promise<string>; write: (path: string, content: string) => Promise<void>; list: (path: string) => Promise<string[]> }) {
     this.vaultAdapter = vaultAdapter;
@@ -31,6 +32,14 @@ export class OccurrenceActionService {
     // If action was successful, persist the change to the vault
     if (result.outcome !== 'idempotent_noop' && result.outcome !== 'unknown') {
       await this.persistAction(input, result);
+      
+      // Add to sync queue
+      if (input.objectPath) {
+        this.syncQueue.push({
+          path: input.objectPath,
+          action: input.action
+        });
+      }
     }
 
     return result;
@@ -120,5 +129,13 @@ export class OccurrenceActionService {
 
   clearProcessedActionIds(): void {
     this.processedActionIds.clear();
+  }
+
+  getSyncQueue(): Array<{ path: string; action: string }> {
+    return [...this.syncQueue];
+  }
+
+  clearSyncQueue(): void {
+    this.syncQueue = [];
   }
 }

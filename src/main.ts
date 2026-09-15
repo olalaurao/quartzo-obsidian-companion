@@ -3,7 +3,7 @@ import { DailyScheduleEngine } from './core/daily_schedule';
 import { VaultIndexEngine } from './vault/index';
 import { DriveSyncCoordinator } from './sync/coordinator';
 import { GoogleDriveAdapter } from './integrations/google/drive';
-import { HomeView, PlannerView, DayDialView } from './ui';
+import { HomeView, PlannerView, DayDialView, JournalView, BrowseView, SearchView, QuickAddView, ConflictCenterView } from './ui';
 import { ViewContext } from './ui/types';
 
 interface QuartzoCompanionSettings {
@@ -23,9 +23,21 @@ const DEFAULT_SETTINGS: QuartzoCompanionSettings = {
 const HOME_VIEW_TYPE = 'quartzo-home-view';
 const PLANNER_VIEW_TYPE = 'quartzo-planner-view';
 const DAY_DIAL_VIEW_TYPE = 'quartzo-day-dial-view';
+const JOURNAL_VIEW_TYPE = 'quartzo-journal-view';
+const BROWSE_VIEW_TYPE = 'quartzo-browse-view';
+const SEARCH_VIEW_TYPE = 'quartzo-search-view';
+const QUICK_ADD_VIEW_TYPE = 'quartzo-quick-add-view';
 const SYNC_CENTER_VIEW_TYPE = 'quartzo-sync-center-view';
+const CONFLICT_CENTER_VIEW_TYPE = 'quartzo-conflict-center-view';
 
 class SyncCenterView extends ItemView {
+  private context: ViewContext;
+
+  constructor(leaf: WorkspaceLeaf, context: ViewContext) {
+    super(leaf);
+    this.context = context;
+  }
+
   getViewType() { return SYNC_CENTER_VIEW_TYPE; }
   getDisplayText() { return 'Sync Center'; }
   getIcon() { return 'sync'; }
@@ -43,8 +55,17 @@ class SyncCenterView extends ItemView {
     
     const syncBtn = this.contentEl.querySelector('#sync-now-btn');
     if (syncBtn) {
-      syncBtn.addEventListener('click', () => {
-        new Notice('Sync triggered (mock)');
+      syncBtn.addEventListener('click', async () => {
+        if (this.context.plugin.driveSyncCoordinator) {
+          try {
+            const result = await this.context.plugin.driveSyncCoordinator.triggerManualSync();
+            new Notice(`Sync complete: ${result.synced} files synced, ${result.conflicts} conflicts`);
+          } catch (error) {
+            new Notice(`Sync failed: ${error}`);
+          }
+        } else {
+          new Notice('Sync not configured');
+        }
       });
     }
   }
@@ -73,7 +94,8 @@ export default class QuartzoCompanionPlugin extends Plugin {
     // Initialize sync coordinator
     this.driveSyncCoordinator = new DriveSyncCoordinator(
       this.driveAdapter,
-      this.app.vault.adapter.getResourcePath('')
+      this.app.vault.adapter.getResourcePath(''),
+      this.app.vault.configDir + '/quartzo-sync-state.json'
     );
 
     // Create view context
@@ -84,14 +106,21 @@ export default class QuartzoCompanionPlugin extends Plugin {
         currentView: HOME_VIEW_TYPE,
         dailyScheduleDate: new Date().toISOString().split('T')[0],
         privacyMode: this.settings.privacyMode
-      }
+      },
+      vaultIndexEngine: this.vaultIndexEngine,
+      driveSyncCoordinator: this.driveSyncCoordinator
     };
 
     // Register views using canonical UI layer
     this.registerView(HOME_VIEW_TYPE, (leaf) => new HomeView(leaf, this.viewContext!));
     this.registerView(PLANNER_VIEW_TYPE, (leaf) => new PlannerView(leaf, this.viewContext!));
     this.registerView(DAY_DIAL_VIEW_TYPE, (leaf) => new DayDialView(leaf, this.viewContext!));
-    this.registerView(SYNC_CENTER_VIEW_TYPE, (leaf) => new SyncCenterView(leaf));
+    this.registerView(JOURNAL_VIEW_TYPE, (leaf) => new JournalView(leaf, this.viewContext!));
+    this.registerView(BROWSE_VIEW_TYPE, (leaf) => new BrowseView(leaf, this.viewContext!));
+    this.registerView(SEARCH_VIEW_TYPE, (leaf) => new SearchView(leaf, this.viewContext!));
+    this.registerView(QUICK_ADD_VIEW_TYPE, (leaf) => new QuickAddView(leaf, this.viewContext!));
+    this.registerView(SYNC_CENTER_VIEW_TYPE, (leaf) => new SyncCenterView(leaf, this.viewContext!));
+    this.registerView(CONFLICT_CENTER_VIEW_TYPE, (leaf) => new ConflictCenterView(leaf, this.viewContext!));
 
     // Register ribbon icon
     const ribbonIconEl = this.addRibbonIcon('calendar-clock', 'Open Quartzo', () => {
@@ -125,12 +154,42 @@ export default class QuartzoCompanionPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: 'quartzo-journal',
+      name: 'Quartzo: Open Journal',
+      callback: () => this.activateView(JOURNAL_VIEW_TYPE)
+    });
+
+    this.addCommand({
+      id: 'quartzo-browse',
+      name: 'Quartzo: Browse Objects',
+      callback: () => this.activateView(BROWSE_VIEW_TYPE)
+    });
+
+    this.addCommand({
+      id: 'quartzo-search',
+      name: 'Quartzo: Search Objects',
+      callback: () => this.activateView(SEARCH_VIEW_TYPE)
+    });
+
+    this.addCommand({
+      id: 'quartzo-quick-add',
+      name: 'Quartzo: Quick Add',
+      callback: () => this.activateView(QUICK_ADD_VIEW_TYPE)
+    });
+
+    this.addCommand({
+      id: 'quartzo-conflict-center',
+      name: 'Quartzo: Open Conflict Center',
+      callback: () => this.activateView(CONFLICT_CENTER_VIEW_TYPE)
+    });
+
+    this.addCommand({
       id: 'quartzo-sync-now',
       name: 'Quartzo: Sync now',
       callback: async () => {
         if (this.driveSyncCoordinator) {
           try {
-            const result = await this.driveSyncCoordinator.reconcile();
+            const result = await this.driveSyncCoordinator.triggerManualSync();
             new Notice(`Sync complete: ${result.synced} files synced, ${result.conflicts} conflicts`);
             if (result.errors.length > 0) {
               console.error('Sync errors:', result.errors);
@@ -168,6 +227,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
 
     // Create initial index
     const index = VaultIndexEngine.createInitialIndex(vaultFiles);
+    this.vaultIndexEngine.setIndex(index);
     console.log('Vault index initialized with', index.objects.size, 'objects');
   }
 
