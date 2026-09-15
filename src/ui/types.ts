@@ -5,9 +5,9 @@ export interface UIState {
 }
 
 export interface ViewContext {
-  app: Record<string, unknown>;
-  plugin: Record<string, unknown>;
+  app: any;
+  plugin: any;
   state: UIState;
-  vaultIndexEngine?: Record<string, unknown>;
-  driveSyncCoordinator?: Record<string, unknown>;
+  vaultIndexEngine?: any;
+  driveSyncCoordinator?: any;
 }

@@ -161,7 +161,7 @@ export class QuickAddView extends ItemView {
     if (time) objectData.time = time;
 
     try {
-      const content = ObjectParser.serialize(objectData as Record<string, unknown>, {});
+      const content = ObjectParser.serialize(objectData as any, {});
       const fileName = `${type}s/${date}-${title.replace(/[^a-zA-Z0-9]/g, '_')}.md`;
       
       if (this.context.app.vault) {
