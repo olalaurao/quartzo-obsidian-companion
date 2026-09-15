@@ -120,7 +120,7 @@ describe('Runtime Sync Tests', () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(tmpdir(), 'companion-rt-'));
     adapter = new FakeDriveAdapter();
-    coordinator = new DriveSyncCoordinator(adapter, tmpDir, path.join(tmpDir, 'state.json'));
+    coordinator = new DriveSyncCoordinator(adapter, tmpDir, path.join(tmpDir, '.quartzo-sync-state.json'));
   });
 
   afterEach(() => {
@@ -538,7 +538,7 @@ describe('Runtime Sync Tests', () => {
 
     const newAdapter = new FakeDriveAdapter();
     newAdapter.addRemoteFile('rehydrate.md', remote);
-    const newCoord = new DriveSyncCoordinator(newAdapter, tmpDir, path.join(tmpDir, 'state.json'));
+    const newCoord = new DriveSyncCoordinator(newAdapter, tmpDir, path.join(tmpDir, '.quartzo-sync-state.json'));
     await newCoord.reconcile().catch(() => {});
     const conflicts = newCoord.getConflicts();
     expect(conflicts.length).toBe(1);

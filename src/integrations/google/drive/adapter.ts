@@ -34,17 +34,19 @@ export class GoogleDriveAdapter implements DriveAdapter {
     return this.drive;
   }
 
-  private async withRetry<T>(operation: () => Promise<T>, maxRetries = 3): Promise<T> {
+  public async withRetry<T>(operation: () => Promise<T>, maxRetries = 3): Promise<T> {
     let lastError: unknown;
+    let authRefreshAttempted = false;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         return await operation();
       } catch (error: unknown) {
         lastError = error;
-        const err = error as { code?: number; status?: number; response?: { status?: number } };
+        const err = error as { code?: number; status?: number; response?: { status?: number; data?: { error?: string; error_description?: string } } };
         const statusCode = err.code || err.status || err.response?.status;
 
-        if (statusCode === 401 || (statusCode === 403 && this.isCredentialError(err))) {
+        if ((statusCode === 401 || (statusCode === 403 && this.isCredentialError(err))) && !authRefreshAttempted) {
+          authRefreshAttempted = true;
           if (this.tokenRefreshCallback) {
             const newToken = await this.tokenRefreshCallback();
             if (newToken) {

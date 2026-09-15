@@ -128,7 +128,7 @@ class SyncCenterView extends ItemView {
             if (confirmBtn) {
               confirmBtn.addEventListener('click', async () => {
                 if (selectedFolderId && selectedFolderName) {
-                  await this.context.plugin.confirmPairing(selectedFolderId, selectedFolderName);
+                  await this.context.plugin.confirmPairing(selectedFolderId, selectedFolderName, true, true);
                   this.onOpen();
                 }
               });
@@ -511,17 +511,25 @@ export default class QuartzoCompanionPlugin extends Plugin {
     }
   }
 
-  async confirmPairing(folderId: string, folderName: string): Promise<void> {
+  async confirmPairing(folderId: string, folderName: string, autoAdopt: boolean, autoPull: boolean): Promise<void> {
     if (!this.driveAdapter || !this.driveSyncCoordinator) {
       new Notice('Drive not initialized.');
       return;
     }
 
+    await this.driveSyncCoordinator.setDriveFolderId(folderId);
     this.settings.googleDriveFolderId = folderId;
     this.settings.googleDriveFolderName = folderName;
+
+    const summary = await this.driveSyncCoordinator.generatePairingSummary();
+    const hasItems = summary.identical.length + summary.remoteOnly.length + summary.localOnly.length + summary.divergent.length > 0;
+
+    if (hasItems) {
+      await this.driveSyncCoordinator.applyPairingDecisions(summary, { autoAdopt, autoPull });
+    }
+
     this.settings.isPaired = true;
     await this.saveSettings();
-    await this.driveSyncCoordinator.setDriveFolderId(folderId);
     new Notice(`Paired with folder: ${folderName}`);
     this.startAutoSync();
   }

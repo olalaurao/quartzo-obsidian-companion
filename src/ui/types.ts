@@ -26,7 +26,7 @@ export interface ViewContext {
     };
     saveSettings(): Promise<void>;
     startPairingFlow(): Promise<void>;
-    confirmPairing(folderId: string, folderName: string): Promise<void>;
+    confirmPairing(folderId: string, folderName: string, autoAdopt: boolean, autoPull: boolean): Promise<void>;
     disconnectDrive(): Promise<void>;
     adoptFile(filePath: string): Promise<void>;
   };

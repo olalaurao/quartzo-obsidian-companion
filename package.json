@@ -13,7 +13,8 @@
     "test:sync": "vitest run tests/contracts/sync.test.ts tests/sync/runtime.test.ts tests/sync/regression.test.ts",
     "contracts:verify": "node scripts/sync-contracts.mjs verify",
     "architecture:check": "node scripts/architecture-check.mjs",
-    "release:validate": "node scripts/release-validate.mjs"
+    "release:validate": "node scripts/release-validate.mjs",
+    "smoke:clean-artifact": "node scripts/smoke-clean-artifact.mjs"
   },
   "keywords": [],
   "author": "olalaurao",

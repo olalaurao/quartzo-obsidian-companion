@@ -194,7 +194,7 @@ describe('Sync Regression Tests', () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(tmpdir(), 'companion-reg-'));
     adapter = new MockDriveAdapter();
-    coordinator = new DriveSyncCoordinator(adapter, tmpDir, path.join(tmpDir, 'state.json'));
+    coordinator = new DriveSyncCoordinator(adapter, tmpDir, path.join(tmpDir, '.quartzo-sync-state.json'));
   });
 
   afterEach(() => {
@@ -479,7 +479,7 @@ describe('Sync Regression Tests', () => {
       await coordinator.resolveConflict('durability.md', 'keep_local');
       expect(coordinator.getConflicts().length).toBe(0);
 
-      const saved = fs.readFileSync(path.join(tmpDir, 'state.json'), 'utf-8');
+      const saved = fs.readFileSync(path.join(tmpDir, '.quartzo-sync-state.json'), 'utf-8');
       const stateData = JSON.parse(saved);
       const entry = stateData.files.find((f: [string, unknown]) => f[0] === 'durability.md');
       expect(entry).toBeTruthy();
@@ -794,7 +794,7 @@ describe('Sync Regression Tests', () => {
     it('main.ts has confirmPairing method for explicit selection', () => {
       const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/main.ts'), 'utf-8');
       expect(mainSrc).toContain('confirmPairing');
-      expect(mainSrc).toContain('async confirmPairing(folderId: string, folderName: string)');
+      expect(mainSrc).toContain('async confirmPairing(folderId: string, folderName: string, autoAdopt: boolean, autoPull: boolean)');
     });
 
     it('startPairingFlow does not auto-set isPaired', () => {
@@ -871,7 +871,7 @@ describe('Sync Regression Tests', () => {
         settings,
         async saveSettings() {},
         async startPairingFlow() {},
-        async confirmPairing(folderId: string, folderName: string) {
+        async confirmPairing(folderId: string, folderName: string, autoAdopt: boolean, autoPull: boolean) {
           settings.googleDriveFolderId = folderId;
           settings.googleDriveFolderName = folderName;
           settings.isPaired = true;
@@ -879,7 +879,7 @@ describe('Sync Regression Tests', () => {
         async disconnectDrive() {},
         async adoptFile() {}
       };
-      await plugin.confirmPairing('folder-123', 'My Vault');
+      await plugin.confirmPairing('folder-123', 'My Vault', true, true);
       expect(settings.isPaired).toBe(true);
       expect(settings.googleDriveFolderId).toBe('folder-123');
     });
