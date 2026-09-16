@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/agent-companion-repair.yml'
       - '.github/scripts/agent_companion_repair.py'
+      - '.github/scripts/agent_companion_repair2.py'
   workflow_dispatch:
 
 permissions:
@@ -26,7 +27,9 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - name: Apply repair
-        run: python3 .github/scripts/agent_companion_repair.py
+        run: |
+          python3 .github/scripts/agent_companion_repair.py
+          python3 .github/scripts/agent_companion_repair2.py
       - name: Regenerate dependency lock
         run: npm install --package-lock-only
       - name: Clean install
@@ -68,7 +71,7 @@ jobs:
         if: env.UPSTREAM_TOKEN != ''
         shell: bash
         run: |
-          git rm .github/workflows/agent-companion-repair.yml .github/scripts/agent_companion_repair.py
+          git rm .github/workflows/agent-companion-repair.yml .github/scripts/agent_companion_repair.py .github/scripts/agent_companion_repair2.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
