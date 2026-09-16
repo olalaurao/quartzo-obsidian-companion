@@ -30,8 +30,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
     if (!this.drive) {
       const authClient = new OAuth2Client();
       authClient.setCredentials({ access_token: this.accessToken });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      this.drive = drive({ version: 'v3', auth: authClient as any });
+      this.drive = drive({ version: 'v3', auth: authClient });
     }
     return this.drive;
   }
@@ -187,7 +186,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
     const drive = this.getDriveClient();
     do {
       const response = await this.withRetry(() => drive.files.list({
-        q: "mimeType = 'application/vnd.google-apps.folder' and trashed = false and appProperties has { key='Quartzo_vault' and value='true' }",
+        q: "mimeType = 'application/vnd.google-apps.folder' and trashed = false",
         fields: 'nextPageToken, files(id, name)',
         pageSize: 100,
         pageToken

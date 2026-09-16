@@ -801,3 +801,166 @@ describe('Explicit adoption via canonical API', () => {
     await expect(coordinator.explicitAdopt('nonexistent.md')).rejects.toThrow('Local file not found');
   });
 });
+
+describe('Advanced Behavioral Regressions (Review 5223266300)', () => {
+  let tmpDir: string;
+  let adapter: MockDriveAdapter;
+  let coordinator: DriveSyncCoordinator;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(tmpdir(), 'companion-behavior-'));
+    adapter = new MockDriveAdapter();
+    coordinator = new DriveSyncCoordinator(adapter, tmpDir, path.join(tmpDir, '.quartzo-sync-state.json'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('rename API failure is fail-closed and intent is preserved', async () => {
+    const content = Buffer.from('rename test');
+    // Set up: add file both locally and remotely, reconcile to get a baseline
+    const remote = adapter.addRemoteFile('old.md', content);
+    fs.writeFileSync(path.join(tmpDir, 'old.md'), content);
+    await coordinator.setDriveFolderId('root-folder-id');
+    await coordinator.reconcile();
+    adapter.pendingChanges.length = 0;
+
+    // Verify baseline is established
+    const sf0 = coordinator.getSyncState().files.get('old.md');
+    expect(sf0?.remoteFileId).toBe(remote.id);
+
+    // Rename locally
+    fs.renameSync(path.join(tmpDir, 'old.md'), path.join(tmpDir, 'new.md'));
+    coordinator.queueRename('old.md', 'new.md');
+
+    // Mock rename API failure
+    const origRename = adapter.renameFile.bind(adapter);
+    adapter.renameFile = async () => { throw new Error('API down'); };
+    const result = await coordinator.reconcile();
+
+    expect(result.errors.length).toBeGreaterThan(0);
+
+    // Intent should still be preserved — oldPath still tracked, newPath not yet synced
+    const state = coordinator.getSyncState();
+    expect(state.files.has('old.md')).toBe(true);
+    expect(state.files.has('new.md')).toBe(false);
+
+    // Restore rename and verify next reconcile retries
+    adapter.renameFile = origRename;
+    const result2 = await coordinator.reconcile();
+    expect(result2.errors.length).toBe(0);
+    const state2 = coordinator.getSyncState();
+    expect(state2.files.has('new.md')).toBe(true);
+    expect(state2.files.has('old.md')).toBe(false);
+  });
+
+  it('edit + rename completes atomically in single reconciliation', async () => {
+    const contentA = Buffer.from('A');
+    // Set up: add file both locally and remotely, reconcile to get a baseline
+    const remote = adapter.addRemoteFile('file.md', contentA);
+    fs.writeFileSync(path.join(tmpDir, 'file.md'), contentA);
+    await coordinator.setDriveFolderId('root-folder-id');
+    await coordinator.reconcile();
+    adapter.pendingChanges.length = 0;
+
+    const sf0 = coordinator.getSyncState().files.get('file.md');
+    expect(sf0?.remoteFileId).toBe(remote.id);
+
+    // Rename and Edit locally
+    const contentB = Buffer.from('B');
+    fs.renameSync(path.join(tmpDir, 'file.md'), path.join(tmpDir, 'renamed.md'));
+    fs.writeFileSync(path.join(tmpDir, 'renamed.md'), contentB);
+    coordinator.queueRename('file.md', 'renamed.md');
+
+    const result = await coordinator.reconcile();
+
+    expect(result.synced).toBeGreaterThan(0);
+
+    const state = coordinator.getSyncState();
+    expect(state.files.has('file.md')).toBe(false);
+
+    const sf = state.files.get('renamed.md');
+    expect(sf?.remoteFileId).toBe(remote.id); // Same remote ID
+    expect(sf?.localHash).toBe(crypto.createHash('sha256').update(contentB).digest('hex'));
+    expect(sf?.remoteHash).toBe(sf?.localHash);
+
+    // Check remote bytes
+    const remoteBytes = await adapter.downloadFile(sf!.remoteFileId!);
+    expect(Buffer.from(remoteBytes).toString()).toBe('B');
+  });
+
+  it('remote rename + local edit -> creates conflict', async () => {
+    const contentA = Buffer.from('A');
+    const remote = adapter.addRemoteFile('file.md', contentA);
+    fs.writeFileSync(path.join(tmpDir, 'file.md'), contentA);
+    await coordinator.setDriveFolderId('root-folder-id');
+    await coordinator.reconcile();
+    adapter.pendingChanges.length = 0;
+
+    const sf = coordinator.getSyncState().files.get('file.md')!;
+    expect(sf.remoteFileId).toBe(remote.id);
+
+    // Remote rename: rename remote file to 'renamed.md'
+    await adapter.renameFile(sf.remoteFileId!, 'renamed.md');
+    adapter.pendingChanges.push({
+      fileId: sf.remoteFileId!,
+      removed: false,
+      file: { id: sf.remoteFileId!, name: 'renamed.md', quartzoHash: h('A'), parents: ['root-folder-id'], mimeType: 'application/octet-stream', modifiedTime: new Date().toISOString() }
+    });
+
+    // Local edit (file still at old path)
+    fs.writeFileSync(path.join(tmpDir, 'file.md'), Buffer.from('B'));
+
+    const result = await coordinator.reconcile();
+    expect(result.conflicts).toBeGreaterThan(0);
+
+    const conflicts = coordinator.getConflicts();
+    expect(conflicts.length).toBeGreaterThan(0);
+
+    // Old file must not be overwritten — still has 'B' content locally
+    expect(fs.existsSync(path.join(tmpDir, 'file.md'))).toBe(true);
+    expect(fs.readFileSync(path.join(tmpDir, 'file.md'), 'utf8')).toBe('B');
+  });
+
+  it('local delete + remote edit -> keep local creates soft-delete with remote content', async () => {
+    const contentA = Buffer.from('A');
+    const remote = adapter.addRemoteFile('file.md', contentA);
+    fs.writeFileSync(path.join(tmpDir, 'file.md'), contentA);
+    await coordinator.setDriveFolderId('root-folder-id');
+    await coordinator.reconcile();
+    adapter.pendingChanges.length = 0;
+
+    const sf = coordinator.getSyncState().files.get('file.md')!;
+    expect(sf.remoteFileId).toBe(remote.id);
+
+    // Remote edit: update content to 'B'
+    await adapter.updateFile(sf.remoteFileId!, Buffer.from('B'), h('B'));
+    adapter.pendingChanges.push({
+      fileId: sf.remoteFileId!,
+      removed: false,
+      file: await adapter.getFileMetadata(sf.remoteFileId!)
+    });
+
+    // Local delete
+    fs.unlinkSync(path.join(tmpDir, 'file.md'));
+    coordinator.queueDelete('file.md');
+
+    await coordinator.reconcile();
+    expect(coordinator.getConflicts().length).toBe(1);
+
+    // Remote edit must still exist (not deleted)
+    const remoteFileEntry = Array.from(adapter.files.values()).find(f => f.id === sf.remoteFileId);
+    expect(remoteFileEntry).toBeDefined();
+    expect(remoteFileEntry!.content.toString()).toBe('B');
+
+    // Resolve keep_local (local delete wins)
+    await coordinator.resolveConflict('file.md', 'keep_local');
+
+    // Soft delete should be created preserving the remote content 'B' (not 0 bytes)
+    const deletedFiles = Array.from(adapter.files.entries()).filter(([name]) => name.startsWith('_deleted/'));
+    expect(deletedFiles.length).toBe(1);
+    expect(Buffer.from(deletedFiles[0][1].content).toString()).toBe('B');
+  });
+});
+

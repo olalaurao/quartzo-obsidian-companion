@@ -185,7 +185,9 @@ function checkStubLoad() {
       if (moduleCache[id]) return moduleCache[id].exports;
       const baseId = id.replace(/^node:/, '');
       if (NODE_BUILTINS.has(baseId)) return require(baseId);
-      return {};
+      const err = new Error(`Cannot find module '${id}'`);
+      err.code = 'MODULE_NOT_FOUND';
+      throw err;
     };
 
     const script = new vm.Script(mainJs, { filename: 'main.js' });

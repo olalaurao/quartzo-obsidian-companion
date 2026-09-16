@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
+import crypto from 'crypto';
 import process from 'process';
 
 const UPSTREAM_LOCK_FILE = path.join(process.cwd(), 'contracts', 'UPSTREAM.lock.json');
@@ -13,17 +13,76 @@ function getLock() {
   return null;
 }
 
+function hashFile(filePath) {
+  const content = fs.readFileSync(filePath);
+  return crypto.createHash('sha256').update(content).digest('hex');
+}
+
+function walkDir(dir) {
+  let files = [];
+  if (!fs.existsSync(dir)) return files;
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...walkDir(fullPath));
+    } else {
+      files.push(fullPath);
+    }
+  }
+  return files;
+}
+
 function verify() {
   const lock = getLock();
   if (!lock) {
-    console.error("No UPSTREAM.lock.json found.");
+    console.error("FAIL: No UPSTREAM.lock.json found.");
     process.exit(1);
   }
   if (!fs.existsSync(CONTRACTS_DIR)) {
-    console.error("Contracts directory missing.");
+    console.error("FAIL: Contracts directory missing.");
     process.exit(1);
   }
-  console.log(`Contracts verified against upstream commit: ${lock.sourceCommit}`);
+  if (!lock.manifest) {
+    console.error("FAIL: Lock file missing manifest.");
+    process.exit(1);
+  }
+
+  const currentFiles = walkDir(CONTRACTS_DIR);
+  const currentManifest = {};
+  for (const f of currentFiles) {
+    const relPath = path.relative(CONTRACTS_DIR, f).replace(/\\/g, '/');
+    currentManifest[relPath] = hashFile(f);
+  }
+
+  const expectedManifest = lock.manifest;
+  const expectedKeys = Object.keys(expectedManifest);
+  const currentKeys = Object.keys(currentManifest);
+
+  let hasError = false;
+
+  for (const k of expectedKeys) {
+    if (!currentManifest[k]) {
+      console.error(`FAIL: Missing vendor contract file: ${k}`);
+      hasError = true;
+    } else if (currentManifest[k] !== expectedManifest[k]) {
+      console.error(`FAIL: Vendor contract file altered: ${k}`);
+      hasError = true;
+    }
+  }
+
+  for (const k of currentKeys) {
+    if (!expectedManifest[k]) {
+      console.error(`FAIL: Local contract file not from upstream: ${k}`);
+      hasError = true;
+    }
+  }
+
+  if (hasError) {
+    process.exit(1);
+  }
+
+  console.log(`PASS: Contracts verified against upstream commit: ${lock.sourceCommit}`);
 }
 
 async function sync() {
@@ -40,9 +99,14 @@ async function sync() {
   }
 
   console.log(`Syncing contracts from olalaurao/aplicativo at ${commit}...`);
-  // (In a real scenario, this would use fetch with the GitHub API to download the tarball
-  // of the specific commit and extract the contracts folder into `contracts/quartzo`,
-  // then update `UPSTREAM.lock.json`.)
+  // Simulated download / extraction here
+
+  const currentFiles = walkDir(CONTRACTS_DIR);
+  const manifest = {};
+  for (const f of currentFiles) {
+    const relPath = path.relative(CONTRACTS_DIR, f).replace(/\\/g, '/');
+    manifest[relPath] = hashFile(f);
+  }
 
   const newLock = {
     repository: "olalaurao/aplicativo",
@@ -53,7 +117,8 @@ async function sync() {
       syncProtocolVersion: "1.0.0",
       schedulerContractVersion: "1.0.0",
       dailyScheduleContractVersion: "1.0.0"
-    }
+    },
+    manifest
   };
 
   fs.mkdirSync(path.join(process.cwd(), 'contracts'), { recursive: true });

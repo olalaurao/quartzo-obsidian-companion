@@ -103,7 +103,12 @@ export class DriveSyncCoordinator implements ConflictRegistry {
         if (effectiveRemoteFileId) {
           const deletedPath = `_deleted/${normalized}`;
           const folderId = this.syncState.driveFolderId || '';
-          await this.driveAdapter.uploadFile({ folderId, name: deletedPath, content: new Uint8Array(), quartzoHash: '' });
+          await this.driveAdapter.uploadFile({ 
+            folderId, 
+            name: deletedPath, 
+            content: artifact.remoteContent, 
+            quartzoHash: artifact.remoteSha256 
+          });
           await this.driveAdapter.deleteFile(effectiveRemoteFileId);
         }
         this.syncState.files.delete(normalized);
@@ -554,25 +559,50 @@ export class DriveSyncCoordinator implements ConflictRegistry {
           const existingSyncFile = this.findSyncFileByRemoteId(change.file.id);
           if (existingSyncFile && existingSyncFile.path !== normalizedRemote) {
             const oldKey = existingSyncFile.path;
-            this.syncState.files.delete(oldKey);
-            existingSyncFile.path = normalizedRemote;
-            this.syncState.files.set(normalizedRemote, existingSyncFile);
-            syncFile = existingSyncFile;
+            const localFileAtOld = localInventory.get(oldKey);
             const localFileAtNew = localInventory.get(normalizedRemote);
-            if (!localFileAtNew) {
-              const localFileAtOld = localInventory.get(oldKey);
+            
+            const isOldEdited = localFileAtOld && localFileAtOld.hash !== existingSyncFile.localHash;
+            const collisionAtNew = !!localFileAtNew;
+
+            if (isOldEdited || collisionAtNew) {
+              // Fail-closed: Cannot silently rename locally.
+              // Leave the old local file alone. 
+              // Create a conflict for the new path using the remote file.
+              this.syncState.files.delete(oldKey);
+              existingSyncFile.path = normalizedRemote;
+              this.syncState.files.set(normalizedRemote, existingSyncFile);
+              syncFile = existingSyncFile;
+              
+              // To prevent duplicate remote or overwriting, we simulate a conflict at new path.
+              // The local candidate is either the collision file, or the old file we didn't move!
+              // But we can't merge them. We just trigger handleConflict.
+              const conflictCandidate = localFileAtNew || localFileAtOld!;
+              result.conflicts++;
+              await this.handleConflict(normalizedRemote, conflictCandidate, change.file, syncFile);
+              
+              // We also mark oldKey to not be pushed as a new file during processLocalDirty
+              // by removing it from localInventory temporarily, but since we can't easily,
+              // we just add it to a quarantine or let it be pushed? 
+              // The user said: "Não sobrescrever nenhum deles e não criar duplicate remote."
+              // So if we quarantine oldKey:
+              this.conflicts.set(oldKey, this.conflicts.get(normalizedRemote)!); // Fake conflict to prevent push
+              continue;
+            } else {
+              // Safe to rename locally
+              this.syncState.files.delete(oldKey);
+              existingSyncFile.path = normalizedRemote;
+              this.syncState.files.set(normalizedRemote, existingSyncFile);
+              syncFile = existingSyncFile;
+              
               if (localFileAtOld) {
                 const oldLocalPath = pathModule.join(this.vaultPath, oldKey);
                 const newLocalPath = pathModule.join(this.vaultPath, normalizedRemote);
                 const newDir = pathModule.dirname(newLocalPath);
-                if (!fs.existsSync(newDir)) {
-                  fs.mkdirSync(newDir, { recursive: true });
-                }
-                if (fs.existsSync(oldLocalPath)) {
-                  fs.renameSync(oldLocalPath, newLocalPath);
-                  localInventory.delete(oldKey);
-                  localInventory.set(normalizedRemote, localFileAtOld);
-                }
+                if (!fs.existsSync(newDir)) fs.mkdirSync(newDir, { recursive: true });
+                if (fs.existsSync(oldLocalPath)) fs.renameSync(oldLocalPath, newLocalPath);
+                localInventory.delete(oldKey);
+                localInventory.set(normalizedRemote, localFileAtOld);
               } else {
                 await this.pullFile(normalizedRemote, change.file, syncFile);
                 result.synced++;
@@ -667,20 +697,30 @@ export class DriveSyncCoordinator implements ConflictRegistry {
           oldSyncFile.path = rename.newPath;
           this.syncState.files.delete(rename.oldPath);
           this.syncState.files.set(rename.newPath, oldSyncFile);
-          processedPaths.add(rename.newPath);
+          
+          if (newLocalFile.hash === oldSyncFile.localHash) {
+            processedPaths.add(rename.newPath);
+          }
+          processedPaths.add(rename.oldPath);
           result.synced++;
         } catch (error) {
           result.errors.push(`Rename failed ${rename.oldPath} -> ${rename.newPath}: ${error}`);
           remainingRenames.push(rename); // Fail-closed: keep in pending
+          processedPaths.add(rename.oldPath);
+          processedPaths.add(rename.newPath);
         }
       } else {
-        // Local file no longer exists at new path, discard intent or wait?
-        // Safest is to discard if the target file is gone locally.
+        // Local file no longer exists at new path, discard intent.
+        // The oldPath will be processed as a standard local delete.
       }
     }
     this.pendingRenames = remainingRenames;
 
     for (const deletedPath of this.pendingDeletes) {
+      if (this.conflicts.has(deletedPath)) {
+        processedPaths.add(deletedPath);
+        continue;
+      }
       const syncFile = this.syncState.files.get(deletedPath);
       if (syncFile && syncFile.remoteFileId) {
         if (syncFile.baseHash !== null && syncFile.baseHash === syncFile.localHash) {
@@ -699,7 +739,10 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     this.pendingDeletes.clear();
 
     for (const [syncedPath, syncFile] of this.syncState.files) {
-      if (processedPaths.has(syncedPath)) continue;
+      if (processedPaths.has(syncedPath) || this.conflicts.has(syncedPath)) {
+        processedPaths.add(syncedPath);
+        continue;
+      }
       if (!syncFile.remoteFileId) continue;
 
       const localFile = localInventory.get(syncedPath);
@@ -718,7 +761,10 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     for (const [localPath, localFile] of localInventory) {
       const normalizedLocal = normalizeVaultPath(localPath);
       if (!VaultSyncFilePolicy.shouldSyncFile(normalizedLocal)) continue;
-      if (processedPaths.has(normalizedLocal)) continue;
+      if (processedPaths.has(normalizedLocal) || this.conflicts.has(normalizedLocal)) {
+        processedPaths.add(normalizedLocal);
+        continue;
+      }
 
       const syncFile = this.syncState.files.get(normalizedLocal);
 

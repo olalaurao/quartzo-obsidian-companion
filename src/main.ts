@@ -85,8 +85,9 @@ class SyncCenterView extends ItemView {
           <button id="connect-google-drive">Connect Google Drive</button>
           <p>Connect your Google Drive to sync Quartzo vault.</p>
         `;
-        controlsEl.querySelector('#connect-google-drive')?.addEventListener('click', () => {
-          this.context.plugin.startPairingFlow();
+        controlsEl.querySelector('#connect-google-drive')?.addEventListener('click', async () => {
+          await this.context.plugin.startPairingFlow();
+          this.onOpen();
         });
 
         if (this.context.plugin.driveAdapter) {
