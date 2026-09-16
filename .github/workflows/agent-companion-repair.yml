@@ -9,6 +9,7 @@ on:
       - '.github/scripts/agent_companion_repair2.py'
       - '.github/scripts/agent_companion_repair3.py'
       - '.github/scripts/agent_companion_repair4.py'
+      - '.github/scripts/agent_companion_repair5.py'
   workflow_dispatch:
 
 permissions:
@@ -34,23 +35,21 @@ jobs:
           python3 .github/scripts/agent_companion_repair2.py
           python3 .github/scripts/agent_companion_repair3.py
           python3 .github/scripts/agent_companion_repair4.py
+          python3 .github/scripts/agent_companion_repair5.py
       - name: Regenerate dependency lock
         run: npm install --package-lock-only
       - name: Clean install
         run: npm ci
       - name: Vendor contracts from validated upstream SHA
-        if: env.UPSTREAM_TOKEN != ''
         env:
           GITHUB_TOKEN: ${{ env.UPSTREAM_TOKEN }}
-        run: node scripts/sync-contracts.mjs sync 0f5beed2ca7ff80d841efb97eca277bcc16a163e
+        run: |
+          test -n "$GITHUB_TOKEN" || { echo 'QUARTZO_UPSTREAM_TOKEN is required for cross-repo verification'; exit 1; }
+          node scripts/sync-contracts.mjs sync 0f5beed2ca7ff80d841efb97eca277bcc16a163e
       - name: Verify contracts against upstream
-        if: env.UPSTREAM_TOKEN != ''
         env:
           GITHUB_TOKEN: ${{ env.UPSTREAM_TOKEN }}
         run: npm run contracts:verify
-      - name: Note pending cross-repo verification
-        if: env.UPSTREAM_TOKEN == ''
-        run: echo 'QUARTZO_UPSTREAM_TOKEN is not configured; code gates will run, but no commit will be pushed.'
       - name: Production dependency audit
         run: npm audit --omit=dev --audit-level=high
       - name: Typecheck
@@ -72,10 +71,14 @@ jobs:
       - name: Clean artifact smoke
         run: npm run smoke:clean-artifact
       - name: Commit validated repair and remove temporary harness
-        if: env.UPSTREAM_TOKEN != ''
         shell: bash
         run: |
-          git rm .github/workflows/agent-companion-repair.yml .github/scripts/agent_companion_repair.py .github/scripts/agent_companion_repair2.py .github/scripts/agent_companion_repair3.py .github/scripts/agent_companion_repair4.py
+          git rm .github/workflows/agent-companion-repair.yml \
+            .github/scripts/agent_companion_repair.py \
+            .github/scripts/agent_companion_repair2.py \
+            .github/scripts/agent_companion_repair3.py \
+            .github/scripts/agent_companion_repair4.py \
+            .github/scripts/agent_companion_repair5.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
