@@ -9,15 +9,15 @@
     "dailyScheduleContractVersion": "1.0.0"
   },
   "manifest": {
-    "contract_manifest.json": "b90d606d046713df308deb815b3c19e165c227ca7504d579f948bf3b6a7c4db3",
-    "daily_schedule/vectors.json": "90d9e858c9c7ea89c93ac36163fc863162302844775c722880e188039dc654f2",
-    "object_fixtures/coverage.json": "ae0b59d703bf93846878498a3b55efabc5e34e35098775a7f582e95e8cb78536",
-    "object_fixtures/fixtures.json": "eeca26b047d2777a15608efe833f82560b30679066b82bea6ecec331983bef87",
-    "object_fixtures/priority_vectors.json": "fc4836efc62f6534ba3c60ddfe9f4e61c448e949a12c2e8286a2ac11f177621c",
-    "object_fixtures/README.md": "55e145838506cf864af18cab4f48fdff4cefa318f966a59d270ed051659428fe",
-    "occurrence_actions/vectors.json": "68d87e536ab764a488b701c16c5d1c0e7b68ec52a7f8336b8c004b4a44d3a5d5",
-    "README.md": "b53c8aa3709e20886e6fa67a849a349ee556f652e060398c35c21a979aec73ea",
-    "scheduler/vectors.json": "d5fe57a4197f272408eaa211c4573f8ba441be35f19e860d65c054b2e1be926d",
-    "sync/vectors.json": "499f9945682a063922cbd3f3a48925df8bbf388014052e7afb1436350efbc686"
+    "contract_manifest.json": "2568aa7f03f1ab247f70dfa001a2fc8646caa4c29f1e149382efeaec09c2d4c1",
+    "daily_schedule/vectors.json": "9d9a14cebd8fb6c96817f290ea00dfddad9e24146f85251088064d2c423e9531",
+    "object_fixtures/coverage.json": "a73bc074a7389db942142dddfc9574272da2c9569ad04b82e71f72a28eeff0a6",
+    "object_fixtures/fixtures.json": "a63350a8be6990d006d9c1fca6e82f2db2584c06a7a557af6e20cb8b164e9bc6",
+    "object_fixtures/priority_vectors.json": "928f34b500548f4fa13265ea3d4610d9fee63b6b46142ade76c4214c59b330ae",
+    "object_fixtures/README.md": "1c81a9beed75617f133f1d657ab6f05d3c5428a30de5c02c130f74aefeb295b2",
+    "occurrence_actions/vectors.json": "90d3baa533262db8f8956a0182083a126439417458214d3e32e392585d101805",
+    "README.md": "411436ae07f9e63c8d2f9d1d5588199638943e54486b7e15ff57b0d1f22b0e1d",
+    "scheduler/vectors.json": "82c7326f9ee8c3bf7c2398b9c7ff41aabb8c8fd535768faf614164cfa2ea9b01",
+    "sync/vectors.json": "c2af75c58cbc0bec4888bfa33796bb029f9387753e5a3a5f108f442ea016dbe1"
   }
 }

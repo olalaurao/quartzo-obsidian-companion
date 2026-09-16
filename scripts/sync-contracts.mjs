@@ -14,8 +14,8 @@ function getLock() {
 }
 
 function hashFile(filePath) {
-  const content = fs.readFileSync(filePath);
-  return crypto.createHash('sha256').update(content).digest('hex');
+  const content = fs.readFileSync(filePath, 'utf-8').replace(/\r\n/g, '\n');
+  return crypto.createHash('sha256').update(content, 'utf8').digest('hex');
 }
 
 function walkDir(dir) {
