@@ -9,6 +9,10 @@ import * as path from 'path';
 import { tmpdir } from 'os';
 
 class MockDriveAdapter implements DriveAdapter {
+  async assertInsideSelectedVault(remoteFileId: string): Promise<void> { return Promise.resolve(); }
+  async resolveExactPath(fileId: string): Promise<string> { return fileId; }
+  async getRawByteHash(fileId: string): Promise<string> { return 'raw-hash'; }
+
   public files = new Map<string, { id: string; content: Uint8Array; quartzoHash: string; parents: string[] }>();
   private folderId = 'mock-folder-id';
   public listChangesCalls = 0;
@@ -128,6 +132,10 @@ class MockDriveAdapter implements DriveAdapter {
 }
 
 class HierarchicalDriveAdapter implements DriveAdapter {
+  async assertInsideSelectedVault(remoteFileId: string): Promise<void> { return Promise.resolve(); }
+  async resolveExactPath(fileId: string): Promise<string> { return fileId; }
+  async getRawByteHash(fileId: string): Promise<string> { return 'raw-hash'; }
+
   private files = new Map<string, { id: string; name: string; content: Uint8Array; quartzoHash: string; parents: string[] }>();
   private folders = new Map<string, { id: string; name: string; parents: string[] }>();
   private folderId = 'root-id';

@@ -10,6 +10,10 @@ import * as path from 'path';
 import { tmpdir } from 'os';
 
 class MockDriveAdapter implements DriveAdapter {
+  async assertInsideSelectedVault(remoteFileId: string): Promise<void> { return Promise.resolve(); }
+  async resolveExactPath(fileId: string): Promise<string> { return fileId; }
+  async getRawByteHash(fileId: string): Promise<string> { return 'raw-hash'; }
+
   private _files = new Map<string, { id: string; content: Uint8Array; quartzoHash: string; parents: string[] }>();
   private _folders = new Map<string, { id: string; name: string; parents: string[] }>();
   private folderId = 'root-folder-id';

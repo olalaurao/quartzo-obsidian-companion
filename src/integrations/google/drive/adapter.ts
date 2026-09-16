@@ -94,6 +94,10 @@ export class GoogleDriveAdapter implements DriveAdapter {
     return false;
   }
 
+  private escapeQueryParam(param: string): string {
+    return param.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  }
+
   private calculateQuartzoHash(content: Uint8Array): string {
     return crypto.createHash('sha256').update(content).digest('hex');
   }
@@ -111,7 +115,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
       const drive = this.getDriveClient();
       const response = await drive.files.list({
         q: `'${folderId}' in parents and trashed = false`,
-        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties)',
+        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties)',
         pageSize: 100,
         pageToken: pageToken
       });
@@ -150,7 +154,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
     do {
       const response = await drive.files.list({
         q: `'${folderId}' in parents and trashed = false`,
-        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties)',
+        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties)',
         pageSize: 1000,
         pageToken
       });
@@ -186,7 +190,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
     const drive = this.getDriveClient();
     do {
       const response = await this.withRetry(() => drive.files.list({
-        q: "mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+        q: "mimeType = 'application/vnd.google-apps.folder' and trashed = false and (properties has { key='Quartzo_vault' and value='true' } or appProperties has { key='Quartzo_vault' and value='true' })",
         fields: 'nextPageToken, files(id, name)',
         pageSize: 100,
         pageToken
@@ -212,7 +216,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
       const drive = this.getDriveClient();
       const response = await drive.changes.list({
         pageToken,
-        fields: 'nextPageToken, newStartPageToken, changes(fileId, removed, file(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties))',
+        fields: 'nextPageToken, newStartPageToken, changes(fileId, removed, file(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties))',
         pageSize: 1000
       });
 
@@ -241,6 +245,11 @@ export class GoogleDriveAdapter implements DriveAdapter {
     });
   }
 
+  async getRawByteHash(fileId: string): Promise<string> {
+    const bytes = await this.downloadFile(fileId);
+    return this.calculateQuartzoHash(bytes);
+  }
+
   async downloadFile(fileId: string): Promise<Uint8Array> {
     return this.withRetry(async () => {
       const drive = this.getDriveClient();
@@ -250,6 +259,24 @@ export class GoogleDriveAdapter implements DriveAdapter {
       }, { responseType: 'arraybuffer' });
       return new Uint8Array(response.data as ArrayBuffer);
     });
+  }
+
+  async assertInsideSelectedVault(remoteFileId: string): Promise<void> {
+    if (!this.folderId) throw new Error('No vault folderId set');
+    let currentId = remoteFileId;
+    const drive = this.getDriveClient();
+    const checked = new Set<string>();
+    while (currentId) {
+      if (currentId === this.folderId) return;
+      if (checked.has(currentId)) throw new Error('Cyclic structure detected');
+      checked.add(currentId);
+      const res = await this.withRetry(() => drive.files.get({ fileId: currentId, fields: 'parents' }));
+      const parents = res.data.parents;
+      if (!parents || parents.length === 0) {
+        throw new Error(`Boundary guard failed: file ${remoteFileId} is not inside selected vault ${this.folderId}`);
+      }
+      currentId = parents[0];
+    }
   }
 
   async ensureParentFolder(rootFolderId: string, filePath: string): Promise<string> {
@@ -290,15 +317,13 @@ export class GoogleDriveAdapter implements DriveAdapter {
         requestBody: {
           name: fileName,
           parents: [currentParentId],
-          appProperties: {
-            Quartzo_hash: params.quartzoHash
-          }
+          properties: { Quartzo_hash: params.quartzoHash || '' }
         },
         media: {
           mimeType: 'application/octet-stream',
           body: Buffer.from(params.content)
         },
-        fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties'
+        fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties'
       });
 
       const data = response.data;
@@ -328,7 +353,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
           mimeType: 'application/octet-stream',
           body: Buffer.from(content)
         },
-        fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties'
+        fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties'
       });
 
       const data = response.data;
@@ -380,7 +405,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
         requestBody,
         addParents: newParentId || undefined,
         removeParents: removeParentsStr,
-        fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties'
+        fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties'
       });
       const data = response.data;
       return {
@@ -398,12 +423,32 @@ export class GoogleDriveAdapter implements DriveAdapter {
     });
   }
 
+  async resolveExactPath(fileId: string): Promise<string> {
+    if (!this.folderId) throw new Error('No vault folderId set');
+    let currentId = fileId;
+    const drive = this.getDriveClient();
+    const parts: string[] = [];
+    const checked = new Set<string>();
+    while (currentId && currentId !== this.folderId) {
+      if (checked.has(currentId)) throw new Error('Cyclic structure detected in path resolution');
+      checked.add(currentId);
+      const res = await this.withRetry(() => drive.files.get({ fileId: currentId, fields: 'name, parents' }));
+      parts.unshift(res.data.name || '');
+      const parents = res.data.parents;
+      if (!parents || parents.length === 0) {
+        throw new Error(`Boundary guard failed: file escapes vault`);
+      }
+      currentId = parents[0];
+    }
+    return parts.join('/');
+  }
+
   async getFileMetadata(fileId: string): Promise<DriveFileMetadata> {
     return this.withRetry(async () => {
       const drive = this.getDriveClient();
       const response = await drive.files.get({
         fileId,
-        fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties'
+        fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties'
       });
 
       const data = response.data;

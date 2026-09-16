@@ -9,6 +9,10 @@ import * as path from 'path';
 import { tmpdir } from 'os';
 
 class FakeDriveAdapter implements DriveAdapter {
+  async assertInsideSelectedVault(remoteFileId: string): Promise<void> { return Promise.resolve(); }
+  async resolveExactPath(fileId: string): Promise<string> { return fileId; }
+  async getRawByteHash(fileId: string): Promise<string> { return 'raw-hash'; }
+
   private _files = new Map<string, { id: string; content: Uint8Array; quartzoHash: string }>();
   private folderId = 'root-folder-id';
   private changeToken = 0;
@@ -506,7 +510,10 @@ describe('Runtime Sync Tests', () => {
       async deleteFile() { throw new Error('No token'); },
       async renameFile() { throw new Error('No token'); },
       async getFileMetadata() { throw new Error('No token'); },
-      async ensureParentFolder() { throw new Error('No token'); }
+      async ensureParentFolder() { throw new Error('No token'); },
+      async assertInsideSelectedVault() { throw new Error('No token'); },
+      async resolveExactPath() { throw new Error('No token'); },
+      async getRawByteHash() { throw new Error('No token'); }
     };
     try {
       await failingAdapter.downloadFile('test');

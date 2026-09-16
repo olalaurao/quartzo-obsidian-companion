@@ -52,6 +52,9 @@ export interface DriveAdapter {
   deleteFile(fileId: string): Promise<void>;
   getFileMetadata(fileId: string): Promise<DriveFileMetadata>;
   ensureParentFolder(rootFolderId: string, filePath: string): Promise<string>;
+  assertInsideSelectedVault(remoteFileId: string): Promise<void>;
+  resolveExactPath(fileId: string): Promise<string>;
+  getRawByteHash(fileId: string): Promise<string>;
 }
 
 export interface UploadFileParams {
