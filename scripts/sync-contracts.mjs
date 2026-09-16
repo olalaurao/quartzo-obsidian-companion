@@ -33,7 +33,7 @@ function walkDir(dir) {
   return files;
 }
 
-function verify() {
+async function verify() {
   const lock = getLock();
   if (!lock) {
     console.error("FAIL: No UPSTREAM.lock.json found.");
@@ -61,13 +61,48 @@ function verify() {
 
   let hasError = false;
 
+  console.log(`Verifying against upstream commit: ${lock.sourceCommit}...`);
+
   for (const k of expectedKeys) {
     if (!currentManifest[k]) {
       console.error(`FAIL: Missing vendor contract file: ${k}`);
       hasError = true;
     } else if (currentManifest[k] !== expectedManifest[k]) {
-      console.error(`FAIL: Vendor contract file altered: ${k}`);
+      console.error(`FAIL: Vendor contract file altered: ${k} - expected ${expectedManifest[k]}, got ${currentManifest[k]}`);
       hasError = true;
+    } else {
+      // Real download validation
+      try {
+        let text;
+        if (process.env.LOCAL_CANONICAL_PATH) {
+          const localPath = path.join(process.env.LOCAL_CANONICAL_PATH, 'contracts', 'quartzo', k);
+          if (!fs.existsSync(localPath)) {
+            console.error(`FAIL: Local canonical file missing: ${localPath}`);
+            hasError = true;
+            continue;
+          }
+          text = fs.readFileSync(localPath, 'utf8');
+        } else {
+          const url = `https://raw.githubusercontent.com/${lock.repository}/${lock.sourceCommit}/contracts/quartzo/${k}`;
+          const headers = process.env.GITHUB_TOKEN ? { "Authorization": `token ${process.env.GITHUB_TOKEN}` } : {};
+          const response = await fetch(url, { headers });
+          if (!response.ok) {
+             console.error(`FAIL: Failed to fetch remote file ${k} (HTTP ${response.status})`);
+             hasError = true;
+             continue;
+          }
+          text = await response.text();
+        }
+        const remoteContent = text.replace(/\r\n/g, '\n');
+        const remoteHash = crypto.createHash('sha256').update(remoteContent, 'utf8').digest('hex');
+        if (remoteHash !== expectedManifest[k]) {
+           console.error(`FAIL: Remote upstream hash mismatch for ${k} - expected ${expectedManifest[k]}, got ${remoteHash}`);
+           hasError = true;
+        }
+      } catch (err) {
+         console.error(`FAIL: Network error verifying ${k}`, err);
+         hasError = true;
+      }
     }
   }
 
@@ -99,7 +134,8 @@ async function sync() {
   }
 
   console.log(`Syncing contracts from olalaurao/aplicativo at ${commit}...`);
-  // Simulated download / extraction here
+  // Note: in a real implementation this would download the files and overwrite local.
+  // For now, we update the lockfile sourceCommit based on current directory.
 
   const currentFiles = walkDir(CONTRACTS_DIR);
   const manifest = {};
