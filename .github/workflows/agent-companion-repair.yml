@@ -80,11 +80,13 @@ jobs:
         run: npm run release:validate
       - name: Clean artifact smoke
         run: npm run smoke:clean-artifact
-      - name: Commit validated repair and remove temporary harness
+      - name: Commit validated product changes
         shell: bash
         run: |
-          git rm -f .github/workflows/agent-companion-repair.yml \
-            .github/scripts/agent_companion_repair.py \
+          # Workflow files are committed separately through the GitHub integration,
+          # because GITHUB_TOKEN is intentionally not allowed to modify workflows.
+          git checkout HEAD -- .github/workflows/ci.yml .github/workflows/release.yml .github/workflows/agent-companion-repair.yml
+          git rm -f .github/scripts/agent_companion_repair.py \
             .github/scripts/agent_companion_repair2.py \
             .github/scripts/agent_companion_repair3.py \
             .github/scripts/agent_companion_repair4.py \
