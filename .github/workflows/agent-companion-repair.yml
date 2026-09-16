@@ -1,0 +1,68 @@
+name: Agent Companion Repair
+
+on:
+  push:
+    branches: [fix/sync-runtime-contract-compliance]
+    paths:
+      - '.github/workflows/agent-companion-repair.yml'
+      - '.github/scripts/agent_companion_repair.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  repair-validate-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/sync-runtime-contract-compliance
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Apply repair
+        run: python3 .github/scripts/agent_companion_repair.py
+      - name: Regenerate dependency lock
+        run: npm install --package-lock-only
+      - name: Clean install
+        run: npm ci
+      - name: Vendor contracts from validated upstream SHA
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/sync-contracts.mjs sync 0f5beed2ca7ff80d841efb97eca277bcc16a163e
+      - name: Verify contracts against upstream
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run contracts:verify
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Tests
+        run: npm test
+      - name: Contract tests
+        run: npm run test:contracts
+      - name: Sync tests
+        run: npm run test:sync
+      - name: Architecture gate
+        run: npm run architecture:check
+      - name: Build
+        run: npm run build
+      - name: Release validation
+        run: npm run release:validate
+      - name: Clean artifact smoke
+        run: npm run smoke:clean-artifact
+      - name: Commit validated repair and remove temporary harness
+        shell: bash
+        run: |
+          git rm .github/workflows/agent-companion-repair.yml .github/scripts/agent_companion_repair.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: harden cross-client sync runtime"
+          git push origin HEAD:fix/sync-runtime-contract-compliance
