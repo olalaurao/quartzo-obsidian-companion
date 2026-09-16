@@ -90,12 +90,27 @@ class MockDriveAdapter implements DriveAdapter {
     }
   }
 
+  async renameFile(fileId: string, newName: string, _newParentId?: string) {
+    for (const [name, data] of this.files.entries()) {
+      if (data.id === fileId) {
+        this.files.delete(name);
+        this.files.set(newName, { ...data });
+        return { id: data.id, name: newName, mimeType: 'application/octet-stream', modifiedTime: new Date().toISOString(), quartzoHash: data.quartzoHash || null, parents: data.parents || [this.folderId] };
+      }
+    }
+    throw new Error(`File not found: ${fileId}`);
+  }
+
   async getFileMetadata(fileId: string) {
     this.getFileMetadataCalls++;
     for (const [name, data] of this.files.entries()) {
       if (data.id === fileId) return { id: data.id, name, mimeType: 'application/octet-stream', modifiedTime: new Date().toISOString(), quartzoHash: data.quartzoHash || null, parents: data.parents || [this.folderId] };
     }
     throw new Error(`File not found: ${fileId}`);
+  }
+
+  async ensureParentFolder(rootFolderId: string, filePath: string) {
+    return rootFolderId;
   }
 
   addFile(name: string, content: Uint8Array) {
@@ -170,12 +185,25 @@ class HierarchicalDriveAdapter implements DriveAdapter {
 
   async deleteFile(fileId: string) { this.files.delete(fileId); }
 
+  async renameFile(fileId: string, newName: string, _newParentId?: string) {
+    const f = this.files.get(fileId);
+    if (!f) throw new Error(`Not found: ${fileId}`);
+    this.files.delete(fileId);
+    f.name = newName.split('/').pop() || newName;
+    this.files.set(f.name, { ...f });
+    return { id: f.id, name: f.name, mimeType: 'application/octet-stream', modifiedTime: new Date().toISOString(), quartzoHash: f.quartzoHash, parents: f.parents };
+  }
+
   async getFileMetadata(fileId: string) {
     const f = this.files.get(fileId);
     if (f) return { id: f.id, name: f.name, mimeType: 'application/octet-stream', modifiedTime: new Date().toISOString(), quartzoHash: f.quartzoHash, parents: f.parents };
     const folder = this.folders.get(fileId);
     if (folder) return { id: folder.id, name: folder.name, mimeType: 'application/vnd.google-apps.folder', modifiedTime: new Date().toISOString(), quartzoHash: null, parents: folder.parents };
     throw new Error(`Not found: ${fileId}`);
+  }
+
+  async ensureParentFolder(rootFolderId: string, filePath: string) {
+    return rootFolderId;
   }
 
   private buildMetadataList(): DriveFileMetadata[] {
@@ -747,7 +775,7 @@ describe('Sync Regression Tests', () => {
     it('runtime dependencies are googleapis, date-fns, date-fns-tz', () => {
       const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '../../package.json'), 'utf-8'));
       expect(Object.keys(pkg.dependencies)).toEqual(
-        expect.arrayContaining(['googleapis', 'date-fns', 'date-fns-tz'])
+        expect.arrayContaining(['@googleapis/drive', 'google-auth-library', 'date-fns', 'date-fns-tz'])
       );
     });
   });
@@ -921,7 +949,7 @@ describe('Sync Regression Tests', () => {
   });
 
   describe('Reviewer Blocker 6: googleapis bundled', () => {
-    it('esbuild does not externalize googleapis', () => {
+    it('esbuild externalizes googleapis', () => {
       const esbuildSrc = fs.readFileSync(path.join(__dirname, '../../esbuild.config.mjs'), 'utf-8');
       const externalLines = esbuildSrc.split('\n').filter(l => l.includes('"googleapis"') || l.includes("'googleapis'"));
       expect(externalLines.length).toBe(0);

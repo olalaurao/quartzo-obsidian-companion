@@ -26,6 +26,7 @@ jobs:
     - run: npm run architecture:check
     - run: npm run build
     - run: npm run release:validate
+    - run: npm run smoke:clean-artifact
 
   test-windows:
     runs-on: windows-latest
@@ -40,3 +41,4 @@ jobs:
     - run: npm run typecheck
     - run: npm run test:sync
     - run: npm run build
+    - run: npm run smoke:clean-artifact

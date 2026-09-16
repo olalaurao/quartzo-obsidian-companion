@@ -1,5 +1,6 @@
 import { DriveAdapter, DriveFileMetadata, DriveChange, UploadFileParams } from '../../../sync/coordinator/types';
-import { drive_v3, google } from 'googleapis';
+import { drive_v3, drive } from '@googleapis/drive';
+import { OAuth2Client } from 'google-auth-library';
 import { normalizeVaultPath } from '../../../sync/coordinator/path-utils';
 import * as crypto from 'crypto';
 
@@ -27,9 +28,9 @@ export class GoogleDriveAdapter implements DriveAdapter {
       throw new Error('No access token available');
     }
     if (!this.drive) {
-      const auth = new google.auth.OAuth2();
-      auth.setCredentials({ access_token: this.accessToken });
-      this.drive = google.drive({ version: 'v3', auth });
+      const authClient = new OAuth2Client();
+      authClient.setCredentials({ access_token: this.accessToken });
+      this.drive = drive({ version: 'v3', auth: authClient });
     }
     return this.drive;
   }
@@ -72,14 +73,25 @@ export class GoogleDriveAdapter implements DriveAdapter {
     throw lastError;
   }
 
-  private isCredentialError(err: { code?: number; status?: number; response?: { status?: number; data?: { error?: string; error_description?: string } } }): boolean {
+  private isCredentialError(err: { code?: number; status?: number; response?: { status?: number; data?: { error?: string; error_description?: string; errors?: Array<{ reason?: string }> } } }): boolean {
     const statusCode = err.code || err.status || err.response?.status;
     if (statusCode !== 403) return false;
     const errorDesc = err.response?.data?.error_description || err.response?.data?.error || '';
-    if (errorDesc.includes('permission') || errorDesc.includes('denied') || errorDesc.includes('insufficientPermissions')) {
+    const errorReasons = (err.response?.data?.errors || []).map(e => e.reason || '').join(' ');
+    const combined = `${errorDesc} ${errorReasons}`.toLowerCase().replace(/[_\s]+/g, '');
+    if (combined.includes('accessnotconfigur') || combined.includes('apisdisabled') ||
+        combined.includes('quotaexceeded') || combined.includes('ratelimitexceeded') ||
+        combined.includes('sharingratelimitexceeded') || combined.includes('cannotdownloadfile') ||
+        combined.includes('permission') || combined.includes('denied') ||
+        combined.includes('insufficientpermission') || combined.includes('forbidden')) {
       return false;
     }
-    return true;
+    if (combined.includes('tokenexpired') || combined.includes('invalidgrant') ||
+        combined.includes('unauthorized') || combined.includes('credential') ||
+        combined.includes('logintrequired')) {
+      return true;
+    }
+    return false;
   }
 
   private calculateQuartzoHash(content: Uint8Array): string {
@@ -233,13 +245,12 @@ export class GoogleDriveAdapter implements DriveAdapter {
     });
   }
 
-  async uploadFile(params: UploadFileParams): Promise<DriveFileMetadata> {
+  async ensureParentFolder(rootFolderId: string, filePath: string): Promise<string> {
     return this.withRetry(async () => {
       const drive = this.getDriveClient();
-      const pathParts = params.name.split('/');
-      const fileName = pathParts.pop() || params.name;
-      let currentParentId = params.parentId || params.folderId;
-
+      const pathParts = filePath.split('/');
+      pathParts.pop(); // remove file name
+      let currentParentId = rootFolderId;
       for (const folderName of pathParts) {
         if (!folderName) continue;
         const existingFolder = await this.findFolderByName(currentParentId, folderName);
@@ -257,6 +268,16 @@ export class GoogleDriveAdapter implements DriveAdapter {
           currentParentId = folderMetadata.data.id || currentParentId;
         }
       }
+      return currentParentId;
+    });
+  }
+
+  async uploadFile(params: UploadFileParams): Promise<DriveFileMetadata> {
+    return this.withRetry(async () => {
+      const drive = this.getDriveClient();
+      const pathParts = params.name.split('/');
+      const fileName = pathParts.pop() || params.name;
+      const currentParentId = await this.ensureParentFolder(params.parentId || params.folderId, params.name);
 
       const response = await drive.files.create({
         requestBody: {
@@ -331,6 +352,42 @@ export class GoogleDriveAdapter implements DriveAdapter {
     return this.withRetry(async () => {
       const drive = this.getDriveClient();
       await drive.files.delete({ fileId });
+    });
+  }
+
+  async renameFile(fileId: string, newName: string, newParentId?: string): Promise<DriveFileMetadata> {
+    return this.withRetry(async () => {
+      const drive = this.getDriveClient();
+      let removeParentsStr: string | undefined = undefined;
+
+      if (newParentId) {
+        const fileResponse = await drive.files.get({ fileId, fields: 'parents' });
+        if (fileResponse.data.parents && fileResponse.data.parents.length > 0) {
+          removeParentsStr = fileResponse.data.parents.join(',');
+        }
+      }
+
+      const requestBody: Record<string, unknown> = { name: newName };
+      const response = await drive.files.update({
+        fileId,
+        requestBody,
+        addParents: newParentId || undefined,
+        removeParents: removeParentsStr,
+        fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties'
+      });
+      const data = response.data;
+      return {
+        id: data.id || '',
+        name: data.name || '',
+        mimeType: data.mimeType || '',
+        modifiedTime: data.modifiedTime || new Date().toISOString(),
+        md5Checksum: data.md5Checksum || undefined,
+        parents: data.parents || undefined,
+        quartzoHash: (data as Record<string, unknown>).appProperties &&
+          typeof (data as Record<string, unknown>).appProperties === 'object'
+          ? ((data as Record<string, unknown>).appProperties as Record<string, string>).Quartzo_hash || null
+          : null
+      };
     });
   }
 

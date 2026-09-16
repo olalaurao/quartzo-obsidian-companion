@@ -53,6 +53,9 @@ jobs:
           RELEASE_MODE: 'true'
           QUARTZO_GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID }}
       
+      - name: Clean artifact smoke test
+        run: npm run smoke:clean-artifact
+      
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:

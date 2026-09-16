@@ -81,11 +81,26 @@ class FakeDriveAdapter implements DriveAdapter {
     }
   }
 
+  async renameFile(fileId: string, newName: string, _newParentId?: string) {
+    for (const [name, f] of this._files.entries()) {
+      if (f.id === fileId) {
+        this._files.delete(name);
+        this._files.set(newName, { ...f });
+        return this.makeMetadata(fileId, newName, f.quartzoHash);
+      }
+    }
+    throw new Error(`Not found: ${fileId}`);
+  }
+
   async getFileMetadata(fileId: string) {
     for (const [name, f] of this._files.entries()) {
       if (f.id === fileId) return this.makeMetadata(f.id, name, f.quartzoHash);
     }
     throw new Error(`Not found: ${fileId}`);
+  }
+
+  async ensureParentFolder(rootFolderId: string, filePath: string) {
+    return rootFolderId;
   }
 
   addRemoteFile(name: string, content: Uint8Array) {
@@ -489,7 +504,9 @@ describe('Runtime Sync Tests', () => {
       async uploadFile() { throw new Error('No token'); },
       async updateFile() { throw new Error('No token'); },
       async deleteFile() { throw new Error('No token'); },
-      async getFileMetadata() { throw new Error('No token'); }
+      async renameFile() { throw new Error('No token'); },
+      async getFileMetadata() { throw new Error('No token'); },
+      async ensureParentFolder() { throw new Error('No token'); }
     };
     try {
       await failingAdapter.downloadFile('test');

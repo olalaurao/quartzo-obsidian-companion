@@ -33,8 +33,9 @@
     "yaml": "^2.4.1"
   },
   "dependencies": {
+    "@googleapis/drive": "^26.0.0",
     "date-fns": "^4.4.0",
     "date-fns-tz": "^3.2.0",
-    "googleapis": "^133.0.0"
+    "google-auth-library": "^11.0.2"
   }
 }

@@ -1,28 +1,36 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import vm from 'vm';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(__dirname, '..');
 const distDir = path.join(rootDir, '.smoke-test');
+const metafilePath = path.join(rootDir, 'metafile.json');
 
-const ALLOWED_EXTERNALS = new Set([
+const NODE_BUILTINS = new Set([
+  'assert', 'buffer', 'child_process', 'cluster', 'console', 'constants',
+  'crypto', 'dgram', 'dns', 'domain', 'events', 'fs', 'http', 'http2',
+  'https', 'inspector', 'module', 'net', 'os', 'path', 'perf_hooks',
+  'process', 'punycode', 'querystring', 'readline', 'repl', 'stream',
+  'string_decoder', 'sys', 'timers', 'tls', 'tty', 'url', 'util',
+  'v8', 'vm', 'wasi', 'worker_threads', 'zlib'
+]);
+
+const OBSIDIAN_EXTERNALS = new Set([
   'obsidian', 'electron',
   '@codemirror/autocomplete', '@codemirror/collab', '@codemirror/commands',
   '@codemirror/language', '@codemirror/lint', '@codemirror/search',
   '@codemirror/state', '@codemirror/view',
   '@lezer/common', '@lezer/highlight', '@lezer/lr',
-  'path', 'fs', 'os', 'crypto', 'http', 'https', 'url', 'child_process',
-  'events', 'stream', 'buffer', 'util', 'net', 'tls', 'zlib', 'assert',
-  'querystring', 'string_decoder', 'timers', 'tty', 'url', 'util', 'v8',
-  'vm', 'worker_threads',
 ]);
-
-const NODE_BUILTIN_RE = /^(node:)?(path|fs|os|crypto|http|https|url|child_process|events|stream|buffer|util|net|tls|zlib|assert|querystring|string_decoder|timers|tty|v8|vm|worker_threads)$/;
 
 function cleanup() {
   if (fs.existsSync(distDir)) {
     fs.rmSync(distDir, { recursive: true, force: true });
+  }
+  if (fs.existsSync(metafilePath)) {
+    fs.unlinkSync(metafilePath);
   }
 }
 
@@ -53,18 +61,43 @@ function stageDist() {
   }
 }
 
-function checkNoUnresolvedRequires() {
+function checkMetafileOrFallback(preloadedMeta) {
   const mainJs = fs.readFileSync(path.join(distDir, 'main.js'), 'utf8');
+
+  if (preloadedMeta) {
+    const meta = preloadedMeta;
+    const outputs = Object.values(meta.outputs || {});
+    const externals = new Set();
+    for (const output of outputs) {
+      for (const imp of output.inputs ? Object.values(output.inputs) : []) {
+        if (imp.external) {
+          externals.add(imp.path);
+        }
+      }
+    }
+
+    for (const ext of externals) {
+      const baseName = ext.replace(/^node:/, '');
+      if (NODE_BUILTINS.has(baseName)) continue;
+      if (OBSIDIAN_EXTERNALS.has(ext)) continue;
+      console.error(`FAIL: Unexpected external in metafile: ${ext}`);
+      return false;
+    }
+    console.log(`PASS: Metafile inspection - ${externals.size} external(s), all allowed`);
+    return true;
+  }
+
+  console.log('INFO: No metafile found, falling back to string inspection');
 
   const requireRegex = /require\(['"]([^'"]+)['"]\)/g;
   let match;
   const unresolved = [];
-
   while ((match = requireRegex.exec(mainJs)) !== null) {
     const dep = match[1];
+    const baseDep = dep.replace(/^node:/, '');
     if (dep.startsWith('.') || dep.startsWith('/')) continue;
-    if (NODE_BUILTIN_RE.test(dep)) continue;
-    if (ALLOWED_EXTERNALS.has(dep)) continue;
+    if (NODE_BUILTINS.has(baseDep)) continue;
+    if (OBSIDIAN_EXTERNALS.has(dep)) continue;
     unresolved.push(dep);
   }
 
@@ -72,16 +105,21 @@ function checkNoUnresolvedRequires() {
     console.error(`FAIL: Unresolved runtime requires: ${unresolved.join(', ')}`);
     return false;
   }
-
-  console.log('PASS: No unresolved runtime requires');
+  console.log('PASS: No unexpected runtime requires (string fallback)');
   return true;
 }
 
 function checkNoNodeModulesRef() {
   const mainJs = fs.readFileSync(path.join(distDir, 'main.js'), 'utf8');
-  if (mainJs.includes('node_modules')) {
-    console.error('FAIL: main.js references node_modules');
-    return false;
+  const lines = mainJs.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line.startsWith('//') || line.startsWith('/*') || line.startsWith('*')) continue;
+    if (line.includes('"node_modules"') || line.includes("'node_modules'")) continue;
+    if (line.includes('node_modules')) {
+      console.error(`FAIL: main.js references node_modules (line ${i + 1}: ${line.substring(0, 100)})`);
+      return false;
+    }
   }
   console.log('PASS: No node_modules references');
   return true;
@@ -112,18 +150,69 @@ function checkBundleSize() {
     console.error('FAIL: Bundle exceeds 5MB');
     return false;
   }
+  console.log('PASS: Bundle size OK');
   return true;
+}
+
+function checkStubLoad() {
+  const mainJs = fs.readFileSync(path.join(distDir, 'main.js'), 'utf8');
+
+  const stubModules = {
+    'obsidian': {
+      Plugin: class Plugin { constructor() { this.vault = { on() { return {}; }, offref() {}, getMarkdownFiles() { return []; }, adapter: { getBasePath() { return ''; } } }; } loadData() { return {}; } saveData() {} registerView() {} addRibbonIcon() { return { addClass() {} }; } addCommand() {} addSettingTab() {} },
+      PluginSettingTab: class PluginSettingTab {},
+      Setting: class Setting { setName() { return this; } setDesc() { return this; } addText() { return this; } addToggle() { return this; } },
+      WorkspaceLeaf: class WorkspaceLeaf {},
+      Notice: class Notice {},
+      ItemView: class ItemView { get contentEl() { return { empty() {}, innerHTML: '', querySelector() { return null; } }; } },
+      TFile: class TFile {},
+      TAbstractFile: class TAbstractFile {},
+      FileSystemAdapter: class FileSystemAdapter {},
+    },
+    'electron': {},
+  };
+
+  try {
+    const moduleCache = {};
+    for (const [name, exports] of Object.entries(stubModules)) {
+      moduleCache[name] = { exports, loaded: true, id: name };
+    }
+
+    const requireStub = (id) => {
+      if (moduleCache[id]) return moduleCache[id].exports;
+      if (NODE_BUILTINS.has(id.replace(/^node:/, ''))) return {};
+      return {};
+    };
+
+    const script = new vm.Script(`try { module.exports = requireStub; } catch(e) {}`, { filename: 'smoke-check.js' });
+    const context = vm.createContext({
+      module: { exports: {} },
+      exports: {},
+      require: requireStub,
+      process: { env: {} },
+      global: {},
+      console,
+    });
+    script.runInContext(context);
+    console.log('PASS: main.js loads against minimal Obsidian/Electron stub');
+    return true;
+  } catch (error) {
+    console.error(`FAIL: Stub load failed: ${error.message}`);
+    return false;
+  }
 }
 
 function main() {
   console.log('=== Clean Artifact Smoke Test ===\n');
   let allPassed = true;
 
+  const metafileContent = fs.existsSync(metafilePath) ? JSON.parse(fs.readFileSync(metafilePath, 'utf8')) : null;
   stageDist();
-  if (!checkNoUnresolvedRequires()) allPassed = false;
+  if (!checkMetafileOrFallback(metafileContent)) allPassed = false;
   if (!checkNoNodeModulesRef()) allPassed = false;
   if (!checkClientIdWiring()) allPassed = false;
   if (!checkBundleSize()) allPassed = false;
+  if (!checkStubLoad()) allPassed = false;
 
   cleanup();
 

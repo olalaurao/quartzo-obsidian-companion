@@ -46,8 +46,10 @@ export interface DriveAdapter {
   downloadFile(fileId: string): Promise<Uint8Array>;
   uploadFile(params: UploadFileParams): Promise<DriveFileMetadata>;
   updateFile(fileId: string, content: Uint8Array, quartzoHash: string): Promise<DriveFileMetadata>;
+  renameFile(fileId: string, newName: string, newParentId?: string): Promise<DriveFileMetadata>;
   deleteFile(fileId: string): Promise<void>;
   getFileMetadata(fileId: string): Promise<DriveFileMetadata>;
+  ensureParentFolder(rootFolderId: string, filePath: string): Promise<string>;
 }
 
 export interface UploadFileParams {
@@ -62,4 +64,10 @@ export interface DriveChange {
   fileId: string;
   removed: boolean;
   file?: DriveFileMetadata;
+}
+
+export interface PendingRename {
+  oldPath: string;
+  newPath: string;
+  timestamp: number;
 }

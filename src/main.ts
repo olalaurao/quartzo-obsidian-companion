@@ -128,7 +128,7 @@ class SyncCenterView extends ItemView {
             if (confirmBtn) {
               confirmBtn.addEventListener('click', async () => {
                 if (selectedFolderId && selectedFolderName) {
-                  await this.context.plugin.confirmPairing(selectedFolderId, selectedFolderName, true, true);
+                  await this.context.plugin.confirmPairing(selectedFolderId, selectedFolderName, false, false);
                   this.onOpen();
                 }
               });
@@ -409,8 +409,9 @@ export default class QuartzoCompanionPlugin extends Plugin {
     });
     this.eventRefs.push(ondeleteSync);
 
-    const onrenameSync = this.app.vault.on('rename', (file: TAbstractFile) => {
+    const onrenameSync = this.app.vault.on('rename', (file: TAbstractFile, oldPath: string) => {
       if (file instanceof TFile && this.settings.syncAuto && this.settings.isPaired && this.driveSyncCoordinator) {
+        this.driveSyncCoordinator.queueRename(oldPath, file.path);
         this.driveSyncCoordinator.triggerFocusSync().catch(() => {});
       }
     });
@@ -490,8 +491,19 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.oauthClient = new GoogleOAuthDesktop(config, secretStorage);
 
     try {
-      const tokenResponse = await this.oauthClient.startAuthLoopback();
+      const storedRefresh = await secretStorage.get('quartzo_companion/refresh_token');
+      const forceConsent = !storedRefresh;
+      const tokenResponse = await this.oauthClient.startAuthLoopback(forceConsent);
       this.driveAdapter?.setAccessToken(tokenResponse.access_token);
+
+      if (!tokenResponse.refresh_token) {
+        const storedRefresh = await secretStorage.get('quartzo_companion/refresh_token');
+        if (!storedRefresh) {
+          new Notice('No refresh token received. Please re-authorize with full access.');
+          await this.oauthClient.disconnect();
+          return;
+        }
+      }
 
       this.driveAdapter?.setTokenRefreshCallback(async () => {
         try {
@@ -522,16 +534,58 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.settings.googleDriveFolderName = folderName;
 
     const summary = await this.driveSyncCoordinator.generatePairingSummary();
-    const hasItems = summary.identical.length + summary.remoteOnly.length + summary.localOnly.length + summary.divergent.length > 0;
+    const hasDivergent = summary.divergent.length > 0;
 
-    if (hasItems) {
-      await this.driveSyncCoordinator.applyPairingDecisions(summary, { autoAdopt, autoPull });
+    if (hasDivergent) {
+      new Notice(`Pairing blocked: ${summary.divergent.length} divergent file(s) require resolution.`);
+      return;
     }
 
-    this.settings.isPaired = true;
-    await this.saveSettings();
-    new Notice(`Paired with folder: ${folderName}`);
-    this.startAutoSync();
+    if (autoAdopt || autoPull) {
+      await this.driveSyncCoordinator.applyPairingDecisions(summary, { autoAdopt, autoPull });
+      this.settings.isPaired = true;
+      await this.saveSettings();
+      new Notice(`Paired with folder: ${folderName}`);
+      this.startAutoSync();
+    } else {
+      const modal = document.createElement('div');
+      modal.className = 'quartzo-pairing-summary-modal';
+      modal.innerHTML = `
+        <div class="modal-content" style="padding: 20px; background: var(--background-primary); border: 1px solid var(--background-modifier-border); border-radius: 8px; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000;">
+          <h2>Pairing Summary</h2>
+          <p>Folder: <strong>${folderName}</strong></p>
+          <ul>
+            <li>Identical files: ${summary.identical.length}</li>
+            <li>Remote-only (to pull): ${summary.remoteOnly.length}</li>
+            <li>Local-only (to adopt): ${summary.localOnly.length}</li>
+          </ul>
+          <p>Do you want to adopt local-only files and pull remote-only files?</p>
+          <div style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
+            <button id="pairing-cancel">Cancel</button>
+            <button id="pairing-confirm">Accept & Pair</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+
+      modal.querySelector('#pairing-cancel')?.addEventListener('click', () => {
+        modal.remove();
+        new Notice('Pairing cancelled.');
+      });
+
+      modal.querySelector('#pairing-confirm')?.addEventListener('click', async () => {
+        modal.remove();
+        try {
+          await this.driveSyncCoordinator!.applyPairingDecisions(summary, { autoAdopt: true, autoPull: true });
+          this.settings.isPaired = true;
+          await this.saveSettings();
+          new Notice(`Paired with folder: ${folderName}`);
+          this.startAutoSync();
+        } catch (error) {
+          new Notice(`Error applying pairing decisions: ${error}`);
+        }
+      });
+    }
   }
 
   async disconnectDrive() {

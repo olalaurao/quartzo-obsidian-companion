@@ -68,7 +68,7 @@ export class GoogleOAuthDesktop {
     return `http://127.0.0.1:${this.port}`;
   }
 
-  buildAuthUrl(): string {
+  buildAuthUrl(forceConsent?: boolean): string {
     const { challenge, state } = this.generatePKCE();
     const authUrl = new URL(this.config.authUrl);
     authUrl.searchParams.set('client_id', this.config.clientId);
@@ -79,10 +79,13 @@ export class GoogleOAuthDesktop {
     authUrl.searchParams.set('code_challenge', challenge);
     authUrl.searchParams.set('code_challenge_method', 'S256');
     authUrl.searchParams.set('access_type', 'offline');
+    if (forceConsent) {
+      authUrl.searchParams.set('prompt', 'consent');
+    }
     return authUrl.toString();
   }
 
-  async startAuthLoopback(): Promise<TokenResponse> {
+  async startAuthLoopback(forceConsent?: boolean): Promise<TokenResponse> {
     return new Promise((resolve, reject) => {
       let settled = false;
 
@@ -144,7 +147,7 @@ export class GoogleOAuthDesktop {
       this.server.listen(0, '127.0.0.1', async () => {
         const address = this.server?.address() as { port: number };
         this.port = address.port;
-        const authUrl = this.buildAuthUrl();
+        const authUrl = this.buildAuthUrl(forceConsent);
         try {
           await this.browserOpener.open(authUrl);
         } catch (err) {

@@ -34,11 +34,17 @@ const context = await esbuild.context({
   logLevel: "info",
   sourcemap: prod ? false : "inline",
   treeShaking: true,
+  minify: prod,
   outfile: "main.js",
+  metafile: true,
 });
 
 if (prod) {
-  await context.rebuild();
+  const result = await context.rebuild();
+  if (result.metafile) {
+    const fs = await import('fs');
+    fs.writeFileSync('metafile.json', JSON.stringify(result.metafile, null, 2));
+  }
   process.exit(0);
 } else {
   await context.watch();
