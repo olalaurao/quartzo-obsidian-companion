@@ -35,6 +35,16 @@ jobs:
           python3 .github/scripts/agent_companion_repair2.py
           python3 .github/scripts/agent_companion_repair3.py
           python3 .github/scripts/agent_companion_repair4.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('.github/scripts/agent_companion_repair5.py')
+          s = p.read_text(encoding='utf-8')
+          old = "      this.authState = 'paired';\n      await this.saveSettings();"
+          new = "    this.authState = 'paired';\n      await this.saveSettings();"
+          if old not in s:
+              raise SystemExit('repair5 compatibility target not found')
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+          PY
           python3 .github/scripts/agent_companion_repair5.py
       - name: Regenerate dependency lock
         run: npm install --package-lock-only
