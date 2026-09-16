@@ -30,7 +30,8 @@ export class GoogleDriveAdapter implements DriveAdapter {
     if (!this.drive) {
       const authClient = new OAuth2Client();
       authClient.setCredentials({ access_token: this.accessToken });
-      this.drive = drive({ version: 'v3', auth: authClient });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      this.drive = drive({ version: 'v3', auth: authClient as any });
     }
     return this.drive;
   }
@@ -181,15 +182,22 @@ export class GoogleDriveAdapter implements DriveAdapter {
   }
 
   async listRootFolders(): Promise<Array<{ id: string; name: string }>> {
-    return this.withRetry(async () => {
-      const drive = this.getDriveClient();
-      const response = await drive.files.list({
-        q: "mimeType = 'application/vnd.google-apps.folder' and trashed = false",
-        fields: 'files(id, name)',
-        pageSize: 100
-      });
-      return (response.data.files || []).map(f => ({ id: f.id || '', name: f.name || '' }));
-    });
+    let folders: Array<{ id: string; name: string }> = [];
+    let pageToken: string | undefined = undefined;
+    const drive = this.getDriveClient();
+    do {
+      const response = await this.withRetry(() => drive.files.list({
+        q: "mimeType = 'application/vnd.google-apps.folder' and trashed = false and appProperties has { key='Quartzo_vault' and value='true' }",
+        fields: 'nextPageToken, files(id, name)',
+        pageSize: 100,
+        pageToken
+      }));
+      for (const f of (response.data.files || [])) {
+        if (f.id && f.name) folders.push({ id: f.id, name: f.name });
+      }
+      pageToken = response.data.nextPageToken || undefined;
+    } while (pageToken);
+    return folders;
   }
 
   async getStartPageToken(): Promise<string> {

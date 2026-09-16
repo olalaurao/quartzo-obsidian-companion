@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { DriveSyncCoordinator, PairingSummary } from '../../src/sync/coordinator';
 import { VaultSyncFilePolicy } from '../../src/sync/coordinator/file-policy';

@@ -2,7 +2,9 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import vm from 'vm';
+import { createRequire } from 'module';
 
+const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(__dirname, '..');
 const distDir = path.join(rootDir, '.smoke-test');
@@ -12,7 +14,7 @@ const NODE_BUILTINS = new Set([
   'assert', 'buffer', 'child_process', 'cluster', 'console', 'constants',
   'crypto', 'dgram', 'dns', 'domain', 'events', 'fs', 'http', 'http2',
   'https', 'inspector', 'module', 'net', 'os', 'path', 'perf_hooks',
-  'process', 'punycode', 'querystring', 'readline', 'repl', 'stream',
+  'process', 'punycode', 'querystring', 'readline', 'repl', 'stream', 'stream/web',
   'string_decoder', 'sys', 'timers', 'tls', 'tty', 'url', 'util',
   'v8', 'vm', 'wasi', 'worker_threads', 'zlib'
 ]);
@@ -69,7 +71,7 @@ function checkMetafileOrFallback(preloadedMeta) {
     const outputs = Object.values(meta.outputs || {});
     const externals = new Set();
     for (const output of outputs) {
-      for (const imp of output.inputs ? Object.values(output.inputs) : []) {
+      for (const imp of output.imports || []) {
         if (imp.external) {
           externals.add(imp.path);
         }
@@ -165,6 +167,7 @@ function checkStubLoad() {
       WorkspaceLeaf: class WorkspaceLeaf {},
       Notice: class Notice {},
       ItemView: class ItemView { get contentEl() { return { empty() {}, innerHTML: '', querySelector() { return null; } }; } },
+      Modal: class Modal { constructor() { this.contentEl = {}; } open() {} close() {} },
       TFile: class TFile {},
       TAbstractFile: class TAbstractFile {},
       FileSystemAdapter: class FileSystemAdapter {},
@@ -180,24 +183,25 @@ function checkStubLoad() {
 
     const requireStub = (id) => {
       if (moduleCache[id]) return moduleCache[id].exports;
-      if (NODE_BUILTINS.has(id.replace(/^node:/, ''))) return {};
+      const baseId = id.replace(/^node:/, '');
+      if (NODE_BUILTINS.has(baseId)) return require(baseId);
       return {};
     };
 
-    const script = new vm.Script(`try { module.exports = requireStub; } catch(e) {}`, { filename: 'smoke-check.js' });
+    const script = new vm.Script(mainJs, { filename: 'main.js' });
     const context = vm.createContext({
+      ...global,
       module: { exports: {} },
       exports: {},
       require: requireStub,
-      process: { env: {} },
-      global: {},
+      process: process,
       console,
     });
     script.runInContext(context);
     console.log('PASS: main.js loads against minimal Obsidian/Electron stub');
     return true;
   } catch (error) {
-    console.error(`FAIL: Stub load failed: ${error.message}`);
+    console.error(`FAIL: Stub load failed: ${error.stack}`);
     return false;
   }
 }

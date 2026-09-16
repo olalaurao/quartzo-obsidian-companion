@@ -91,6 +91,10 @@ class SyncCenterView extends ItemView {
 
         if (this.context.plugin.driveAdapter) {
           const folders = await this.context.plugin.driveAdapter.listRootFolders().catch(() => []);
+          if (folders.length === 0) {
+            new Notice("No existing Quartzo vault was found.");
+            return;
+          }
           if (folders.length > 0) {
             const selectHtml = `
               <div id="folder-selection" style="margin-top: 16px;">
@@ -396,23 +400,30 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.eventRefs.push(onchange);
 
     const onmodifySync = this.app.vault.on('modify', (file: TAbstractFile) => {
-      if (file instanceof TFile && this.settings.syncAuto && this.settings.isPaired && this.driveSyncCoordinator) {
-        this.driveSyncCoordinator.triggerFocusSync().catch(() => {});
+      if (file instanceof TFile && this.settings.isPaired && this.driveSyncCoordinator) {
+        if (this.settings.syncAuto) {
+          this.driveSyncCoordinator.triggerFocusSync().catch(() => {});
+        }
       }
     });
     this.eventRefs.push(onmodifySync);
 
     const ondeleteSync = this.app.vault.on('delete', (file: TAbstractFile) => {
-      if (file instanceof TFile && this.settings.syncAuto && this.settings.isPaired && this.driveSyncCoordinator) {
-        this.driveSyncCoordinator.triggerFocusSync().catch(() => {});
+      if (file instanceof TFile && this.settings.isPaired && this.driveSyncCoordinator) {
+        this.driveSyncCoordinator.queueDelete(file.path);
+        if (this.settings.syncAuto) {
+          this.driveSyncCoordinator.triggerFocusSync().catch(() => {});
+        }
       }
     });
     this.eventRefs.push(ondeleteSync);
 
     const onrenameSync = this.app.vault.on('rename', (file: TAbstractFile, oldPath: string) => {
-      if (file instanceof TFile && this.settings.syncAuto && this.settings.isPaired && this.driveSyncCoordinator) {
+      if (file instanceof TFile && this.settings.isPaired && this.driveSyncCoordinator) {
         this.driveSyncCoordinator.queueRename(oldPath, file.path);
-        this.driveSyncCoordinator.triggerFocusSync().catch(() => {});
+        if (this.settings.syncAuto) {
+          this.driveSyncCoordinator.triggerFocusSync().catch(() => {});
+        }
       }
     });
     this.eventRefs.push(onrenameSync);

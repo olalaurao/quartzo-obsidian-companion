@@ -15,6 +15,8 @@ export interface SyncState {
   driveChangeToken: string | null;
   driveFolderId: string | null;
   version: string;
+  pendingRenames?: PendingRename[];
+  pendingDeletes?: string[];
 }
 
 export const CURRENT_STATE_VERSION = '1.1.0';
