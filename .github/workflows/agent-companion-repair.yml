@@ -83,7 +83,7 @@ jobs:
       - name: Commit validated repair and remove temporary harness
         shell: bash
         run: |
-          git rm .github/workflows/agent-companion-repair.yml \
+          git rm -f .github/workflows/agent-companion-repair.yml \
             .github/scripts/agent_companion_repair.py \
             .github/scripts/agent_companion_repair2.py \
             .github/scripts/agent_companion_repair3.py \
