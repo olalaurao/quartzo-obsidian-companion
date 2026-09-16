@@ -42,7 +42,7 @@ export interface DriveAdapter {
   setFolderId(folderId: string): Promise<void>;
   listAllFiles(folderId: string): Promise<DriveFileMetadata[]>;
   listFiles(folderId: string, pageToken?: string): Promise<{ files: DriveFileMetadata[]; nextPageToken: string | null }>;
-  listRootFolders(): Promise<Array<{ id: string; name: string }>>;
+  listQuartzoVaultCandidates(): Promise<Array<{ id: string; name: string }>>;
   getStartPageToken(): Promise<string>;
   listChanges(pageToken: string): Promise<{ changes: DriveChange[]; newStartPageToken: string; nextPageToken: string | null }>;
   downloadFile(fileId: string): Promise<Uint8Array>;
@@ -54,7 +54,7 @@ export interface DriveAdapter {
   ensureParentFolder(rootFolderId: string, filePath: string): Promise<string>;
   assertInsideSelectedVault(remoteFileId: string): Promise<void>;
   resolveExactPath(fileId: string): Promise<string>;
-  getRawByteHash(fileId: string): Promise<string>;
+  resolveRemoteHash(metadata: DriveFileMetadata): Promise<string>;
 }
 
 export interface UploadFileParams {

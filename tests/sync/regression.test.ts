@@ -11,7 +11,7 @@ import { tmpdir } from 'os';
 class MockDriveAdapter implements DriveAdapter {
   async assertInsideSelectedVault(remoteFileId: string): Promise<void> { return Promise.resolve(); }
   async resolveExactPath(fileId: string): Promise<string> { return fileId; }
-  async getRawByteHash(fileId: string): Promise<string> { return 'raw-hash'; }
+  async resolveRemoteHash(metadata: DriveFileMetadata): Promise<string> { return 'raw-hash'; }
 
   public files = new Map<string, { id: string; content: Uint8Array; quartzoHash: string; parents: string[] }>();
   private folderId = 'mock-folder-id';
@@ -45,7 +45,7 @@ class MockDriveAdapter implements DriveAdapter {
     }));
   }
 
-  async listRootFolders() {
+  async listQuartzoVaultCandidates() {
     this.listRootFoldersCalls++;
     return [];
   }
@@ -134,7 +134,7 @@ class MockDriveAdapter implements DriveAdapter {
 class HierarchicalDriveAdapter implements DriveAdapter {
   async assertInsideSelectedVault(remoteFileId: string): Promise<void> { return Promise.resolve(); }
   async resolveExactPath(fileId: string): Promise<string> { return fileId; }
-  async getRawByteHash(fileId: string): Promise<string> { return 'raw-hash'; }
+  async resolveRemoteHash(metadata: DriveFileMetadata): Promise<string> { return 'raw-hash'; }
 
   private files = new Map<string, { id: string; name: string; content: Uint8Array; quartzoHash: string; parents: string[] }>();
   private folders = new Map<string, { id: string; name: string; parents: string[] }>();
@@ -165,7 +165,7 @@ class HierarchicalDriveAdapter implements DriveAdapter {
     return this.buildMetadataList();
   }
 
-  async listRootFolders() { return []; }
+  async listQuartzoVaultCandidates() { return []; }
   async getStartPageToken() { return 'token'; }
   async listChanges(_pageToken: string) {
     return { changes: [] as DriveChange[], newStartPageToken: 'new-token', nextPageToken: null };
@@ -932,7 +932,7 @@ describe('Sync Regression Tests', () => {
     it('SyncCenterView renders folder list for explicit selection', () => {
       const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/main.ts'), 'utf-8');
       expect(mainSrc).toContain('folder-selection');
-      expect(mainSrc).toContain('listRootFolders');
+      expect(mainSrc).toContain('listQuartzoVaultCandidates');
       expect(mainSrc).toContain('confirm-pairing-btn');
     });
   });

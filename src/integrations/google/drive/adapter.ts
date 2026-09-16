@@ -98,6 +98,17 @@ export class GoogleDriveAdapter implements DriveAdapter {
     return param.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
   }
 
+  
+  private extractQuartzoHash(file: Record<string, unknown> | drive_v3.Schema$File): string | null {
+    if ((file as Record<string, unknown>).properties && ((file as Record<string, unknown>).properties as Record<string, string>).Quartzo_hash) {
+      return ((file as Record<string, unknown>).properties as Record<string, string>).Quartzo_hash;
+    }
+    if ((file as Record<string, unknown>).appProperties && ((file as Record<string, unknown>).appProperties as Record<string, string>).Quartzo_hash) {
+      return ((file as Record<string, unknown>).appProperties as Record<string, string>).Quartzo_hash;
+    }
+    return null;
+  }
+
   private calculateQuartzoHash(content: Uint8Array): string {
     return crypto.createHash('sha256').update(content).digest('hex');
   }
@@ -127,10 +138,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
         modifiedTime: file.modifiedTime || new Date().toISOString(),
         md5Checksum: file.md5Checksum || undefined,
         parents: file.parents || undefined,
-        quartzoHash: (file as Record<string, unknown>).appProperties &&
-          typeof (file as Record<string, unknown>).appProperties === 'object'
-          ? ((file as Record<string, unknown>).appProperties as Record<string, string>).Quartzo_hash || null
-          : null
+        quartzoHash: this.extractQuartzoHash(file)
       }));
 
       return {
@@ -166,10 +174,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
         modifiedTime: file.modifiedTime || new Date().toISOString(),
         md5Checksum: file.md5Checksum || undefined,
         parents: file.parents || undefined,
-        quartzoHash: (file as Record<string, unknown>).appProperties &&
-          typeof (file as Record<string, unknown>).appProperties === 'object'
-          ? ((file as Record<string, unknown>).appProperties as Record<string, string>).Quartzo_hash || null
-          : null
+        quartzoHash: this.extractQuartzoHash(file)
       }));
 
       for (const file of files) {
@@ -184,13 +189,13 @@ export class GoogleDriveAdapter implements DriveAdapter {
     } while (pageToken);
   }
 
-  async listRootFolders(): Promise<Array<{ id: string; name: string }>> {
+  async listQuartzoVaultCandidates(): Promise<Array<{ id: string; name: string }>> {
     let folders: Array<{ id: string; name: string }> = [];
     let pageToken: string | undefined = undefined;
     const drive = this.getDriveClient();
     do {
       const response = await this.withRetry(() => drive.files.list({
-        q: "mimeType = 'application/vnd.google-apps.folder' and trashed = false and (properties has { key='Quartzo_vault' and value='true' } or appProperties has { key='Quartzo_vault' and value='true' })",
+        q: "mimeType = 'application/vnd.google-apps.folder' and trashed = false and properties has { key='Quartzo_vault' and value='true' }",
         fields: 'nextPageToken, files(id, name)',
         pageSize: 100,
         pageToken
@@ -230,10 +235,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
           modifiedTime: change.file.modifiedTime || new Date().toISOString(),
           md5Checksum: change.file.md5Checksum || undefined,
           parents: change.file.parents || undefined,
-          quartzoHash: (change.file as Record<string, unknown>).appProperties &&
-            typeof (change.file as Record<string, unknown>).appProperties === 'object'
-            ? ((change.file as Record<string, unknown>).appProperties as Record<string, string>).Quartzo_hash || null
-            : null
+          quartzoHash: this.extractQuartzoHash(change.file)
         } : undefined
       }));
 
@@ -245,8 +247,9 @@ export class GoogleDriveAdapter implements DriveAdapter {
     });
   }
 
-  async getRawByteHash(fileId: string): Promise<string> {
-    const bytes = await this.downloadFile(fileId);
+    async resolveRemoteHash(metadata: DriveFileMetadata): Promise<string> {
+    if (metadata.quartzoHash) return metadata.quartzoHash;
+    const bytes = await this.downloadFile(metadata.id);
     return this.calculateQuartzoHash(bytes);
   }
 
@@ -415,10 +418,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
         modifiedTime: data.modifiedTime || new Date().toISOString(),
         md5Checksum: data.md5Checksum || undefined,
         parents: data.parents || undefined,
-        quartzoHash: (data as Record<string, unknown>).appProperties &&
-          typeof (data as Record<string, unknown>).appProperties === 'object'
-          ? ((data as Record<string, unknown>).appProperties as Record<string, string>).Quartzo_hash || null
-          : null
+        quartzoHash: this.extractQuartzoHash(data)
       };
     });
   }
@@ -459,10 +459,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
         modifiedTime: data.modifiedTime || new Date().toISOString(),
         md5Checksum: data.md5Checksum || undefined,
         parents: data.parents || undefined,
-        quartzoHash: (data as Record<string, unknown>).appProperties &&
-          typeof (data as Record<string, unknown>).appProperties === 'object'
-          ? ((data as Record<string, unknown>).appProperties as Record<string, string>).Quartzo_hash || null
-          : null
+        quartzoHash: this.extractQuartzoHash(data)
       };
     });
   }

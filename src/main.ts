@@ -91,7 +91,7 @@ class SyncCenterView extends ItemView {
         });
 
         if (this.context.plugin.driveAdapter) {
-          const folders = await this.context.plugin.driveAdapter.listRootFolders().catch(() => []);
+          const folders = await this.context.plugin.driveAdapter.listQuartzoVaultCandidates().catch(() => []);
           if (folders.length === 0) {
             new Notice("No existing Quartzo vault was found.");
             return;

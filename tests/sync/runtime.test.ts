@@ -11,7 +11,7 @@ import { tmpdir } from 'os';
 class FakeDriveAdapter implements DriveAdapter {
   async assertInsideSelectedVault(remoteFileId: string): Promise<void> { return Promise.resolve(); }
   async resolveExactPath(fileId: string): Promise<string> { return fileId; }
-  async getRawByteHash(fileId: string): Promise<string> { return 'raw-hash'; }
+  async resolveRemoteHash(metadata: DriveFileMetadata): Promise<string> { return 'raw-hash'; }
 
   private _files = new Map<string, { id: string; content: Uint8Array; quartzoHash: string }>();
   private folderId = 'root-folder-id';
@@ -38,7 +38,7 @@ class FakeDriveAdapter implements DriveAdapter {
     return this.buildMetadataList();
   }
 
-  async listRootFolders() { return []; }
+  async listQuartzoVaultCandidates() { return []; }
 
   async getStartPageToken() { return String(this.changeToken); }
 
@@ -501,7 +501,7 @@ describe('Runtime Sync Tests', () => {
       async setFolderId() {},
       async listFiles() { return { files: [], nextPageToken: null }; },
       async listAllFiles() { return []; },
-      async listRootFolders() { return []; },
+      async listQuartzoVaultCandidates() { return []; },
       async getStartPageToken() { return ''; },
       async listChanges() { return { changes: [], newStartPageToken: '', nextPageToken: null }; },
       async downloadFile() { throw new Error('No token'); },
@@ -513,7 +513,7 @@ describe('Runtime Sync Tests', () => {
       async ensureParentFolder() { throw new Error('No token'); },
       async assertInsideSelectedVault() { throw new Error('No token'); },
       async resolveExactPath() { throw new Error('No token'); },
-      async getRawByteHash() { throw new Error('No token'); }
+      async resolveRemoteHash() { throw new Error('No token'); }
     };
     try {
       await failingAdapter.downloadFile('test');

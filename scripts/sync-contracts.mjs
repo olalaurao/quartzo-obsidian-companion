@@ -75,7 +75,9 @@ async function verify() {
       try {
         let text;
         if (process.env.LOCAL_CANONICAL_PATH) {
-          const localPath = path.join(process.env.LOCAL_CANONICAL_PATH, 'contracts', 'quartzo', k);
+          const isMd = k.endsWith('.md') && !k.includes('/');
+          const upstreamPath = isMd ? ['docs', 'integrations', 'obsidian_companion'] : ['contracts', 'quartzo'];
+          const localPath = path.join(process.env.LOCAL_CANONICAL_PATH, ...upstreamPath, k);
           if (!fs.existsSync(localPath)) {
             console.error(`FAIL: Local canonical file missing: ${localPath}`);
             hasError = true;
@@ -83,7 +85,9 @@ async function verify() {
           }
           text = fs.readFileSync(localPath, 'utf8');
         } else {
-          const url = `https://raw.githubusercontent.com/${lock.repository}/${lock.sourceCommit}/contracts/quartzo/${k}`;
+          const isMd = k.endsWith('.md') && !k.includes('/');
+          const upstreamPath = isMd ? 'docs/integrations/obsidian_companion' : 'contracts/quartzo';
+          const url = `https://raw.githubusercontent.com/${lock.repository}/${lock.sourceCommit}/${upstreamPath}/${k}`;
           const headers = process.env.GITHUB_TOKEN ? { "Authorization": `token ${process.env.GITHUB_TOKEN}` } : {};
           const response = await fetch(url, { headers });
           if (!response.ok) {

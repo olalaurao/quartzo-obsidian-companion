@@ -33,10 +33,11 @@
     "yaml": "^2.4.1"
   },
   "dependencies": {
-    "@googleapis/drive": "^26.0.0",
+    "@googleapis/drive": "26.0.0",
     "date-fns": "^4.4.0",
     "date-fns-tz": "^3.2.0",
-    "google-auth-library": "^11.0.2"
+    "google-auth-library": "11.0.2",
+    "googleapis-common": "9.0.4"
   },
   "engines": {
     "node": ">=20.0.0"
