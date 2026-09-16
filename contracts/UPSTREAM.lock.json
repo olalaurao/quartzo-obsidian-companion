@@ -1,12 +1,29 @@
 {
   "repository": "olalaurao/aplicativo",
-  "sourceCommit": "26af3a14e26943846f3985a3468fedba103f01db",
-  "syncTimestamp": "2026-09-16T19:47:59.451Z",
+  "sourceCommit": "0f5beed2ca7ff80d841efb97eca277bcc16a163e",
+  "syncTimestamp": "2026-09-16T23:41:08.462Z",
   "contractVersions": {
     "vaultInteropVersion": "1.0.0",
     "syncProtocolVersion": "1.0.0",
     "schedulerContractVersion": "1.0.0",
     "dailyScheduleContractVersion": "1.0.0"
+  },
+  "sources": {
+    "contract_manifest.json": "contracts/quartzo/contract_manifest.json",
+    "daily_schedule/vectors.json": "contracts/quartzo/daily_schedule/vectors.json",
+    "object_fixtures/coverage.json": "contracts/quartzo/object_fixtures/coverage.json",
+    "object_fixtures/fixtures.json": "contracts/quartzo/object_fixtures/fixtures.json",
+    "object_fixtures/priority_vectors.json": "contracts/quartzo/object_fixtures/priority_vectors.json",
+    "object_fixtures/README.md": "contracts/quartzo/object_fixtures/README.md",
+    "occurrence_actions/vectors.json": "contracts/quartzo/occurrence_actions/vectors.json",
+    "P0_COMPLIANCE_MATRIX.md": "docs/integrations/obsidian_companion/P0_COMPLIANCE_MATRIX.md",
+    "QUARTZO_COMPANION_UI_SPEC_V1.md": "docs/integrations/obsidian_companion/QUARTZO_COMPANION_UI_SPEC_V1.md",
+    "QUARTZO_OBSIDIAN_COMPANION_CONTRACT.md": "docs/integrations/obsidian_companion/QUARTZO_OBSIDIAN_COMPANION_CONTRACT.md",
+    "QUARTZO_SYNC_PROTOCOL_V1.md": "docs/integrations/obsidian_companion/QUARTZO_SYNC_PROTOCOL_V1.md",
+    "QUARTZO_VAULT_INTEROP_CONTRACT_V1.md": "docs/integrations/obsidian_companion/QUARTZO_VAULT_INTEROP_CONTRACT_V1.md",
+    "README.md": "docs/integrations/obsidian_companion/README.md",
+    "scheduler/vectors.json": "contracts/quartzo/scheduler/vectors.json",
+    "sync/vectors.json": "contracts/quartzo/sync/vectors.json"
   },
   "manifest": {
     "contract_manifest.json": "2568aa7f03f1ab247f70dfa001a2fc8646caa4c29f1e149382efeaec09c2d4c1",

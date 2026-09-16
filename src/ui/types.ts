@@ -14,6 +14,7 @@ export interface ViewContext {
   plugin: Plugin & {
     driveSyncCoordinator: DriveSyncCoordinator | null;
     driveAdapter: GoogleDriveAdapter | null;
+    authState: 'disconnected' | 'authenticating' | 'authenticated_unpaired' | 'paired' | 'authentication_required';
     vaultIndexEngine: VaultIndexEngine | null;
     settings: {
       googleDriveFolderId: string | null;

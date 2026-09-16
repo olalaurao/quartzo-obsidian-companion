@@ -12,7 +12,11 @@ import { tmpdir } from 'os';
 class MockDriveAdapter implements DriveAdapter {
   async assertInsideSelectedVault(remoteFileId: string): Promise<void> { return Promise.resolve(); }
   async resolveExactPath(fileId: string): Promise<string> { return fileId; }
-  async resolveRemoteHash(metadata: DriveFileMetadata): Promise<string> { return 'raw-hash'; }
+  async resolveRemoteHash(metadata: DriveFileMetadata): Promise<string> {
+    if (metadata.quartzoHash) return metadata.quartzoHash;
+    const content = await this.downloadFile(metadata.id);
+    return crypto.createHash('sha256').update(content).digest('hex');
+  }
 
   private _files = new Map<string, { id: string; content: Uint8Array; quartzoHash: string; parents: string[] }>();
   private _folders = new Map<string, { id: string; name: string; parents: string[] }>();
@@ -622,7 +626,8 @@ describe('P0.2 — Pairing summary and explicit decisions', () => {
       identical: [],
       remoteOnly: [],
       localOnly: [{ path: 'local-only.md', status: 'local_only', localHash: h('local'), remoteHash: null }],
-      divergent: []
+      divergent: [],
+      ambiguous: []
     };
 
     const result = await coordinator.applyPairingDecisions(summary, { autoAdopt: false, autoPull: false });
@@ -894,7 +899,7 @@ describe('Advanced Behavioral Regressions (Review 5223266300)', () => {
     expect(Buffer.from(remoteBytes).toString()).toBe('B');
   });
 
-  it('remote rename + local edit -> creates conflict', async () => {
+  it('remote rename + local edit preserves identity and pushes local bytes when remote content is unchanged', async () => {
     const contentA = Buffer.from('A');
     const remote = adapter.addRemoteFile('file.md', contentA);
     fs.writeFileSync(path.join(tmpDir, 'file.md'), contentA);
@@ -905,26 +910,53 @@ describe('Advanced Behavioral Regressions (Review 5223266300)', () => {
     const sf = coordinator.getSyncState().files.get('file.md')!;
     expect(sf.remoteFileId).toBe(remote.id);
 
-    // Remote rename: rename remote file to 'renamed.md'
     await adapter.renameFile(sf.remoteFileId!, 'renamed.md');
     adapter.pendingChanges.push({
       fileId: sf.remoteFileId!,
       removed: false,
       file: { id: sf.remoteFileId!, name: 'renamed.md', quartzoHash: h('A'), parents: ['root-folder-id'], mimeType: 'application/octet-stream', modifiedTime: new Date().toISOString() }
     });
-
-    // Local edit (file still at old path)
     fs.writeFileSync(path.join(tmpDir, 'file.md'), Buffer.from('B'));
 
     const result = await coordinator.reconcile();
-    expect(result.conflicts).toBeGreaterThan(0);
+    expect(result.conflicts).toBe(0);
+    expect(coordinator.getConflicts()).toHaveLength(0);
+    expect(fs.existsSync(path.join(tmpDir, 'file.md'))).toBe(false);
+    expect(fs.readFileSync(path.join(tmpDir, 'renamed.md'), 'utf8')).toBe('B');
 
-    const conflicts = coordinator.getConflicts();
-    expect(conflicts.length).toBeGreaterThan(0);
+    const state = coordinator.getSyncState();
+    const renamed = state.files.get('renamed.md');
+    expect(renamed?.remoteFileId).toBe(remote.id);
+    expect(renamed?.localHash).toBe(h('B'));
+    expect(renamed?.remoteHash).toBe(h('B'));
+    expect(Buffer.from(await adapter.downloadFile(remote.id)).toString()).toBe('B');
+  });
 
-    // Old file must not be overwritten — still has 'B' content locally
-    expect(fs.existsSync(path.join(tmpDir, 'file.md'))).toBe(true);
-    expect(fs.readFileSync(path.join(tmpDir, 'file.md'), 'utf8')).toBe('B');
+  it('remote rename + local edit conflicts when remote content also changed', async () => {
+    const contentA = Buffer.from('A');
+    const remote = adapter.addRemoteFile('file.md', contentA);
+    fs.writeFileSync(path.join(tmpDir, 'file.md'), contentA);
+    await coordinator.setDriveFolderId('root-folder-id');
+    await coordinator.reconcile();
+    adapter.pendingChanges.length = 0;
+
+    const sf = coordinator.getSyncState().files.get('file.md')!;
+    await adapter.renameFile(sf.remoteFileId!, 'renamed.md');
+    await adapter.updateFile(sf.remoteFileId!, Buffer.from('C'), h('C'));
+    adapter.pendingChanges.push({
+      fileId: sf.remoteFileId!,
+      removed: false,
+      file: { id: sf.remoteFileId!, name: 'renamed.md', quartzoHash: h('C'), parents: ['root-folder-id'], mimeType: 'application/octet-stream', modifiedTime: new Date().toISOString() }
+    });
+    fs.writeFileSync(path.join(tmpDir, 'file.md'), Buffer.from('B'));
+
+    const result = await coordinator.reconcile();
+    expect(result.conflicts).toBe(1);
+    const conflict = coordinator.getConflicts().find(c => c.originalPath === 'renamed.md');
+    expect(conflict).toBeTruthy();
+    expect(Buffer.from(conflict!.localContent).toString()).toBe('B');
+    expect(Buffer.from(conflict!.remoteContent).toString()).toBe('C');
+    expect(conflict!.remoteFileId).toBe(remote.id);
   });
 
   it('local delete + remote edit -> keep local creates soft-delete with remote content', async () => {
@@ -968,3 +1000,201 @@ describe('Advanced Behavioral Regressions (Review 5223266300)', () => {
   });
 });
 
+
+
+describe('P0 hardening — ambiguity, watcher suppression, coalescing, state recovery', () => {
+  let tmpDir: string;
+  let adapter: MockDriveAdapter;
+  let coordinator: DriveSyncCoordinator;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(tmpdir(), 'companion-hardening-'));
+    adapter = new MockDriveAdapter();
+    coordinator = new DriveSyncCoordinator(adapter, tmpDir, path.join(tmpDir, '.quartzo-sync-state.json'));
+  });
+
+  afterEach(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  it('pairing summary quarantines duplicate exact remote paths and refuses decisions', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+    const first: DriveFileMetadata = { id: 'dup-a', name: 'nested/note.md', mimeType: 'application/octet-stream', modifiedTime: new Date().toISOString(), quartzoHash: h('A'), parents: ['root-folder-id'] };
+    const second: DriveFileMetadata = { id: 'dup-b', name: 'nested/note.md', mimeType: 'application/octet-stream', modifiedTime: new Date().toISOString(), quartzoHash: h('A'), parents: ['root-folder-id'] };
+    adapter.listAllFiles = async () => [first, second];
+    adapter.resolveExactPath = async (id: string) => id === 'dup-a' || id === 'dup-b' ? 'nested/note.md' : id;
+
+    const summary = await coordinator.generatePairingSummary();
+    expect(summary.ambiguous).toHaveLength(1);
+    expect(summary.ambiguous[0].path).toBe('nested/note.md');
+    expect(summary.remoteOnly).toHaveLength(0);
+
+    const result = await coordinator.applyPairingDecisions(summary, { autoAdopt: true, autoPull: true });
+    expect(result.synced).toBe(0);
+    expect(result.errors).toContain('Pairing decisions blocked: unresolved divergent or ambiguous identities remain.');
+    expect(adapter.uploadCalls).toBe(0);
+  });
+
+  it('watcher suppression consumes only the exact coordinator-written hash', async () => {
+    const remote = adapter.addRemoteFile('watch.md', Buffer.from('A'));
+    adapter.pendingChanges.length = 0;
+    await coordinator.setDriveFolderId('root-folder-id');
+    await coordinator.reconcile();
+
+    expect(fs.readFileSync(path.join(tmpDir, 'watch.md'), 'utf8')).toBe('A');
+    expect(coordinator.consumeExpectedWatcherEvent('watch.md', Buffer.from('B'))).toBe(false);
+    expect(coordinator.consumeExpectedWatcherEvent('watch.md', Buffer.from('A'))).toBe(true);
+    expect(coordinator.consumeExpectedWatcherEvent('watch.md', Buffer.from('A'))).toBe(false);
+    expect(remote.id).toBeTruthy();
+  });
+
+  it('concurrent sync triggers coalesce to a single rerun', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+    let releaseFirst!: () => void;
+    const gate = new Promise<void>(resolve => { releaseFirst = resolve; });
+    const originalListAll = adapter.listAllFiles.bind(adapter);
+    let fullInventoryCalls = 0;
+    adapter.listAllFiles = async (folderId: string) => {
+      fullInventoryCalls++;
+      if (fullInventoryCalls === 1) await gate;
+      return originalListAll(folderId);
+    };
+
+    const first = coordinator.triggerManualSync();
+    await new Promise(resolve => setTimeout(resolve, 5));
+    const second = coordinator.triggerManualSync();
+    const third = coordinator.triggerManualSync();
+    releaseFirst();
+    await Promise.all([first, second, third]);
+    await new Promise(resolve => setTimeout(resolve, 25));
+
+    // Initial full inventory once. The coalesced rerun uses Changes API once.
+    expect(fullInventoryCalls).toBe(1);
+    expect(adapter.listChangesCalls).toBe(1);
+  });
+
+  it('recovers a complete atomic temp state when the primary state is absent', async () => {
+    const statePath = path.join(tmpDir, '.quartzo-sync-state.json');
+    const tempPath = `${statePath}.tmp`;
+    fs.writeFileSync(tempPath, JSON.stringify({
+      files: [],
+      lastSyncTime: 123,
+      driveChangeToken: 'saved-token',
+      driveFolderId: 'root-folder-id',
+      version: '1.1.0',
+      pendingRenames: [],
+      pendingDeletes: []
+    }));
+
+    const recovered = new DriveSyncCoordinator(adapter, tmpDir, statePath);
+    await recovered.reconcile();
+    expect(fs.existsSync(statePath)).toBe(true);
+    expect(fs.existsSync(tempPath)).toBe(false);
+    expect(recovered.getSyncState().driveFolderId).toBe('root-folder-id');
+  });
+});
+
+
+describe('P0 hardening — path scope and rename collision semantics', () => {
+  let tmpDir: string;
+  let adapter: MockDriveAdapter;
+  let coordinator: DriveSyncCoordinator;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(tmpdir(), 'companion-scope-'));
+    adapter = new MockDriveAdapter();
+    coordinator = new DriveSyncCoordinator(adapter, tmpDir, path.join(tmpDir, '.quartzo-sync-state.json'));
+  });
+  afterEach(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  it('local rename fails closed when a different remote ID already owns the destination path', async () => {
+    const content = Buffer.from('A');
+    fs.writeFileSync(path.join(tmpDir, 'old.md'), content);
+    const original = adapter.addRemoteFile('old.md', content);
+    await coordinator.setDriveFolderId('root-folder-id');
+    await coordinator.reconcile();
+    adapter.pendingChanges.length = 0;
+
+    const collisionId = 'collision-id';
+    adapter.files.set('new.md', { id: collisionId, content, quartzoHash: h('A'), parents: ['root-folder-id'] });
+    fs.renameSync(path.join(tmpDir, 'old.md'), path.join(tmpDir, 'new.md'));
+    coordinator.queueRename('old.md', 'new.md');
+
+    const result = await coordinator.reconcile();
+    expect(result.errors.some(error => error.includes('Ambiguous remote rename target'))).toBe(true);
+    expect(adapter.renameCalls).toHaveLength(0);
+    expect(coordinator.getSyncState().files.get('old.md')?.remoteFileId).toBe(original.id);
+    expect(fs.readFileSync(path.join(tmpDir, 'new.md'), 'utf8')).toBe('A');
+  });
+
+  it('remote move into excluded scope behaves as remote absence and removes unchanged local copy', async () => {
+    const content = Buffer.from('A');
+    const remote = adapter.addRemoteFileWithId('note.md', 'excluded-move-id', content);
+    fs.writeFileSync(path.join(tmpDir, 'note.md'), content);
+    await coordinator.setDriveFolderId('root-folder-id');
+    await coordinator.reconcile();
+    adapter.pendingChanges.length = 0;
+
+    adapter.files.delete('note.md');
+    adapter.files.set('_conflicts/note.md', { id: remote.id, content, quartzoHash: h('A'), parents: ['root-folder-id'] });
+    adapter.pendingChanges.push({
+      fileId: remote.id,
+      removed: false,
+      file: { id: remote.id, name: '_conflicts/note.md', mimeType: 'application/octet-stream', modifiedTime: new Date().toISOString(), quartzoHash: h('A'), parents: ['root-folder-id'] }
+    });
+
+    const result = await coordinator.reconcile();
+    expect(result.errors).toHaveLength(0);
+    expect(fs.existsSync(path.join(tmpDir, 'note.md'))).toBe(false);
+    expect(coordinator.getSyncState().files.has('note.md')).toBe(false);
+  });
+
+  it('parent folder rename expands to tracked child identity and preserves a local edit', async () => {
+    const base = Buffer.from('A');
+    const edited = Buffer.from('B');
+    fs.mkdirSync(path.join(tmpDir, 'Folder'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'Folder', 'note.md'), base);
+    const child = adapter.addRemoteFileWithId('Folder/note.md', 'folder-child-id', base);
+    await coordinator.setDriveFolderId('root-folder-id');
+    await coordinator.reconcile();
+    adapter.pendingChanges.length = 0;
+
+    fs.writeFileSync(path.join(tmpDir, 'Folder', 'note.md'), edited);
+    adapter.files.delete('Folder/note.md');
+    adapter.files.set('Renamed/note.md', { id: child.id, content: base, quartzoHash: h('A'), parents: ['root-folder-id'] });
+    adapter.pendingChanges.push({
+      fileId: 'folder-id',
+      removed: false,
+      file: { id: 'folder-id', name: 'Renamed', mimeType: 'application/vnd.google-apps.folder', modifiedTime: new Date().toISOString(), parents: ['root-folder-id'] }
+    });
+
+    const result = await coordinator.reconcile();
+    expect(result.conflicts).toBe(0);
+    expect(fs.existsSync(path.join(tmpDir, 'Folder', 'note.md'))).toBe(false);
+    expect(fs.readFileSync(path.join(tmpDir, 'Renamed', 'note.md'), 'utf8')).toBe('B');
+    expect(coordinator.getSyncState().files.get('Renamed/note.md')?.remoteFileId).toBe(child.id);
+    expect(Buffer.from(await adapter.downloadFile(child.id)).toString()).toBe('B');
+  });
+
+  it('focus triggers during an active sync coalesce instead of being dropped', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+    let releaseFirst!: () => void;
+    const gate = new Promise<void>(resolve => { releaseFirst = resolve; });
+    const originalListAll = adapter.listAllFiles.bind(adapter);
+    let listAllCalls = 0;
+    adapter.listAllFiles = async (folderId: string) => {
+      listAllCalls++;
+      if (listAllCalls === 1) await gate;
+      return originalListAll(folderId);
+    };
+
+    const first = coordinator.triggerManualSync();
+    await new Promise(resolve => setTimeout(resolve, 5));
+    const focusA = coordinator.triggerFocusSync();
+    const focusB = coordinator.triggerFocusSync();
+    releaseFirst();
+    await Promise.all([first, focusA, focusB]);
+    await new Promise(resolve => setTimeout(resolve, 25));
+
+    expect(listAllCalls).toBe(1);
+    expect(adapter.listChangesCalls).toBe(1);
+  });
+});

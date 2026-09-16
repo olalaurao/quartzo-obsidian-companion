@@ -5,172 +5,172 @@ import process from 'process';
 
 const UPSTREAM_LOCK_FILE = path.join(process.cwd(), 'contracts', 'UPSTREAM.lock.json');
 const CONTRACTS_DIR = path.join(process.cwd(), 'contracts', 'quartzo');
+const DOC_ROOT = 'docs/integrations/obsidian_companion/';
+const CONTRACT_ROOT = 'contracts/quartzo/';
+const DEFAULT_REPOSITORY = 'olalaurao/aplicativo';
 
-function getLock() {
-  if (fs.existsSync(UPSTREAM_LOCK_FILE)) {
-    return JSON.parse(fs.readFileSync(UPSTREAM_LOCK_FILE, 'utf-8'));
-  }
-  return null;
+function headers() {
+  return {
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+    ...(process.env.GITHUB_TOKEN ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {})
+  };
 }
 
-function hashFile(filePath) {
-  const content = fs.readFileSync(filePath, 'utf-8').replace(/\r\n/g, '\n');
-  return crypto.createHash('sha256').update(content, 'utf8').digest('hex');
+async function getJson(url) {
+  const response = await fetch(url, { headers: headers() });
+  if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${url}`);
+  return response.json();
+}
+
+async function getBlob(repository, sha) {
+  const blob = await getJson(`https://api.github.com/repos/${repository}/git/blobs/${sha}`);
+  if (blob.encoding !== 'base64' || typeof blob.content !== 'string') {
+    throw new Error(`Unsupported blob encoding for ${sha}`);
+  }
+  return Buffer.from(blob.content.replace(/\n/g, ''), 'base64');
+}
+
+function sha256(bytes) {
+  return crypto.createHash('sha256').update(bytes).digest('hex');
 }
 
 function walkDir(dir) {
-  let files = [];
-  if (!fs.existsSync(dir)) return files;
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
-  for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...walkDir(fullPath));
-    } else {
-      files.push(fullPath);
-    }
+  const out = [];
+  if (!fs.existsSync(dir)) return out;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...walkDir(full));
+    else if (entry.isFile()) out.push(full);
   }
-  return files;
+  return out;
+}
+
+async function sourceEntries(repository, commit) {
+  const commitData = await getJson(`https://api.github.com/repos/${repository}/git/commits/${commit}`);
+  const tree = await getJson(`https://api.github.com/repos/${repository}/git/trees/${commitData.tree.sha}?recursive=1`);
+  if (tree.truncated) throw new Error('Upstream tree response is truncated; refusing incomplete contract verification.');
+
+  const entries = new Map();
+  for (const item of tree.tree || []) {
+    if (item.type !== 'blob' || !item.path || !item.sha) continue;
+    let vendorPath = null;
+    if (item.path.startsWith(DOC_ROOT)) {
+      const rel = item.path.slice(DOC_ROOT.length);
+      if (rel && !rel.includes('/')) vendorPath = rel;
+    } else if (item.path.startsWith(CONTRACT_ROOT)) {
+      const rel = item.path.slice(CONTRACT_ROOT.length);
+      // docs/integrations/obsidian_companion/README.md is the Companion-facing
+      // README already historically vendored at README.md. Avoid a collision
+      // with the internal contracts/quartzo/README.md.
+      if (rel && rel !== 'README.md') vendorPath = rel;
+    }
+    if (!vendorPath) continue;
+    if (entries.has(vendorPath)) {
+      throw new Error(`Upstream contract mapping collision for ${vendorPath}`);
+    }
+    entries.set(vendorPath, { sourcePath: item.path, blobSha: item.sha });
+  }
+  if (!entries.has('contract_manifest.json') || !entries.has('QUARTZO_SYNC_PROTOCOL_V1.md')) {
+    throw new Error('Required upstream contract files are missing.');
+  }
+  return entries;
+}
+
+function readLock() {
+  if (!fs.existsSync(UPSTREAM_LOCK_FILE)) throw new Error('No UPSTREAM.lock.json found.');
+  return JSON.parse(fs.readFileSync(UPSTREAM_LOCK_FILE, 'utf8'));
+}
+
+function localManifest() {
+  const manifest = {};
+  for (const file of walkDir(CONTRACTS_DIR)) {
+    const rel = path.relative(CONTRACTS_DIR, file).replace(/\\/g, '/');
+    manifest[rel] = sha256(fs.readFileSync(file));
+  }
+  return manifest;
+}
+
+async function sync(commit) {
+  if (!commit) throw new Error('Provide a commit hash: node scripts/sync-contracts.mjs sync <commit>');
+  const repository = DEFAULT_REPOSITORY;
+  const entries = await sourceEntries(repository, commit);
+
+  fs.rmSync(CONTRACTS_DIR, { recursive: true, force: true });
+  fs.mkdirSync(CONTRACTS_DIR, { recursive: true });
+
+  const manifest = {};
+  const sources = {};
+  for (const [vendorPath, source] of [...entries.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    const bytes = await getBlob(repository, source.blobSha);
+    const target = path.join(CONTRACTS_DIR, ...vendorPath.split('/'));
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, bytes);
+    manifest[vendorPath] = sha256(bytes);
+    sources[vendorPath] = source.sourcePath;
+  }
+
+  const versions = JSON.parse(fs.readFileSync(path.join(CONTRACTS_DIR, 'contract_manifest.json'), 'utf8'));
+  const lock = {
+    repository,
+    sourceCommit: commit,
+    syncTimestamp: new Date().toISOString(),
+    contractVersions: versions,
+    sources,
+    manifest
+  };
+  fs.writeFileSync(UPSTREAM_LOCK_FILE, JSON.stringify(lock, null, 2) + '\n');
+  console.log(`PASS: vendored ${Object.keys(manifest).length} files from ${repository}@${commit}`);
 }
 
 async function verify() {
-  const lock = getLock();
-  if (!lock) {
-    console.error("FAIL: No UPSTREAM.lock.json found.");
-    process.exit(1);
+  const lock = readLock();
+  if (!lock.repository || !lock.sourceCommit || !lock.manifest || !lock.sources) {
+    throw new Error('UPSTREAM.lock.json is missing repository/sourceCommit/manifest/sources.');
   }
-  if (!fs.existsSync(CONTRACTS_DIR)) {
-    console.error("FAIL: Contracts directory missing.");
-    process.exit(1);
-  }
-  if (!lock.manifest) {
-    console.error("FAIL: Lock file missing manifest.");
-    process.exit(1);
-  }
+  const upstream = await sourceEntries(lock.repository, lock.sourceCommit);
+  const upstreamKeys = [...upstream.keys()].sort();
+  const lockedKeys = Object.keys(lock.manifest).sort();
+  const sourceKeys = Object.keys(lock.sources).sort();
+  const current = localManifest();
+  const currentKeys = Object.keys(current).sort();
 
-  const currentFiles = walkDir(CONTRACTS_DIR);
-  const currentManifest = {};
-  for (const f of currentFiles) {
-    const relPath = path.relative(CONTRACTS_DIR, f).replace(/\\/g, '/');
-    currentManifest[relPath] = hashFile(f);
+  const sameKeys = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+  if (!sameKeys(upstreamKeys, lockedKeys) || !sameKeys(lockedKeys, sourceKeys)) {
+    throw new Error('Locked contract set does not exactly match the pinned upstream contract set.');
+  }
+  if (!sameKeys(lockedKeys, currentKeys)) {
+    throw new Error('Local vendor tree has missing or extra contract files.');
   }
 
-  const expectedManifest = lock.manifest;
-  const expectedKeys = Object.keys(expectedManifest);
-  const currentKeys = Object.keys(currentManifest);
-
-  let hasError = false;
-
-  console.log(`Verifying against upstream commit: ${lock.sourceCommit}...`);
-
-  for (const k of expectedKeys) {
-    if (!currentManifest[k]) {
-      console.error(`FAIL: Missing vendor contract file: ${k}`);
-      hasError = true;
-    } else if (currentManifest[k] !== expectedManifest[k]) {
-      console.error(`FAIL: Vendor contract file altered: ${k} - expected ${expectedManifest[k]}, got ${currentManifest[k]}`);
-      hasError = true;
-    } else {
-      // Real download validation
-      try {
-        let text;
-        if (process.env.LOCAL_CANONICAL_PATH) {
-          const isMd = k.endsWith('.md') && !k.includes('/');
-          const upstreamPath = isMd ? ['docs', 'integrations', 'obsidian_companion'] : ['contracts', 'quartzo'];
-          const localPath = path.join(process.env.LOCAL_CANONICAL_PATH, ...upstreamPath, k);
-          if (!fs.existsSync(localPath)) {
-            console.error(`FAIL: Local canonical file missing: ${localPath}`);
-            hasError = true;
-            continue;
-          }
-          text = fs.readFileSync(localPath, 'utf8');
-        } else {
-          const isMd = k.endsWith('.md') && !k.includes('/');
-          const upstreamPath = isMd ? 'docs/integrations/obsidian_companion' : 'contracts/quartzo';
-          const url = `https://raw.githubusercontent.com/${lock.repository}/${lock.sourceCommit}/${upstreamPath}/${k}`;
-          const headers = process.env.GITHUB_TOKEN ? { "Authorization": `token ${process.env.GITHUB_TOKEN}` } : {};
-          const response = await fetch(url, { headers });
-          if (!response.ok) {
-             console.error(`FAIL: Failed to fetch remote file ${k} (HTTP ${response.status})`);
-             hasError = true;
-             continue;
-          }
-          text = await response.text();
-        }
-        const remoteContent = text.replace(/\r\n/g, '\n');
-        const remoteHash = crypto.createHash('sha256').update(remoteContent, 'utf8').digest('hex');
-        if (remoteHash !== expectedManifest[k]) {
-           console.error(`FAIL: Remote upstream hash mismatch for ${k} - expected ${expectedManifest[k]}, got ${remoteHash}`);
-           hasError = true;
-        }
-      } catch (err) {
-         console.error(`FAIL: Network error verifying ${k}`, err);
-         hasError = true;
-      }
+  for (const vendorPath of lockedKeys) {
+    const source = upstream.get(vendorPath);
+    if (!source || lock.sources[vendorPath] !== source.sourcePath) {
+      throw new Error(`Source path mismatch for ${vendorPath}`);
+    }
+    const upstreamBytes = await getBlob(lock.repository, source.blobSha);
+    const upstreamHash = sha256(upstreamBytes);
+    if (lock.manifest[vendorPath] !== upstreamHash) {
+      throw new Error(`Lock hash does not match upstream bytes for ${vendorPath}`);
+    }
+    if (current[vendorPath] !== upstreamHash) {
+      throw new Error(`Vendored file differs from upstream for ${vendorPath}`);
     }
   }
 
-  for (const k of currentKeys) {
-    if (!expectedManifest[k]) {
-      console.error(`FAIL: Local contract file not from upstream: ${k}`);
-      hasError = true;
-    }
+  const manifestVersions = JSON.parse(fs.readFileSync(path.join(CONTRACTS_DIR, 'contract_manifest.json'), 'utf8'));
+  if (JSON.stringify(manifestVersions) !== JSON.stringify(lock.contractVersions)) {
+    throw new Error('Contract versions in lock differ from upstream contract_manifest.json.');
   }
-
-  if (hasError) {
-    process.exit(1);
-  }
-
-  console.log(`PASS: Contracts verified against upstream commit: ${lock.sourceCommit}`);
+  console.log(`PASS: ${lockedKeys.length} contracts verified byte-for-byte against ${lock.repository}@${lock.sourceCommit}`);
 }
 
-async function sync() {
-  const token = process.env.GITHUB_TOKEN;
-  if (!token) {
-    console.error("GITHUB_TOKEN required to sync from remote repository.");
-    process.exit(1);
-  }
-  
-  const commit = process.argv[3];
-  if (!commit) {
-    console.error("Provide a commit hash to sync. Example: node scripts/sync-contracts.mjs sync <commit-hash>");
-    process.exit(1);
-  }
-
-  console.log(`Syncing contracts from olalaurao/aplicativo at ${commit}...`);
-  // Note: in a real implementation this would download the files and overwrite local.
-  // For now, we update the lockfile sourceCommit based on current directory.
-
-  const currentFiles = walkDir(CONTRACTS_DIR);
-  const manifest = {};
-  for (const f of currentFiles) {
-    const relPath = path.relative(CONTRACTS_DIR, f).replace(/\\/g, '/');
-    manifest[relPath] = hashFile(f);
-  }
-
-  const newLock = {
-    repository: "olalaurao/aplicativo",
-    sourceCommit: commit,
-    syncTimestamp: new Date().toISOString(),
-    contractVersions: {
-      vaultInteropVersion: "1.0.0",
-      syncProtocolVersion: "1.0.0",
-      schedulerContractVersion: "1.0.0",
-      dailyScheduleContractVersion: "1.0.0"
-    },
-    manifest
-  };
-
-  fs.mkdirSync(path.join(process.cwd(), 'contracts'), { recursive: true });
-  fs.writeFileSync(UPSTREAM_LOCK_FILE, JSON.stringify(newLock, null, 2));
-  console.log("Contracts synced successfully.");
-}
-
-const command = process.argv[2];
-if (command === 'verify') {
-  verify();
-} else if (command === 'sync') {
-  sync();
-} else {
-  console.log("Usage: node scripts/sync-contracts.mjs <verify|sync [commit]>");
+const [command, commit] = process.argv.slice(2);
+try {
+  if (command === 'sync') await sync(commit);
+  else if (command === 'verify') await verify();
+  else throw new Error('Usage: node scripts/sync-contracts.mjs <sync COMMIT|verify>');
+} catch (error) {
+  console.error(`FAIL: ${error instanceof Error ? error.message : String(error)}`);
+  process.exit(1);
 }

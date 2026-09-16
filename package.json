@@ -14,7 +14,8 @@
     "contracts:verify": "node scripts/sync-contracts.mjs verify",
     "architecture:check": "node scripts/architecture-check.mjs",
     "release:validate": "node scripts/release-validate.mjs",
-    "smoke:clean-artifact": "node scripts/smoke-clean-artifact.mjs"
+    "smoke:clean-artifact": "node scripts/smoke-clean-artifact.mjs",
+    "audit:prod": "npm audit --omit=dev --audit-level=high"
   },
   "keywords": [],
   "author": "olalaurao",
@@ -33,11 +34,10 @@
     "yaml": "^2.4.1"
   },
   "dependencies": {
-    "@googleapis/drive": "26.0.0",
+    "@googleapis/drive": "21.0.0",
     "date-fns": "^4.4.0",
     "date-fns-tz": "^3.2.0",
-    "google-auth-library": "11.0.2",
-    "googleapis-common": "9.0.4"
+    "google-auth-library": "10.5.0"
   },
   "engines": {
     "node": ">=20.0.0"

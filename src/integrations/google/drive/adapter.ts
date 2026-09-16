@@ -282,86 +282,171 @@ export class GoogleDriveAdapter implements DriveAdapter {
     }
   }
 
-  async ensureParentFolder(rootFolderId: string, filePath: string): Promise<string> {
-    return this.withRetry(async () => {
-      const drive = this.getDriveClient();
-      const pathParts = filePath.split('/');
-      pathParts.pop(); // remove file name
-      let currentParentId = rootFolderId;
-      for (const folderName of pathParts) {
-        if (!folderName) continue;
-        const existingFolder = await this.findFolderByName(currentParentId, folderName);
-        if (existingFolder) {
-          currentParentId = existingFolder;
-        } else {
-          const folderMetadata = await drive.files.create({
-            requestBody: {
-              name: folderName,
-              parents: [currentParentId],
-              mimeType: 'application/vnd.google-apps.folder'
-            },
-            fields: 'id'
-          });
-          currentParentId = folderMetadata.data.id || currentParentId;
-        }
+  private errorStatus(error: unknown): number | undefined {
+    const err = error as { code?: number; status?: number; response?: { status?: number } };
+    return err.code || err.status || err.response?.status;
+  }
+
+  private isTransientCreateError(error: unknown): boolean {
+    const status = this.errorStatus(error);
+    return !status || status === 429 || status >= 500;
+  }
+
+  private async createBackoff(attempt: number): Promise<void> {
+    const base = 250 * Math.pow(2, attempt);
+    await new Promise(resolve => setTimeout(resolve, base + Math.random() * 250));
+  }
+
+  private async listNamedChildren(parentId: string, childName: string, foldersOnly: boolean): Promise<DriveFileMetadata[]> {
+    const driveClient = this.getDriveClient();
+    const results: DriveFileMetadata[] = [];
+    let pageToken: string | undefined;
+    const parent = this.escapeQueryParam(parentId);
+    const name = this.escapeQueryParam(childName);
+    const mimeClause = foldersOnly
+      ? "mimeType = 'application/vnd.google-apps.folder'"
+      : "mimeType != 'application/vnd.google-apps.folder'";
+    do {
+      const response = await this.withRetry(() => driveClient.files.list({
+        q: `'${parent}' in parents and name = '${name}' and ${mimeClause} and trashed = false`,
+        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties)',
+        pageSize: 100,
+        pageToken
+      }));
+      for (const file of response.data.files || []) {
+        results.push({
+          id: file.id || '',
+          name: file.name || '',
+          mimeType: file.mimeType || '',
+          modifiedTime: file.modifiedTime || new Date().toISOString(),
+          md5Checksum: file.md5Checksum || undefined,
+          parents: file.parents || undefined,
+          quartzoHash: this.extractQuartzoHash(file)
+        });
       }
-      return currentParentId;
-    });
+      pageToken = response.data.nextPageToken || undefined;
+    } while (pageToken);
+    return results;
+  }
+
+  private async findFolderByName(parentId: string, folderName: string): Promise<string | null> {
+    const files = await this.listNamedChildren(parentId, folderName, true);
+    if (files.length > 1) {
+      throw new Error(`Ambiguous Drive folder identity for ${folderName} under ${parentId}`);
+    }
+    return files.length === 1 ? files[0].id : null;
+  }
+
+  private async createFolderIdempotent(parentId: string, folderName: string): Promise<string> {
+    const existing = await this.findFolderByName(parentId, folderName);
+    if (existing) return existing;
+    const driveClient = this.getDriveClient();
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const created = await driveClient.files.create({
+          requestBody: {
+            name: folderName,
+            parents: [parentId],
+            mimeType: 'application/vnd.google-apps.folder'
+          },
+          fields: 'id'
+        });
+        if (!created.data.id) throw new Error(`Drive create folder returned no ID for ${folderName}`);
+        return created.data.id;
+      } catch (error) {
+        const after = await this.findFolderByName(parentId, folderName);
+        if (after) return after;
+        if (!this.isTransientCreateError(error) || attempt === 2) throw error;
+        await this.createBackoff(attempt);
+      }
+    }
+    throw new Error(`Unable to create folder ${folderName}`);
+  }
+
+  async ensureParentFolder(rootFolderId: string, filePath: string): Promise<string> {
+    let currentParentId = rootFolderId;
+    const pathParts = normalizeVaultPath(filePath).split('/');
+    pathParts.pop();
+    for (const folderName of pathParts) {
+      if (!folderName) continue;
+      currentParentId = await this.createFolderIdempotent(currentParentId, folderName);
+    }
+    return currentParentId;
+  }
+
+  private async createFileIdempotent(parentId: string, fileName: string, fullPath: string, content: Uint8Array, quartzoHash: string): Promise<DriveFileMetadata> {
+    const findExpected = async (): Promise<DriveFileMetadata | null> => {
+      const candidates = await this.listNamedChildren(parentId, fileName, false);
+      if (candidates.length > 1) throw new Error(`Ambiguous remote identity for ${fullPath}`);
+      if (candidates.length === 0) return null;
+      const candidate = candidates[0];
+      const actualHash = await this.resolveRemoteHash(candidate);
+      if (actualHash !== quartzoHash) {
+        throw new Error(`Remote path ${fullPath} already exists with divergent content`);
+      }
+      candidate.quartzoHash = actualHash;
+      return candidate;
+    };
+
+    const preexisting = await findExpected();
+    if (preexisting) return preexisting;
+
+    const driveClient = this.getDriveClient();
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const response = await driveClient.files.create({
+          requestBody: {
+            name: fileName,
+            parents: [parentId],
+            properties: { Quartzo_hash: quartzoHash }
+          },
+          media: {
+            mimeType: 'application/octet-stream',
+            body: Buffer.from(content)
+          },
+          fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties'
+        });
+        const data = response.data;
+        return {
+          id: data.id || '',
+          name: fullPath,
+          mimeType: data.mimeType || '',
+          modifiedTime: data.modifiedTime || new Date().toISOString(),
+          md5Checksum: data.md5Checksum || undefined,
+          parents: data.parents || undefined,
+          quartzoHash
+        };
+      } catch (error) {
+        const after = await findExpected();
+        if (after) return after;
+        if (!this.isTransientCreateError(error) || attempt === 2) throw error;
+        await this.createBackoff(attempt);
+      }
+    }
+    throw new Error(`Unable to create ${fullPath}`);
   }
 
   async uploadFile(params: UploadFileParams): Promise<DriveFileMetadata> {
-    return this.withRetry(async () => {
-      const drive = this.getDriveClient();
-      const pathParts = params.name.split('/');
-      const fileName = pathParts.pop() || params.name;
-      const currentParentId = await this.ensureParentFolder(params.parentId || params.folderId, params.name);
-
-      const response = await drive.files.create({
-        requestBody: {
-          name: fileName,
-          parents: [currentParentId],
-          properties: { Quartzo_hash: params.quartzoHash || '' }
-        },
-        media: {
-          mimeType: 'application/octet-stream',
-          body: Buffer.from(params.content)
-        },
-        fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties'
-      });
-
-      const data = response.data;
-      return {
-        id: data.id || '',
-        name: params.name,
-        mimeType: data.mimeType || '',
-        modifiedTime: data.modifiedTime || new Date().toISOString(),
-        md5Checksum: data.md5Checksum || undefined,
-        parents: data.parents || undefined,
-        quartzoHash: params.quartzoHash
-      };
-    });
+    const normalized = normalizeVaultPath(params.name);
+    const pathParts = normalized.split('/');
+    const fileName = pathParts.pop() || normalized;
+    const parentId = await this.ensureParentFolder(params.parentId || params.folderId, normalized);
+    return this.createFileIdempotent(parentId, fileName, normalized, params.content, params.quartzoHash);
   }
 
   async updateFile(fileId: string, content: Uint8Array, quartzoHash: string): Promise<DriveFileMetadata> {
+    await this.assertInsideSelectedVault(fileId);
     return this.withRetry(async () => {
-      const drive = this.getDriveClient();
-      const response = await drive.files.update({
+      const driveClient = this.getDriveClient();
+      const response = await driveClient.files.update({
         fileId,
-        requestBody: {
-          appProperties: {
-            Quartzo_hash: quartzoHash
-          }
-        },
-        media: {
-          mimeType: 'application/octet-stream',
-          body: Buffer.from(content)
-        },
+        requestBody: { properties: { Quartzo_hash: quartzoHash } },
+        media: { mimeType: 'application/octet-stream', body: Buffer.from(content) },
         fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties'
       });
-
       const data = response.data;
       return {
-        id: data.id || '',
+        id: data.id || fileId,
         name: data.name || '',
         mimeType: data.mimeType || '',
         modifiedTime: data.modifiedTime || new Date().toISOString(),
@@ -372,48 +457,85 @@ export class GoogleDriveAdapter implements DriveAdapter {
     });
   }
 
-  private async findFolderByName(parentId: string, folderName: string): Promise<string | null> {
-    const drive = this.getDriveClient();
-    const response = await drive.files.list({
-      q: `'${parentId}' in parents and name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
-      fields: 'files(id)',
-      pageSize: 1
-    });
-    const files = response.data.files || [];
-    return files.length > 0 ? (files[0].id || null) : null;
-  }
-
   async deleteFile(fileId: string): Promise<void> {
-    return this.withRetry(async () => {
-      const drive = this.getDriveClient();
-      await drive.files.delete({ fileId });
-    });
+    try {
+      await this.assertInsideSelectedVault(fileId);
+    } catch (error) {
+      if (this.errorStatus(error) === 404) return; // retry after a committed delete
+      throw error;
+    }
+    try {
+      await this.withRetry(async () => {
+        const driveClient = this.getDriveClient();
+        await driveClient.files.delete({ fileId });
+      });
+    } catch (error) {
+      if (this.errorStatus(error) === 404) return;
+      throw error;
+    }
   }
 
   async renameFile(fileId: string, newName: string, newParentId?: string): Promise<DriveFileMetadata> {
+    await this.assertInsideSelectedVault(fileId);
+    if (newParentId) await this.assertInsideSelectedVault(newParentId);
+
     return this.withRetry(async () => {
-      const drive = this.getDriveClient();
-      let removeParentsStr: string | undefined = undefined;
+      const driveClient = this.getDriveClient();
+      const currentResponse = await driveClient.files.get({
+        fileId,
+        fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties'
+      });
+      const current = currentResponse.data;
+      const currentParents = current.parents || [];
 
       if (newParentId) {
-        const fileResponse = await drive.files.get({ fileId, fields: 'parents' });
-        if (fileResponse.data.parents && fileResponse.data.parents.length > 0) {
-          removeParentsStr = fileResponse.data.parents.join(',');
+        const parent = this.escapeQueryParam(newParentId);
+        const name = this.escapeQueryParam(newName);
+        let pageToken: string | undefined;
+        const collisions: string[] = [];
+        do {
+          const response = await driveClient.files.list({
+            q: `'${parent}' in parents and name = '${name}' and mimeType != 'application/vnd.google-apps.folder' and trashed = false`,
+            fields: 'nextPageToken, files(id)',
+            pageSize: 100,
+            pageToken
+          });
+          for (const candidate of response.data.files || []) {
+            if (candidate.id && candidate.id !== fileId) collisions.push(candidate.id);
+          }
+          pageToken = response.data.nextPageToken || undefined;
+        } while (pageToken);
+        if (collisions.length > 0) {
+          throw new Error(`Ambiguous remote rename target: ${newName} already exists under ${newParentId}`);
         }
       }
 
-      const requestBody: Record<string, unknown> = { name: newName };
-      const response = await drive.files.update({
+      const alreadyAtTarget = current.name === newName &&
+        (!newParentId || currentParents.includes(newParentId));
+      if (alreadyAtTarget) {
+        return {
+          id: current.id || fileId,
+          name: current.name || newName,
+          mimeType: current.mimeType || '',
+          modifiedTime: current.modifiedTime || new Date().toISOString(),
+          md5Checksum: current.md5Checksum || undefined,
+          parents: current.parents || undefined,
+          quartzoHash: this.extractQuartzoHash(current)
+        };
+      }
+
+      const movingParent = !!newParentId && !currentParents.includes(newParentId);
+      const response = await driveClient.files.update({
         fileId,
-        requestBody,
-        addParents: newParentId || undefined,
-        removeParents: removeParentsStr,
+        requestBody: { name: newName },
+        addParents: movingParent ? newParentId : undefined,
+        removeParents: movingParent && currentParents.length > 0 ? currentParents.join(',') : undefined,
         fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties'
       });
       const data = response.data;
       return {
-        id: data.id || '',
-        name: data.name || '',
+        id: data.id || fileId,
+        name: data.name || newName,
         mimeType: data.mimeType || '',
         modifiedTime: data.modifiedTime || new Date().toISOString(),
         md5Checksum: data.md5Checksum || undefined,

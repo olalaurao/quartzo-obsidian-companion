@@ -11,7 +11,11 @@ import { tmpdir } from 'os';
 class FakeDriveAdapter implements DriveAdapter {
   async assertInsideSelectedVault(remoteFileId: string): Promise<void> { return Promise.resolve(); }
   async resolveExactPath(fileId: string): Promise<string> { return fileId; }
-  async resolveRemoteHash(metadata: DriveFileMetadata): Promise<string> { return 'raw-hash'; }
+  async resolveRemoteHash(metadata: DriveFileMetadata): Promise<string> {
+    if (metadata.quartzoHash) return metadata.quartzoHash;
+    const content = await this.downloadFile(metadata.id);
+    return crypto.createHash('sha256').update(content).digest('hex');
+  }
 
   private _files = new Map<string, { id: string; content: Uint8Array; quartzoHash: string }>();
   private folderId = 'root-folder-id';

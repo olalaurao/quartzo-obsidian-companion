@@ -6,6 +6,7 @@ import { GoogleOAuthDesktop, OAuthConfig } from './integrations/google/auth/loop
 import { HomeView, PlannerView, DayDialView, JournalView, BrowseView, SearchView, QuickAddView, ConflictCenterView } from './ui';
 import { ViewContext } from './ui/types';
 import { normalizeVaultPath } from './sync/coordinator/path-utils';
+import { VaultSyncFilePolicy } from './sync/coordinator/file-policy';
 import { ObjectParser } from './core/objects';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -90,7 +91,7 @@ class SyncCenterView extends ItemView {
           this.onOpen();
         });
 
-        if (this.context.plugin.driveAdapter) {
+        if (this.context.plugin.driveAdapter && this.context.plugin.authState === 'authenticated_unpaired') {
           const folders = await this.context.plugin.driveAdapter.listQuartzoVaultCandidates().catch(() => []);
           if (folders.length === 0) {
             new Notice("No existing Quartzo vault was found.");
@@ -182,6 +183,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
   viewContext: ViewContext | null = null;
   private syncIntervalId: ReturnType<typeof setInterval> | null = null;
   private eventRefs: ReturnType<typeof this.app.vault.on>[] = [];
+  authState: 'disconnected' | 'authenticating' | 'authenticated_unpaired' | 'paired' | 'authentication_required' = 'disconnected';
 
   async onload() {
     await this.loadSettings();
@@ -293,9 +295,15 @@ export default class QuartzoCompanionPlugin extends Plugin {
     };
   }
 
+  private shouldIndexPath(rawPath: string): boolean {
+    const normalized = normalizeVaultPath(rawPath);
+    if (normalized === '_deleted' || normalized.startsWith('_deleted/')) return false;
+    return VaultSyncFilePolicy.shouldSyncFile(normalized);
+  }
+
   private async initializeVaultIndex() {
     if (!this.vaultIndexEngine) return;
-    const files = this.app.vault.getMarkdownFiles();
+    const files = this.app.vault.getMarkdownFiles().filter(file => this.shouldIndexPath(file.path));
     const vaultFiles = await Promise.all(files.map(async file => ({
       path: file.path,
       content: await this.app.vault.read(file),
@@ -308,7 +316,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
 
   private registerVaultEvents() {
     const oncreate = this.app.vault.on('create', (file: TAbstractFile) => {
-      if (file instanceof TFile && this.vaultIndexEngine) {
+      if (file instanceof TFile && this.vaultIndexEngine && this.shouldIndexPath(file.path)) {
         const idx = this.vaultIndexEngine.getIndex();
         if (idx) {
           this.app.vault.read(file).then(content => {
@@ -336,7 +344,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.eventRefs.push(oncreate);
 
     const onmodify = this.app.vault.on('modify', (file: TAbstractFile) => {
-      if (file instanceof TFile && this.vaultIndexEngine) {
+      if (file instanceof TFile && this.vaultIndexEngine && this.shouldIndexPath(file.path)) {
         const idx = this.vaultIndexEngine.getIndex();
         if (idx) {
           this.app.vault.read(file).then(content => {
@@ -364,7 +372,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.eventRefs.push(onmodify);
 
     const ondelete = this.app.vault.on('delete', (file: TAbstractFile) => {
-      if (file instanceof TFile && this.vaultIndexEngine) {
+      if (file instanceof TFile && this.vaultIndexEngine && this.shouldIndexPath(file.path)) {
         const idx = this.vaultIndexEngine.getIndex();
         if (idx) {
           this.vaultIndexEngine.setIndex(
@@ -379,53 +387,94 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.eventRefs.push(ondelete);
 
     const onrename = this.app.vault.on('rename', (file: TAbstractFile, oldPath: string) => {
-      if (file instanceof TFile && this.vaultIndexEngine) {
-        const idx = this.vaultIndexEngine.getIndex();
-        if (idx) {
-          this.vaultIndexEngine.setIndex(
-            VaultIndexEngine.updateIndex(idx, [
-              { type: 'deleted', path: normalizeVaultPath(oldPath) },
-              { type: 'added', path: normalizeVaultPath(file.path) }
-            ])
-          );
-        }
+      if (!(file instanceof TFile) || !this.vaultIndexEngine) return;
+      const idx = this.vaultIndexEngine.getIndex();
+      if (!idx) return;
+      const changes: Array<{ type: 'deleted'; path: string } | { type: 'added'; path: string; object: { id: string; type: string; path: string; frontmatter: Record<string, unknown>; body: string } }> = [];
+      if (this.shouldIndexPath(oldPath)) changes.push({ type: 'deleted', path: normalizeVaultPath(oldPath) });
+      if (!this.shouldIndexPath(file.path)) {
+        if (changes.length > 0) this.vaultIndexEngine.setIndex(VaultIndexEngine.updateIndex(idx, changes));
+        return;
       }
+      this.app.vault.read(file).then(content => {
+        try {
+          const result = ObjectParser.parse(content);
+          changes.push({
+            type: 'added',
+            path: normalizeVaultPath(file.path),
+            object: {
+              id: result.object.id,
+              type: result.object.type,
+              path: file.path,
+              frontmatter: result.object as Record<string, unknown>,
+              body: (result.object as { body?: string }).body || ''
+            }
+          });
+          this.vaultIndexEngine!.setIndex(VaultIndexEngine.updateIndex(idx, changes));
+        } catch {
+          if (changes.length > 0) this.vaultIndexEngine!.setIndex(VaultIndexEngine.updateIndex(idx, changes));
+        }
+      }).catch(() => {
+        if (changes.length > 0) this.vaultIndexEngine!.setIndex(VaultIndexEngine.updateIndex(idx, changes));
+      });
     });
     this.eventRefs.push(onrename);
 
-    const onchange = this.app.vault.on('create', () => {
-      if (this.settings.syncAuto && this.settings.isPaired && this.driveSyncCoordinator) {
-        this.driveSyncCoordinator.triggerFocusSync().catch(() => {});
+    const onchange = this.app.vault.on('create', (file: TAbstractFile) => {
+      if (file instanceof TFile && VaultSyncFilePolicy.shouldSyncFile(file.path) && this.settings.isPaired && this.driveSyncCoordinator) {
+        this.app.vault.readBinary(file).then(bytes => {
+          if (this.driveSyncCoordinator?.consumeExpectedWatcherEvent(file.path, new Uint8Array(bytes))) return;
+          if (this.settings.syncAuto) this.driveSyncCoordinator?.triggerFocusSync().catch(() => {});
+        }).catch(() => {});
       }
     });
     this.eventRefs.push(onchange);
 
     const onmodifySync = this.app.vault.on('modify', (file: TAbstractFile) => {
-      if (file instanceof TFile && this.settings.isPaired && this.driveSyncCoordinator) {
-        if (this.settings.syncAuto) {
-          this.driveSyncCoordinator.triggerFocusSync().catch(() => {});
-        }
+      if (file instanceof TFile && VaultSyncFilePolicy.shouldSyncFile(file.path) && this.settings.isPaired && this.driveSyncCoordinator) {
+        this.app.vault.readBinary(file).then(bytes => {
+          if (this.driveSyncCoordinator?.consumeExpectedWatcherEvent(file.path, new Uint8Array(bytes))) return;
+          if (this.settings.syncAuto) this.driveSyncCoordinator?.triggerFocusSync().catch(() => {});
+        }).catch(() => {});
       }
     });
     this.eventRefs.push(onmodifySync);
 
     const ondeleteSync = this.app.vault.on('delete', (file: TAbstractFile) => {
-      if (file instanceof TFile && this.settings.isPaired && this.driveSyncCoordinator) {
+      if (file instanceof TFile && VaultSyncFilePolicy.shouldSyncFile(file.path) && this.settings.isPaired && this.driveSyncCoordinator) {
+        if (this.driveSyncCoordinator.consumeExpectedWatcherEvent(file.path, null)) return;
         this.driveSyncCoordinator.queueDelete(file.path);
-        if (this.settings.syncAuto) {
-          this.driveSyncCoordinator.triggerFocusSync().catch(() => {});
-        }
+        if (this.settings.syncAuto) this.driveSyncCoordinator.triggerFocusSync().catch(() => {});
       }
     });
     this.eventRefs.push(ondeleteSync);
 
     const onrenameSync = this.app.vault.on('rename', (file: TAbstractFile, oldPath: string) => {
-      if (file instanceof TFile && this.settings.isPaired && this.driveSyncCoordinator) {
-        this.driveSyncCoordinator.queueRename(oldPath, file.path);
-        if (this.settings.syncAuto) {
-          this.driveSyncCoordinator.triggerFocusSync().catch(() => {});
-        }
+      if (!(file instanceof TFile) || !this.settings.isPaired || !this.driveSyncCoordinator) return;
+      const oldSyncable = VaultSyncFilePolicy.shouldSyncFile(oldPath);
+      const newSyncable = VaultSyncFilePolicy.shouldSyncFile(file.path);
+      if (!oldSyncable && !newSyncable) return;
+
+      if (oldSyncable && !newSyncable) {
+        if (this.driveSyncCoordinator.consumeExpectedWatcherEvent(oldPath, null)) return;
+        this.driveSyncCoordinator.queueDelete(oldPath);
+        if (this.settings.syncAuto) this.driveSyncCoordinator.triggerFocusSync().catch(() => {});
+        return;
       }
+
+      this.app.vault.readBinary(file).then(bytes => {
+        const content = new Uint8Array(bytes);
+        if (!oldSyncable && newSyncable) {
+          if (this.driveSyncCoordinator?.consumeExpectedWatcherEvent(file.path, content)) return;
+          if (this.settings.syncAuto) this.driveSyncCoordinator?.triggerFocusSync().catch(() => {});
+          return;
+        }
+        const oldSuppressed = this.driveSyncCoordinator?.consumeExpectedWatcherEvent(oldPath, null) ?? false;
+        const newSuppressed = this.driveSyncCoordinator?.consumeExpectedWatcherEvent(file.path, content) ?? false;
+        if (oldSuppressed && newSuppressed) return;
+        this.driveSyncCoordinator?.queueRename(oldPath, file.path);
+        if (this.settings.syncAuto) this.driveSyncCoordinator?.triggerFocusSync().catch(() => {});
+      }).catch(() => {});
     });
     this.eventRefs.push(onrenameSync);
   }
@@ -459,6 +508,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     if (!refreshToken) {
       this.settings.isPaired = false;
       await this.saveSettings();
+      this.authState = 'authentication_required';
       new Notice('Session expired. Please reconnect Google Drive.');
       return;
     }
@@ -468,6 +518,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
       this.oauthClient = new GoogleOAuthDesktop(config, secretStorage);
       const tokenResponse = await this.oauthClient.refreshAccessToken();
       this.driveAdapter.setAccessToken(tokenResponse.access_token);
+      this.authState = this.settings.isPaired ? 'paired' : 'authenticated_unpaired';
 
       if (this.driveAdapter && this.settings.googleDriveFolderId) {
         await this.driveAdapter.setFolderId(this.settings.googleDriveFolderId);
@@ -494,10 +545,12 @@ export default class QuartzoCompanionPlugin extends Plugin {
   async startPairingFlow() {
     const clientId = this.getResolvedClientId();
     if (!clientId || clientId === 'PLACEHOLDER_CLIENT_ID') {
+      this.authState = 'disconnected';
       new Notice('Configure your Google OAuth Client ID in settings first.');
       return;
     }
 
+    this.authState = 'authenticating';
     const config = { ...OAUTH_CONFIG, clientId };
     const secretStorage = this.getSecretStorage();
     this.oauthClient = new GoogleOAuthDesktop(config, secretStorage);
@@ -513,6 +566,8 @@ export default class QuartzoCompanionPlugin extends Plugin {
         if (!storedRefresh) {
           new Notice('No refresh token received. Please re-authorize with full access.');
           await this.oauthClient.disconnect();
+          this.driveAdapter?.setAccessToken('');
+          this.authState = 'disconnected';
           return;
         }
       }
@@ -526,11 +581,10 @@ export default class QuartzoCompanionPlugin extends Plugin {
         }
       });
 
-      this.settings.firstRunCompleted = true;
-      await this.saveSettings();
-
+      this.authState = 'authenticated_unpaired';
       new Notice('Google Drive authenticated. Select your vault folder.');
     } catch (error) {
+      this.authState = 'disconnected';
       new Notice(`Authentication failed: ${error}`);
     }
   }
@@ -541,21 +595,35 @@ export default class QuartzoCompanionPlugin extends Plugin {
       return;
     }
 
+    const candidates = await this.driveAdapter.listQuartzoVaultCandidates();
+    const selected = candidates.find(candidate => candidate.id === folderId);
+    if (!selected) {
+      new Notice('Pairing blocked: the selected folder is no longer a valid Quartzo vault.');
+      return;
+    }
+
     await this.driveSyncCoordinator.setDriveFolderId(folderId);
     this.settings.googleDriveFolderId = folderId;
-    this.settings.googleDriveFolderName = folderName;
+    this.settings.googleDriveFolderName = selected.name || folderName;
 
     const summary = await this.driveSyncCoordinator.generatePairingSummary();
     const hasDivergent = summary.divergent.length > 0;
+    const hasAmbiguous = summary.ambiguous.length > 0;
 
-    if (hasDivergent) {
-      new Notice(`Pairing blocked: ${summary.divergent.length} divergent file(s) require resolution.`);
+    if (hasDivergent || hasAmbiguous) {
+      new Notice(`Pairing blocked: ${summary.divergent.length} divergent and ${summary.ambiguous.length} ambiguous file(s) require resolution.`);
       return;
     }
 
     if (autoAdopt || autoPull) {
-      await this.driveSyncCoordinator.applyPairingDecisions(summary, { autoAdopt, autoPull });
+      const pairingResult = await this.driveSyncCoordinator.applyPairingDecisions(summary, { autoAdopt, autoPull });
+      if (pairingResult.errors.length > 0) {
+        new Notice(`Pairing incomplete: ${pairingResult.errors.join('; ')}`);
+        return;
+      }
       this.settings.isPaired = true;
+      this.settings.firstRunCompleted = true;
+      this.authState = 'paired';
       await this.saveSettings();
       new Notice(`Paired with folder: ${folderName}`);
       this.startAutoSync();
@@ -570,6 +638,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
             <li>Identical files: ${summary.identical.length}</li>
             <li>Remote-only (to pull): ${summary.remoteOnly.length}</li>
             <li>Local-only (to adopt): ${summary.localOnly.length}</li>
+            <li>Ambiguous (blocked): ${summary.ambiguous.length}</li>
           </ul>
           <p>Do you want to adopt local-only files and pull remote-only files?</p>
           <div style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
@@ -588,8 +657,14 @@ export default class QuartzoCompanionPlugin extends Plugin {
       modal.querySelector('#pairing-confirm')?.addEventListener('click', async () => {
         modal.remove();
         try {
-          await this.driveSyncCoordinator!.applyPairingDecisions(summary, { autoAdopt: true, autoPull: true });
+          const pairingResult = await this.driveSyncCoordinator!.applyPairingDecisions(summary, { autoAdopt: true, autoPull: true });
+          if (pairingResult.errors.length > 0) {
+            new Notice(`Pairing incomplete: ${pairingResult.errors.join('; ')}`);
+            return;
+          }
           this.settings.isPaired = true;
+          this.settings.firstRunCompleted = true;
+          this.authState = 'paired';
           await this.saveSettings();
           new Notice(`Paired with folder: ${folderName}`);
           this.startAutoSync();
@@ -606,6 +681,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     }
     this.stopAutoSync();
     this.settings.isPaired = false;
+    this.authState = 'disconnected';
     this.settings.googleDriveFolderId = null;
     this.settings.googleDriveFolderName = null;
     await this.saveSettings();
