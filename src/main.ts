@@ -8,6 +8,9 @@ import { GOOGLE_COMPANION_SCOPES } from './integrations/google/auth/scopes';
 import { QuartzoView, QUARTZO_VIEW_TYPE, type QuartzoSection, type QuartzoAction } from './ui';
 import { ViewContext } from './ui/types';
 import { addLocalDays, localIsoDate, parseLocalIsoDate } from './core/local-date';
+import { ReminderService, type ReminderMode, type ReminderSourceObject } from './core/reminders';
+import { FileNotificationDeliveryRegistry } from './local-state/notification-delivery-registry';
+import { ObsidianReminderDeliveryGateway } from './platform/notifications';
 import { normalizeVaultPath } from './sync/coordinator/path-utils';
 import { VaultSyncFilePolicy } from './sync/coordinator/file-policy';
 import { SHARED_SETTINGS_PATH, SharedSettingsRepository, parseObjectWithSharedSettings, type QuartzoSharedSettings } from './vault/shared-settings';
@@ -29,6 +32,7 @@ interface QuartzoCompanionSettings {
   firstRunCompleted: boolean;
   oauthClientId: string;
   isPaired: boolean;
+  reminderDelivery: ReminderMode;
 }
 
 const DEFAULT_SETTINGS: QuartzoCompanionSettings = {
@@ -39,6 +43,7 @@ const DEFAULT_SETTINGS: QuartzoCompanionSettings = {
   firstRunCompleted: false,
   oauthClientId: 'PLACEHOLDER_CLIENT_ID',
   isPaired: false,
+  reminderDelivery: 'in_obsidian_only',
 };
 
 
@@ -63,6 +68,8 @@ export default class QuartzoCompanionPlugin extends Plugin {
   driveAdapter: GoogleDriveAdapter | null = null;
   googleCalendarAdapter: GoogleCalendarAdapter | null = null;
   oauthClient: GoogleOAuthDesktop | null = null;
+  reminderService: ReminderService | null = null;
+  reminderDeliveryGateway: ObsidianReminderDeliveryGateway | null = null;
   viewContext: ViewContext | null = null;
   private syncIntervalId: ReturnType<typeof setInterval> | null = null;
   private eventRefs: ReturnType<typeof this.app.vault.on>[] = [];
@@ -135,6 +142,22 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.sharedSettings = await this.sharedSettingsRepository.load();
     await this.initializeVaultIndex();
     this.registerVaultEvents();
+    this.reminderDeliveryGateway = new ObsidianReminderDeliveryGateway(
+      () => this.settings.privacyMode,
+      () => { void this.activateQuartzo('home'); },
+    );
+    this.reminderService = new ReminderService({
+      getObjects: () => this.getReminderSourceObjects(),
+      getMode: () => this.settings.reminderDelivery,
+      registry: new FileNotificationDeliveryRegistry(
+        path.join(this.getPluginDirectoryPath(), 'quartzo-notification-delivery.json'),
+      ),
+      gateway: this.reminderDeliveryGateway,
+    });
+    await this.reminderService.start();
+    this.registerInterval(window.setInterval(() => {
+      void this.reminderService?.poll(new Date());
+    }, 15_000));
 
     if (!this.settings.firstRunCompleted) {
       this.showFirstRunDialog();
@@ -153,16 +176,18 @@ export default class QuartzoCompanionPlugin extends Plugin {
     throw new Error('Desktop-only: FileSystemAdapter required');
   }
 
-  private getPluginDataPath(): string {
+  private getPluginDirectoryPath(): string {
     const adapter = this.app.vault.adapter;
-    if (adapter instanceof FileSystemAdapter) {
-      const pluginDir = path.join(adapter.getBasePath(), this.app.vault.configDir, 'plugins', this.manifest.id);
-      if (!fs.existsSync(pluginDir)) {
-        fs.mkdirSync(pluginDir, { recursive: true });
-      }
-      return path.join(pluginDir, 'quartzo-sync-state.json');
+    if (!(adapter instanceof FileSystemAdapter)) {
+      throw new Error('Desktop-only: FileSystemAdapter required');
     }
-    return '';
+    const pluginDir = path.join(adapter.getBasePath(), this.app.vault.configDir, 'plugins', this.manifest.id);
+    if (!fs.existsSync(pluginDir)) fs.mkdirSync(pluginDir, { recursive: true });
+    return pluginDir;
+  }
+
+  private getPluginDataPath(): string {
+    return path.join(this.getPluginDirectoryPath(), 'quartzo-sync-state.json');
   }
 
   private getResolvedClientId(): string {
@@ -255,6 +280,32 @@ export default class QuartzoCompanionPlugin extends Plugin {
       this.calendarStatus = 'authorization_required';
       new Notice(`Google Calendar authorization failed: ${error}`);
     }
+  }
+  private getReminderSourceObjects(): ReminderSourceObject[] {
+    const index = this.vaultIndexEngine?.getIndex();
+    if (!index) return [];
+    return Array.from(index.objects.values()).map(object => ({
+      ...object.frontmatter,
+      id: object.id,
+      type: object.type,
+      title: String(object.frontmatter.title ?? object.type),
+      body: object.body,
+      __path: object.path,
+    } as ReminderSourceObject));
+  }
+
+  async setReminderDelivery(mode: ReminderMode): Promise<void> {
+    let nextMode = mode;
+    if (mode === 'desktop_notifications') {
+      const granted = await this.reminderDeliveryGateway?.requestDesktopPermission() ?? false;
+      if (!granted) {
+        nextMode = 'in_obsidian_only';
+        new Notice('Desktop notification permission was not granted. Reminder delivery remains In-Obsidian only.');
+      }
+    }
+    this.settings.reminderDelivery = nextMode;
+    await this.saveSettings();
+    this.reminderService?.resetWindow(new Date());
   }
   private shouldIndexPath(rawPath: string): boolean {
     const normalized = normalizeVaultPath(rawPath);
@@ -737,6 +788,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
 
   onunload() {
     this.stopAutoSync();
+    this.reminderService?.stop();
     this.oauthClient?.abort();
     for (const ref of this.eventRefs) {
       this.app.vault.offref(ref);
@@ -801,6 +853,18 @@ class QuartzoSettingTab extends PluginSettingTab {
           this.display();
         }));
 
+    new Setting(containerEl)
+      .setName('Reminder Delivery')
+      .setDesc('V1 reminders are delivered only while Obsidian is running. In-Obsidian only is the work-computer default.')
+      .addDropdown(dropdown => dropdown
+        .addOption('off', 'Off')
+        .addOption('in_obsidian_only', 'In-Obsidian only')
+        .addOption('desktop_notifications', 'Desktop notifications')
+        .setValue(this.plugin.settings.reminderDelivery)
+        .onChange(async value => {
+          await this.plugin.setReminderDelivery(value as ReminderMode);
+          this.display();
+        }));
     new Setting(containerEl)
       .setName('Privacy Mode')
       .setDesc('Hide sensitive information in the UI')
