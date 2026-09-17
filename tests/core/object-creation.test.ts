@@ -9,6 +9,7 @@ const settings: QuartzoSharedSettings = {
   folderPaths: {
     resource: 'resources',
     entry: 'journal/entries',
+    reminder: 'reminders',
   },
   categoryColors: {},
   accentColor: '#F97316',
@@ -81,6 +82,39 @@ describe('buildQuickAddDocument', () => {
     )).toThrow('Resource type is required.');
   });
 
+  it('persists Quick Add Reminder as one exact canonical instant with embedded ReminderConfig', () => {
+    const created = buildQuickAddDocument(
+      settings,
+      'reminder',
+      { title: 'Call clinic', body: '', date: '2026-09-17', time: '09:30' },
+      'reminder-call-clinic',
+    );
+
+    expect(created.path).toBe('reminders/reminder-call-clinic.md');
+    const raw = ObjectParser.parseMarkdown(created.content).frontmatter;
+    expect(raw).toMatchObject({
+      date: '2026-09-17T09:30:00.000',
+      time: '2026-09-17T09:30:00.000',
+      is_completed: false,
+      is_completable: true,
+      reminder_id: 'reminder-call-clinic_primary',
+      reminder_count: 1,
+      reminders: [{
+        id: 'reminder-call-clinic_primary',
+        trigger_time: '2026-09-17T09:30:00.000',
+        type: 'popup',
+        notification_body: 'Call clinic',
+      }],
+    });
+    const parsed = ObjectParser.parse(created.content);
+    expect(parsed.object).toMatchObject({
+      id: 'reminder-call-clinic',
+      type: 'reminder',
+      date: '2026-09-17',
+      time: '09:30',
+      reminder_id: 'reminder-call-clinic_primary',
+    });
+  });
   it('fails closed when no canonical Resource creation folder is configured', () => {
     expect(() => buildQuickAddDocument(
       { ...settings, folderPaths: {} },
