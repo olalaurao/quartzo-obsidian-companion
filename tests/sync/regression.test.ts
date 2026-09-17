@@ -944,6 +944,7 @@ describe('Sync Regression Tests', () => {
   describe('Reviewer Blocker 4+5: OAuth scope and ancestry proof', () => {
     it('OAuth scope is full Drive with documented rationale', () => {
       const scopesSrc = fs.readFileSync(path.join(__dirname, '../../src/integrations/google/auth/scopes.ts'), 'utf-8');
+      const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/main.ts'), 'utf-8');
       expect(scopesSrc).toContain('https://www.googleapis.com/auth/drive');
       expect(mainSrc).toContain('V1 decision');
       expect(mainSrc).toContain('GOOGLE_COMPANION_SCOPES');
