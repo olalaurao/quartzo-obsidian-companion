@@ -125,13 +125,14 @@ export default class QuartzoCompanionPlugin extends Plugin {
     ribbonIconEl.addClass('quartzo-ribbon-icon');
 
     this.addCommand({ id: 'quartzo-open', name: 'Quartzo: Open', callback: () => { void this.activateQuartzo('home'); } });
+    this.addCommand({ id: 'quartzo-open-today', name: 'Quartzo: Open Today', callback: () => { void this.activateQuartzo('home'); } });
     this.addCommand({ id: 'quartzo-planner', name: 'Quartzo: Planner', callback: () => { void this.activateQuartzo('planner'); } });
     this.addCommand({ id: 'quartzo-day-dial', name: 'Quartzo: Day Dial', callback: () => { void this.activateQuartzo('home'); } });
     this.addCommand({ id: 'quartzo-journal', name: 'Quartzo: Journal', callback: () => { void this.activateQuartzo('journal'); } });
     this.addCommand({ id: 'quartzo-browse', name: 'Quartzo: Browse', callback: () => { void this.activateQuartzo('browse'); } });
     this.addCommand({ id: 'quartzo-search', name: 'Quartzo: Search', callback: () => { void this.activateQuartzo('browse', 'search'); } });
     this.addCommand({ id: 'quartzo-quick-add', name: 'Quartzo: Quick Add', callback: () => { void this.activateQuartzo('home', 'add'); } });
-    this.addCommand({ id: 'quartzo-sync-center', name: 'Quartzo: Sync', callback: () => { void this.activateQuartzo('home', 'sync'); } });
+    this.addCommand({ id: 'quartzo-sync-center', name: 'Quartzo: View sync status', callback: () => { void this.activateQuartzo('home', 'sync'); } });
     this.addCommand({ id: 'quartzo-conflict-center', name: 'Quartzo: Conflicts', callback: () => { void this.activateQuartzo('home', 'conflicts'); } });
     this.addCommand({
       id: 'quartzo-sync-now',
@@ -152,6 +153,12 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.sharedSettings = await this.sharedSettingsRepository.load();
     await this.initializeVaultIndex();
     this.registerVaultEvents();
+    this.registerDomEvent(window, 'focus', () => {
+      if (!this.settings.syncOnFocus || !this.settings.isPaired || !this.driveSyncCoordinator) return;
+      void this.driveSyncCoordinator.triggerFocusSync().catch(error => {
+        console.error('Focus sync failed:', error);
+      });
+    });
     this.reminderDeliveryGateway = new ObsidianReminderDeliveryGateway(
       () => this.settings.hideNotificationBody,
       () => { void this.activateQuartzo('home'); },
@@ -512,6 +519,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
   startAutoSync() {
     if (this.syncIntervalId) return;
     if (!this.settings.syncAuto) return;
+    const seconds = Math.max(15, Math.min(3600, Math.trunc(this.settings.syncPollingIntervalSeconds)));
     this.syncIntervalId = setInterval(async () => {
       if (this.driveSyncCoordinator && this.settings.isPaired && this.settings.syncAuto) {
         try {
@@ -520,7 +528,12 @@ export default class QuartzoCompanionPlugin extends Plugin {
           console.error('Auto sync failed:', error);
         }
       }
-    }, 60000);
+    }, seconds * 1000);
+  }
+
+  restartAutoSync() {
+    this.stopAutoSync();
+    this.startAutoSync();
   }
 
   stopAutoSync() {
@@ -555,9 +568,14 @@ export default class QuartzoCompanionPlugin extends Plugin {
         await this.driveSyncCoordinator?.setDriveFolderId(this.settings.googleDriveFolderId);
       }
 
+      if (this.settings.syncOnStartup && this.driveSyncCoordinator) {
+        const result = await this.driveSyncCoordinator.triggerStartupSync();
+        if (result.errors.length > 0) console.error('Startup sync failed:', result.errors[result.errors.length - 1]);
+      }
       this.startAutoSync();
     } catch {
       this.settings.isPaired = false;
+      this.authState = 'authentication_required';
       await this.saveSettings();
       new Notice('Session expired. Please reconnect Google Drive.');
     }
@@ -752,6 +770,14 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.settings.googleDriveFolderName = null;
     await this.saveSettings();
     new Notice('Google Drive disconnected.');
+  }
+
+  async useWithoutSync(): Promise<void> {
+    this.settings.firstRunCompleted = true;
+    this.settings.isPaired = false;
+    await this.saveSettings();
+    this.stopAutoSync();
+    new Notice('Quartzo Companion will stay local on this device until you connect Google Drive.');
   }
 
   async adoptFile(filePath: string): Promise<void> {
