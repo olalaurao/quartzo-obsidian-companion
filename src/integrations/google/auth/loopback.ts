@@ -38,11 +38,15 @@ export class GoogleOAuthDesktop {
   constructor(
     config: OAuthConfig,
     secretStorage: { get: (key: string) => Promise<string | null>; set: (key: string, value: string) => Promise<void>; delete: (key: string) => Promise<void> },
-    browserOpener: BrowserOpener
+    browserOpener?: BrowserOpener
   ) {
     this.config = config;
     this.secretStorage = secretStorage;
-    this.browserOpener = browserOpener;
+    this.browserOpener = browserOpener ?? {
+      open: async () => {
+        throw new Error('OAuth browser opener is not configured');
+      },
+    };
   }
 
   generatePKCE(): { verifier: string; challenge: string; state: string } {
