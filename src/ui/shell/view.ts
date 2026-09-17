@@ -790,7 +790,21 @@ export class QuartzoView extends ItemView {
       empty.textContent = 'No Journal Entries for this date.';
       entriesSection.appendChild(empty);
     } else {
-      for (const entry of projection.entries) this.renderObjectRow(entriesSection, entry);
+      for (const entry of projection.entries) {
+        const row = document.createElement('div');
+        row.className = 'quartzo-journal-entry-row';
+        this.renderObjectRow(row, entry);
+        if (!this.context.plugin.settings.hideSensitivePreviews && !this.context.plugin.settings.hideJournalPreviewText) {
+          const previewText = entry.body.trim().replace(/\s+/g, ' ').slice(0, 180);
+          if (previewText) {
+            const preview = document.createElement('p');
+            preview.className = 'quartzo-journal-entry-preview';
+            preview.textContent = previewText;
+            row.appendChild(preview);
+          }
+        }
+        entriesSection.appendChild(row);
+      }
     }
     container.appendChild(entriesSection);
 
@@ -952,6 +966,20 @@ export class QuartzoView extends ItemView {
         const empty = document.createElement('p');
         empty.textContent = 'No existing Quartzo vault was found.';
         container.appendChild(empty);
+
+        const retry = document.createElement('button');
+        retry.textContent = 'Retry';
+        retry.addEventListener('click', () => { void this.render(); });
+        container.appendChild(retry);
+
+        const cancelSetup = document.createElement('button');
+        cancelSetup.textContent = 'Cancel setup';
+        cancelSetup.addEventListener('click', async () => {
+          await plugin.useWithoutSync();
+          this.action = null;
+          await this.render();
+        });
+        container.appendChild(cancelSetup);
         return;
       }
       for (const candidate of candidates) {
@@ -1046,7 +1074,11 @@ export class QuartzoView extends ItemView {
           : 'Newest by modification time: unavailable; choose a side explicitly.';
       card.appendChild(newestInfo);
 
-      if (conflict.isBinary) {
+      if (plugin.settings.hideSensitivePreviews) {
+        const hidden = document.createElement('p');
+        hidden.textContent = 'Conflict content hidden by Privacy settings.';
+        card.appendChild(hidden);
+      } else if (conflict.isBinary) {
         const binary = document.createElement('p');
         binary.textContent = `Binary conflict. Local bytes: ${conflict.localContent.length}; Drive bytes: ${conflict.remoteContent.length}.`;
         card.appendChild(binary);
