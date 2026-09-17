@@ -384,6 +384,10 @@ function checkReleasePipelineHardening() {
     console.error('FAIL: Production release validation is missing artifact/OAuth checks');
     return false;
   }
+  if (!validate.includes("gitRefType === 'tag'") || !validate.includes('Git tag')) {
+    console.error('FAIL: Release validation does not separate branch preflight from tag/version enforcement');
+    return false;
+  }
   console.log('PASS: Beta release pipeline is preflighted, provenance-checked and checksummed');
   return true;
 }

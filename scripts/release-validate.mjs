@@ -103,9 +103,10 @@ function validateRelease() {
       errors.push('Release version must be X.Y.Z or X.Y.Z-beta.N.');
     }
 
+    const gitRefType = process.env.GITHUB_REF_TYPE || '';
     const gitTag = process.env.GITHUB_REF_NAME || '';
-    if (gitTag && gitTag !== version) {
-      errors.push(`Git tag "${gitTag}" does not match version "${version}".`);
+    if (gitRefType === 'tag' && gitTag !== version) {
+      errors.push(`Git tag "${gitTag || '(missing)'}" does not match version "${version}".`);
     }
   }
 
