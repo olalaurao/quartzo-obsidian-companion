@@ -1,0 +1,30 @@
+name: Universal detail wiring
+
+on:
+  push:
+    branches:
+      - feat/beta-product-completion
+    paths:
+      - scripts/apply-universal-detail-wiring.mjs
+      - .github/workflows/universal-detail-repair.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/beta-product-completion
+          fetch-depth: 0
+      - run: node scripts/apply-universal-detail-wiring.mjs
+      - name: Commit patched shell
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/ui/shell/view.ts
+          git diff --cached --check
+          git commit -m "feat(ui): route objects through universal detail"
+          git push origin HEAD:feat/beta-product-completion
