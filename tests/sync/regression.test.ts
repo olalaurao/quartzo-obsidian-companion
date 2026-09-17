@@ -926,10 +926,24 @@ describe('Sync Regression Tests', () => {
 
     it('main.ts startPairingFlow does not set isPaired', () => {
       const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/main.ts'), 'utf-8');
-      const flow = mainSrc.substring(
-        mainSrc.indexOf('async startPairingFlow()'),
-        mainSrc.indexOf('async confirmPairing(')
-      );
+      const methodStart = mainSrc.indexOf('async startPairingFlow()');
+      expect(methodStart).toBeGreaterThanOrEqual(0);
+      const bodyStart = mainSrc.indexOf('{', methodStart);
+      expect(bodyStart).toBeGreaterThan(methodStart);
+      let depth = 0;
+      let methodEnd = -1;
+      for (let index = bodyStart; index < mainSrc.length; index++) {
+        if (mainSrc[index] === '{') depth++;
+        if (mainSrc[index] === '}') {
+          depth--;
+          if (depth === 0) {
+            methodEnd = index + 1;
+            break;
+          }
+        }
+      }
+      expect(methodEnd).toBeGreaterThan(bodyStart);
+      const flow = mainSrc.substring(methodStart, methodEnd);
       expect(flow).not.toContain('isPaired = true');
     });
 
