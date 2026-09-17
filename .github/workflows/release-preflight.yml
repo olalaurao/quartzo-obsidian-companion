@@ -1,0 +1,91 @@
+name: Release Preflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-preflight:
+    runs-on: ubuntu-latest
+    env:
+      QUARTZO_GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID }}
+      RELEASE_MODE: 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Require production OAuth Client ID
+        shell: bash
+        run: |
+          if [ -z "$QUARTZO_GOOGLE_DESKTOP_CLIENT_ID" ]; then
+            echo "::error::Repository secret QUARTZO_GOOGLE_DESKTOP_CLIENT_ID is not configured."
+            exit 1
+          fi
+          case "$QUARTZO_GOOGLE_DESKTOP_CLIENT_ID" in
+            *.apps.googleusercontent.com) ;;
+            *)
+              echo "::error::QUARTZO_GOOGLE_DESKTOP_CLIENT_ID does not look like a Google Desktop OAuth client ID."
+              exit 1
+              ;;
+          esac
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Verify canonical contracts
+        run: npm run contracts:verify
+        env:
+          GITHUB_TOKEN: ${{ secrets.QUARTZO_UPSTREAM_TOKEN }}
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Run tests
+        run: npm test
+
+      - name: Run contract tests
+        run: npm run test:contracts
+
+      - name: Run sync tests
+        run: npm run test:sync
+
+      - name: Architecture check
+        run: npm run architecture:check
+
+      - name: Production build
+        run: npm run build
+
+      - name: Validate production release
+        run: npm run release:validate
+
+      - name: Clean artifact smoke test
+        run: npm run smoke:clean-artifact
+
+      - name: Stage beta artifact
+        shell: bash
+        run: |
+          mkdir -p .release-artifact
+          cp main.js manifest.json styles.css .release-artifact/
+
+      - name: Upload validated beta artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: quartzo-companion-${{ github.sha }}
+          path: .release-artifact/
+          if-no-files-found: error
+          retention-days: 14
