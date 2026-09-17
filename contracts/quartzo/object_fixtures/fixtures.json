@@ -277,6 +277,31 @@
     }
   },
   {
+    "id": "resource_book",
+    "type": "resource",
+    "path": "resources/the-hobbit.md",
+    "markdown": "---\nid: resource-hobbit\ntype: resource\ntitle: The Hobbit\nmedia_type: Book\nsource_url: https://openlibrary.org/works/OL27448W\nstatus: inProgress\nrating: 4\npriority: high\nauthor: J. R. R. Tolkien\nyear: 1937\npages: 310\ncategory: Fantasy\nisbn: '9780547928227'\nlanguage: en\nlinks:\n  - '[[resource/lord-of-the-rings]]'\ncategories:\n  - reading\n---\nA hobbit goes on an unexpected journey.\n",
+    "expected": {
+      "id": "resource-hobbit",
+      "type": "resource",
+      "title": "The Hobbit",
+      "media_type": "Book",
+      "source_url": "https://openlibrary.org/works/OL27448W",
+      "status": "inProgress",
+      "rating": 4,
+      "priority": "high",
+      "author": "J. R. R. Tolkien",
+      "year": 1937,
+      "pages": 310,
+      "category": "Fantasy",
+      "isbn": "9780547928227",
+      "language": "en",
+      "links": ["[[resource/lord-of-the-rings]]"],
+      "categories": ["reading"],
+      "body": "A hobbit goes on an unexpected journey."
+    }
+  },
+  {
     "id": "area_basic",
     "type": "area",
     "path": "organizers/areas/health.md",

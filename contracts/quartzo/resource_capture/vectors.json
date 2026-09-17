@@ -1,0 +1,33 @@
+[
+  {"id":"source_openlibrary_work","kind":"source_detection","url":"https://openlibrary.org/works/OL27448W","expectedSource":"openLibrary"},
+  {"id":"source_google_books","kind":"source_detection","url":"https://books.google.com/books?id=zyTCAlFPjgYC","expectedSource":"googleBooks"},
+  {"id":"source_google_play_books","kind":"source_detection","url":"https://play.google.com/store/books/details?id=zyTCAlFPjgYC","expectedSource":"googleBooks"},
+  {"id":"source_imdb","kind":"source_detection","url":"https://www.imdb.com/title/tt0111161/","expectedSource":"imdb"},
+  {"id":"source_amazon_br","kind":"source_detection","url":"https://www.amazon.com.br/dp/0000000000","expectedSource":"amazon"},
+  {"id":"source_goodreads","kind":"source_detection","url":"https://www.goodreads.com/book/show/5907.The_Hobbit","expectedSource":"goodreads"},
+  {"id":"source_http_rejected","kind":"source_detection","url":"http://openlibrary.org/works/OL27448W","expectedSource":"unknown"},
+  {"id":"source_arbitrary_https_not_fetched","kind":"source_detection","url":"https://example.com/video-essay","expectedSource":"unknown"},
+  {
+    "id":"duplicate_all_stable_identities",
+    "kind":"duplicate_detection",
+    "candidate":{"title":"The Hobbit","mediaType":"Book","sourceUrl":"https://example.com/hobbit/","isbn":"9780547928227","googleBooksId":"book-hobbit","imdbId":"tt-hobbit"},
+    "existing":[
+      {"id":"existing-hobbit","title":"  the   hobbit ","mediaType":"book","sourceUrl":"https://example.com/hobbit","isbn":"9780547928227","googleBooksId":"book-hobbit","imdbId":"tt-hobbit"}
+    ],
+    "expected":[{"id":"existing-hobbit","reasons":["sourceUrl","isbn","googleBooksId","imdbId","title"]}]
+  },
+  {
+    "id":"duplicate_ignores_archived",
+    "kind":"duplicate_detection",
+    "candidate":{"title":"Dune","mediaType":"Book","sourceUrl":"https://example.com/dune"},
+    "existing":[{"id":"archived-dune","title":"Dune","mediaType":"Book","sourceUrl":"https://example.com/dune/","archived":true}],
+    "expected":[]
+  },
+  {
+    "id":"duplicate_title_requires_media_type",
+    "kind":"duplicate_detection",
+    "candidate":{"title":"Foundation","mediaType":"Book"},
+    "existing":[{"id":"foundation-show","title":"Foundation","mediaType":"Show"}],
+    "expected":[]
+  }
+]

@@ -43,9 +43,13 @@ Current recognized type strings are defined by `ObjectTypes.all` in Flutter and 
 ```text
 task, habit, tracker, goal, note, entry, event, reminder, pomodoro, system,
 social_post, mood_definition, idea, inbox, shopping_list, template, daily_note,
-analysis, wellbeing_indicator, area, project, activity, label, person,
+analysis, wellbeing_indicator, resource, area, project, activity, label, person,
 day_theme, time_block, value, routine, pillar, action, monthly_focus, quote
 ```
+
+`resource` is the canonical object type for books, movies, shows, podcasts, articles, courses and user-defined media types. Course remains a Resource state/type and must not become a separate cross-client owner.
+
+Resource relationships use the universal `links` field. Clients must not persist a parallel `related_resources` relationship schema. Resource capture may surface duplicate candidates, but it must never auto-merge or auto-overwrite a candidate.
 
 ## Coverage Matrix
 
@@ -62,7 +66,9 @@ daily-schedule relevance
 fixture coverage
 ```
 
-V1 full mutation support is required for Task, Journal Entry, Note, Reminder, Habit, Tracker Definition and Tracking Record before the Companion exposes save controls for them.
+V1 full mutation support is required for Task, Journal Entry, Note, Reminder, Habit, Tracker Definition, Tracking Record and Resource before the Companion exposes save controls for them.
+
+Resource is scheduler-relevant because Course can carry a scheduler, but Resource is not a generic Daily Schedule item. A Companion must not independently inject normal Resources into daily surfaces.
 
 ## Shared Time State Files
 
