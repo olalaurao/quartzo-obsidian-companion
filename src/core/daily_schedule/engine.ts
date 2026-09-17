@@ -71,7 +71,7 @@ export class DailyScheduleEngine {
 
     // Enrich the canonical occurrence projection with presentation capabilities.
     // UI surfaces consume these values and must never infer them independently.
-    const normalizedItems = this.enrichPresentationContract(items, objects, googleEvents);
+    const normalizedItems = this.enrichPresentationContract(items, objects);
 
     // Determine kind based on what was processed
     const kind = this.determineKind(items, objects, googleEvents);
@@ -417,23 +417,20 @@ export class DailyScheduleEngine {
       return;
     }
 
-    const startDateTime = new Date(start);
-    const endDateTime = new Date(end);
-    if (Number.isNaN(startDateTime.getTime()) || Number.isNaN(endDateTime.getTime())) return;
-    const startDate = localIsoDate(startDateTime);
-    const endDate = localIsoDate(endDateTime);
-    const endClock = `${String(endDateTime.getHours()).padStart(2, '0')}:${String(endDateTime.getMinutes()).padStart(2, '0')}`;
+    const startDate = start.split('T')[0] ?? '';
+    const endDate = end.split('T')[0] ?? '';
+    const startClock = start.split('T')[1]?.substring(0, 5) ?? '';
+    const endClock = end.split('T')[1]?.substring(0, 5) ?? '';
+    if (!startDate || !endDate || !startClock || !endClock) return;
     if (date < startDate || date > endDate || (date === endDate && endClock === '00:00' && endDate !== startDate)) return;
-    const startClock = date === startDate
-      ? `${String(startDateTime.getHours()).padStart(2, '0')}:${String(startDateTime.getMinutes()).padStart(2, '0')}`
-      : '00:00';
+    const visibleStartClock = date === startDate ? startClock : '00:00';
     const visibleEndClock = date === endDate ? endClock : '23:59';
 
     items.push({
       id: `google_calendar:${id}`,
       sourceId: id,
       date,
-      start: startClock,
+      start: visibleStartClock,
       end: visibleEndClock,
       isTimed: true,
       isAllDay: false,
@@ -443,17 +440,11 @@ export class DailyScheduleEngine {
   private static enrichPresentationContract(
     items: RawNormalizedItem[],
     objects: Array<Record<string, unknown>>,
-    googleEvents: Array<Record<string, unknown>>,
   ): NormalizedItem[] {
     const byId = new Map<string, Record<string, unknown>>();
     for (const object of objects) {
       const id = String(object.id ?? '');
       if (id) byId.set(id, object);
-    }
-    const googleById = new Map<string, Record<string, unknown>>();
-    for (const event of googleEvents) {
-      const id = String(event.id ?? '');
-      if (id) googleById.set(id, event);
     }
 
     return items.map(item => {
@@ -462,7 +453,7 @@ export class DailyScheduleEngine {
       const sourcePath = source == null ? '' : String(source.__path ?? '');
       const rotationGroup = item.id.startsWith('rotation:') ? item.id.split(':')[2] ?? '' : '';
       const sourceLabel = source == null
-        ? String(googleById.get(item.sourceId)?.summary ?? 'Google Calendar')
+        ? `google_calendar:${item.sourceId}`
         : rotationGroup
           ? `project:${item.sourceId}:rotation:${rotationGroup}`
           : `${sourceType}:${item.sourceId}:${sourcePath}`;
