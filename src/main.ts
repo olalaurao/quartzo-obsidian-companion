@@ -1,4 +1,4 @@
-import { App, Plugin, PluginSettingTab, Setting, Notice, TFile, TAbstractFile, FileSystemAdapter } from 'obsidian';
+import { App, Modal, Plugin, PluginSettingTab, Setting, Notice, TFile, TAbstractFile, FileSystemAdapter } from 'obsidian';
 import { VaultIndexEngine } from './vault/index';
 import { DriveSyncCoordinator } from './sync/coordinator';
 import { GoogleDriveAdapter } from './integrations/google/drive';
@@ -823,37 +823,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
   }
 
   showFirstRunDialog() {
-    const modal = document.createElement('div');
-    modal.className = 'quartzo-first-run-modal';
-    const modalContent = document.createElement('div');
-    modalContent.className = 'modal-content';
-    const title = document.createElement('h2');
-    title.textContent = 'Welcome to Quartzo Companion';
-    modalContent.appendChild(title);
-    const description = document.createElement('p');
-    description.textContent = 'Set up your Google Drive sync to get started.';
-    modalContent.appendChild(description);
-    const setupLater = document.createElement('button');
-    setupLater.id = 'setup-later';
-    setupLater.textContent = 'Setup Later';
-    modalContent.appendChild(setupLater);
-    const setupNow = document.createElement('button');
-    setupNow.id = 'setup-now';
-    setupNow.textContent = 'Setup Now';
-    modalContent.appendChild(setupNow);
-    modal.appendChild(modalContent);
-    document.body.appendChild(modal);
-    modal.querySelector('#setup-later')?.addEventListener('click', () => {
-      this.settings.firstRunCompleted = true;
-      this.saveSettings();
-      modal.remove();
-    });
-    modal.querySelector('#setup-now')?.addEventListener('click', () => {
-      this.settings.firstRunCompleted = true;
-      this.saveSettings();
-      modal.remove();
-      void this.activateQuartzo('home', 'sync');
-    });
+    new QuartzoFirstRunModal(this.app, this).open();
   }
 
   onunload() {
@@ -867,11 +837,91 @@ export default class QuartzoCompanionPlugin extends Plugin {
   }
 
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const raw = await this.loadData();
+    const stored = raw != null && typeof raw === 'object' && !Array.isArray(raw)
+      ? raw as Record<string, unknown>
+      : {};
+    const legacyPrivacy = stored.privacyMode === true;
+    const rawPolling = typeof stored.syncPollingIntervalSeconds === 'number'
+      ? stored.syncPollingIntervalSeconds
+      : DEFAULT_SETTINGS.syncPollingIntervalSeconds;
+
+    this.settings = {
+      googleDriveFolderId: typeof stored.googleDriveFolderId === 'string' ? stored.googleDriveFolderId : null,
+      googleDriveFolderName: typeof stored.googleDriveFolderName === 'string' ? stored.googleDriveFolderName : null,
+      syncAuto: typeof stored.syncAuto === 'boolean' ? stored.syncAuto : DEFAULT_SETTINGS.syncAuto,
+      syncPollingIntervalSeconds: Math.max(15, Math.min(3600, Math.trunc(rawPolling))),
+      syncOnStartup: typeof stored.syncOnStartup === 'boolean' ? stored.syncOnStartup : DEFAULT_SETTINGS.syncOnStartup,
+      syncOnFocus: typeof stored.syncOnFocus === 'boolean' ? stored.syncOnFocus : DEFAULT_SETTINGS.syncOnFocus,
+      hideSensitivePreviews: typeof stored.hideSensitivePreviews === 'boolean' ? stored.hideSensitivePreviews : legacyPrivacy,
+      hideJournalPreviewText: typeof stored.hideJournalPreviewText === 'boolean' ? stored.hideJournalPreviewText : legacyPrivacy,
+      hideNotificationBody: typeof stored.hideNotificationBody === 'boolean' ? stored.hideNotificationBody : legacyPrivacy,
+      firstRunCompleted: typeof stored.firstRunCompleted === 'boolean' ? stored.firstRunCompleted : DEFAULT_SETTINGS.firstRunCompleted,
+      oauthClientId: typeof stored.oauthClientId === 'string' ? stored.oauthClientId : DEFAULT_SETTINGS.oauthClientId,
+      isPaired: typeof stored.isPaired === 'boolean' ? stored.isPaired : DEFAULT_SETTINGS.isPaired,
+      reminderDelivery: stored.reminderDelivery === 'off' || stored.reminderDelivery === 'desktop_notifications'
+        ? stored.reminderDelivery
+        : 'in_obsidian_only',
+    };
   }
 
   async saveSettings() {
     await this.saveData(this.settings);
+  }
+}
+
+class QuartzoFirstRunModal extends Modal {
+  constructor(app: App, private readonly plugin: QuartzoCompanionPlugin) {
+    super(app);
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+
+    const title = document.createElement('h2');
+    title.textContent = 'Quartzo Companion';
+    contentEl.appendChild(title);
+
+    const description = document.createElement('p');
+    description.textContent = 'Use this Obsidian vault as a Quartzo client and synchronize it with your existing Quartzo vault in Google Drive.';
+    contentEl.appendChild(description);
+
+    const safety = document.createElement('p');
+    safety.textContent = 'The Companion will never silently create a second Quartzo vault. After authorization, you explicitly select an existing Quartzo vault and review the pairing summary.';
+    contentEl.appendChild(safety);
+
+    const actions = document.createElement('div');
+    actions.className = 'quartzo-first-run-actions';
+
+    const localOnly = document.createElement('button');
+    localOnly.textContent = 'Use without sync';
+    localOnly.addEventListener('click', async () => {
+      await this.plugin.useWithoutSync();
+      this.close();
+      await this.plugin.activateQuartzo('home');
+    });
+    actions.appendChild(localOnly);
+
+    const connect = document.createElement('button');
+    connect.className = 'mod-cta';
+    connect.textContent = 'Connect Google Drive';
+    connect.addEventListener('click', async () => {
+      connect.disabled = true;
+      connect.textContent = 'Connecting…';
+      try {
+        await this.plugin.startPairingFlow();
+        if (this.plugin.authState === 'authenticated_unpaired') {
+          this.close();
+          await this.plugin.activateQuartzo('home', 'sync');
+        }
+      } finally {
+        connect.disabled = false;
+        connect.textContent = 'Connect Google Drive';
+      }
+    });
+    actions.appendChild(connect);
+    contentEl.appendChild(actions);
   }
 }
 
