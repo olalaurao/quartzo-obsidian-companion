@@ -778,8 +778,8 @@ describe('Sync Regression Tests', () => {
 
   describe('Item 16: Drive scope', () => {
     it('OAuth scope is drive (full)', () => {
-      const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/main.ts'), 'utf-8');
-      expect(mainSrc).toContain('https://www.googleapis.com/auth/drive');
+      const scopesSrc = fs.readFileSync(path.join(__dirname, '../../src/integrations/google/auth/scopes.ts'), 'utf-8');
+      expect(scopesSrc).toContain('https://www.googleapis.com/auth/drive');
     });
   });
 
@@ -943,9 +943,10 @@ describe('Sync Regression Tests', () => {
 
   describe('Reviewer Blocker 4+5: OAuth scope and ancestry proof', () => {
     it('OAuth scope is full Drive with documented rationale', () => {
-      const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/main.ts'), 'utf-8');
-      expect(mainSrc).toContain('https://www.googleapis.com/auth/drive');
+      const scopesSrc = fs.readFileSync(path.join(__dirname, '../../src/integrations/google/auth/scopes.ts'), 'utf-8');
+      expect(scopesSrc).toContain('https://www.googleapis.com/auth/drive');
       expect(mainSrc).toContain('V1 decision');
+      expect(mainSrc).toContain('GOOGLE_COMPANION_SCOPES');
     });
 
     it('processChanges checks ancestry before processing', async () => {
