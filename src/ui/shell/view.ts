@@ -540,12 +540,15 @@ export class QuartzoView extends ItemView {
     return String(object?.frontmatter.title ?? object?.type ?? sourceId);
   }
 
-  private renderScheduleList(container: HTMLElement, items: NormalizedItem[]): void {
+  private renderScheduleList(container: HTMLElement, items: NormalizedItem[], googleEvents: GoogleCalendarProjection[] = []): void {
+    const googleTitles = new Map(googleEvents.map(event => [event.id, event.summary] as const));
     const list = document.createElement('ul');
     for (const item of items) {
       const row = document.createElement('li');
       const time = item.start ? `${item.start} · ` : '';
-      const title = item.origin === 'externalEvent' ? item.sourceLabel : this.titleForSource(item.sourceId);
+      const title = item.origin === 'externalEvent'
+        ? (googleTitles.get(item.sourceId) ?? item.sourceLabel)
+        : this.titleForSource(item.sourceId);
       row.textContent = `${time}${title}`;
       const object = this.getIndex()?.objects.get(item.sourceId);
       if (object) {
@@ -568,10 +571,10 @@ export class QuartzoView extends ItemView {
       container.appendChild(empty);
       return;
     }
-    this.renderScheduleList(container, schedule.items);
+    this.renderScheduleList(container, schedule.items, googleEvents);
   }
 
-  private renderHomeBucket(container: HTMLElement, titleText: string, items: NormalizedItem[], emptyText: string): void {
+  private renderHomeBucket(container: HTMLElement, titleText: string, items: NormalizedItem[], emptyText: string, googleEvents: GoogleCalendarProjection[] = []): void {
     const section = document.createElement('section');
     section.className = 'quartzo-home-section';
     const heading = document.createElement('h3');
@@ -582,7 +585,7 @@ export class QuartzoView extends ItemView {
       empty.textContent = emptyText;
       section.appendChild(empty);
     } else {
-      this.renderScheduleList(section, items);
+      this.renderScheduleList(section, items, googleEvents);
     }
     container.appendChild(section);
   }
@@ -611,9 +614,9 @@ export class QuartzoView extends ItemView {
     dial.appendChild(summary);
     container.appendChild(dial);
 
-    this.renderHomeBucket(container, 'Now', projection.now, 'Nothing active right now.');
-    this.renderHomeBucket(container, 'Up Next', projection.upNext, 'Nothing timed is coming up.');
-    this.renderHomeBucket(container, 'Today', projection.today, 'Nothing scheduled today.');
+    this.renderHomeBucket(container, 'Now', projection.now, 'Nothing active right now.', googleEvents);
+    this.renderHomeBucket(container, 'Up Next', projection.upNext, 'Nothing timed is coming up.', googleEvents);
+    this.renderHomeBucket(container, 'Today', projection.today, 'Nothing scheduled today.', googleEvents);
   }
 
   private async renderPlanner(container: HTMLElement): Promise<void> {
@@ -824,7 +827,7 @@ export class QuartzoView extends ItemView {
       empty.textContent = 'Nothing on the canonical Daily Schedule for this date.';
       timeline.appendChild(empty);
     } else {
-      this.renderScheduleList(timeline, schedule.items);
+      this.renderScheduleList(timeline, schedule.items, googleEvents);
     }
     container.appendChild(timeline);
   }
