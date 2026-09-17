@@ -7,6 +7,7 @@ import {
   Task,
   Habit,
   TrackerDefinition,
+  TrackingRecord,
   Entry,
   Note,
   Reminder,
@@ -43,10 +44,10 @@ const KNOWN_FIELDS: Record<ObjectType, Set<string>> = {
   task: new Set(['id', 'type', 'title', 'archived', 'organizers', 'scheduler', 'reminders', 'body']),
   habit: new Set(['id', 'type', 'title', 'color', 'status', 'slots', 'negative', 'body']),
   tracker_definition: new Set(['id', 'type', 'title', 'sections', 'section_count', 'field_count', 'body']),
-  tracker_record: new Set(['id', 'type', 'title', 'tracker_id', 'date', 'body']),
+  tracker_record: new Set(['id', 'type', 'title', 'tracker_id', 'date', 'field_values', 'body']),
   entry: new Set(['id', 'type', 'title', 'date', 'time', 'body']),
   note: new Set(['id', 'type', 'title', 'note_subtype', 'links', 'body']),
-  reminder: new Set(['id', 'type', 'title', 'date', 'time', 'is_completed', 'reminder_count', 'reminder_id', 'scheduled_date', 'body']),
+  reminder: new Set(['id', 'type', 'title', 'date', 'time', 'is_completed', 'is_completable', 'reminder_count', 'reminder_id', 'reminders', 'scheduled_date', 'scheduler', 'notes', 'time_block', 'time_block_id', 'checkboxes', 'habit_reminder', 'organizers', 'categories', 'tags', 'links', 'archived', 'pinned', 'created_at', 'updated_at', 'source_url', 'body']),
   goal: new Set(['id', 'type', 'title', 'state', 'start_date', 'deadline', 'description', 'body']),
   event: new Set(['id', 'type', 'title', 'date', 'time_of_day', 'duration', 'body']),
   pomodoro_session: new Set(['id', 'type', 'title', 'date', 'work_duration', 'start', 'duration', 'state', 'body']),
@@ -61,6 +62,14 @@ const KNOWN_FIELDS: Record<ObjectType, Set<string>> = {
   daily_note: new Set(['id', 'type', 'title', 'body']),
   combined_analysis: new Set(['id', 'type', 'title', 'description', 'data_source_count', 'chart_count', 'body']),
   wellbeing_indicator: new Set(['id', 'type', 'title', 'signals', 'signal_count', 'body']),
+  resource: new Set([
+    'id', 'type', 'title', 'body', 'media_type', 'resource_type', 'cover', 'cover_image',
+    'source_url', 'book_id', 'readwise_book_id', 'status', 'rating', 'priority', 'author',
+    'year', 'pages', 'category', 'isbn', 'title_pt_br', 'title_original', 'publisher',
+    'language', 'google_books_id', 'imdb_id', 'read', 'start_date', 'end_date', 'scheduler',
+    'links', 'categories', 'tags', 'aliases', 'organizers', 'reminders', 'archived',
+    'created_at', 'updated_at', 'order',
+  ]),
   area: new Set(['id', 'type', 'title', 'organizer_type', 'body']),
   project: new Set(['id', 'type', 'title', 'organizer_type', 'rotation_groups', 'rotation_group_count', 'rotation_start_date', 'rotation_time', 'rotation_duration_minutes', 'task_links', 'body']),
   activity: new Set(['id', 'type', 'title', 'organizer_type', 'body']),
@@ -128,6 +137,7 @@ export class ObjectParser {
       'analysis': 'combined_analysis',
       'combined_analysis': 'combined_analysis',
       'wellbeing_indicator': 'wellbeing_indicator',
+      'resource': 'resource',
       'area': 'area',
       'project': 'project',
       'activity': 'activity',
@@ -275,7 +285,7 @@ export class ObjectParser {
             if (section && typeof section === 'object') {
               // Try direct property access
               name = (section.name as string) || (section.id as string) || (section.title as string) || '';
-              fields = (section.fields as unknown[]) || [];
+              fields = (section.input_fields as unknown[]) || (section.fields as unknown[]) || [];
               
               // If still empty, try iterating over keys
               if (!name && !fields.length) {
@@ -283,7 +293,7 @@ export class ObjectParser {
                   if (key === 'name' || key === 'id' || key === 'title') {
                     name = String(section[key]);
                   }
-                  if (key === 'fields') {
+                  if (key === 'input_fields' || key === 'fields') {
                     fields = Array.isArray(section[key]) ? section[key] as unknown[] : [];
                   }
                 }
@@ -303,6 +313,18 @@ export class ObjectParser {
           section_count: transformedSections.length,
           field_count: transformedSections.reduce((sum, s) => sum + (s.input_fields?.length || 0), 0),
         } as TrackerDefinition;
+        break;
+
+      case 'tracker_record':
+        object = {
+          ...baseObject,
+          type: 'tracker_record',
+          tracker_id: String(frontmatter.tracker_id || ''),
+          date: String(frontmatter.date || ''),
+          field_values: frontmatter.field_values && typeof frontmatter.field_values === 'object' && !Array.isArray(frontmatter.field_values)
+            ? { ...(frontmatter.field_values as Record<string, unknown>) }
+            : {},
+        } as TrackingRecord;
         break;
       
       case 'entry':
@@ -330,8 +352,17 @@ export class ObjectParser {
           date: this.transformReminderDate(frontmatter.date || frontmatter.scheduled_date),
           time: this.transformReminderTime(frontmatter.time),
           is_completed: frontmatter.is_completed as boolean,
-          reminder_count: frontmatter.reminder_count as number || 1,
+          is_completable: frontmatter.is_completable as boolean,
+          reminder_count: frontmatter.reminder_count as number || (Array.isArray(frontmatter.reminders) ? frontmatter.reminders.length : 1),
           reminder_id: frontmatter.reminder_id as string,
+          reminders: Array.isArray(frontmatter.reminders) ? frontmatter.reminders as Reminder['reminders'] : undefined,
+          scheduler: frontmatter.scheduler && typeof frontmatter.scheduler === 'object' && !Array.isArray(frontmatter.scheduler)
+            ? { ...(frontmatter.scheduler as Record<string, unknown>) }
+            : undefined,
+          notes: frontmatter.notes as string,
+          time_block: (frontmatter.time_block ?? frontmatter.time_block_id) as string,
+          checkboxes: Array.isArray(frontmatter.checkboxes) ? frontmatter.checkboxes.map(value => String(value)) : undefined,
+          habit_reminder: frontmatter.habit_reminder as boolean,
         } as Reminder;
         break;
       

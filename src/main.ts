@@ -1,34 +1,60 @@
-import { App, Plugin, PluginSettingTab, Setting, Notice, TFile, TAbstractFile, FileSystemAdapter } from 'obsidian';
+import { App, Modal, Plugin, PluginSettingTab, Setting, Notice, TFile, TAbstractFile, FileSystemAdapter } from 'obsidian';
 import { VaultIndexEngine } from './vault/index';
 import { DriveSyncCoordinator } from './sync/coordinator';
 import { GoogleDriveAdapter } from './integrations/google/drive';
+import { GoogleCalendarAdapter, GoogleCalendarAuthorizationError, type GoogleCalendarProjection } from './integrations/google/calendar';
 import { GoogleOAuthDesktop, OAuthConfig } from './integrations/google/auth/loopback';
+import { GOOGLE_COMPANION_SCOPES } from './integrations/google/auth/scopes';
 import { QuartzoView, QUARTZO_VIEW_TYPE, type QuartzoSection, type QuartzoAction } from './ui';
 import { ViewContext } from './ui/types';
+import { addLocalDays, localIsoDate, parseLocalIsoDate } from './core/local-date';
+import { ReminderService, type ReminderMode, type ReminderSourceObject } from './core/reminders';
+import { FileNotificationDeliveryRegistry } from './local-state/notification-delivery-registry';
+import { ObsidianReminderDeliveryGateway } from './platform/notifications';
+import { ElectronBrowserOpener } from './platform/browser-opener';
 import { normalizeVaultPath } from './sync/coordinator/path-utils';
 import { VaultSyncFilePolicy } from './sync/coordinator/file-policy';
 import { SHARED_SETTINGS_PATH, SharedSettingsRepository, parseObjectWithSharedSettings, type QuartzoSharedSettings } from './vault/shared-settings';
 import * as path from 'path';
 import * as fs from 'fs';
 
+type GoogleCalendarStatus = 'disconnected' | 'ready' | 'authorization_required' | 'error';
+
+interface CalendarCacheEntry {
+  expiresAt: number;
+  events: GoogleCalendarProjection[];
+}
+
 interface QuartzoCompanionSettings {
   googleDriveFolderId: string | null;
   googleDriveFolderName: string | null;
   syncAuto: boolean;
-  privacyMode: boolean;
+  syncPollingIntervalSeconds: number;
+  syncOnStartup: boolean;
+  syncOnFocus: boolean;
+  hideSensitivePreviews: boolean;
+  hideJournalPreviewText: boolean;
+  hideNotificationBody: boolean;
   firstRunCompleted: boolean;
   oauthClientId: string;
   isPaired: boolean;
+  reminderDelivery: ReminderMode;
 }
 
 const DEFAULT_SETTINGS: QuartzoCompanionSettings = {
   googleDriveFolderId: null,
   googleDriveFolderName: null,
   syncAuto: false,
-  privacyMode: false,
+  syncPollingIntervalSeconds: 60,
+  syncOnStartup: true,
+  syncOnFocus: true,
+  hideSensitivePreviews: false,
+  hideJournalPreviewText: false,
+  hideNotificationBody: false,
   firstRunCompleted: false,
   oauthClientId: 'PLACEHOLDER_CLIENT_ID',
   isPaired: false,
+  reminderDelivery: 'in_obsidian_only',
 };
 
 
@@ -37,7 +63,7 @@ const BUILD_CLIENT_ID: string = (typeof process !== 'undefined' && process.env &
 const OAUTH_CONFIG: OAuthConfig = {
   clientId: '',
   redirectUri: '',
-  scopes: ['https://www.googleapis.com/auth/drive'],
+  scopes: [...GOOGLE_COMPANION_SCOPES],
   authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
   tokenUrl: 'https://oauth2.googleapis.com/token'
   // V1 decision: full Drive scope is required because the plugin uses Drive Changes API
@@ -51,12 +77,19 @@ export default class QuartzoCompanionPlugin extends Plugin {
   vaultIndexEngine: VaultIndexEngine | null = null;
   driveSyncCoordinator: DriveSyncCoordinator | null = null;
   driveAdapter: GoogleDriveAdapter | null = null;
+  googleCalendarAdapter: GoogleCalendarAdapter | null = null;
   oauthClient: GoogleOAuthDesktop | null = null;
+  reminderService: ReminderService | null = null;
+  reminderDeliveryGateway: ObsidianReminderDeliveryGateway | null = null;
   viewContext: ViewContext | null = null;
   private syncIntervalId: ReturnType<typeof setInterval> | null = null;
   private eventRefs: ReturnType<typeof this.app.vault.on>[] = [];
   private sharedSettingsRepository: SharedSettingsRepository | null = null;
   private sharedSettings: QuartzoSharedSettings | null = null;
+  private googleAccessRefreshInFlight: Promise<string | null> | null = null;
+  private readonly calendarCache = new Map<string, CalendarCacheEntry>();
+  private readonly browserOpener = new ElectronBrowserOpener();
+  calendarStatus: GoogleCalendarStatus = 'disconnected';
   authState: 'disconnected' | 'authenticating' | 'authenticated_unpaired' | 'paired' | 'authentication_required' = 'disconnected';
 
   async onload() {
@@ -64,6 +97,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
 
     this.vaultIndexEngine = new VaultIndexEngine();
     this.driveAdapter = new GoogleDriveAdapter();
+    this.googleCalendarAdapter = new GoogleCalendarAdapter();
 
     const vaultPath = this.getVaultFileSystemPath();
     const stateStorePath = this.getPluginDataPath();
@@ -78,8 +112,8 @@ export default class QuartzoCompanionPlugin extends Plugin {
       plugin: this,
       state: {
         currentView: 'home',
-        dailyScheduleDate: new Date().toISOString().split('T')[0],
-        privacyMode: this.settings.privacyMode
+        dailyScheduleDate: localIsoDate(new Date()),
+        privacyMode: this.settings.hideSensitivePreviews
       },
       vaultIndexEngine: this.vaultIndexEngine,
       driveSyncCoordinator: this.driveSyncCoordinator
@@ -93,13 +127,14 @@ export default class QuartzoCompanionPlugin extends Plugin {
     ribbonIconEl.addClass('quartzo-ribbon-icon');
 
     this.addCommand({ id: 'quartzo-open', name: 'Quartzo: Open', callback: () => { void this.activateQuartzo('home'); } });
+    this.addCommand({ id: 'quartzo-open-today', name: 'Quartzo: Open Today', callback: () => { void this.activateQuartzo('home'); } });
     this.addCommand({ id: 'quartzo-planner', name: 'Quartzo: Planner', callback: () => { void this.activateQuartzo('planner'); } });
     this.addCommand({ id: 'quartzo-day-dial', name: 'Quartzo: Day Dial', callback: () => { void this.activateQuartzo('home'); } });
     this.addCommand({ id: 'quartzo-journal', name: 'Quartzo: Journal', callback: () => { void this.activateQuartzo('journal'); } });
     this.addCommand({ id: 'quartzo-browse', name: 'Quartzo: Browse', callback: () => { void this.activateQuartzo('browse'); } });
     this.addCommand({ id: 'quartzo-search', name: 'Quartzo: Search', callback: () => { void this.activateQuartzo('browse', 'search'); } });
     this.addCommand({ id: 'quartzo-quick-add', name: 'Quartzo: Quick Add', callback: () => { void this.activateQuartzo('home', 'add'); } });
-    this.addCommand({ id: 'quartzo-sync-center', name: 'Quartzo: Sync', callback: () => { void this.activateQuartzo('home', 'sync'); } });
+    this.addCommand({ id: 'quartzo-sync-center', name: 'Quartzo: View sync status', callback: () => { void this.activateQuartzo('home', 'sync'); } });
     this.addCommand({ id: 'quartzo-conflict-center', name: 'Quartzo: Conflicts', callback: () => { void this.activateQuartzo('home', 'conflicts'); } });
     this.addCommand({
       id: 'quartzo-sync-now',
@@ -120,6 +155,30 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.sharedSettings = await this.sharedSettingsRepository.load();
     await this.initializeVaultIndex();
     this.registerVaultEvents();
+    this.registerDomEvent(window, 'focus', () => {
+      if (!this.settings.syncOnFocus || !this.settings.isPaired || !this.driveSyncCoordinator) return;
+      void this.driveSyncCoordinator.triggerFocusSync().catch(error => {
+        console.error('Focus sync failed:', error);
+      });
+    });
+    this.reminderDeliveryGateway = new ObsidianReminderDeliveryGateway(
+      () => this.settings.hideNotificationBody,
+      () => { void this.activateQuartzo('home'); },
+    );
+    this.reminderService = new ReminderService({
+      getObjects: () => this.getReminderSourceObjects(),
+      getMode: () => this.settings.reminderDelivery,
+      registry: new FileNotificationDeliveryRegistry(
+        path.join(this.getPluginDirectoryPath(), 'quartzo-notification-delivery.json'),
+      ),
+      gateway: this.reminderDeliveryGateway,
+    });
+    await this.reminderService.start();
+    this.registerInterval(window.setInterval(() => {
+      void this.reminderService?.poll(new Date()).catch(error => {
+        console.error('Reminder delivery poll failed:', error instanceof Error ? error.message : String(error));
+      });
+    }, 15_000));
 
     if (!this.settings.firstRunCompleted) {
       this.showFirstRunDialog();
@@ -138,16 +197,18 @@ export default class QuartzoCompanionPlugin extends Plugin {
     throw new Error('Desktop-only: FileSystemAdapter required');
   }
 
-  private getPluginDataPath(): string {
+  private getPluginDirectoryPath(): string {
     const adapter = this.app.vault.adapter;
-    if (adapter instanceof FileSystemAdapter) {
-      const pluginDir = path.join(adapter.getBasePath(), this.app.vault.configDir, 'plugins', this.manifest.id);
-      if (!fs.existsSync(pluginDir)) {
-        fs.mkdirSync(pluginDir, { recursive: true });
-      }
-      return path.join(pluginDir, 'quartzo-sync-state.json');
+    if (!(adapter instanceof FileSystemAdapter)) {
+      throw new Error('Desktop-only: FileSystemAdapter required');
     }
-    return '';
+    const pluginDir = path.join(adapter.getBasePath(), this.app.vault.configDir, 'plugins', this.manifest.id);
+    if (!fs.existsSync(pluginDir)) fs.mkdirSync(pluginDir, { recursive: true });
+    return pluginDir;
+  }
+
+  private getPluginDataPath(): string {
+    return path.join(this.getPluginDirectoryPath(), 'quartzo-sync-state.json');
   }
 
   private getResolvedClientId(): string {
@@ -163,6 +224,110 @@ export default class QuartzoCompanionPlugin extends Plugin {
     };
   }
 
+  private configureGoogleAccessToken(token: string): void {
+    this.driveAdapter?.setAccessToken(token);
+    this.googleCalendarAdapter?.setAccessToken(token);
+    const refresh = () => this.refreshGoogleAccessToken();
+    this.driveAdapter?.setTokenRefreshCallback(refresh);
+    this.googleCalendarAdapter?.setTokenRefreshCallback(refresh);
+    this.calendarCache.clear();
+  }
+
+  private async refreshGoogleAccessToken(): Promise<string | null> {
+    if (!this.oauthClient) return null;
+    if (this.googleAccessRefreshInFlight) return this.googleAccessRefreshInFlight;
+    this.googleAccessRefreshInFlight = (async () => {
+      try {
+        const refreshed = await this.oauthClient!.refreshAccessToken();
+        this.configureGoogleAccessToken(refreshed.access_token);
+        return refreshed.access_token;
+      } catch {
+        return null;
+      } finally {
+        this.googleAccessRefreshInFlight = null;
+      }
+    })();
+    return this.googleAccessRefreshInFlight;
+  }
+
+  async listGoogleCalendarEvents(startDate: string, days: number): Promise<GoogleCalendarProjection[]> {
+    if (!this.googleCalendarAdapter || this.authState === 'disconnected' || this.authState === 'authentication_required') {
+      this.calendarStatus = 'disconnected';
+      return [];
+    }
+    const safeDays = Math.max(1, Math.min(62, Math.trunc(days)));
+    const start = parseLocalIsoDate(startDate);
+    const end = addLocalDays(start, safeDays);
+    const key = `${startDate}:${safeDays}`;
+    const cached = this.calendarCache.get(key);
+    if (cached && cached.expiresAt > Date.now()) return cached.events;
+
+    try {
+      const events = await this.googleCalendarAdapter.listVisibleEvents(start, end);
+      this.calendarCache.set(key, { expiresAt: Date.now() + 60_000, events });
+      this.calendarStatus = 'ready';
+      return events;
+    } catch (error) {
+      this.calendarCache.delete(key);
+      if (error instanceof GoogleCalendarAuthorizationError) {
+        this.calendarStatus = 'authorization_required';
+      } else {
+        this.calendarStatus = 'error';
+        console.error('Google Calendar read failed:', error);
+      }
+      return [];
+    }
+  }
+
+  async reauthorizeGoogleCalendar(): Promise<void> {
+    const clientId = this.getResolvedClientId();
+    if (!clientId || clientId === 'PLACEHOLDER_CLIENT_ID') {
+      new Notice('Configure your Google OAuth Client ID in settings first.');
+      return;
+    }
+    const previousAuthState = this.authState;
+    this.authState = 'authenticating';
+    const config = { ...OAUTH_CONFIG, clientId };
+    const secretStorage = this.getSecretStorage();
+    this.oauthClient = new GoogleOAuthDesktop(config, secretStorage, this.browserOpener);
+    try {
+      const tokenResponse = await this.oauthClient.startAuthLoopback(true);
+      this.configureGoogleAccessToken(tokenResponse.access_token);
+      this.calendarStatus = 'ready';
+      this.authState = this.settings.isPaired ? 'paired' : 'authenticated_unpaired';
+      new Notice('Google Calendar read-only access authorized.');
+    } catch (error) {
+      this.authState = previousAuthState;
+      this.calendarStatus = 'authorization_required';
+      new Notice(`Google Calendar authorization failed: ${error}`);
+    }
+  }
+  private getReminderSourceObjects(): ReminderSourceObject[] {
+    const index = this.vaultIndexEngine?.getIndex();
+    if (!index) return [];
+    return Array.from(index.objects.values()).map(object => ({
+      ...object.frontmatter,
+      id: object.id,
+      type: object.type,
+      title: String(object.frontmatter.title ?? object.type),
+      body: object.body,
+      __path: object.path,
+    } as ReminderSourceObject));
+  }
+
+  async setReminderDelivery(mode: ReminderMode): Promise<void> {
+    let nextMode = mode;
+    if (mode === 'desktop_notifications') {
+      const granted = await this.reminderDeliveryGateway?.requestDesktopPermission() ?? false;
+      if (!granted) {
+        nextMode = 'in_obsidian_only';
+        new Notice('Desktop notification permission was not granted. Reminder delivery remains In-Obsidian only.');
+      }
+    }
+    this.settings.reminderDelivery = nextMode;
+    await this.saveSettings();
+    this.reminderService?.resetWindow(new Date());
+  }
   private shouldIndexPath(rawPath: string): boolean {
     const normalized = normalizeVaultPath(rawPath);
     if (normalized === '_deleted' || normalized.startsWith('_deleted/')) return false;
@@ -356,6 +521,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
   startAutoSync() {
     if (this.syncIntervalId) return;
     if (!this.settings.syncAuto) return;
+    const seconds = Math.max(15, Math.min(3600, Math.trunc(this.settings.syncPollingIntervalSeconds)));
     this.syncIntervalId = setInterval(async () => {
       if (this.driveSyncCoordinator && this.settings.isPaired && this.settings.syncAuto) {
         try {
@@ -364,7 +530,12 @@ export default class QuartzoCompanionPlugin extends Plugin {
           console.error('Auto sync failed:', error);
         }
       }
-    }, 60000);
+    }, seconds * 1000);
+  }
+
+  restartAutoSync() {
+    this.stopAutoSync();
+    this.startAutoSync();
   }
 
   stopAutoSync() {
@@ -389,9 +560,9 @@ export default class QuartzoCompanionPlugin extends Plugin {
 
     try {
       const config = { ...OAUTH_CONFIG, clientId: this.getResolvedClientId() };
-      this.oauthClient = new GoogleOAuthDesktop(config, secretStorage);
+      this.oauthClient = new GoogleOAuthDesktop(config, secretStorage, this.browserOpener);
       const tokenResponse = await this.oauthClient.refreshAccessToken();
-      this.driveAdapter.setAccessToken(tokenResponse.access_token);
+      this.configureGoogleAccessToken(tokenResponse.access_token);
       this.authState = this.settings.isPaired ? 'paired' : 'authenticated_unpaired';
 
       if (this.driveAdapter && this.settings.googleDriveFolderId) {
@@ -399,18 +570,14 @@ export default class QuartzoCompanionPlugin extends Plugin {
         await this.driveSyncCoordinator?.setDriveFolderId(this.settings.googleDriveFolderId);
       }
 
-      this.driveAdapter.setTokenRefreshCallback(async () => {
-        try {
-          const refreshed = await this.oauthClient?.refreshAccessToken();
-          return refreshed?.access_token || null;
-        } catch {
-          return null;
-        }
-      });
-
+      if (this.settings.syncOnStartup && this.driveSyncCoordinator) {
+        const result = await this.driveSyncCoordinator.triggerStartupSync();
+        if (result.errors.length > 0) console.error('Startup sync failed:', result.errors[result.errors.length - 1]);
+      }
       this.startAutoSync();
     } catch {
       this.settings.isPaired = false;
+      this.authState = 'authentication_required';
       await this.saveSettings();
       new Notice('Session expired. Please reconnect Google Drive.');
     }
@@ -427,13 +594,13 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.authState = 'authenticating';
     const config = { ...OAUTH_CONFIG, clientId };
     const secretStorage = this.getSecretStorage();
-    this.oauthClient = new GoogleOAuthDesktop(config, secretStorage);
+    this.oauthClient = new GoogleOAuthDesktop(config, secretStorage, this.browserOpener);
 
     try {
       const storedRefresh = await secretStorage.get('quartzo_companion/refresh_token');
       const forceConsent = !storedRefresh;
       const tokenResponse = await this.oauthClient.startAuthLoopback(forceConsent);
-      this.driveAdapter?.setAccessToken(tokenResponse.access_token);
+      this.configureGoogleAccessToken(tokenResponse.access_token);
 
       if (!tokenResponse.refresh_token) {
         const storedRefresh = await secretStorage.get('quartzo_companion/refresh_token');
@@ -446,15 +613,6 @@ export default class QuartzoCompanionPlugin extends Plugin {
         }
       }
 
-      this.driveAdapter?.setTokenRefreshCallback(async () => {
-        try {
-          const refreshed = await this.oauthClient?.refreshAccessToken();
-          return refreshed?.access_token || null;
-        } catch {
-          return null;
-        }
-      });
-
       this.authState = 'authenticated_unpaired';
       new Notice('Google Drive authenticated. Select your vault folder.');
     } catch (error) {
@@ -463,6 +621,38 @@ export default class QuartzoCompanionPlugin extends Plugin {
     }
   }
 
+  async reconnectGoogle(): Promise<void> {
+    const clientId = this.getResolvedClientId();
+    if (!clientId || clientId === 'PLACEHOLDER_CLIENT_ID') {
+      new Notice('Configure your Google OAuth Client ID in settings first.');
+      return;
+    }
+
+    const wasPaired = Boolean(this.settings.googleDriveFolderId);
+    this.authState = 'authenticating';
+    const config = { ...OAUTH_CONFIG, clientId };
+    const secretStorage = this.getSecretStorage();
+    this.oauthClient = new GoogleOAuthDesktop(config, secretStorage, this.browserOpener);
+    try {
+      const tokenResponse = await this.oauthClient.startAuthLoopback(true);
+      this.configureGoogleAccessToken(tokenResponse.access_token);
+      if (wasPaired && this.settings.googleDriveFolderId) {
+        await this.driveAdapter?.setFolderId(this.settings.googleDriveFolderId);
+        await this.driveSyncCoordinator?.setDriveFolderId(this.settings.googleDriveFolderId);
+        this.settings.isPaired = true;
+        await this.saveSettings();
+        this.authState = 'paired';
+        this.startAutoSync();
+        new Notice('Google Drive reconnected.');
+      } else {
+        this.authState = 'authenticated_unpaired';
+        new Notice('Google Drive authenticated. Select your Quartzo vault.');
+      }
+    } catch (error) {
+      this.authState = wasPaired ? 'authentication_required' : 'disconnected';
+      new Notice(`Google Drive reconnect failed: ${error}`);
+    }
+  }
   async confirmPairing(folderId: string, folderName: string, autoAdopt: boolean, autoPull: boolean): Promise<void> {
     if (!this.driveAdapter || !this.driveSyncCoordinator) {
       new Notice('Drive not initialized.');
@@ -504,23 +694,42 @@ export default class QuartzoCompanionPlugin extends Plugin {
     } else {
       const modal = document.createElement('div');
       modal.className = 'quartzo-pairing-summary-modal';
-      modal.innerHTML = `
-        <div class="modal-content" style="padding: 20px; background: var(--background-primary); border: 1px solid var(--background-modifier-border); border-radius: 8px; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000;">
-          <h2>Pairing Summary</h2>
-          <p>Folder: <strong>${folderName}</strong></p>
-          <ul>
-            <li>Identical files: ${summary.identical.length}</li>
-            <li>Remote-only (to pull): ${summary.remoteOnly.length}</li>
-            <li>Local-only (to adopt): ${summary.localOnly.length}</li>
-            <li>Ambiguous (blocked): ${summary.ambiguous.length}</li>
-          </ul>
-          <p>Do you want to adopt local-only files and pull remote-only files?</p>
-          <div style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
-            <button id="pairing-cancel">Cancel</button>
-            <button id="pairing-confirm">Accept & Pair</button>
-          </div>
-        </div>
-      `;
+      const modalContent = document.createElement('div');
+      modalContent.className = 'modal-content';
+      modalContent.style.cssText = 'padding: 20px; background: var(--background-primary); border: 1px solid var(--background-modifier-border); border-radius: 8px; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000;';
+      const modalTitle = document.createElement('h2');
+      modalTitle.textContent = 'Pairing Summary';
+      modalContent.appendChild(modalTitle);
+      const folder = document.createElement('p');
+      folder.textContent = `Folder: ${folderName}`;
+      modalContent.appendChild(folder);
+      const counts = document.createElement('ul');
+      for (const text of [
+        `Identical files: ${summary.identical.length}`,
+        `Remote-only (to pull): ${summary.remoteOnly.length}`,
+        `Local-only (to adopt): ${summary.localOnly.length}`,
+        `Ambiguous (blocked): ${summary.ambiguous.length}`,
+      ]) {
+        const item = document.createElement('li');
+        item.textContent = text;
+        counts.appendChild(item);
+      }
+      modalContent.appendChild(counts);
+      const question = document.createElement('p');
+      question.textContent = 'Do you want to adopt local-only files and pull remote-only files?';
+      modalContent.appendChild(question);
+      const actions = document.createElement('div');
+      actions.style.cssText = 'margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;';
+      const cancelButton = document.createElement('button');
+      cancelButton.id = 'pairing-cancel';
+      cancelButton.textContent = 'Cancel';
+      actions.appendChild(cancelButton);
+      const confirmButton = document.createElement('button');
+      confirmButton.id = 'pairing-confirm';
+      confirmButton.textContent = 'Accept & Pair';
+      actions.appendChild(confirmButton);
+      modalContent.appendChild(actions);
+      modal.appendChild(modalContent);
       document.body.appendChild(modal);
 
       modal.querySelector('#pairing-cancel')?.addEventListener('click', () => {
@@ -554,12 +763,31 @@ export default class QuartzoCompanionPlugin extends Plugin {
       await this.oauthClient.disconnect();
     }
     this.stopAutoSync();
+    this.googleCalendarAdapter?.setAccessToken(null);
+    this.calendarCache.clear();
+    this.calendarStatus = 'disconnected';
     this.settings.isPaired = false;
     this.authState = 'disconnected';
     this.settings.googleDriveFolderId = null;
     this.settings.googleDriveFolderName = null;
     await this.saveSettings();
     new Notice('Google Drive disconnected.');
+  }
+
+  async useWithoutSync(): Promise<void> {
+    if (this.oauthClient) await this.oauthClient.disconnect();
+    this.stopAutoSync();
+    this.driveAdapter?.setAccessToken('');
+    this.googleCalendarAdapter?.setAccessToken(null);
+    this.calendarCache.clear();
+    this.calendarStatus = 'disconnected';
+    this.authState = 'disconnected';
+    this.settings.googleDriveFolderId = null;
+    this.settings.googleDriveFolderName = null;
+    this.settings.isPaired = false;
+    this.settings.firstRunCompleted = true;
+    await this.saveSettings();
+    new Notice('Quartzo Companion will stay local on this device until you connect Google Drive.');
   }
 
   async adoptFile(filePath: string): Promise<void> {
@@ -597,6 +825,11 @@ export default class QuartzoCompanionPlugin extends Plugin {
     appWithSettings.setting?.openTabById(this.manifest.id);
   }
 
+  async refreshQuartzoView(): Promise<void> {
+    const leaf = this.app.workspace.getLeavesOfType(QUARTZO_VIEW_TYPE)[0];
+    if (leaf?.view instanceof QuartzoView) await leaf.view.refresh();
+  }
+
   private async reloadSharedSettingsAndIndex(): Promise<void> {
     this.sharedSettings = await this.sharedSettingsRepository?.load() ?? null;
     await this.initializeVaultIndex();
@@ -605,32 +838,12 @@ export default class QuartzoCompanionPlugin extends Plugin {
   }
 
   showFirstRunDialog() {
-    const modal = document.createElement('div');
-    modal.className = 'quartzo-first-run-modal';
-    modal.innerHTML = `
-      <div class="modal-content">
-        <h2>Welcome to Quartzo Companion</h2>
-        <p>Set up your Google Drive sync to get started.</p>
-        <button id="setup-later">Setup Later</button>
-        <button id="setup-now">Setup Now</button>
-      </div>
-    `;
-    document.body.appendChild(modal);
-    modal.querySelector('#setup-later')?.addEventListener('click', () => {
-      this.settings.firstRunCompleted = true;
-      this.saveSettings();
-      modal.remove();
-    });
-    modal.querySelector('#setup-now')?.addEventListener('click', () => {
-      this.settings.firstRunCompleted = true;
-      this.saveSettings();
-      modal.remove();
-      void this.activateQuartzo('home', 'sync');
-    });
+    new QuartzoFirstRunModal(this.app, this).open();
   }
 
   onunload() {
     this.stopAutoSync();
+    this.reminderService?.stop();
     this.oauthClient?.abort();
     for (const ref of this.eventRefs) {
       this.app.vault.offref(ref);
@@ -639,11 +852,91 @@ export default class QuartzoCompanionPlugin extends Plugin {
   }
 
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const raw = await this.loadData();
+    const stored = raw != null && typeof raw === 'object' && !Array.isArray(raw)
+      ? raw as Record<string, unknown>
+      : {};
+    const legacyPrivacy = stored.privacyMode === true;
+    const rawPolling = typeof stored.syncPollingIntervalSeconds === 'number'
+      ? stored.syncPollingIntervalSeconds
+      : DEFAULT_SETTINGS.syncPollingIntervalSeconds;
+
+    this.settings = {
+      googleDriveFolderId: typeof stored.googleDriveFolderId === 'string' ? stored.googleDriveFolderId : null,
+      googleDriveFolderName: typeof stored.googleDriveFolderName === 'string' ? stored.googleDriveFolderName : null,
+      syncAuto: typeof stored.syncAuto === 'boolean' ? stored.syncAuto : DEFAULT_SETTINGS.syncAuto,
+      syncPollingIntervalSeconds: Math.max(15, Math.min(3600, Math.trunc(rawPolling))),
+      syncOnStartup: typeof stored.syncOnStartup === 'boolean' ? stored.syncOnStartup : DEFAULT_SETTINGS.syncOnStartup,
+      syncOnFocus: typeof stored.syncOnFocus === 'boolean' ? stored.syncOnFocus : DEFAULT_SETTINGS.syncOnFocus,
+      hideSensitivePreviews: typeof stored.hideSensitivePreviews === 'boolean' ? stored.hideSensitivePreviews : legacyPrivacy,
+      hideJournalPreviewText: typeof stored.hideJournalPreviewText === 'boolean' ? stored.hideJournalPreviewText : legacyPrivacy,
+      hideNotificationBody: typeof stored.hideNotificationBody === 'boolean' ? stored.hideNotificationBody : legacyPrivacy,
+      firstRunCompleted: typeof stored.firstRunCompleted === 'boolean' ? stored.firstRunCompleted : DEFAULT_SETTINGS.firstRunCompleted,
+      oauthClientId: typeof stored.oauthClientId === 'string' ? stored.oauthClientId : DEFAULT_SETTINGS.oauthClientId,
+      isPaired: typeof stored.isPaired === 'boolean' ? stored.isPaired : DEFAULT_SETTINGS.isPaired,
+      reminderDelivery: stored.reminderDelivery === 'off' || stored.reminderDelivery === 'desktop_notifications'
+        ? stored.reminderDelivery
+        : 'in_obsidian_only',
+    };
   }
 
   async saveSettings() {
     await this.saveData(this.settings);
+  }
+}
+
+class QuartzoFirstRunModal extends Modal {
+  constructor(app: App, private readonly plugin: QuartzoCompanionPlugin) {
+    super(app);
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+
+    const title = document.createElement('h2');
+    title.textContent = 'Quartzo Companion';
+    contentEl.appendChild(title);
+
+    const description = document.createElement('p');
+    description.textContent = 'Use this Obsidian vault as a Quartzo client and synchronize it with your existing Quartzo vault in Google Drive.';
+    contentEl.appendChild(description);
+
+    const safety = document.createElement('p');
+    safety.textContent = 'The Companion will never silently create a second Quartzo vault. After authorization, you explicitly select an existing Quartzo vault and review the pairing summary.';
+    contentEl.appendChild(safety);
+
+    const actions = document.createElement('div');
+    actions.className = 'quartzo-first-run-actions';
+
+    const localOnly = document.createElement('button');
+    localOnly.textContent = 'Use without sync';
+    localOnly.addEventListener('click', async () => {
+      await this.plugin.useWithoutSync();
+      this.close();
+      await this.plugin.activateQuartzo('home');
+    });
+    actions.appendChild(localOnly);
+
+    const connect = document.createElement('button');
+    connect.className = 'mod-cta';
+    connect.textContent = 'Connect Google Drive';
+    connect.addEventListener('click', async () => {
+      connect.disabled = true;
+      connect.textContent = 'Connecting…';
+      try {
+        await this.plugin.startPairingFlow();
+        if (this.plugin.authState === 'authenticated_unpaired') {
+          this.close();
+          await this.plugin.activateQuartzo('home', 'sync');
+        }
+      } finally {
+        connect.disabled = false;
+        connect.textContent = 'Connect Google Drive';
+      }
+    });
+    actions.appendChild(connect);
+    contentEl.appendChild(actions);
   }
 }
 
@@ -655,47 +948,216 @@ class QuartzoSettingTab extends PluginSettingTab {
     this.plugin = plugin;
   }
 
+  private addHeading(container: HTMLElement, text: string): void {
+    const heading = document.createElement('h2');
+    heading.textContent = text;
+    container.appendChild(heading);
+  }
+
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
 
-    new Setting(containerEl)
-      .setName('Google OAuth Client ID')
-      .setDesc('Desktop OAuth Client ID from Google Cloud Console (PKCE, no client secret)')
-      .addText(text => text
-        .setPlaceholder('Enter OAuth Client ID')
-        .setValue(this.plugin.settings.oauthClientId)
-        .onChange(async (value) => {
-          this.plugin.settings.oauthClientId = value;
-          await this.plugin.saveSettings();
-        }));
+    this.addHeading(containerEl, 'Connection');
 
     new Setting(containerEl)
-      .setName('Auto Sync')
-      .setDesc('Enable automatic background synchronization with Google Drive')
+      .setName('Google status')
+      .setDesc(this.plugin.authState.replace(/_/g, ' '));
+
+    new Setting(containerEl)
+      .setName('Drive vault')
+      .setDesc(this.plugin.settings.googleDriveFolderName
+        ? `${this.plugin.settings.googleDriveFolderName} · ID ${this.plugin.settings.googleDriveFolderId ?? 'unknown'}`
+        : 'No Quartzo Drive vault paired.');
+
+    if (BUILD_CLIENT_ID) {
+      new Setting(containerEl)
+        .setName('Google OAuth Client ID')
+        .setDesc('Bundled in this Companion build. Tokens remain in Obsidian SecretStorage.');
+    } else {
+      new Setting(containerEl)
+        .setName('Google OAuth Client ID')
+        .setDesc('Desktop OAuth Client ID from Google Cloud Console (PKCE, no client secret). Stored only on this device.')
+        .addText(text => text
+          .setPlaceholder('Enter OAuth Client ID')
+          .setValue(this.plugin.settings.oauthClientId === 'PLACEHOLDER_CLIENT_ID' ? '' : this.plugin.settings.oauthClientId)
+          .onChange(async value => {
+            this.plugin.settings.oauthClientId = value.trim() || 'PLACEHOLDER_CLIENT_ID';
+            await this.plugin.saveSettings();
+          }));
+    }
+
+    new Setting(containerEl)
+      .setName(this.plugin.settings.googleDriveFolderId ? 'Reconnect Google' : 'Connect Google Drive')
+      .setDesc(this.plugin.settings.googleDriveFolderId
+        ? 'Reauthorize this device while preserving the selected Drive vault identity.'
+        : 'Authorize Google Drive, then explicitly select an existing Quartzo vault.')
+      .addButton(button => button
+        .setButtonText(this.plugin.settings.googleDriveFolderId ? 'Reconnect' : 'Connect')
+        .onClick(async () => {
+          if (this.plugin.settings.googleDriveFolderId) await this.plugin.reconnectGoogle();
+          else await this.plugin.startPairingFlow();
+          this.display();
+        }));
+
+    if (this.plugin.authState === 'authenticated_unpaired') {
+      new Setting(containerEl)
+        .setName('Select Quartzo vault')
+        .setDesc('Continue setup in the Sync Center. The Companion never creates a second vault automatically.')
+        .addButton(button => button
+          .setButtonText('Select vault')
+          .onClick(async () => {
+            await this.plugin.activateQuartzo('home', 'sync');
+          }));
+    }
+
+    new Setting(containerEl)
+      .setName('Disconnect this device')
+      .setDesc('Removes this device connection and selected Drive vault. Canonical vault files are not deleted.')
+      .addButton(button => button
+        .setButtonText('Disconnect')
+        .setDisabled(this.plugin.authState === 'disconnected' && !this.plugin.settings.googleDriveFolderId)
+        .onClick(async () => {
+          await this.plugin.disconnectDrive();
+          this.display();
+        }));
+
+    this.addHeading(containerEl, 'Sync');
+
+    new Setting(containerEl)
+      .setName('Auto sync')
+      .setDesc('Poll Google Drive while Obsidian is open and reconcile local edits through the canonical sync coordinator.')
       .addToggle(toggle => toggle
         .setValue(this.plugin.settings.syncAuto)
-        .onChange(async (value) => {
+        .onChange(async value => {
           this.plugin.settings.syncAuto = value;
           await this.plugin.saveSettings();
-          if (value && this.plugin.settings.isPaired) {
-            this.plugin.startAutoSync();
-          } else {
-            this.plugin.stopAutoSync();
-          }
+          if (value && this.plugin.settings.isPaired) this.plugin.startAutoSync();
+          else this.plugin.stopAutoSync();
         }));
 
     new Setting(containerEl)
-      .setName('Privacy Mode')
-      .setDesc('Hide sensitive information in the UI')
-      .addToggle(toggle => toggle
-        .setValue(this.plugin.settings.privacyMode)
-        .onChange(async (value) => {
-          this.plugin.settings.privacyMode = value;
+      .setName('Remote polling interval')
+      .setDesc('How often Auto sync checks Drive while Obsidian is open. Default: 60 seconds.')
+      .addDropdown(dropdown => dropdown
+        .addOption('15', '15 seconds')
+        .addOption('30', '30 seconds')
+        .addOption('60', '60 seconds')
+        .addOption('120', '2 minutes')
+        .addOption('300', '5 minutes')
+        .addOption('900', '15 minutes')
+        .setValue(String(this.plugin.settings.syncPollingIntervalSeconds))
+        .onChange(async value => {
+          this.plugin.settings.syncPollingIntervalSeconds = Number(value);
           await this.plugin.saveSettings();
-          if (this.plugin.viewContext) {
-            this.plugin.viewContext.state.privacyMode = value;
+          this.plugin.restartAutoSync();
+        }));
+
+    new Setting(containerEl)
+      .setName('Sync on Obsidian startup')
+      .setDesc('After restoring Google authorization, run one reconciliation when the plugin starts.')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.syncOnStartup)
+        .onChange(async value => {
+          this.plugin.settings.syncOnStartup = value;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName('Sync on window focus')
+      .setDesc('Run one reconciliation when the Obsidian window regains focus.')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.syncOnFocus)
+        .onChange(async value => {
+          this.plugin.settings.syncOnFocus = value;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName('Manual full reconciliation')
+      .setDesc('Rescan the complete local and Drive inventories instead of relying on the current Drive change token.')
+      .addButton(button => button
+        .setButtonText('Run full reconciliation')
+        .setDisabled(!this.plugin.settings.isPaired)
+        .onClick(async () => {
+          const coordinator = this.plugin.driveSyncCoordinator;
+          if (!coordinator || !this.plugin.settings.isPaired) {
+            new Notice('Pair a Quartzo Drive vault first.');
+            return;
           }
+          const result = await coordinator.triggerFullReconciliation();
+          if (result.errors.length > 0) new Notice(result.errors[result.errors.length - 1]);
+          else new Notice(`Full reconciliation complete: ${result.synced} synced, ${result.conflicts} conflicts`);
+          await this.plugin.refreshQuartzoView();
+        }));
+
+    this.addHeading(containerEl, 'Calendar');
+
+    new Setting(containerEl)
+      .setName('Google Calendar')
+      .setDesc(`Read-only projection. Status: ${this.plugin.calendarStatus.replace(/_/g, ' ')}. The Companion never creates, edits or deletes Calendar events.`)
+      .addButton(button => button
+        .setButtonText(this.plugin.calendarStatus === 'ready' ? 'Reauthorize' : 'Authorize')
+        .onClick(async () => {
+          await this.plugin.reauthorizeGoogleCalendar();
+          this.display();
+        }));
+
+    this.addHeading(containerEl, 'Notifications');
+
+    new Setting(containerEl)
+      .setName('Reminder delivery')
+      .setDesc('V1 reminders are delivered only while Obsidian is running. In-Obsidian only is the work-computer default.')
+      .addDropdown(dropdown => dropdown
+        .addOption('off', 'Off')
+        .addOption('in_obsidian_only', 'In-Obsidian only')
+        .addOption('desktop_notifications', 'Desktop notifications')
+        .setValue(this.plugin.settings.reminderDelivery)
+        .onChange(async value => {
+          await this.plugin.setReminderDelivery(value as ReminderMode);
+          this.display();
+        }));
+
+    this.addHeading(containerEl, 'Appearance');
+
+    new Setting(containerEl)
+      .setName('Shared Quartzo appearance')
+      .setDesc('Accent color, type colors and semantic type identification come from app/quartzo_shared_settings.md. Companion Settings do not create a second appearance source of truth.');
+
+    this.addHeading(containerEl, 'Privacy');
+
+    new Setting(containerEl)
+      .setName('Hide sensitive previews')
+      .setDesc('Hide sensitive preview content such as conflict bodies on this device. Canonical vault data is unchanged.')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.hideSensitivePreviews)
+        .onChange(async value => {
+          this.plugin.settings.hideSensitivePreviews = value;
+          await this.plugin.saveSettings();
+          if (this.plugin.viewContext) this.plugin.viewContext.state.privacyMode = value;
+          await this.plugin.refreshQuartzoView();
+        }));
+
+    new Setting(containerEl)
+      .setName('Hide journal preview text')
+      .setDesc('Hide Journal Entry body snippets in the Companion on this device.')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.hideJournalPreviewText)
+        .onChange(async value => {
+          this.plugin.settings.hideJournalPreviewText = value;
+          await this.plugin.saveSettings();
+          await this.plugin.refreshQuartzoView();
+        }));
+
+    new Setting(containerEl)
+      .setName('Hide notification body')
+      .setDesc('Desktop and in-Obsidian reminder notifications omit the object title/body on this device.')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.hideNotificationBody)
+        .onChange(async value => {
+          this.plugin.settings.hideNotificationBody = value;
+          await this.plugin.saveSettings();
         }));
   }
 }
+

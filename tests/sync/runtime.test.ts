@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { DriveSyncCoordinator } from '../../src/sync/coordinator/index';
+import { DriveSyncCoordinator, chooseNewestConflictResolution, type ConflictArtifact } from '../../src/sync/coordinator/index';
 import { VaultSyncFilePolicy } from '../../src/sync/coordinator/file-policy';
 import { normalizeVaultPath, isSameVaultPath } from '../../src/sync/coordinator/path-utils';
 import type { DriveAdapter, DriveFileMetadata, DriveChange } from '../../src/sync/coordinator/types';
@@ -618,4 +618,116 @@ describe('Runtime Sync Tests', () => {
     expect(fs.existsSync(path.join(tmpDir, '_conflicts', 'artifacts.md.conflict'))).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, 'artifacts.md.conflict'))).toBe(false);
   });
+
+  it('37: Keep newest is explicit and chooses the local side only when its trustworthy timestamp is newer', async () => {
+    const localPath = path.join(tmpDir, 'newest-local.md');
+    fs.writeFileSync(localPath, 'local version');
+    fs.utimesSync(localPath, new Date('2030-01-01T10:00:00.000Z'), new Date('2030-01-01T10:00:00.000Z'));
+    adapter.addRemoteFile('newest-local.md', Buffer.from('remote version'));
+
+    const result = await coordinator.reconcile();
+    expect(result.conflicts).toBe(1);
+    const conflict = coordinator.getConflicts()[0];
+    expect(conflict.localModifiedAt).toBeTruthy();
+    expect(conflict.remoteModifiedAt).toBeTruthy();
+    expect(chooseNewestConflictResolution(conflict)).toBe('keep_local');
+
+    await coordinator.resolveConflict('newest-local.md', 'keep_newest');
+    expect(fs.readFileSync(localPath, 'utf8')).toBe('local version');
+    expect(new TextDecoder().decode(adapter.files.get('newest-local.md')!.content)).toBe('local version');
+  });
+
+  it('38: Keep newest chooses Drive only after the user asks for it and Drive is newer', async () => {
+    const localPath = path.join(tmpDir, 'newest-drive.md');
+    fs.writeFileSync(localPath, 'local old');
+    fs.utimesSync(localPath, new Date('2000-01-01T10:00:00.000Z'), new Date('2000-01-01T10:00:00.000Z'));
+    adapter.addRemoteFile('newest-drive.md', Buffer.from('remote new'));
+
+    const result = await coordinator.reconcile();
+    expect(result.conflicts).toBe(1);
+    const conflict = coordinator.getConflicts()[0];
+    expect(chooseNewestConflictResolution(conflict)).toBe('keep_drive');
+    expect(fs.readFileSync(localPath, 'utf8')).toBe('local old');
+
+    await coordinator.resolveConflict('newest-drive.md', 'keep_newest');
+    expect(fs.readFileSync(localPath, 'utf8')).toBe('remote new');
+  });
+
+  it('39: Keep newest fails closed for ties, missing timestamps, and deletion conflicts', async () => {
+    const base: ConflictArtifact = {
+      originalPath: 'tie.md',
+      localContent: Buffer.from('l'),
+      remoteContent: Buffer.from('r'),
+      localSha256: 'l',
+      remoteSha256: 'r',
+      remoteFileId: 'remote',
+      isBinary: false,
+      timestamp: '2026-09-17T10:00:00.000Z',
+      localExists: true,
+      remoteExists: true,
+      localModifiedAt: '2026-09-17T09:00:00.000Z',
+      remoteModifiedAt: '2026-09-17T09:00:00.000Z',
+    };
+    expect(chooseNewestConflictResolution(base)).toBeNull();
+    expect(chooseNewestConflictResolution({ ...base, remoteModifiedAt: null })).toBeNull();
+    expect(chooseNewestConflictResolution({ ...base, remoteExists: false, remoteModifiedAt: null })).toBeNull();
+
+    fs.writeFileSync(path.join(tmpDir, 'cannot-newest.md'), 'local');
+    adapter.addRemoteFile('cannot-newest.md', Buffer.from('remote'));
+    await coordinator.reconcile();
+    const artifact = coordinator.getConflicts()[0];
+    artifact.remoteModifiedAt = null;
+    await expect(coordinator.resolveConflict('cannot-newest.md', 'keep_newest')).rejects.toThrow('Keep newest is unavailable');
+    expect(coordinator.getConflicts()).toHaveLength(1);
+  });
+
+  it('40: ordinary reconciliation never chooses newest from timestamps', async () => {
+    const localPath = path.join(tmpDir, 'no-silent-newest.md');
+    fs.writeFileSync(localPath, 'local version');
+    fs.utimesSync(localPath, new Date('2030-01-01T10:00:00.000Z'), new Date('2030-01-01T10:00:00.000Z'));
+    adapter.addRemoteFile('no-silent-newest.md', Buffer.from('remote version'));
+
+    const result = await coordinator.reconcile();
+    expect(result.conflicts).toBe(1);
+    expect(coordinator.getConflicts()).toHaveLength(1);
+    expect(fs.readFileSync(localPath, 'utf8')).toBe('local version');
+    expect(new TextDecoder().decode(adapter.files.get('no-silent-newest.md')!.content)).toBe('remote version');
+  });
+
+  it('41: Sync Center status reports local changes, conflicts, and last successful sync', async () => {
+    expect(await coordinator.getSyncStatusSnapshot()).toMatchObject({
+      status: 'synced',
+      pendingLocalChanges: 0,
+      conflictCount: 0,
+      lastSuccessfulSyncAt: null,
+    });
+
+    fs.writeFileSync(path.join(tmpDir, 'pending.md'), 'local only');
+    expect(await coordinator.getSyncStatusSnapshot()).toMatchObject({
+      status: 'local_changes',
+      pendingLocalChanges: 1,
+    });
+
+    adapter.addRemoteFile('pending.md', Buffer.from('remote different'));
+    await coordinator.reconcile();
+    const snapshot = await coordinator.getSyncStatusSnapshot();
+    expect(snapshot.status).toBe('conflict');
+    expect(snapshot.conflictCount).toBe(1);
+    expect(snapshot.lastSuccessfulSyncAt).toBeTruthy();
+  });
+
+  it('42: full reconciliation bypasses an existing Drive change token only when explicitly requested', async () => {
+    adapter.addRemoteFile('full.md', Buffer.from('remote'));
+    await coordinator.reconcile();
+    const listAfterInitial = adapter.listFilesCalls;
+
+    await coordinator.reconcile();
+    expect(adapter.listChangesCalls).toBe(1);
+    const changesBeforeFull = adapter.listChangesCalls;
+
+    await coordinator.triggerFullReconciliation();
+    expect(adapter.listChangesCalls).toBe(changesBeforeFull);
+    expect(adapter.listFilesCalls).toBeGreaterThan(listAfterInitial);
+  });
+
 });

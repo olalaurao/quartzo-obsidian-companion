@@ -21,7 +21,7 @@ function validateRelease() {
     errors.push(`Invalid version format: ${version}. Expected X.Y.Z or X.Y.Z-beta.N`);
   }
 
-  const requiredFiles = ['main.js', 'manifest.json'];
+  const requiredFiles = ['main.js', 'manifest.json', 'styles.css'];
   for (const file of requiredFiles) {
     if (!fs.existsSync(path.join(rootDir, file))) {
       errors.push(`Required build file missing: ${file}`);
@@ -34,26 +34,35 @@ function validateRelease() {
     if (manifest.version !== version) {
       errors.push(`Manifest version ${manifest.version} != package.json version ${version}`);
     }
+    if (manifest.id !== 'quartzo-obsidian-companion') {
+      errors.push(`Unexpected manifest id: ${manifest.id}`);
+    }
+    if (manifest.isDesktopOnly !== true) {
+      errors.push('Quartzo Companion must remain desktop-only.');
+    }
   }
 
   const versionsPath = path.join(rootDir, 'versions.json');
   if (fs.existsSync(versionsPath)) {
     const versions = JSON.parse(fs.readFileSync(versionsPath, 'utf8'));
     if (!versions[version]) {
-      warnings.push(`Version ${version} not listed in versions.json`);
+      errors.push(`Version ${version} not listed in versions.json`);
+    } else {
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+      if (versions[version] !== manifest.minAppVersion) {
+        errors.push(`versions.json maps ${version} to ${versions[version]}, but manifest minAppVersion is ${manifest.minAppVersion}`);
+      }
     }
+  } else {
+    errors.push('versions.json is required for a release.');
   }
 
   if (isRelease) {
     const clientIdEnv = process.env.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID;
     if (!clientIdEnv || clientIdEnv === 'PLACEHOLDER_CLIENT_ID') {
-      const configSrc = path.join(rootDir, 'src/main.ts');
-      if (fs.existsSync(configSrc)) {
-        const content = fs.readFileSync(configSrc, 'utf8');
-        if (content.includes('PLACEHOLDER_CLIENT_ID')) {
-          errors.push('OAuth Client ID is placeholder. Set QUARTZO_GOOGLE_DESKTOP_CLIENT_ID env or real Client ID for release.');
-        }
-      }
+      errors.push('OAuth Client ID is missing. Set QUARTZO_GOOGLE_DESKTOP_CLIENT_ID for release.');
+    } else if (!/^[A-Za-z0-9._-]+\.apps\.googleusercontent\.com$/.test(clientIdEnv)) {
+      errors.push('QUARTZO_GOOGLE_DESKTOP_CLIENT_ID does not look like a Google Desktop OAuth Client ID.');
     }
 
     const mainJsPath = path.join(rootDir, 'main.js');
@@ -73,8 +82,18 @@ function validateRelease() {
     if (fs.existsSync(manifestPath2)) {
       const manifest = JSON.parse(fs.readFileSync(manifestPath2, 'utf8'));
       const minVersion = manifest.minAppVersion;
-      if (minVersion && minVersion < '1.11.4') {
-        errors.push(`minAppVersion ${minVersion} is too low. Must be >= 1.11.4 for app.secretStorage support.`);
+      const parseVersion = value => String(value).split('.').map(part => Number(part));
+      const compareVersions = (left, right) => {
+        const a = parseVersion(left);
+        const b = parseVersion(right);
+        for (let i = 0; i < Math.max(a.length, b.length); i++) {
+          const delta = (a[i] || 0) - (b[i] || 0);
+          if (delta !== 0) return delta;
+        }
+        return 0;
+      };
+      if (!minVersion || compareVersions(minVersion, '1.11.4') < 0) {
+        errors.push(`minAppVersion ${minVersion || '(missing)'} is too low. Must be >= 1.11.4 for app.secretStorage support.`);
       }
     }
 

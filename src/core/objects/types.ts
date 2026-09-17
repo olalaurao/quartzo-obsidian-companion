@@ -1,3 +1,5 @@
+import type { ReminderConfigData } from '../reminders/types';
+
 export type ObjectType = 
   | 'task'
   | 'habit'
@@ -20,6 +22,7 @@ export type ObjectType =
   | 'daily_note'
   | 'combined_analysis'
   | 'wellbeing_indicator'
+  | 'resource'
   | 'area'
   | 'project'
   | 'activity'
@@ -49,7 +52,7 @@ export interface Task extends BaseObject {
     start_date: string;
     rules: Array<{repeat_type: string; interval?: number}>;
   };
-  reminders?: Array<{id: string; minutes_before: number; type: string}>;
+  reminders?: ReminderConfigData[];
 }
 
 export interface Habit extends BaseObject {
@@ -65,6 +68,13 @@ export interface TrackerDefinition extends BaseObject {
   sections?: Array<{title: string; input_fields: unknown[]}>;
   section_count?: number;
   field_count?: number;
+}
+
+export interface TrackingRecord extends BaseObject {
+  type: 'tracker_record';
+  tracker_id: string;
+  date: string;
+  field_values: Record<string, unknown>;
 }
 
 export interface Entry extends BaseObject {
@@ -86,6 +96,13 @@ export interface Reminder extends BaseObject {
   is_completed?: boolean;
   reminder_count?: number;
   reminder_id?: string;
+  reminders?: ReminderConfigData[];
+  is_completable?: boolean;
+  scheduler?: Record<string, unknown>;
+  notes?: string;
+  time_block?: string;
+  checkboxes?: string[];
+  habit_reminder?: boolean;
 }
 
 export interface Goal extends BaseObject {
@@ -179,6 +196,36 @@ export interface WellbeingIndicator extends BaseObject {
   signal_count?: number;
 }
 
+export interface Resource extends BaseObject {
+  type: 'resource';
+  media_type: string;
+  cover?: string;
+  source_url?: string;
+  book_id?: string;
+  status?: string;
+  rating?: number;
+  priority?: string;
+  author?: string;
+  year?: number;
+  pages?: number;
+  category?: string;
+  isbn?: string;
+  title_pt_br?: string;
+  title_original?: string;
+  publisher?: string;
+  language?: string;
+  google_books_id?: string;
+  imdb_id?: string;
+  read?: string;
+  start_date?: string;
+  end_date?: string;
+  scheduler?: Record<string, unknown>;
+  links?: string[];
+  categories?: string[];
+  tags?: string[];
+  aliases?: string[];
+}
+
 export interface Area extends BaseObject {
   type: 'area';
   organizer_type: 'area';
@@ -257,6 +304,7 @@ export type QuartzoObject =
   | Task
   | Habit
   | TrackerDefinition
+  | TrackingRecord
   | Entry
   | Note
   | Reminder
@@ -274,6 +322,7 @@ export type QuartzoObject =
   | DailyNote
   | CombinedAnalysis
   | WellbeingIndicator
+  | Resource
   | Area
   | Project
   | Activity

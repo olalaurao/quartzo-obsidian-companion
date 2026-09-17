@@ -23,6 +23,11 @@ const criticalPaths = [
     description: 'OAuth loopback'
   },
   {
+    path: 'src/integrations/google/calendar/adapter.ts',
+    forbiddenPatterns: ['// TODO: implement', '// FIXME: implement', 'throw new Error("Not implemented")'],
+    description: 'Google Calendar read-only adapter'
+  },
+  {
     path: 'src/main.ts',
     forbiddenPatterns: ['// TODO: implement', '// FIXME: implement'],
     description: 'Plugin main (composition root)'
@@ -146,6 +151,242 @@ ${creation}`;
   console.log('PASS: Quick Add paths come from shared Object Identification');
   return true;
 }
+function checkNoUnsafeInnerHtml() {
+  const violations = [];
+  function scan(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        scan(full);
+      } else if (entry.name.endsWith('.ts')) {
+        const source = fs.readFileSync(full, 'utf8');
+        if (source.includes('.innerHTML')) violations.push(path.relative(rootDir, full));
+      }
+    }
+  }
+  scan(path.join(rootDir, 'src'));
+  if (violations.length > 0) {
+    console.error(`FAIL: Runtime source uses innerHTML instead of safe DOM/textContent: ${violations.join(', ')}`);
+    return false;
+  }
+  console.log('PASS: Runtime UI does not use innerHTML');
+  return true;
+}
+
+function checkCanonicalUiDateAndIdentityOwners() {
+  const shell = fs.readFileSync(path.join(rootDir, 'src/ui/shell/view.ts'), 'utf8');
+  const main = fs.readFileSync(path.join(rootDir, 'src/main.ts'), 'utf8');
+  const dailySchedule = fs.readFileSync(path.join(rootDir, 'src/core/daily_schedule/engine.ts'), 'utf8');
+  const forbidden = ['toISOString().slice(0, 10)', "toISOString().split('T')[0]", 'setUTCDate(', 'getUTCDay(', 'Date.UTC(', 'Math.random().toString(36)'];
+  const violations = forbidden.filter(pattern => shell.includes(pattern) || main.includes(pattern) || dailySchedule.includes(pattern));
+  if (violations.length > 0) {
+    console.error(`FAIL: Quartzo UI bypasses canonical local-date/identity owners: ${violations.join(', ')}`);
+    return false;
+  }
+  if (!shell.includes('createCanonicalObjectId()') || !shell.includes('shiftLocalMonth(') || !main.includes('localIsoDate(new Date())')) {
+    console.error('FAIL: Quartzo UI is not wired to canonical local-date and object identity owners');
+    return false;
+  }
+  console.log('PASS: UI uses canonical local-date and object identity owners');
+  return true;
+}
+
+function checkGoogleCalendarRemainsReadOnly() {
+  const adapterPath = path.join(rootDir, 'src/integrations/google/calendar/adapter.ts');
+  const scopesPath = path.join(rootDir, 'src/integrations/google/auth/scopes.ts');
+  if (!fs.existsSync(adapterPath) || !fs.existsSync(scopesPath)) {
+    console.error('FAIL: Google Calendar read-only integration files are missing');
+    return false;
+  }
+  const adapter = fs.readFileSync(adapterPath, 'utf8');
+  const scopes = fs.readFileSync(scopesPath, 'utf8');
+  const writePatterns = ["method: 'POST'", "method: 'PUT'", "method: 'PATCH'", "method: 'DELETE'", '.insert(', '.update(', '.delete('];
+  const writes = writePatterns.filter(pattern => adapter.includes(pattern));
+  if (writes.length > 0) {
+    console.error(`FAIL: Google Calendar V1 adapter contains write paths: ${writes.join(', ')}`);
+    return false;
+  }
+  if (!scopes.includes('https://www.googleapis.com/auth/calendar.readonly')) {
+    console.error('FAIL: Google Calendar read-only scope is missing');
+    return false;
+  }
+  if (/['"]https:\/\/www\.googleapis\.com\/auth\/calendar['"]/.test(scopes)) {
+    console.error('FAIL: Companion requests broad Google Calendar write scope');
+    return false;
+  }
+  console.log('PASS: Google Calendar integration is read-only and least-privilege');
+  return true;
+}
+function checkReminderRuntimeBoundaries() {
+  const servicePath = path.join(rootDir, 'src/core/reminders/service.ts');
+  const projectionPath = path.join(rootDir, 'src/core/reminders/projection.ts');
+  const platformPath = path.join(rootDir, 'src/platform/notifications.ts');
+  const registryPath = path.join(rootDir, 'src/local-state/notification-delivery-registry.ts');
+  const mainPath = path.join(rootDir, 'src/main.ts');
+  for (const file of [servicePath, projectionPath, platformPath, registryPath, mainPath]) {
+    if (!fs.existsSync(file)) {
+      console.error(`FAIL: Reminder runtime file missing: ${path.relative(rootDir, file)}`);
+      return false;
+    }
+  }
+  const service = fs.readFileSync(servicePath, 'utf8');
+  const projection = fs.readFileSync(projectionPath, 'utf8');
+  const platform = fs.readFileSync(platformPath, 'utf8');
+  const registry = fs.readFileSync(registryPath, 'utf8');
+  const main = fs.readFileSync(mainPath, 'utf8');
+  const coreForbidden = ["from 'obsidian'", '.setInterval(', 'Notification.requestPermission', "toISOString().split('T')[0]", '24 * 60 * 60 * 1000'];
+  const coreViolations = coreForbidden.filter(pattern => service.includes(pattern) || projection.includes(pattern));
+  if (coreViolations.length > 0) {
+    console.error(`FAIL: Reminder core bypasses lifecycle/platform/local-date owners: ${coreViolations.join(', ')}`);
+    return false;
+  }
+  if (!main.includes("reminderDelivery: 'in_obsidian_only'") || !main.includes('registerInterval(window.setInterval') || !main.includes("quartzo-notification-delivery.json")) {
+    console.error('FAIL: Reminder runtime is not lifecycle-managed with device-local default delivery');
+    return false;
+  }
+  if (!platform.includes("from 'obsidian'") || !platform.includes('requestDesktopPermission()')) {
+    console.error('FAIL: Reminder platform delivery owner is incomplete');
+    return false;
+  }
+  if (!registry.includes("node:fs") || registry.includes('app/quartzo_shared_settings.md')) {
+    console.error('FAIL: Reminder delivery registry is not device-local');
+    return false;
+  }
+  console.log('PASS: Reminder delivery stays lifecycle-managed, device-local and platform-owned');
+  return true;
+}
+function checkConflictResolutionIsExplicit() {
+  const enginePath = path.join(rootDir, 'src/core/sync/engine.ts');
+  const coordinatorPath = path.join(rootDir, 'src/sync/coordinator/index.ts');
+  const shellPath = path.join(rootDir, 'src/ui/shell/view.ts');
+  const engine = fs.readFileSync(enginePath, 'utf8');
+  const coordinator = fs.readFileSync(coordinatorPath, 'utf8');
+  const shell = fs.readFileSync(shellPath, 'utf8');
+  const forbiddenInEngine = ['modifiedTime', 'localModifiedAt', 'remoteModifiedAt', 'keep_newest', 'Keep newest'];
+  const violations = forbiddenInEngine.filter(pattern => engine.includes(pattern));
+  if (violations.length > 0) {
+    console.error(`FAIL: canonical three-way reconciliation uses timestamp/newest semantics: ${violations.join(', ')}`);
+    return false;
+  }
+  if (!coordinator.includes("resolution === 'keep_newest'") || !coordinator.includes('chooseNewestConflictResolution(artifact)')) {
+    console.error('FAIL: Keep newest is not implemented as an explicit conflict-resolution action');
+    return false;
+  }
+  if (!coordinator.includes('localModifiedAt') || !coordinator.includes('remoteModifiedAt')) {
+    console.error('FAIL: conflict artifacts do not preserve both modification timestamps');
+    return false;
+  }
+  if (!shell.includes("['keep_newest', 'Keep newest']") || !shell.includes("button.disabled = true")) {
+    console.error('FAIL: Conflict Center does not expose fail-closed explicit Keep newest UX');
+    return false;
+  }
+  console.log('PASS: Conflict resolution never silently chooses newest');
+  return true;
+}
+function checkDeviceLocalSettingsBoundaries() {
+  const mainPath = path.join(rootDir, 'src/main.ts');
+  const sharedCorePath = path.join(rootDir, 'src/core/shared-settings.ts');
+  const sharedVaultPath = path.join(rootDir, 'src/vault/shared-settings.ts');
+  const main = fs.readFileSync(mainPath, 'utf8');
+  const shared = `${fs.readFileSync(sharedCorePath, 'utf8')}\n${fs.readFileSync(sharedVaultPath, 'utf8')}`;
+  const requiredLocal = [
+    'syncPollingIntervalSeconds',
+    'syncOnStartup',
+    'syncOnFocus',
+    'hideSensitivePreviews',
+    'hideJournalPreviewText',
+    'hideNotificationBody',
+  ];
+  const missing = requiredLocal.filter(key => !main.includes(key));
+  if (missing.length > 0) {
+    console.error(`FAIL: Companion-local settings are missing: ${missing.join(', ')}`);
+    return false;
+  }
+  const leaked = requiredLocal.filter(key => shared.includes(key));
+  if (leaked.length > 0) {
+    console.error(`FAIL: Device-local settings leaked into shared Quartzo settings: ${leaked.join(', ')}`);
+    return false;
+  }
+  if (main.includes('this.settings.privacyMode') || main.includes("setName('Privacy Mode')")) {
+    console.error('FAIL: Legacy monolithic privacyMode remains a runtime settings owner');
+    return false;
+  }
+  if (!main.includes("registerDomEvent(window, 'focus'") || !main.includes('this.settings.syncPollingIntervalSeconds') || !main.includes('seconds * 1000')) {
+    console.error('FAIL: Sync Settings are not wired to lifecycle-managed runtime triggers');
+    return false;
+  }
+  const firstRunStart = main.indexOf('class QuartzoFirstRunModal extends Modal');
+  const firstRunEnd = main.indexOf('class QuartzoSettingTab', firstRunStart);
+  const firstRun = firstRunStart >= 0 && firstRunEnd > firstRunStart ? main.slice(firstRunStart, firstRunEnd) : '';
+  if (!firstRun.includes('startPairingFlow()') || !firstRun.includes('useWithoutSync()') || firstRun.includes('firstRunCompleted = true')) {
+    console.error('FAIL: First Run bypasses canonical pairing or marks setup complete prematurely');
+    return false;
+  }
+  console.log('PASS: Device-local Settings and First Run preserve canonical ownership boundaries');
+  return true;
+}
+function checkOAuthDesktopPlatformBoundary() {
+  const loopbackPath = path.join(rootDir, 'src/integrations/google/auth/loopback.ts');
+  const openerPath = path.join(rootDir, 'src/platform/browser-opener.ts');
+  const mainPath = path.join(rootDir, 'src/main.ts');
+  const loopback = fs.readFileSync(loopbackPath, 'utf8');
+  const opener = fs.readFileSync(openerPath, 'utf8');
+  const main = fs.readFileSync(mainPath, 'utf8');
+  const forbidden = ['child_process', 'xdg-open', 'start ""', 'exec(command)'];
+  const violations = forbidden.filter(pattern => loopback.includes(pattern) || opener.includes(pattern));
+  if (violations.length > 0) {
+    console.error(`FAIL: OAuth browser launch depends on external OS commands: ${violations.join(', ')}`);
+    return false;
+  }
+  if (!opener.includes("require('electron')") || !opener.includes('shell.openExternal') || !main.includes('this.browserOpener')) {
+    console.error('FAIL: OAuth loopback is not wired through the Electron platform browser opener');
+    return false;
+  }
+  if (!loopback.includes("http://127.0.0.1:${this.port}") || !loopback.includes("code_challenge_method', 'S256'")) {
+    console.error('FAIL: OAuth desktop loopback/PKCE contract regressed');
+    return false;
+  }
+  console.log('PASS: OAuth desktop browser launch stays inside Obsidian/Electron with loopback PKCE');
+  return true;
+}
+function checkReleasePipelineHardening() {
+  const releasePath = path.join(rootDir, '.github/workflows/release.yml');
+  const preflightPath = path.join(rootDir, '.github/workflows/release-preflight.yml');
+  const validatePath = path.join(rootDir, 'scripts/release-validate.mjs');
+  const packagePath = path.join(rootDir, 'scripts/package-release.mjs');
+  for (const file of [releasePath, preflightPath, validatePath, packagePath]) {
+    if (!fs.existsSync(file)) {
+      console.error(`FAIL: Release pipeline file missing: ${path.relative(rootDir, file)}`);
+      return false;
+    }
+  }
+  const release = fs.readFileSync(releasePath, 'utf8');
+  const preflight = fs.readFileSync(preflightPath, 'utf8');
+  const validate = fs.readFileSync(validatePath, 'utf8');
+  const packager = fs.readFileSync(packagePath, 'utf8');
+  if (!release.includes('git merge-base --is-ancestor') || !release.includes('fetch-depth: 0')) {
+    console.error('FAIL: Release workflow does not prove tagged commit provenance from main');
+    return false;
+  }
+  if (!release.includes('QUARTZO_GOOGLE_DESKTOP_CLIENT_ID') || !preflight.includes('QUARTZO_GOOGLE_DESKTOP_CLIENT_ID')) {
+    console.error('FAIL: Release/preflight do not require the production OAuth Client ID');
+    return false;
+  }
+  if (!release.includes('npm run release:package') || !preflight.includes('npm run release:package')) {
+    console.error('FAIL: Release workflows bypass the canonical release packager');
+    return false;
+  }
+  if (!release.includes('.release-artifact/SHA256SUMS.txt') || !packager.includes('SHA256SUMS.txt')) {
+    console.error('FAIL: Release package does not publish checksums');
+    return false;
+  }
+  if (!validate.includes("['main.js', 'manifest.json', 'styles.css']") || !validate.includes('apps\\.googleusercontent\\.com')) {
+    console.error('FAIL: Production release validation is missing artifact/OAuth checks');
+    return false;
+  }
+  console.log('PASS: Beta release pipeline is preflighted, provenance-checked and checksummed');
+  return true;
+}
 function main() {
   console.log('Running architecture/completeness checks...\n');
   let allPassed = true;
@@ -159,6 +400,14 @@ function main() {
   if (!checkOAuthNotConnectedWithoutRealClientId()) allPassed = false;
   if (!checkSingleQuartzoWorkspaceView()) allPassed = false;
   if (!checkNoHardcodedQuickAddFolders()) allPassed = false;
+  if (!checkNoUnsafeInnerHtml()) allPassed = false;
+  if (!checkCanonicalUiDateAndIdentityOwners()) allPassed = false;
+  if (!checkGoogleCalendarRemainsReadOnly()) allPassed = false;
+  if (!checkReminderRuntimeBoundaries()) allPassed = false;
+  if (!checkConflictResolutionIsExplicit()) allPassed = false;
+  if (!checkDeviceLocalSettingsBoundaries()) allPassed = false;
+  if (!checkOAuthDesktopPlatformBoundary()) allPassed = false;
+  if (!checkReleasePipelineHardening()) allPassed = false;
 
   console.log('\n' + (allPassed ? 'All architecture checks passed' : 'Some architecture checks failed'));
   process.exit(allPassed ? 0 : 1);

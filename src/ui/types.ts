@@ -2,6 +2,8 @@ import type { App, Plugin } from 'obsidian';
 import type { VaultIndexEngine } from '../vault/index';
 import type { DriveSyncCoordinator } from '../sync/coordinator';
 import type { GoogleDriveAdapter } from '../integrations/google/drive';
+import type { GoogleCalendarProjection } from '../integrations/google/calendar';
+import type { ReminderMode } from '../core/reminders';
 
 export interface UIState {
   currentView: string;
@@ -14,21 +16,36 @@ export interface ViewContext {
   plugin: Plugin & {
     driveSyncCoordinator: DriveSyncCoordinator | null;
     driveAdapter: GoogleDriveAdapter | null;
+    calendarStatus: 'disconnected' | 'ready' | 'authorization_required' | 'error';
     authState: 'disconnected' | 'authenticating' | 'authenticated_unpaired' | 'paired' | 'authentication_required';
     vaultIndexEngine: VaultIndexEngine | null;
     settings: {
       googleDriveFolderId: string | null;
       googleDriveFolderName: string | null;
       syncAuto: boolean;
-      privacyMode: boolean;
+      syncPollingIntervalSeconds: number;
+      syncOnStartup: boolean;
+      syncOnFocus: boolean;
+      hideSensitivePreviews: boolean;
+      hideJournalPreviewText: boolean;
+      hideNotificationBody: boolean;
       firstRunCompleted: boolean;
       oauthClientId: string;
       isPaired: boolean;
+      reminderDelivery: ReminderMode;
     };
     saveSettings(): Promise<void>;
+    startAutoSync(): void;
+    stopAutoSync(): void;
+    restartAutoSync(): void;
     startPairingFlow(): Promise<void>;
+    reconnectGoogle(): Promise<void>;
     confirmPairing(folderId: string, folderName: string, autoAdopt: boolean, autoPull: boolean): Promise<void>;
     disconnectDrive(): Promise<void>;
+    useWithoutSync(): Promise<void>;
+    listGoogleCalendarEvents(startDate: string, days: number): Promise<GoogleCalendarProjection[]>;
+    reauthorizeGoogleCalendar(): Promise<void>;
+    setReminderDelivery(mode: ReminderMode): Promise<void>;
     adoptFile(filePath: string): Promise<void>;
     openSettings(): void;
   };

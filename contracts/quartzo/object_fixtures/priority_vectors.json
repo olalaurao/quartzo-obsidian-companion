@@ -5,5 +5,6 @@
   {"id":"reminder_unknown_frontmatter","type":"reminder","modelType":"reminder","unknownField":"future_reminder_field"},
   {"id":"habit_unknown_frontmatter","type":"habit","modelType":"habit","unknownField":"future_habit_field"},
   {"id":"tracker_unknown_frontmatter","type":"tracker","modelType":"tracker_definition","unknownField":"future_tracker_field"},
-  {"id":"tracking_record_unknown_frontmatter","type":"tracker_record","modelType":"tracker_record","unknownField":"future_record_field"}
+  {"id":"tracking_record_unknown_frontmatter","type":"tracker_record","modelType":"tracker_record","unknownField":"future_record_field"},
+  {"id":"resource_unknown_frontmatter","type":"resource","modelType":"resource","unknownField":"future_resource_field"}
 ]

@@ -7,6 +7,8 @@ export interface SyncFile {
   localExists: boolean;
   remoteExists: boolean;
   isBinary: boolean;
+  localModifiedAt?: string | null;
+  remoteModifiedAt?: string | null;
 }
 
 export interface SyncState {

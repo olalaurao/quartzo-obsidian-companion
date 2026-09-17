@@ -1,9 +1,13 @@
 import { DailyScheduleInput, NormalizedSchedule, NormalizedItem } from './types';
+import { localIsoDate } from '../local-date';
+
+type PresentationField = 'sourceType' | 'sourceLabel' | 'isCompletable' | 'isCompleted' | 'origin';
+type RawNormalizedItem = Omit<NormalizedItem, PresentationField>;
 
 export class DailyScheduleEngine {
   static normalize(input: DailyScheduleInput): NormalizedSchedule {
     const { date, today, objects = [], googleEvents = [] } = input;
-    const items: NormalizedItem[] = [];
+    const items: RawNormalizedItem[] = [];
 
     // Process regular objects
     for (const obj of objects) {
@@ -65,17 +69,21 @@ export class DailyScheduleEngine {
       this.processGoogleEvent(event, date, items);
     }
 
+    // Enrich the canonical occurrence projection with presentation capabilities.
+    // UI surfaces consume these values and must never infer them independently.
+    const normalizedItems = this.enrichPresentationContract(items, objects);
+
     // Determine kind based on what was processed
     const kind = this.determineKind(items, objects, googleEvents);
 
     return {
       kind,
-      count: items.length,
-      items
+      count: normalizedItems.length,
+      items: normalizedItems
     };
   }
 
-  private static processReminder(obj: Record<string, unknown>, date: string, today: string | undefined, items: NormalizedItem[]): void {
+  private static processReminder(obj: Record<string, unknown>, date: string, today: string | undefined, items: RawNormalizedItem[]): void {
     const scheduledDate = obj.scheduled_date as string;
     const time = obj.time as string;
     const reminderId = obj.reminder_id as string;
@@ -105,7 +113,7 @@ export class DailyScheduleEngine {
     }
   }
 
-  private static processHabit(obj: Record<string, unknown>, date: string, items: NormalizedItem[]): void {
+  private static processHabit(obj: Record<string, unknown>, date: string, items: RawNormalizedItem[]): void {
     const id = obj.id as string;
     const slots = obj.slots as Array<{time: string; label: string}>;
 
@@ -138,7 +146,7 @@ export class DailyScheduleEngine {
     }
   }
 
-  private static processTask(obj: Record<string, unknown>, date: string, items: NormalizedItem[]): void {
+  private static processTask(obj: Record<string, unknown>, date: string, items: RawNormalizedItem[]): void {
     const id = obj.id as string;
     const startDate = obj.start_date as string;
     const endDate = obj.end_date as string;
@@ -170,7 +178,7 @@ export class DailyScheduleEngine {
     }
   }
 
-  private static processEvent(obj: Record<string, unknown>, date: string, items: NormalizedItem[]): void {
+  private static processEvent(obj: Record<string, unknown>, date: string, items: RawNormalizedItem[]): void {
     const id = obj.id as string;
     const eventDate = obj.date as string;
     const timeOfDay = (obj.time_of_day as string) || (obj.time as string);
@@ -203,7 +211,7 @@ export class DailyScheduleEngine {
     }
   }
 
-  private static processPomodoro(obj: Record<string, unknown>, date: string, items: NormalizedItem[]): void {
+  private static processPomodoro(obj: Record<string, unknown>, date: string, items: RawNormalizedItem[]): void {
     const id = obj.id as string;
     const pomodoroDate = obj.date as string;
     const start = obj.start as string;
@@ -225,7 +233,7 @@ export class DailyScheduleEngine {
     }
   }
 
-  private static processTrackerRecord(obj: Record<string, unknown>, date: string, items: NormalizedItem[]): void {
+  private static processTrackerRecord(obj: Record<string, unknown>, date: string, items: RawNormalizedItem[]): void {
     const id = obj.id as string;
     const recordDate = obj.date as string;
 
@@ -242,7 +250,7 @@ export class DailyScheduleEngine {
     });
   }
 
-  private static processJournalEntry(obj: Record<string, unknown>, date: string, items: NormalizedItem[]): void {
+  private static processJournalEntry(obj: Record<string, unknown>, date: string, items: RawNormalizedItem[]): void {
     const id = obj.id as string;
     const entryDate = obj.date as string;
     const time = obj.time as string;
@@ -271,7 +279,7 @@ export class DailyScheduleEngine {
     }
   }
 
-  private static processTimeBlock(obj: Record<string, unknown>, date: string, items: NormalizedItem[]): void {
+  private static processTimeBlock(obj: Record<string, unknown>, date: string, items: RawNormalizedItem[]): void {
     const id = obj.id as string;
     const ranges = obj.ranges as Array<{id: string; start: string; end: string}>;
 
@@ -290,7 +298,7 @@ export class DailyScheduleEngine {
     }
   }
 
-  private static processSystem(obj: Record<string, unknown>, date: string, items: NormalizedItem[]): void {
+  private static processSystem(obj: Record<string, unknown>, date: string, items: RawNormalizedItem[]): void {
     const id = obj.id as string;
     const time = obj.time as string;
 
@@ -306,7 +314,7 @@ export class DailyScheduleEngine {
     }
   }
 
-  private static processRoutine(obj: Record<string, unknown>, date: string, items: NormalizedItem[]): void {
+  private static processRoutine(obj: Record<string, unknown>, date: string, items: RawNormalizedItem[]): void {
     const id = obj.id as string;
     const startDate = obj.start_date as string;
 
@@ -324,7 +332,7 @@ export class DailyScheduleEngine {
     });
   }
 
-  private static processRotationZone(obj: Record<string, unknown>, date: string, allObjects: Record<string, unknown>[], items: NormalizedItem[]): void {
+  private static processRotationZone(obj: Record<string, unknown>, date: string, allObjects: Record<string, unknown>[], items: RawNormalizedItem[]): void {
     const id = obj.id as string;
     const rotationStartDate = obj.rotation_start_date as string;
     const rotationTime = obj.rotation_time as string;
@@ -348,7 +356,7 @@ export class DailyScheduleEngine {
     }
   }
 
-  private static processPersonContact(obj: Record<string, unknown>, date: string, items: NormalizedItem[]): void {
+  private static processPersonContact(obj: Record<string, unknown>, date: string, items: RawNormalizedItem[]): void {
     const id = obj.id as string;
     const lastContact = obj.last_contact as string;
     const frequencyDays = obj.frequency_days as number;
@@ -362,7 +370,7 @@ export class DailyScheduleEngine {
     const nextContactDate = new Date(lastContactDate);
     nextContactDate.setDate(nextContactDate.getDate() + frequencyDays);
 
-    const targetDate = nextContactDate.toISOString().split('T')[0];
+    const targetDate = localIsoDate(nextContactDate);
 
     if (targetDate === date) {
       items.push({
@@ -375,7 +383,7 @@ export class DailyScheduleEngine {
     }
   }
 
-  private static processGoal(obj: Record<string, unknown>, date: string, items: NormalizedItem[]): void {
+  private static processGoal(obj: Record<string, unknown>, date: string, items: RawNormalizedItem[]): void {
     const id = obj.id as string;
     const startDate = obj.start_date as string;
 
@@ -390,28 +398,104 @@ export class DailyScheduleEngine {
     }
   }
 
-  private static processGoogleEvent(event: Record<string, unknown>, date: string, items: NormalizedItem[]): void {
-    const id = event.id as string;
-    const summary = event.summary as string;
-    const start = event.start as string;
-    const end = event.end as string;
+  private static processGoogleEvent(event: Record<string, unknown>, date: string, items: RawNormalizedItem[]): void {
+    const id = String(event.id ?? '');
+    const start = typeof event.start === 'string' ? event.start : '';
+    const end = typeof event.end === 'string' ? event.end : '';
+    if (!id || !start || !end) return;
 
-    const eventDate = start.split('T')[0];
-    if (eventDate !== date) {
+    const allDay = event.allDay === true || !start.includes('T');
+    if (allDay) {
+      if (date < start || date >= end) return;
+      items.push({
+        id: `google_calendar:${id}`,
+        sourceId: id,
+        date,
+        isTimed: false,
+        isAllDay: true,
+      });
       return;
     }
 
-    const startTime = start.includes('T') ? start.split('T')[1].substring(0, 5) : '';
-    const endTime = end.includes('T') ? end.split('T')[1].substring(0, 5) : '';
+    const startDate = start.split('T')[0] ?? '';
+    const endDate = end.split('T')[0] ?? '';
+    const startClock = start.split('T')[1]?.substring(0, 5) ?? '';
+    const endClock = end.split('T')[1]?.substring(0, 5) ?? '';
+    if (!startDate || !endDate || !startClock || !endClock) return;
+    if (date < startDate || date > endDate || (date === endDate && endClock === '00:00' && endDate !== startDate)) return;
+    const visibleStartClock = date === startDate ? startClock : '00:00';
+    const visibleEndClock = date === endDate ? endClock : '23:59';
 
     items.push({
       id: `google_calendar:${id}`,
       sourceId: id,
       date,
-      start: startTime,
-      end: endTime,
-      isTimed: true
+      start: visibleStartClock,
+      end: visibleEndClock,
+      isTimed: true,
+      isAllDay: false,
     });
+  }
+
+  private static enrichPresentationContract(
+    items: RawNormalizedItem[],
+    objects: Array<Record<string, unknown>>,
+  ): NormalizedItem[] {
+    const byId = new Map<string, Record<string, unknown>>();
+    for (const object of objects) {
+      const id = String(object.id ?? '');
+      if (id) byId.set(id, object);
+    }
+
+    return items.map(item => {
+      const source = byId.get(item.sourceId);
+      const sourceType = source == null ? 'google_calendar' : String(source.type ?? '');
+      const sourcePath = source == null ? '' : String(source.__path ?? '');
+      const rotationGroup = item.id.startsWith('rotation:') ? item.id.split(':')[2] ?? '' : '';
+      const sourceLabel = source == null
+        ? `google_calendar:${item.sourceId}`
+        : rotationGroup
+          ? `project:${item.sourceId}:rotation:${rotationGroup}`
+          : `${sourceType}:${item.sourceId}:${sourcePath}`;
+
+      const completableTypes = new Set([
+        'task', 'habit', 'event', 'reminder', 'time_block', 'system',
+        'routine', 'project', 'goal', 'person',
+      ]);
+      const isCompletable = source != null && completableTypes.has(sourceType);
+      const isCompleted = source == null ? false : this.isSourceCompleted(sourceType, source);
+      const origin = item.id.startsWith('google_calendar:')
+        ? 'externalEvent' as const
+        : item.id.startsWith('legacyTime:')
+          ? 'legacyTime' as const
+          : 'schedule' as const;
+
+      return {
+        ...item,
+        sourceType,
+        sourceLabel,
+        isCompletable,
+        isCompleted,
+        origin,
+      };
+    });
+  }
+
+  private static isSourceCompleted(sourceType: string, source: Record<string, unknown>): boolean {
+    if (source.is_completed === true || source.completed === true) return true;
+    switch (sourceType) {
+      case 'task':
+        return source.stage === 'done' || source.stage === 'completed';
+      case 'event':
+      case 'pomodoro':
+      case 'pomodoro_session':
+        return source.state === 'completed';
+      default:
+        // Completion for Habits, Routines, Time Blocks and other occurrence-keyed
+        // sources is owned by shared occurrence state. Until that state is part
+        // of this input, never guess completion from presentation code.
+        return false;
+    }
   }
 
   private static calculateEndTime(startTime: string, durationMinutes: number): string {
@@ -422,7 +506,7 @@ export class DailyScheduleEngine {
     return `${String(endHours).padStart(2, '0')}:${String(endMinutes).padStart(2, '0')}`;
   }
 
-  private static determineKind(items: NormalizedItem[], objects: Record<string, unknown>[], googleEvents: Record<string, unknown>[]): string {
+  private static determineKind(items: RawNormalizedItem[], objects: Record<string, unknown>[], googleEvents: Record<string, unknown>[]): string {
     if (items.length === 0) {
       // Determine kind from input objects even if no items matched
       if (objects.length > 0) {

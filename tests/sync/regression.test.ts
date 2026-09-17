@@ -778,8 +778,8 @@ describe('Sync Regression Tests', () => {
 
   describe('Item 16: Drive scope', () => {
     it('OAuth scope is drive (full)', () => {
-      const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/main.ts'), 'utf-8');
-      expect(mainSrc).toContain('https://www.googleapis.com/auth/drive');
+      const scopesSrc = fs.readFileSync(path.join(__dirname, '../../src/integrations/google/auth/scopes.ts'), 'utf-8');
+      expect(scopesSrc).toContain('https://www.googleapis.com/auth/drive');
     });
   });
 
@@ -926,10 +926,24 @@ describe('Sync Regression Tests', () => {
 
     it('main.ts startPairingFlow does not set isPaired', () => {
       const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/main.ts'), 'utf-8');
-      const flow = mainSrc.substring(
-        mainSrc.indexOf('async startPairingFlow()'),
-        mainSrc.indexOf('async confirmPairing(')
-      );
+      const methodStart = mainSrc.indexOf('async startPairingFlow()');
+      expect(methodStart).toBeGreaterThanOrEqual(0);
+      const bodyStart = mainSrc.indexOf('{', methodStart);
+      expect(bodyStart).toBeGreaterThan(methodStart);
+      let depth = 0;
+      let methodEnd = -1;
+      for (let index = bodyStart; index < mainSrc.length; index++) {
+        if (mainSrc[index] === '{') depth++;
+        if (mainSrc[index] === '}') {
+          depth--;
+          if (depth === 0) {
+            methodEnd = index + 1;
+            break;
+          }
+        }
+      }
+      expect(methodEnd).toBeGreaterThan(bodyStart);
+      const flow = mainSrc.substring(methodStart, methodEnd);
       expect(flow).not.toContain('isPaired = true');
     });
 
@@ -943,9 +957,11 @@ describe('Sync Regression Tests', () => {
 
   describe('Reviewer Blocker 4+5: OAuth scope and ancestry proof', () => {
     it('OAuth scope is full Drive with documented rationale', () => {
+      const scopesSrc = fs.readFileSync(path.join(__dirname, '../../src/integrations/google/auth/scopes.ts'), 'utf-8');
       const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/main.ts'), 'utf-8');
-      expect(mainSrc).toContain('https://www.googleapis.com/auth/drive');
+      expect(scopesSrc).toContain('https://www.googleapis.com/auth/drive');
       expect(mainSrc).toContain('V1 decision');
+      expect(mainSrc).toContain('GOOGLE_COMPANION_SCOPES');
     });
 
     it('processChanges checks ancestry before processing', async () => {
