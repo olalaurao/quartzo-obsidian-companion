@@ -28,6 +28,8 @@ function isKnownTextFile(filePath: string): boolean {
   return false;
 }
 
+export type ConflictResolution = 'keep_local' | 'keep_drive' | 'keep_newest';
+
 export interface ConflictArtifact {
   originalPath: string;
   localContent: Uint8Array;
@@ -39,11 +41,32 @@ export interface ConflictArtifact {
   timestamp: string;
   localExists: boolean;
   remoteExists: boolean;
+  localModifiedAt: string | null;
+  remoteModifiedAt: string | null;
+}
+
+export type SyncCenterStatus = 'synced' | 'local_changes' | 'syncing' | 'conflict' | 'error';
+
+export interface SyncStatusSnapshot {
+  status: SyncCenterStatus;
+  lastSuccessfulSyncAt: string | null;
+  pendingLocalChanges: number;
+  conflictCount: number;
+  lastError: string | null;
+}
+
+export function chooseNewestConflictResolution(artifact: ConflictArtifact): 'keep_local' | 'keep_drive' | null {
+  if (!artifact.localExists || !artifact.remoteExists) return null;
+  if (!artifact.localModifiedAt || !artifact.remoteModifiedAt) return null;
+  const localTime = Date.parse(artifact.localModifiedAt);
+  const remoteTime = Date.parse(artifact.remoteModifiedAt);
+  if (!Number.isFinite(localTime) || !Number.isFinite(remoteTime) || localTime === remoteTime) return null;
+  return localTime > remoteTime ? 'keep_local' : 'keep_drive';
 }
 
 export interface ConflictRegistry {
   getConflicts(): ConflictArtifact[];
-  resolveConflict(originalPath: string, resolution: 'keep_local' | 'keep_drive'): Promise<void>;
+  resolveConflict(originalPath: string, resolution: ConflictResolution): Promise<void>;
 }
 
 export interface PairingItem {
@@ -68,6 +91,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
   private stateStorePath: string;
   private syncMutex: boolean = false;
   private syncRerunRequested = false;
+  private syncRerunForceFull = false;
   private quarantinedPaths = new Set<string>();
   private expectedWatcherWrites = new Map<string, { transactionId: string; hash: string | null }>();
   private transactionCounter = 0;
@@ -77,6 +101,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
   private conflicts: Map<string, ConflictArtifact> = new Map();
   private pendingRenames: PendingRename[] = [];
   private pendingDeletes: Set<string> = new Set();
+  private lastError: string | null = null;
 
   constructor(driveAdapter: DriveAdapter, vaultPath: string, stateStorePath?: string) {
     this.driveAdapter = driveAdapter;
