@@ -255,6 +255,34 @@ function checkReminderRuntimeBoundaries() {
   console.log('PASS: Reminder delivery stays lifecycle-managed, device-local and platform-owned');
   return true;
 }
+function checkConflictResolutionIsExplicit() {
+  const enginePath = path.join(rootDir, 'src/core/sync/engine.ts');
+  const coordinatorPath = path.join(rootDir, 'src/sync/coordinator/index.ts');
+  const shellPath = path.join(rootDir, 'src/ui/shell/view.ts');
+  const engine = fs.readFileSync(enginePath, 'utf8');
+  const coordinator = fs.readFileSync(coordinatorPath, 'utf8');
+  const shell = fs.readFileSync(shellPath, 'utf8');
+  const forbiddenInEngine = ['modifiedTime', 'localModifiedAt', 'remoteModifiedAt', 'keep_newest', 'Keep newest'];
+  const violations = forbiddenInEngine.filter(pattern => engine.includes(pattern));
+  if (violations.length > 0) {
+    console.error(`FAIL: canonical three-way reconciliation uses timestamp/newest semantics: ${violations.join(', ')}`);
+    return false;
+  }
+  if (!coordinator.includes("resolution === 'keep_newest'") || !coordinator.includes('chooseNewestConflictResolution(artifact)')) {
+    console.error('FAIL: Keep newest is not implemented as an explicit conflict-resolution action');
+    return false;
+  }
+  if (!coordinator.includes('localModifiedAt') || !coordinator.includes('remoteModifiedAt')) {
+    console.error('FAIL: conflict artifacts do not preserve both modification timestamps');
+    return false;
+  }
+  if (!shell.includes("['keep_newest', 'Keep newest']") || !shell.includes("button.disabled = true")) {
+    console.error('FAIL: Conflict Center does not expose fail-closed explicit Keep newest UX');
+    return false;
+  }
+  console.log('PASS: Conflict resolution never silently chooses newest');
+  return true;
+}
 function main() {
   console.log('Running architecture/completeness checks...\n');
   let allPassed = true;
@@ -272,6 +300,7 @@ function main() {
   if (!checkCanonicalUiDateAndIdentityOwners()) allPassed = false;
   if (!checkGoogleCalendarRemainsReadOnly()) allPassed = false;
   if (!checkReminderRuntimeBoundaries()) allPassed = false;
+  if (!checkConflictResolutionIsExplicit()) allPassed = false;
 
   console.log('\n' + (allPassed ? 'All architecture checks passed' : 'Some architecture checks failed'));
   process.exit(allPassed ? 0 : 1);
