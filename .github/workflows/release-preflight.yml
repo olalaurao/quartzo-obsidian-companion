@@ -76,11 +76,8 @@ jobs:
       - name: Clean artifact smoke test
         run: npm run smoke:clean-artifact
 
-      - name: Stage beta artifact
-        shell: bash
-        run: |
-          mkdir -p .release-artifact
-          cp main.js manifest.json styles.css .release-artifact/
+      - name: Package validated beta artifact
+        run: npm run release:package
 
       - name: Upload validated beta artifact
         uses: actions/upload-artifact@v4
