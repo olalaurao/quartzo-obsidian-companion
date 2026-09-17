@@ -3,6 +3,7 @@ import { DailyScheduleEngine } from '../../core/daily_schedule';
 import type { NormalizedItem } from '../../core/daily_schedule/types';
 import { buildQuickAddDocument, type QuickAddType } from '../../core/object-creation';
 import { findResourceDuplicates, type ResourceIdentity } from '../../core/resource-capture/policy';
+import { ResourceMetadataService, type ResourceMetadataDraft } from '../../integrations/resource-metadata/service';
 import { addLocalDays, daysInLocalMonth, localIsoDate, parseLocalIsoDate, shiftLocalMonth } from '../../core/local-date';
 import { createCanonicalObjectId } from '../../platform/object-id';
 import { VaultIndexEngine } from '../../vault/index';
@@ -47,6 +48,7 @@ function scheduleObjects(index: VaultIndex | null): Array<Record<string, unknown
 class QuickAddModal extends Modal {
   private type: QuickAddType = 'task';
   private settingsRepository: SharedSettingsRepository;
+  private readonly resourceMetadataService = new ResourceMetadataService();
 
   constructor(private readonly context: ViewContext, initialType?: QuickAddType) {
     super(context.app);
@@ -109,17 +111,65 @@ class QuickAddModal extends Modal {
     let statusSelect: HTMLSelectElement | null = null;
     let categoriesInput: HTMLInputElement | null = null;
     let relationsSelect: HTMLSelectElement | null = null;
+    let resourceMetadata: ResourceMetadataDraft | null = null;
+    let titleEdited = false;
+    let bodyEdited = false;
+    let mediaTypeEdited = false;
     if (this.type === 'resource') {
+      titleInput.addEventListener('input', () => { titleEdited = true; });
+      bodyInput.addEventListener('input', () => { bodyEdited = true; });
       sourceUrlInput = document.createElement('input');
       sourceUrlInput.type = 'url';
       sourceUrlInput.placeholder = 'Source URL (optional)';
       sourceUrlInput.className = 'quartzo-input';
+      sourceUrlInput.addEventListener('input', () => { resourceMetadata = null; });
       contentEl.appendChild(sourceUrlInput);
 
       mediaTypeSelect = this.createSelect('Resource type', [
-        'Book', 'Movie', 'Show', 'Video', 'Podcast', 'Article', 'Course', 'General',
+        'General', 'Book', 'Movie', 'Show', 'Video', 'Podcast', 'Article', 'Course',
       ]);
+      mediaTypeSelect.addEventListener('change', () => { mediaTypeEdited = true; });
       contentEl.appendChild(mediaTypeSelect);
+
+      const metadataStatus = document.createElement('small');
+      metadataStatus.textContent = 'Paste a supported link and fetch metadata, or fill the fields manually.';
+      const fetchMetadata = document.createElement('button');
+      fetchMetadata.type = 'button';
+      fetchMetadata.textContent = 'Fetch metadata';
+      fetchMetadata.addEventListener('click', async () => {
+        const url = sourceUrlInput?.value.trim() ?? '';
+        if (!url) {
+          new Notice('Paste a Resource URL first.');
+          return;
+        }
+        fetchMetadata.disabled = true;
+        fetchMetadata.textContent = 'Fetching…';
+        metadataStatus.textContent = 'Checking supported metadata providers…';
+        try {
+          const metadata = await this.resourceMetadataService.fetch(url);
+          resourceMetadata = metadata.sourceUrl === url ? metadata : null;
+          if (!metadata.fetched) {
+            metadataStatus.textContent = 'No automatic metadata found. You can still save this Resource manually.';
+            return;
+          }
+          if (!titleEdited && metadata.title) titleInput.value = metadata.title;
+          if (!bodyEdited && metadata.synopsis) bodyInput.value = metadata.synopsis;
+          if (!mediaTypeEdited && metadata.mediaType && mediaTypeSelect) {
+            const supported = Array.from(mediaTypeSelect.options).some(option => option.value === metadata.mediaType);
+            if (supported) mediaTypeSelect.value = metadata.mediaType;
+          }
+          const details = [metadata.author, metadata.year, metadata.pages ? `${metadata.pages} pages` : undefined]
+            .filter((value): value is string | number => value != null && value !== '');
+          metadataStatus.textContent = details.length > 0
+            ? `Metadata loaded: ${details.join(' • ')}`
+            : 'Metadata loaded. Review the fields before saving.';
+        } finally {
+          fetchMetadata.disabled = false;
+          fetchMetadata.textContent = 'Fetch metadata';
+        }
+      });
+      contentEl.appendChild(fetchMetadata);
+      contentEl.appendChild(metadataStatus);
 
       prioritySelect = this.createSelect('Priority', ['none', 'low', 'medium', 'high']);
       contentEl.appendChild(prioritySelect);
@@ -154,16 +204,28 @@ class QuickAddModal extends Modal {
     create.className = 'mod-cta';
     const performCreate = async (skipDuplicateCheck = false): Promise<void> => {
       try {
+        const currentResourceUrl = sourceUrlInput?.value.trim() ?? '';
+        const currentMetadata = resourceMetadata?.sourceUrl === currentResourceUrl && resourceMetadata.fetched
+          ? resourceMetadata
+          : null;
         const resourceInput = this.type === 'resource'
           ? {
               mediaType: mediaTypeSelect?.value ?? '',
-              sourceUrl: sourceUrlInput?.value,
+              sourceUrl: currentResourceUrl || undefined,
               priority: (prioritySelect?.value ?? 'none') as 'none' | 'low' | 'medium' | 'high',
               status: (statusSelect?.value ?? 'toConsume') as 'toConsume' | 'inProgress' | 'completed' | 'dropped',
               categories: this.csvValues(categoriesInput?.value ?? ''),
               links: relationsSelect == null
                 ? []
                 : Array.from(relationsSelect.selectedOptions).map(option => option.value),
+              cover: currentMetadata?.cover,
+              author: currentMetadata?.author,
+              year: currentMetadata?.year,
+              pages: currentMetadata?.pages,
+              category: currentMetadata?.category,
+              isbn: currentMetadata?.isbn,
+              googleBooksId: currentMetadata?.googleBooksId,
+              imdbId: currentMetadata?.imdbId,
             }
           : undefined;
 
@@ -173,6 +235,9 @@ class QuickAddModal extends Modal {
             title: titleInput.value,
             mediaType: resourceInput.mediaType,
             sourceUrl: resourceInput.sourceUrl,
+            isbn: resourceInput.isbn,
+            googleBooksId: resourceInput.googleBooksId,
+            imdbId: resourceInput.imdbId,
           };
           const duplicateIds = findResourceDuplicates(candidate, this.resourceIdentities()).map(item => item.id);
           if (duplicateIds.length > 0) {
