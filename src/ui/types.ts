@@ -30,6 +30,7 @@ export interface ViewContext {
     confirmPairing(folderId: string, folderName: string, autoAdopt: boolean, autoPull: boolean): Promise<void>;
     disconnectDrive(): Promise<void>;
     adoptFile(filePath: string): Promise<void>;
+    openSettings(): void;
   };
   state: UIState;
   vaultIndexEngine?: VaultIndexEngine;

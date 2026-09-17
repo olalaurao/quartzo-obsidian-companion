@@ -109,6 +109,43 @@ function checkOAuthNotConnectedWithoutRealClientId() {
   return true;
 }
 
+
+function checkSingleQuartzoWorkspaceView() {
+  const mainPath = path.join(rootDir, 'src/main.ts');
+  const content = fs.readFileSync(mainPath, 'utf8');
+  const registrations = content.match(/registerView\(/g) || [];
+  if (registrations.length !== 1 || !content.includes('registerView(QUARTZO_VIEW_TYPE')) {
+    console.error(`FAIL: V1 requires one primary Quartzo workspace view; found ${registrations.length} registrations`);
+    return false;
+  }
+  console.log('PASS: Single primary Quartzo workspace view');
+  return true;
+}
+
+function checkNoHardcodedQuickAddFolders() {
+  const shellPath = path.join(rootDir, 'src/ui/shell/view.ts');
+  const creationPath = path.join(rootDir, 'src/core/object-creation.ts');
+  if (!fs.existsSync(shellPath) || !fs.existsSync(creationPath)) {
+    console.error('FAIL: Quartzo shell or canonical object-creation owner missing');
+    return false;
+  }
+  const shell = fs.readFileSync(shellPath, 'utf8');
+  const creation = fs.readFileSync(creationPath, 'utf8');
+  const content = `${shell}
+${creation}`;
+  const forbidden = ['tasks/', 'notes/', 'journal/', 'reminders/'];
+  const violations = forbidden.filter(value => content.includes(`'${value}`) || content.includes(`"${value}`));
+  if (violations.length > 0) {
+    console.error(`FAIL: Quick Add contains hardcoded canonical folders: ${violations.join(', ')}`);
+    return false;
+  }
+  if (!creation.includes('resolveCreationFolder') || !shell.includes('buildQuickAddDocument')) {
+    console.error('FAIL: Quick Add does not route through canonical shared Object Identification creation owner');
+    return false;
+  }
+  console.log('PASS: Quick Add paths come from shared Object Identification');
+  return true;
+}
 function main() {
   console.log('Running architecture/completeness checks...\n');
   let allPassed = true;
@@ -120,6 +157,8 @@ function main() {
   if (!checkSingleFilePolicy()) allPassed = false;
   if (!checkTestSyncIncludesRuntime()) allPassed = false;
   if (!checkOAuthNotConnectedWithoutRealClientId()) allPassed = false;
+  if (!checkSingleQuartzoWorkspaceView()) allPassed = false;
+  if (!checkNoHardcodedQuickAddFolders()) allPassed = false;
 
   console.log('\n' + (allPassed ? 'All architecture checks passed' : 'Some architecture checks failed'));
   process.exit(allPassed ? 0 : 1);

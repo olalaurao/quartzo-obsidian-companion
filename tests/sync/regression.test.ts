@@ -933,11 +933,11 @@ describe('Sync Regression Tests', () => {
       expect(flow).not.toContain('isPaired = true');
     });
 
-    it('SyncCenterView renders folder list for explicit selection', () => {
-      const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/main.ts'), 'utf-8');
-      expect(mainSrc).toContain('folder-selection');
-      expect(mainSrc).toContain('listQuartzoVaultCandidates');
-      expect(mainSrc).toContain('confirm-pairing-btn');
+    it('single Quartzo shell renders explicit vault candidates before pairing', () => {
+      const shellSrc = fs.readFileSync(path.join(__dirname, '../../src/ui/shell/view.ts'), 'utf-8');
+      expect(shellSrc).toContain('listQuartzoVaultCandidates');
+      expect(shellSrc).toContain('Pair with');
+      expect(shellSrc).toContain('confirmPairing(candidate.id, candidate.name, false, false)');
     });
   });
 
@@ -1049,10 +1049,12 @@ describe('Sync Regression Tests', () => {
   });
 
   describe('Reviewer Blocker 11: canonical parser in vault events', () => {
-    it('main.ts uses ObjectParser from core/objects', () => {
+    it('vault indexing uses the canonical parser plus shared Object Identification', () => {
       const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/main.ts'), 'utf-8');
-      expect(mainSrc).toContain("import { ObjectParser } from './core/objects'");
-      expect(mainSrc).toContain('ObjectParser.parse(content)');
+      const indexSrc = fs.readFileSync(path.join(__dirname, '../../src/vault/index/engine.ts'), 'utf-8');
+      expect(mainSrc).toContain('parseObjectWithSharedSettings');
+      expect(mainSrc).toContain('SharedSettingsRepository');
+      expect(indexSrc).toContain('parseFile(file.content, file.path)');
     });
 
     it('main.ts does not have ad-hoc ObjectParser_parse function', () => {

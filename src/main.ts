@@ -1,13 +1,13 @@
-import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, Notice, ItemView, TFile, TAbstractFile, FileSystemAdapter } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, Notice, TFile, TAbstractFile, FileSystemAdapter } from 'obsidian';
 import { VaultIndexEngine } from './vault/index';
 import { DriveSyncCoordinator } from './sync/coordinator';
 import { GoogleDriveAdapter } from './integrations/google/drive';
 import { GoogleOAuthDesktop, OAuthConfig } from './integrations/google/auth/loopback';
-import { HomeView, PlannerView, DayDialView, JournalView, BrowseView, SearchView, QuickAddView, ConflictCenterView } from './ui';
+import { QuartzoView, QUARTZO_VIEW_TYPE, type QuartzoSection, type QuartzoAction } from './ui';
 import { ViewContext } from './ui/types';
 import { normalizeVaultPath } from './sync/coordinator/path-utils';
 import { VaultSyncFilePolicy } from './sync/coordinator/file-policy';
-import { ObjectParser } from './core/objects';
+import { SHARED_SETTINGS_PATH, SharedSettingsRepository, parseObjectWithSharedSettings, type QuartzoSharedSettings } from './vault/shared-settings';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -31,15 +31,6 @@ const DEFAULT_SETTINGS: QuartzoCompanionSettings = {
   isPaired: false,
 };
 
-const HOME_VIEW_TYPE = 'quartzo-home-view';
-const PLANNER_VIEW_TYPE = 'quartzo-planner-view';
-const DAY_DIAL_VIEW_TYPE = 'quartzo-day-dial-view';
-const JOURNAL_VIEW_TYPE = 'quartzo-journal-view';
-const BROWSE_VIEW_TYPE = 'quartzo-browse-view';
-const SEARCH_VIEW_TYPE = 'quartzo-search-view';
-const QUICK_ADD_VIEW_TYPE = 'quartzo-quick-add-view';
-const SYNC_CENTER_VIEW_TYPE = 'quartzo-sync-center-view';
-const CONFLICT_CENTER_VIEW_TYPE = 'quartzo-conflict-center-view';
 
 const BUILD_CLIENT_ID: string = (typeof process !== 'undefined' && process.env && process.env.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID) || '';
 
@@ -55,125 +46,6 @@ const OAUTH_CONFIG: OAuthConfig = {
   // Google verification/testing requirements apply before production listing.
 };
 
-class SyncCenterView extends ItemView {
-  private context: ViewContext;
-
-  constructor(leaf: WorkspaceLeaf, context: ViewContext) {
-    super(leaf);
-    this.context = context;
-  }
-
-  getViewType() { return SYNC_CENTER_VIEW_TYPE; }
-  getDisplayText() { return 'Sync Center'; }
-  getIcon() { return 'sync'; }
-
-  async onOpen() {
-    this.contentEl.empty();
-    this.contentEl.innerHTML = `
-      <div class="quartzo-sync-center">
-        <h2>Sync Center</h2>
-        <p>Google Drive synchronization status</p>
-        <div id="sync-controls"></div>
-        <button id="sync-now-btn">Sync Now</button>
-        <div id="sync-status"></div>
-      </div>
-    `;
-
-    const controlsEl = this.contentEl.querySelector('#sync-controls');
-    if (controlsEl) {
-      if (!this.context.plugin.settings.isPaired) {
-        controlsEl.innerHTML = `
-          <button id="connect-google-drive">Connect Google Drive</button>
-          <p>Connect your Google Drive to sync Quartzo vault.</p>
-        `;
-        controlsEl.querySelector('#connect-google-drive')?.addEventListener('click', async () => {
-          await this.context.plugin.startPairingFlow();
-          this.onOpen();
-        });
-
-        if (this.context.plugin.driveAdapter && this.context.plugin.authState === 'authenticated_unpaired') {
-          const folders = await this.context.plugin.driveAdapter.listQuartzoVaultCandidates().catch(() => []);
-          if (folders.length === 0) {
-            new Notice("No existing Quartzo vault was found.");
-            return;
-          }
-          if (folders.length > 0) {
-            const selectHtml = `
-              <div id="folder-selection" style="margin-top: 16px;">
-                <label><strong>Select Quartzo vault folder:</strong></label>
-                <div id="folder-list" style="margin-top: 8px;"></div>
-                <button id="confirm-pairing-btn" style="margin-top: 8px; display: none;">Confirm Pairing</button>
-              </div>
-            `;
-            controlsEl.insertAdjacentHTML('beforeend', selectHtml);
-            const folderListEl = controlsEl.querySelector('#folder-list');
-            const confirmBtn = controlsEl.querySelector('#confirm-pairing-btn') as HTMLButtonElement;
-            let selectedFolderId: string | null = null;
-            let selectedFolderName: string | null = null;
-
-            if (folderListEl) {
-              for (const folder of folders) {
-                const itemEl = document.createElement('div');
-                itemEl.className = 'folder-option';
-                itemEl.textContent = folder.name;
-                itemEl.style.cursor = 'pointer';
-                itemEl.style.padding = '4px 8px';
-                itemEl.style.borderRadius = '4px';
-                itemEl.addEventListener('click', () => {
-                  folderListEl.querySelectorAll('.folder-option').forEach(el => el.classList.remove('selected'));
-                  itemEl.classList.add('selected');
-                  itemEl.style.backgroundColor = 'var(--interactive-accent-hover)';
-                  selectedFolderId = folder.id;
-                  selectedFolderName = folder.name;
-                  if (confirmBtn) confirmBtn.style.display = 'block';
-                });
-                folderListEl.appendChild(itemEl);
-              }
-            }
-
-            if (confirmBtn) {
-              confirmBtn.addEventListener('click', async () => {
-                if (selectedFolderId && selectedFolderName) {
-                  await this.context.plugin.confirmPairing(selectedFolderId, selectedFolderName, false, false);
-                  this.onOpen();
-                }
-              });
-            }
-          }
-        }
-      } else {
-        controlsEl.innerHTML = `
-          <p>Connected to: ${this.context.plugin.settings.googleDriveFolderName || 'Google Drive'}</p>
-          <button id="disconnect-btn">Disconnect</button>
-        `;
-        controlsEl.querySelector('#disconnect-btn')?.addEventListener('click', () => {
-          this.context.plugin.disconnectDrive();
-        });
-      }
-    }
-
-    const syncBtn = this.contentEl.querySelector('#sync-now-btn');
-    if (syncBtn) {
-      syncBtn.addEventListener('click', async () => {
-        if (this.context.plugin.driveSyncCoordinator) {
-          try {
-            const result = await this.context.plugin.driveSyncCoordinator.triggerManualSync();
-            new Notice(`Sync complete: ${result.synced} files synced, ${result.conflicts} conflicts`);
-          } catch (error) {
-            new Notice(`Sync failed: ${error}`);
-          }
-        } else {
-          new Notice('Sync not configured');
-        }
-      });
-    }
-  }
-
-  async onClose() {
-    this.contentEl.empty();
-  }
-}
-
 export default class QuartzoCompanionPlugin extends Plugin {
   settings!: QuartzoCompanionSettings;
   vaultIndexEngine: VaultIndexEngine | null = null;
@@ -183,6 +55,8 @@ export default class QuartzoCompanionPlugin extends Plugin {
   viewContext: ViewContext | null = null;
   private syncIntervalId: ReturnType<typeof setInterval> | null = null;
   private eventRefs: ReturnType<typeof this.app.vault.on>[] = [];
+  private sharedSettingsRepository: SharedSettingsRepository | null = null;
+  private sharedSettings: QuartzoSharedSettings | null = null;
   authState: 'disconnected' | 'authenticating' | 'authenticated_unpaired' | 'paired' | 'authentication_required' = 'disconnected';
 
   async onload() {
@@ -203,7 +77,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
       app: this.app,
       plugin: this,
       state: {
-        currentView: HOME_VIEW_TYPE,
+        currentView: 'home',
         dailyScheduleDate: new Date().toISOString().split('T')[0],
         privacyMode: this.settings.privacyMode
       },
@@ -211,30 +85,22 @@ export default class QuartzoCompanionPlugin extends Plugin {
       driveSyncCoordinator: this.driveSyncCoordinator
     };
 
-    this.registerView(HOME_VIEW_TYPE, (leaf) => new HomeView(leaf, this.viewContext!));
-    this.registerView(PLANNER_VIEW_TYPE, (leaf) => new PlannerView(leaf, this.viewContext!));
-    this.registerView(DAY_DIAL_VIEW_TYPE, (leaf) => new DayDialView(leaf, this.viewContext!));
-    this.registerView(JOURNAL_VIEW_TYPE, (leaf) => new JournalView(leaf, this.viewContext!));
-    this.registerView(BROWSE_VIEW_TYPE, (leaf) => new BrowseView(leaf, this.viewContext!));
-    this.registerView(SEARCH_VIEW_TYPE, (leaf) => new SearchView(leaf, this.viewContext!));
-    this.registerView(QUICK_ADD_VIEW_TYPE, (leaf) => new QuickAddView(leaf, this.viewContext!));
-    this.registerView(SYNC_CENTER_VIEW_TYPE, (leaf) => new SyncCenterView(leaf, this.viewContext!));
-    this.registerView(CONFLICT_CENTER_VIEW_TYPE, (leaf) => new ConflictCenterView(leaf, this.viewContext!));
+    this.registerView(QUARTZO_VIEW_TYPE, (leaf) => new QuartzoView(leaf, this.viewContext!));
 
     const ribbonIconEl = this.addRibbonIcon('calendar-clock', 'Open Quartzo', () => {
-      this.activateView(HOME_VIEW_TYPE);
+      void this.activateQuartzo('home');
     });
     ribbonIconEl.addClass('quartzo-ribbon-icon');
 
-    this.addCommand({ id: 'quartzo-open', name: 'Quartzo: Open Home', callback: () => this.activateView(HOME_VIEW_TYPE) });
-    this.addCommand({ id: 'quartzo-planner', name: 'Quartzo: Open Planner', callback: () => this.activateView(PLANNER_VIEW_TYPE) });
-    this.addCommand({ id: 'quartzo-day-dial', name: 'Quartzo: Open Day Dial', callback: () => this.activateView(DAY_DIAL_VIEW_TYPE) });
-    this.addCommand({ id: 'quartzo-sync-center', name: 'Quartzo: Open Sync Center', callback: () => this.activateView(SYNC_CENTER_VIEW_TYPE) });
-    this.addCommand({ id: 'quartzo-journal', name: 'Quartzo: Open Journal', callback: () => this.activateView(JOURNAL_VIEW_TYPE) });
-    this.addCommand({ id: 'quartzo-browse', name: 'Quartzo: Browse Objects', callback: () => this.activateView(BROWSE_VIEW_TYPE) });
-    this.addCommand({ id: 'quartzo-search', name: 'Quartzo: Search Objects', callback: () => this.activateView(SEARCH_VIEW_TYPE) });
-    this.addCommand({ id: 'quartzo-quick-add', name: 'Quartzo: Quick Add', callback: () => this.activateView(QUICK_ADD_VIEW_TYPE) });
-    this.addCommand({ id: 'quartzo-conflict-center', name: 'Quartzo: Open Conflict Center', callback: () => this.activateView(CONFLICT_CENTER_VIEW_TYPE) });
+    this.addCommand({ id: 'quartzo-open', name: 'Quartzo: Open', callback: () => { void this.activateQuartzo('home'); } });
+    this.addCommand({ id: 'quartzo-planner', name: 'Quartzo: Planner', callback: () => { void this.activateQuartzo('planner'); } });
+    this.addCommand({ id: 'quartzo-day-dial', name: 'Quartzo: Day Dial', callback: () => { void this.activateQuartzo('home'); } });
+    this.addCommand({ id: 'quartzo-journal', name: 'Quartzo: Journal', callback: () => { void this.activateQuartzo('journal'); } });
+    this.addCommand({ id: 'quartzo-browse', name: 'Quartzo: Browse', callback: () => { void this.activateQuartzo('browse'); } });
+    this.addCommand({ id: 'quartzo-search', name: 'Quartzo: Search', callback: () => { void this.activateQuartzo('browse', 'search'); } });
+    this.addCommand({ id: 'quartzo-quick-add', name: 'Quartzo: Quick Add', callback: () => { void this.activateQuartzo('home', 'add'); } });
+    this.addCommand({ id: 'quartzo-sync-center', name: 'Quartzo: Sync', callback: () => { void this.activateQuartzo('home', 'sync'); } });
+    this.addCommand({ id: 'quartzo-conflict-center', name: 'Quartzo: Conflicts', callback: () => { void this.activateQuartzo('home', 'conflicts'); } });
     this.addCommand({
       id: 'quartzo-sync-now',
       name: 'Quartzo: Sync now',
@@ -250,6 +116,8 @@ export default class QuartzoCompanionPlugin extends Plugin {
       }
     });
 
+    this.sharedSettingsRepository = new SharedSettingsRepository(this.app.vault);
+    this.sharedSettings = await this.sharedSettingsRepository.load();
     await this.initializeVaultIndex();
     this.registerVaultEvents();
 
@@ -310,18 +178,22 @@ export default class QuartzoCompanionPlugin extends Plugin {
       modified: file.stat.mtime,
       size: file.stat.size
     })));
-    const index = VaultIndexEngine.createInitialIndex(vaultFiles);
+    const index = VaultIndexEngine.createInitialIndex(
+      vaultFiles,
+      (content, filePath) => parseObjectWithSharedSettings(content, filePath, this.sharedSettings),
+    );
     this.vaultIndexEngine.setIndex(index);
   }
 
   private registerVaultEvents() {
     const oncreate = this.app.vault.on('create', (file: TAbstractFile) => {
+      if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { void this.reloadSharedSettingsAndIndex(); return; }
       if (file instanceof TFile && this.vaultIndexEngine && this.shouldIndexPath(file.path)) {
         const idx = this.vaultIndexEngine.getIndex();
         if (idx) {
           this.app.vault.read(file).then(content => {
             try {
-              const result = ObjectParser.parse(content);
+              const result = parseObjectWithSharedSettings(content, file.path, this.sharedSettings);
               const object = {
                 id: result.object.id,
                 type: result.object.type,
@@ -344,12 +216,13 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.eventRefs.push(oncreate);
 
     const onmodify = this.app.vault.on('modify', (file: TAbstractFile) => {
+      if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { void this.reloadSharedSettingsAndIndex(); return; }
       if (file instanceof TFile && this.vaultIndexEngine && this.shouldIndexPath(file.path)) {
         const idx = this.vaultIndexEngine.getIndex();
         if (idx) {
           this.app.vault.read(file).then(content => {
             try {
-              const result = ObjectParser.parse(content);
+              const result = parseObjectWithSharedSettings(content, file.path, this.sharedSettings);
               const object = {
                 id: result.object.id,
                 type: result.object.type,
@@ -387,6 +260,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.eventRefs.push(ondelete);
 
     const onrename = this.app.vault.on('rename', (file: TAbstractFile, oldPath: string) => {
+      if (normalizeVaultPath(oldPath) === SHARED_SETTINGS_PATH || normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { void this.reloadSharedSettingsAndIndex(); return; }
       if (!(file instanceof TFile) || !this.vaultIndexEngine) return;
       const idx = this.vaultIndexEngine.getIndex();
       if (!idx) return;
@@ -398,7 +272,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
       }
       this.app.vault.read(file).then(content => {
         try {
-          const result = ObjectParser.parse(content);
+          const result = parseObjectWithSharedSettings(content, file.path, this.sharedSettings);
           changes.push({
             type: 'added',
             path: normalizeVaultPath(file.path),
@@ -701,16 +575,33 @@ export default class QuartzoCompanionPlugin extends Plugin {
     }
   }
 
-  async activateView(viewType: string) {
+  async activateQuartzo(section: QuartzoSection = 'home', action?: QuartzoAction) {
     const { workspace } = this.app;
-    let leaf = workspace.getLeavesOfType(viewType)[0];
+    let leaf = workspace.getLeavesOfType(QUARTZO_VIEW_TYPE)[0];
     if (!leaf) {
       const newLeaf = workspace.getRightLeaf(false);
       if (!newLeaf) return;
       leaf = newLeaf;
     }
-    await leaf.setViewState({ type: viewType, active: true });
+    await leaf.setViewState({ type: QUARTZO_VIEW_TYPE, active: true });
     workspace.revealLeaf(leaf);
+    if (leaf.view instanceof QuartzoView) {
+      await leaf.view.setSection(section);
+      if (action) await leaf.view.handleAction(action);
+    }
+  }
+
+  openSettings(): void {
+    const appWithSettings = this.app as App & { setting?: { open(): void; openTabById(id: string): void } };
+    appWithSettings.setting?.open();
+    appWithSettings.setting?.openTabById(this.manifest.id);
+  }
+
+  private async reloadSharedSettingsAndIndex(): Promise<void> {
+    this.sharedSettings = await this.sharedSettingsRepository?.load() ?? null;
+    await this.initializeVaultIndex();
+    const leaf = this.app.workspace.getLeavesOfType(QUARTZO_VIEW_TYPE)[0];
+    if (leaf?.view instanceof QuartzoView) await leaf.view.refresh();
   }
 
   showFirstRunDialog() {
@@ -734,7 +625,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
       this.settings.firstRunCompleted = true;
       this.saveSettings();
       modal.remove();
-      this.activateView(SYNC_CENTER_VIEW_TYPE);
+      void this.activateQuartzo('home', 'sync');
     });
   }
 
