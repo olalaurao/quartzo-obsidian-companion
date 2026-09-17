@@ -815,6 +815,11 @@ export default class QuartzoCompanionPlugin extends Plugin {
     appWithSettings.setting?.openTabById(this.manifest.id);
   }
 
+  async refreshQuartzoView(): Promise<void> {
+    const leaf = this.app.workspace.getLeavesOfType(QUARTZO_VIEW_TYPE)[0];
+    if (leaf?.view instanceof QuartzoView) await leaf.view.refresh();
+  }
+
   private async reloadSharedSettingsAndIndex(): Promise<void> {
     this.sharedSettings = await this.sharedSettingsRepository?.load() ?? null;
     await this.initializeVaultIndex();
@@ -933,39 +938,154 @@ class QuartzoSettingTab extends PluginSettingTab {
     this.plugin = plugin;
   }
 
+  private addHeading(container: HTMLElement, text: string): void {
+    const heading = document.createElement('h2');
+    heading.textContent = text;
+    container.appendChild(heading);
+  }
+
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
 
+    this.addHeading(containerEl, 'Connection');
+
     new Setting(containerEl)
-      .setName('Google OAuth Client ID')
-      .setDesc('Desktop OAuth Client ID from Google Cloud Console (PKCE, no client secret)')
-      .addText(text => text
-        .setPlaceholder('Enter OAuth Client ID')
-        .setValue(this.plugin.settings.oauthClientId)
-        .onChange(async (value) => {
-          this.plugin.settings.oauthClientId = value;
+      .setName('Google status')
+      .setDesc(this.plugin.authState.replace(/_/g, ' '));
+
+    new Setting(containerEl)
+      .setName('Drive vault')
+      .setDesc(this.plugin.settings.googleDriveFolderName
+        ? `${this.plugin.settings.googleDriveFolderName} · ID ${this.plugin.settings.googleDriveFolderId ?? 'unknown'}`
+        : 'No Quartzo Drive vault paired.');
+
+    if (BUILD_CLIENT_ID) {
+      new Setting(containerEl)
+        .setName('Google OAuth Client ID')
+        .setDesc('Bundled in this Companion build. Tokens remain in Obsidian SecretStorage.');
+    } else {
+      new Setting(containerEl)
+        .setName('Google OAuth Client ID')
+        .setDesc('Desktop OAuth Client ID from Google Cloud Console (PKCE, no client secret). Stored only on this device.')
+        .addText(text => text
+          .setPlaceholder('Enter OAuth Client ID')
+          .setValue(this.plugin.settings.oauthClientId === 'PLACEHOLDER_CLIENT_ID' ? '' : this.plugin.settings.oauthClientId)
+          .onChange(async value => {
+            this.plugin.settings.oauthClientId = value.trim() || 'PLACEHOLDER_CLIENT_ID';
+            await this.plugin.saveSettings();
+          }));
+    }
+
+    new Setting(containerEl)
+      .setName(this.plugin.settings.googleDriveFolderId ? 'Reconnect Google' : 'Connect Google Drive')
+      .setDesc(this.plugin.settings.googleDriveFolderId
+        ? 'Reauthorize this device while preserving the selected Drive vault identity.'
+        : 'Authorize Google Drive, then explicitly select an existing Quartzo vault.')
+      .addButton(button => button
+        .setButtonText(this.plugin.settings.googleDriveFolderId ? 'Reconnect' : 'Connect')
+        .onClick(async () => {
+          if (this.plugin.settings.googleDriveFolderId) await this.plugin.reconnectGoogle();
+          else await this.plugin.startPairingFlow();
+          this.display();
+        }));
+
+    if (this.plugin.authState === 'authenticated_unpaired') {
+      new Setting(containerEl)
+        .setName('Select Quartzo vault')
+        .setDesc('Continue setup in the Sync Center. The Companion never creates a second vault automatically.')
+        .addButton(button => button
+          .setButtonText('Select vault')
+          .onClick(async () => {
+            await this.plugin.activateQuartzo('home', 'sync');
+          }));
+    }
+
+    new Setting(containerEl)
+      .setName('Disconnect this device')
+      .setDesc('Removes this device connection and selected Drive vault. Canonical vault files are not deleted.')
+      .addButton(button => button
+        .setButtonText('Disconnect')
+        .setDisabled(this.plugin.authState === 'disconnected' && !this.plugin.settings.googleDriveFolderId)
+        .onClick(async () => {
+          await this.plugin.disconnectDrive();
+          this.display();
+        }));
+
+    this.addHeading(containerEl, 'Sync');
+
+    new Setting(containerEl)
+      .setName('Auto sync')
+      .setDesc('Poll Google Drive while Obsidian is open and reconcile local edits through the canonical sync coordinator.')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.syncAuto)
+        .onChange(async value => {
+          this.plugin.settings.syncAuto = value;
+          await this.plugin.saveSettings();
+          if (value && this.plugin.settings.isPaired) this.plugin.startAutoSync();
+          else this.plugin.stopAutoSync();
+        }));
+
+    new Setting(containerEl)
+      .setName('Remote polling interval')
+      .setDesc('How often Auto sync checks Drive while Obsidian is open. Default: 60 seconds.')
+      .addDropdown(dropdown => dropdown
+        .addOption('15', '15 seconds')
+        .addOption('30', '30 seconds')
+        .addOption('60', '60 seconds')
+        .addOption('120', '2 minutes')
+        .addOption('300', '5 minutes')
+        .addOption('900', '15 minutes')
+        .setValue(String(this.plugin.settings.syncPollingIntervalSeconds))
+        .onChange(async value => {
+          this.plugin.settings.syncPollingIntervalSeconds = Number(value);
+          await this.plugin.saveSettings();
+          this.plugin.restartAutoSync();
+        }));
+
+    new Setting(containerEl)
+      .setName('Sync on Obsidian startup')
+      .setDesc('After restoring Google authorization, run one reconciliation when the plugin starts.')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.syncOnStartup)
+        .onChange(async value => {
+          this.plugin.settings.syncOnStartup = value;
           await this.plugin.saveSettings();
         }));
 
     new Setting(containerEl)
-      .setName('Auto Sync')
-      .setDesc('Enable automatic background synchronization with Google Drive')
+      .setName('Sync on window focus')
+      .setDesc('Run one reconciliation when the Obsidian window regains focus.')
       .addToggle(toggle => toggle
-        .setValue(this.plugin.settings.syncAuto)
-        .onChange(async (value) => {
-          this.plugin.settings.syncAuto = value;
+        .setValue(this.plugin.settings.syncOnFocus)
+        .onChange(async value => {
+          this.plugin.settings.syncOnFocus = value;
           await this.plugin.saveSettings();
-          if (value && this.plugin.settings.isPaired) {
-            this.plugin.startAutoSync();
-          } else {
-            this.plugin.stopAutoSync();
-          }
         }));
+
+    new Setting(containerEl)
+      .setName('Manual full reconciliation')
+      .setDesc('Rescan the complete local and Drive inventories instead of relying on the current Drive change token.')
+      .addButton(button => button
+        .setButtonText('Run full reconciliation')
+        .setDisabled(!this.plugin.settings.isPaired)
+        .onClick(async () => {
+          const coordinator = this.plugin.driveSyncCoordinator;
+          if (!coordinator || !this.plugin.settings.isPaired) {
+            new Notice('Pair a Quartzo Drive vault first.');
+            return;
+          }
+          const result = await coordinator.triggerFullReconciliation();
+          if (result.errors.length > 0) new Notice(result.errors[result.errors.length - 1]);
+          else new Notice(`Full reconciliation complete: ${result.synced} synced, ${result.conflicts} conflicts`);
+          await this.plugin.refreshQuartzoView();
+        }));
+
+    this.addHeading(containerEl, 'Calendar');
 
     new Setting(containerEl)
       .setName('Google Calendar')
-      .setDesc(`Read-only projection of Google-selected calendars. Status: ${this.plugin.calendarStatus.replace(/_/g, ' ')}. The Companion never creates, edits or deletes Calendar events.`)
+      .setDesc(`Read-only projection. Status: ${this.plugin.calendarStatus.replace(/_/g, ' ')}. The Companion never creates, edits or deletes Calendar events.`)
       .addButton(button => button
         .setButtonText(this.plugin.calendarStatus === 'ready' ? 'Reauthorize' : 'Authorize')
         .onClick(async () => {
@@ -973,8 +1093,10 @@ class QuartzoSettingTab extends PluginSettingTab {
           this.display();
         }));
 
+    this.addHeading(containerEl, 'Notifications');
+
     new Setting(containerEl)
-      .setName('Reminder Delivery')
+      .setName('Reminder delivery')
       .setDesc('V1 reminders are delivered only while Obsidian is running. In-Obsidian only is the work-computer default.')
       .addDropdown(dropdown => dropdown
         .addOption('off', 'Off')
@@ -985,17 +1107,47 @@ class QuartzoSettingTab extends PluginSettingTab {
           await this.plugin.setReminderDelivery(value as ReminderMode);
           this.display();
         }));
+
+    this.addHeading(containerEl, 'Appearance');
+
     new Setting(containerEl)
-      .setName('Privacy Mode')
-      .setDesc('Hide sensitive information in the UI')
+      .setName('Shared Quartzo appearance')
+      .setDesc('Accent color, type colors and semantic type identification come from app/quartzo_shared_settings.md. Companion Settings do not create a second appearance source of truth.');
+
+    this.addHeading(containerEl, 'Privacy');
+
+    new Setting(containerEl)
+      .setName('Hide sensitive previews')
+      .setDesc('Hide sensitive preview content such as conflict bodies on this device. Canonical vault data is unchanged.')
       .addToggle(toggle => toggle
-        .setValue(this.plugin.settings.privacyMode)
-        .onChange(async (value) => {
-          this.plugin.settings.privacyMode = value;
+        .setValue(this.plugin.settings.hideSensitivePreviews)
+        .onChange(async value => {
+          this.plugin.settings.hideSensitivePreviews = value;
           await this.plugin.saveSettings();
-          if (this.plugin.viewContext) {
-            this.plugin.viewContext.state.privacyMode = value;
-          }
+          if (this.plugin.viewContext) this.plugin.viewContext.state.privacyMode = value;
+          await this.plugin.refreshQuartzoView();
+        }));
+
+    new Setting(containerEl)
+      .setName('Hide journal preview text')
+      .setDesc('Hide Journal Entry body snippets in the Companion on this device.')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.hideJournalPreviewText)
+        .onChange(async value => {
+          this.plugin.settings.hideJournalPreviewText = value;
+          await this.plugin.saveSettings();
+          await this.plugin.refreshQuartzoView();
+        }));
+
+    new Setting(containerEl)
+      .setName('Hide notification body')
+      .setDesc('Desktop and in-Obsidian reminder notifications omit the object title/body on this device.')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.hideNotificationBody)
+        .onChange(async value => {
+          this.plugin.settings.hideNotificationBody = value;
+          await this.plugin.saveSettings();
         }));
   }
 }
+
