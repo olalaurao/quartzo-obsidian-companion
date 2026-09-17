@@ -598,7 +598,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
       return;
     }
 
-    const wasPaired = this.settings.isPaired && Boolean(this.settings.googleDriveFolderId);
+    const wasPaired = Boolean(this.settings.googleDriveFolderId);
     this.authState = 'authenticating';
     const config = { ...OAUTH_CONFIG, clientId };
     const secretStorage = this.getSecretStorage();
@@ -609,6 +609,8 @@ export default class QuartzoCompanionPlugin extends Plugin {
       if (wasPaired && this.settings.googleDriveFolderId) {
         await this.driveAdapter?.setFolderId(this.settings.googleDriveFolderId);
         await this.driveSyncCoordinator?.setDriveFolderId(this.settings.googleDriveFolderId);
+        this.settings.isPaired = true;
+        await this.saveSettings();
         this.authState = 'paired';
         this.startAutoSync();
         new Notice('Google Drive reconnected.');
