@@ -1,10 +1,12 @@
 import { ItemView, Modal, Notice, TFile, WorkspaceLeaf, normalizePath } from 'obsidian';
 import { DailyScheduleEngine } from '../../core/daily_schedule';
+import type { NormalizedItem } from '../../core/daily_schedule/types';
 import { buildQuickAddDocument, type QuickAddType } from '../../core/object-creation';
 import { addLocalDays, daysInLocalMonth, localIsoDate, parseLocalIsoDate, shiftLocalMonth } from '../../core/local-date';
 import { createCanonicalObjectId } from '../../platform/object-id';
 import { VaultIndexEngine } from '../../vault/index';
 import { renderObjectDetail } from '../detail/object-detail';
+import { projectHomeSchedule } from '../home/home-projection';
 import {
   SharedSettingsRepository,
 } from '../../vault/shared-settings';
@@ -267,19 +269,9 @@ export class QuartzoView extends ItemView {
     return String(object?.frontmatter.title ?? object?.type ?? sourceId);
   }
 
-  private renderScheduleItems(container: HTMLElement, date: string): void {
-    const schedule = this.buildSchedule(date);
-    const heading = document.createElement('h3');
-    heading.textContent = date;
-    container.appendChild(heading);
-    if (schedule.items.length === 0) {
-      const empty = document.createElement('p');
-      empty.textContent = 'Nothing scheduled.';
-      container.appendChild(empty);
-      return;
-    }
+  private renderScheduleList(container: HTMLElement, items: NormalizedItem[]): void {
     const list = document.createElement('ul');
-    for (const item of schedule.items) {
+    for (const item of items) {
       const row = document.createElement('li');
       const time = item.start ? `${item.start} · ` : '';
       row.textContent = `${time}${this.titleForSource(item.sourceId)}`;
@@ -293,20 +285,62 @@ export class QuartzoView extends ItemView {
     container.appendChild(list);
   }
 
+  private renderScheduleItems(container: HTMLElement, date: string): void {
+    const schedule = this.buildSchedule(date);
+    const heading = document.createElement('h3');
+    heading.textContent = date;
+    container.appendChild(heading);
+    if (schedule.items.length === 0) {
+      const empty = document.createElement('p');
+      empty.textContent = 'Nothing scheduled.';
+      container.appendChild(empty);
+      return;
+    }
+    this.renderScheduleList(container, schedule.items);
+  }
+
+  private renderHomeBucket(container: HTMLElement, titleText: string, items: NormalizedItem[], emptyText: string): void {
+    const section = document.createElement('section');
+    section.className = 'quartzo-home-section';
+    const heading = document.createElement('h3');
+    heading.textContent = titleText;
+    section.appendChild(heading);
+    if (items.length === 0) {
+      const empty = document.createElement('p');
+      empty.textContent = emptyText;
+      section.appendChild(empty);
+    } else {
+      this.renderScheduleList(section, items);
+    }
+    container.appendChild(section);
+  }
+
   private async renderHome(container: HTMLElement): Promise<void> {
     const title = document.createElement('h2');
     title.textContent = 'Home';
     container.appendChild(title);
+
+    const date = document.createElement('p');
+    date.className = 'quartzo-home-date';
+    date.textContent = this.selectedDate;
+    container.appendChild(date);
+
+    const schedule = this.buildSchedule(this.selectedDate);
+    const projection = projectHomeSchedule(schedule, this.selectedDate, new Date());
+
     const dial = document.createElement('section');
+    dial.className = 'quartzo-home-section quartzo-day-dial-summary';
     const dialTitle = document.createElement('h3');
     dialTitle.textContent = 'Day Dial';
     dial.appendChild(dialTitle);
-    const schedule = this.buildSchedule(this.selectedDate);
     const summary = document.createElement('p');
-    summary.textContent = `${schedule.count} item${schedule.count === 1 ? '' : 's'} on today’s canonical Daily Schedule.`;
+    summary.textContent = `${schedule.count} item${schedule.count === 1 ? '' : 's'} on the canonical Daily Schedule.`;
     dial.appendChild(summary);
     container.appendChild(dial);
-    this.renderScheduleItems(container, this.selectedDate);
+
+    this.renderHomeBucket(container, 'Now', projection.now, 'Nothing active right now.');
+    this.renderHomeBucket(container, 'Up Next', projection.upNext, 'Nothing timed is coming up.');
+    this.renderHomeBucket(container, 'Today', projection.today, 'Nothing scheduled today.');
   }
 
   private async renderPlanner(container: HTMLElement): Promise<void> {
