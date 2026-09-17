@@ -26,6 +26,8 @@ jobs:
       
       - name: Verify contracts
         run: npm run contracts:verify
+        env:
+          GITHUB_TOKEN: ${{ secrets.QUARTZO_UPSTREAM_TOKEN }}
       
       - name: Type check
         run: npm run typecheck
