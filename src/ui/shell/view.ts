@@ -2,6 +2,7 @@ import { ItemView, Modal, Notice, TFile, WorkspaceLeaf, normalizePath } from 'ob
 import { DailyScheduleEngine } from '../../core/daily_schedule';
 import type { NormalizedItem } from '../../core/daily_schedule/types';
 import { buildQuickAddDocument, type QuickAddType } from '../../core/object-creation';
+import { findResourceDuplicates, type ResourceIdentity } from '../../core/resource-capture/policy';
 import { addLocalDays, daysInLocalMonth, localIsoDate, parseLocalIsoDate, shiftLocalMonth } from '../../core/local-date';
 import { createCanonicalObjectId } from '../../platform/object-id';
 import { VaultIndexEngine } from '../../vault/index';
@@ -65,7 +66,7 @@ class QuickAddModal extends Modal {
     contentEl.appendChild(title);
 
     const typeSelect = document.createElement('select');
-    for (const type of ['task', 'entry', 'note', 'reminder'] as QuickAddType[]) {
+    for (const type of ['task', 'entry', 'note', 'reminder', 'resource'] as QuickAddType[]) {
       const option = document.createElement('option');
       option.value = type;
       option.textContent = labelForType(type);
@@ -85,7 +86,7 @@ class QuickAddModal extends Modal {
     contentEl.appendChild(titleInput);
 
     const bodyInput = document.createElement('textarea');
-    bodyInput.placeholder = 'Content';
+    bodyInput.placeholder = this.type === 'resource' ? 'Synopsis or notes' : 'Content';
     bodyInput.className = 'quartzo-input';
     contentEl.appendChild(bodyInput);
 
@@ -102,11 +103,84 @@ class QuickAddModal extends Modal {
       contentEl.appendChild(timeInput);
     }
 
+    let sourceUrlInput: HTMLInputElement | null = null;
+    let mediaTypeSelect: HTMLSelectElement | null = null;
+    let prioritySelect: HTMLSelectElement | null = null;
+    let statusSelect: HTMLSelectElement | null = null;
+    let categoriesInput: HTMLInputElement | null = null;
+    let relationsSelect: HTMLSelectElement | null = null;
+    if (this.type === 'resource') {
+      sourceUrlInput = document.createElement('input');
+      sourceUrlInput.type = 'url';
+      sourceUrlInput.placeholder = 'Source URL (optional)';
+      sourceUrlInput.className = 'quartzo-input';
+      contentEl.appendChild(sourceUrlInput);
+
+      mediaTypeSelect = this.createSelect('Resource type', [
+        'Book', 'Movie', 'Show', 'Video', 'Podcast', 'Article', 'Course', 'General',
+      ]);
+      contentEl.appendChild(mediaTypeSelect);
+
+      prioritySelect = this.createSelect('Priority', ['none', 'low', 'medium', 'high']);
+      contentEl.appendChild(prioritySelect);
+
+      statusSelect = this.createSelect('Status', ['toConsume', 'inProgress', 'completed', 'dropped']);
+      contentEl.appendChild(statusSelect);
+
+      categoriesInput = document.createElement('input');
+      categoriesInput.type = 'text';
+      categoriesInput.placeholder = 'Categories, comma separated';
+      categoriesInput.className = 'quartzo-input';
+      contentEl.appendChild(categoriesInput);
+
+      relationsSelect = document.createElement('select');
+      relationsSelect.multiple = true;
+      relationsSelect.className = 'quartzo-input';
+      relationsSelect.setAttribute('aria-label', 'Related Resources');
+      for (const resource of this.resourceObjects()) {
+        const option = document.createElement('option');
+        option.value = this.wikilinkFor(resource);
+        option.textContent = String(resource.frontmatter.title ?? resource.id);
+        relationsSelect.appendChild(option);
+      }
+      contentEl.appendChild(relationsSelect);
+      const relationHint = document.createElement('small');
+      relationHint.textContent = 'Related Resources (use Ctrl/Cmd to select more than one).';
+      contentEl.appendChild(relationHint);
+    }
+
     const create = document.createElement('button');
     create.textContent = `Create ${labelForType(this.type)}`;
     create.className = 'mod-cta';
-    create.addEventListener('click', async () => {
+    const performCreate = async (skipDuplicateCheck = false): Promise<void> => {
       try {
+        const resourceInput = this.type === 'resource'
+          ? {
+              mediaType: mediaTypeSelect?.value ?? '',
+              sourceUrl: sourceUrlInput?.value,
+              priority: (prioritySelect?.value ?? 'none') as 'none' | 'low' | 'medium' | 'high',
+              status: (statusSelect?.value ?? 'toConsume') as 'toConsume' | 'inProgress' | 'completed' | 'dropped',
+              categories: this.csvValues(categoriesInput?.value ?? ''),
+              links: relationsSelect == null
+                ? []
+                : Array.from(relationsSelect.selectedOptions).map(option => option.value),
+            }
+          : undefined;
+
+        if (this.type === 'resource' && resourceInput && !skipDuplicateCheck) {
+          const candidate: ResourceIdentity = {
+            id: '',
+            title: titleInput.value,
+            mediaType: resourceInput.mediaType,
+            sourceUrl: resourceInput.sourceUrl,
+          };
+          const duplicateIds = findResourceDuplicates(candidate, this.resourceIdentities()).map(item => item.id);
+          if (duplicateIds.length > 0) {
+            this.renderResourceDuplicateWarning(contentEl, duplicateIds, () => { void performCreate(true); });
+            return;
+          }
+        }
+
         const settings = await this.settingsRepository.load();
         const id = createCanonicalObjectId();
         const documentData = buildQuickAddDocument(settings, this.type, {
@@ -114,6 +188,7 @@ class QuickAddModal extends Modal {
           body: bodyInput.value,
           date: dateInput?.value,
           time: timeInput?.value,
+          resource: resourceInput,
         }, id);
         await this.ensureParentFolders(documentData.path);
         if (this.context.app.vault.getAbstractFileByPath(documentData.path)) {
@@ -125,8 +200,101 @@ class QuickAddModal extends Modal {
       } catch (error) {
         new Notice(`Quick Add blocked: ${error instanceof Error ? error.message : String(error)}`);
       }
-    });
+    };
+    create.addEventListener('click', () => { void performCreate(false); });
     contentEl.appendChild(create);
+  }
+
+  private getIndex(): VaultIndex | null {
+    return this.context.vaultIndexEngine?.getIndex() ?? this.context.plugin.vaultIndexEngine?.getIndex() ?? null;
+  }
+
+  private resourceObjects(): IndexedObject[] {
+    const index = this.getIndex();
+    if (!index) return [];
+    return Array.from(index.objects.values())
+      .filter(object => object.type === 'resource' && object.frontmatter.archived !== true)
+      .sort((left, right) => String(left.frontmatter.title ?? left.id).localeCompare(String(right.frontmatter.title ?? right.id)));
+  }
+
+  private resourceIdentities(): ResourceIdentity[] {
+    return this.resourceObjects().map(object => ({
+      id: object.id,
+      title: String(object.frontmatter.title ?? ''),
+      mediaType: String(object.frontmatter.media_type ?? ''),
+      sourceUrl: object.frontmatter.source_url == null ? undefined : String(object.frontmatter.source_url),
+      isbn: object.frontmatter.isbn == null ? undefined : String(object.frontmatter.isbn),
+      googleBooksId: object.frontmatter.google_books_id == null ? undefined : String(object.frontmatter.google_books_id),
+      imdbId: object.frontmatter.imdb_id == null ? undefined : String(object.frontmatter.imdb_id),
+      archived: object.frontmatter.archived === true,
+    }));
+  }
+
+  private wikilinkFor(object: IndexedObject): string {
+    const target = object.path.replace(/\\/g, '/').replace(/\.md$/i, '');
+    return `[[${target}]]`;
+  }
+
+  private csvValues(value: string): string[] {
+    return value.split(',').map(item => item.trim()).filter(item => item.length > 0);
+  }
+
+  private createSelect(label: string, values: string[]): HTMLSelectElement {
+    const select = document.createElement('select');
+    select.className = 'quartzo-input';
+    select.setAttribute('aria-label', label);
+    for (const value of values) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value;
+      select.appendChild(option);
+    }
+    return select;
+  }
+
+  private renderResourceDuplicateWarning(
+    container: HTMLElement,
+    duplicateIds: string[],
+    onCreateAnyway: () => void,
+  ): void {
+    container.querySelector('.quartzo-resource-duplicate-warning')?.remove();
+    const warning = document.createElement('section');
+    warning.className = 'quartzo-resource-duplicate-warning';
+    const duplicates = duplicateIds
+      .map(id => this.getIndex()?.objects.get(id))
+      .filter((object): object is IndexedObject => object != null);
+
+    const message = document.createElement('p');
+    message.textContent = duplicates.length === 1
+      ? `Possible duplicate: ${String(duplicates[0].frontmatter.title ?? duplicates[0].id)}`
+      : `Possible duplicates found (${duplicates.length}).`;
+    warning.appendChild(message);
+
+    if (duplicates[0]) {
+      const openExisting = document.createElement('button');
+      openExisting.textContent = 'Open existing';
+      openExisting.addEventListener('click', () => { void this.openIndexedObject(duplicates[0]); });
+      warning.appendChild(openExisting);
+    }
+
+    const createAnyway = document.createElement('button');
+    createAnyway.textContent = 'Create anyway';
+    createAnyway.addEventListener('click', onCreateAnyway);
+    warning.appendChild(createAnyway);
+
+    const cancel = document.createElement('button');
+    cancel.textContent = 'Cancel';
+    cancel.addEventListener('click', () => warning.remove());
+    warning.appendChild(cancel);
+    container.appendChild(warning);
+  }
+
+  private async openIndexedObject(object: IndexedObject): Promise<void> {
+    const file = this.context.app.vault.getAbstractFileByPath(object.path);
+    if (file instanceof TFile) {
+      await this.context.app.workspace.getLeaf(false).openFile(file);
+      this.close();
+    }
   }
 
   private async ensureParentFolders(filePath: string): Promise<void> {
