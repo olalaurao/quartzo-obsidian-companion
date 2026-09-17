@@ -25,9 +25,17 @@ export interface RemoteTransportResponse {
   bodyBytes: Uint8Array;
 }
 
+export interface RemoteTransportOptions {
+  headers: Readonly<Record<string, string>>;
+  timeoutMs: number;
+  maxBytes: number;
+  /** Public address returned by the security resolver for this exact request. */
+  resolvedAddress?: string;
+}
+
 export type RemoteFetchTransport = (
   uri: URL,
-  options: { headers: Readonly<Record<string, string>>; timeoutMs: number; maxBytes: number },
+  options: RemoteTransportOptions,
 ) => Promise<RemoteTransportResponse>;
 
 export type HostResolver = (host: string) => Promise<string[]>;
@@ -102,12 +110,12 @@ async function defaultResolveHost(host: string): Promise<string[]> {
   return result.map(item => item.address);
 }
 
-async function assertPublicResolution(
+async function resolvePublicAddress(
   uri: URL,
   policy: RemoteFetchPolicy,
   resolver: HostResolver,
-): Promise<void> {
-  if (!policy.rejectPrivateNetworks) return;
+): Promise<string | undefined> {
+  if (!policy.rejectPrivateNetworks) return undefined;
   const addresses = await Promise.race([
     resolver(uri.hostname),
     new Promise<never>((_, reject) => setTimeout(() => reject(new RemoteFetchSecurityError('Remote lookup timed out.')), policy.timeoutMs)),
@@ -115,12 +123,21 @@ async function assertPublicResolution(
   if (addresses.length === 0 || addresses.some(isPrivateOrLocalAddress)) {
     throw new RemoteFetchSecurityError('Private or local network addresses cannot be imported.');
   }
+  return addresses[0];
 }
 
 export const nodeHttpsTransport: RemoteFetchTransport = (uri, options) => new Promise((resolve, reject) => {
-  const req = request(uri, {
+  const req = request({
+    protocol: uri.protocol,
+    hostname: options.resolvedAddress ?? uri.hostname,
+    port: uri.port || undefined,
+    path: `${uri.pathname}${uri.search}`,
     method: 'GET',
-    headers: options.headers,
+    servername: uri.hostname,
+    headers: {
+      ...options.headers,
+      host: uri.host,
+    },
   }, response => {
     const chunks: Buffer[] = [];
     let total = 0;
@@ -181,11 +198,12 @@ export async function secureRemoteFetch(
   let current = validateRemoteUri(url, policy);
 
   for (let redirectCount = 0; redirectCount <= policy.maxRedirects; redirectCount++) {
-    await assertPublicResolution(current, policy, resolver);
+    const resolvedAddress = await resolvePublicAddress(current, policy, resolver);
     const response = await transport(current, {
       headers: options.headers ?? {},
       timeoutMs: policy.timeoutMs,
       maxBytes: policy.maxBytes,
+      resolvedAddress,
     });
     if (response.bodyBytes.byteLength > policy.maxBytes) {
       throw new RemoteFetchSecurityError('The remote response is too large to import automatically.');
