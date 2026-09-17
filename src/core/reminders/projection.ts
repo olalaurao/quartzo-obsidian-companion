@@ -58,7 +58,9 @@ function rawReminderConfigs(object: ReminderSourceObject): ReminderConfigData[] 
   const id = String(object.reminder_id ?? `${object.id}_primary`).trim();
   const rawDate = typeof object.date === 'string' ? object.date : '';
   const rawTime = typeof object.time === 'string' ? object.time : '';
-  const direct = parsePersistedInstant(rawDate) ?? parsePersistedInstant(rawTime);
+  const directDate = rawDate.includes('T') ? parsePersistedInstant(rawDate) : null;
+  const directTime = rawTime.includes('T') ? parsePersistedInstant(rawTime) : null;
+  const direct = directDate ?? directTime;
   const dateOnly = rawDate.includes('T') ? rawDate.split('T')[0] : rawDate;
   const timeOnly = rawTime.includes('T') ? rawTime.split('T')[1]?.substring(0, 8) ?? '' : rawTime;
   const combined = direct ?? (dateOnly && timeOnly ? dateAtClock(dateOnly, timeOnly) : null);
@@ -135,11 +137,16 @@ function baseOccurrencesForDate(object: ReminderSourceObject, date: string): Bas
   return [...unique.values()];
 }
 
-function candidateDatesForShiftedWindow(from: Date, to: Date, shiftMs: number): string[] {
-  const start = new Date(from.getTime() + shiftMs);
-  const end = new Date(to.getTime() + shiftMs);
-  const dates = new Set<string>([localIsoDate(start), localIsoDate(end)]);
-  return [...dates];
+function candidateDatesForMinuteOffset(from: Date, to: Date, offsetMs: number): string[] {
+  const start = new Date(from.getTime() + offsetMs);
+  const end = new Date(to.getTime() + offsetMs);
+  return [...new Set<string>([localIsoDate(start), localIsoDate(end)])];
+}
+
+function candidateDatesForDayOffset(from: Date, to: Date, days: number): string[] {
+  const start = addLocalDays(parseLocalIsoDate(localIsoDate(from)), days);
+  const end = addLocalDays(parseLocalIsoDate(localIsoDate(to)), days);
+  return [...new Set<string>([localIsoDate(start), localIsoDate(end)])];
 }
 
 function makeDelivery(
@@ -206,7 +213,7 @@ export class ReminderProjectionEngine {
 
         if (daysBefore != null || config.time_of_day != null) {
           const days = daysBefore ?? 0;
-          const shiftedDates = candidateDatesForShiftedWindow(fromExclusive, toInclusive, days * 24 * 60 * 60 * 1000);
+          const shiftedDates = candidateDatesForDayOffset(fromExclusive, toInclusive, days);
           for (const date of shiftedDates) {
             for (const occurrence of baseOccurrencesForDate(object, date)) {
               const triggerDate = addLocalDays(parseLocalIsoDate(localIsoDate(occurrence.dueAt)), -days);
@@ -221,7 +228,7 @@ export class ReminderProjectionEngine {
         }
 
         const offsetMs = (minutesBefore ?? 0) * 60 * 1000;
-        const dates = candidateDatesForShiftedWindow(fromExclusive, toInclusive, offsetMs);
+        const dates = candidateDatesForMinuteOffset(fromExclusive, toInclusive, offsetMs);
         for (const date of dates) {
           for (const occurrence of baseOccurrencesForDate(object, date)) {
             const triggerAt = new Date(occurrence.dueAt.getTime() - offsetMs);
