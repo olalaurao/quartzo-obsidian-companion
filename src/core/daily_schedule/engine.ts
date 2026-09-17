@@ -1,4 +1,5 @@
 import { DailyScheduleInput, NormalizedSchedule, NormalizedItem } from './types';
+import { localIsoDate } from '../local-date';
 
 export class DailyScheduleEngine {
   static normalize(input: DailyScheduleInput): NormalizedSchedule {
@@ -362,7 +363,7 @@ export class DailyScheduleEngine {
     const nextContactDate = new Date(lastContactDate);
     nextContactDate.setDate(nextContactDate.getDate() + frequencyDays);
 
-    const targetDate = nextContactDate.toISOString().split('T')[0];
+    const targetDate = localIsoDate(nextContactDate);
 
     if (targetDate === date) {
       items.push({

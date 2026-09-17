@@ -171,8 +171,9 @@ function checkNoUnsafeInnerHtml() {
 function checkCanonicalUiDateAndIdentityOwners() {
   const shell = fs.readFileSync(path.join(rootDir, 'src/ui/shell/view.ts'), 'utf8');
   const main = fs.readFileSync(path.join(rootDir, 'src/main.ts'), 'utf8');
-  const forbidden = ['toISOString().slice(0, 10)', 'setUTCDate(', 'getUTCDay(', 'Date.UTC(', 'Math.random().toString(36)'];
-  const violations = forbidden.filter(pattern => shell.includes(pattern) || main.includes(pattern));
+  const dailySchedule = fs.readFileSync(path.join(rootDir, 'src/core/daily_schedule/engine.ts'), 'utf8');
+  const forbidden = ['toISOString().slice(0, 10)', "toISOString().split('T')[0]", 'setUTCDate(', 'getUTCDay(', 'Date.UTC(', 'Math.random().toString(36)'];
+  const violations = forbidden.filter(pattern => shell.includes(pattern) || main.includes(pattern) || dailySchedule.includes(pattern));
   if (violations.length > 0) {
     console.error(`FAIL: Quartzo UI bypasses canonical local-date/identity owners: ${violations.join(', ')}`);
     return false;
