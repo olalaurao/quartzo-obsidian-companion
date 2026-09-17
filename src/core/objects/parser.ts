@@ -7,6 +7,7 @@ import {
   Task,
   Habit,
   TrackerDefinition,
+  TrackingRecord,
   Entry,
   Note,
   Reminder,
@@ -43,7 +44,7 @@ const KNOWN_FIELDS: Record<ObjectType, Set<string>> = {
   task: new Set(['id', 'type', 'title', 'archived', 'organizers', 'scheduler', 'reminders', 'body']),
   habit: new Set(['id', 'type', 'title', 'color', 'status', 'slots', 'negative', 'body']),
   tracker_definition: new Set(['id', 'type', 'title', 'sections', 'section_count', 'field_count', 'body']),
-  tracker_record: new Set(['id', 'type', 'title', 'tracker_id', 'date', 'body']),
+  tracker_record: new Set(['id', 'type', 'title', 'tracker_id', 'date', 'field_values', 'body']),
   entry: new Set(['id', 'type', 'title', 'date', 'time', 'body']),
   note: new Set(['id', 'type', 'title', 'note_subtype', 'links', 'body']),
   reminder: new Set(['id', 'type', 'title', 'date', 'time', 'is_completed', 'reminder_count', 'reminder_id', 'scheduled_date', 'body']),
@@ -303,6 +304,18 @@ export class ObjectParser {
           section_count: transformedSections.length,
           field_count: transformedSections.reduce((sum, s) => sum + (s.input_fields?.length || 0), 0),
         } as TrackerDefinition;
+        break;
+
+      case 'tracker_record':
+        object = {
+          ...baseObject,
+          type: 'tracker_record',
+          tracker_id: String(frontmatter.tracker_id || ''),
+          date: String(frontmatter.date || ''),
+          field_values: frontmatter.field_values && typeof frontmatter.field_values === 'object' && !Array.isArray(frontmatter.field_values)
+            ? { ...(frontmatter.field_values as Record<string, unknown>) }
+            : {},
+        } as TrackingRecord;
         break;
       
       case 'entry':
