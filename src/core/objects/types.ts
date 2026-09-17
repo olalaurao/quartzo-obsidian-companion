@@ -67,6 +67,13 @@ export interface TrackerDefinition extends BaseObject {
   field_count?: number;
 }
 
+export interface TrackingRecord extends BaseObject {
+  type: 'tracker_record';
+  tracker_id: string;
+  date: string;
+  field_values: Record<string, unknown>;
+}
+
 export interface Entry extends BaseObject {
   type: 'entry';
   date: string;
@@ -257,6 +264,7 @@ export type QuartzoObject =
   | Task
   | Habit
   | TrackerDefinition
+  | TrackingRecord
   | Entry
   | Note
   | Reminder
