@@ -1,4 +1,4 @@
-import { lookup } from 'node:dns/promises';
+import { promises as dns } from 'node:dns';
 import { request } from 'node:https';
 import { isIP } from 'node:net';
 
@@ -106,7 +106,7 @@ export function validateRemoteUri(url: string, policy: RemoteFetchPolicy): URL {
 }
 
 async function defaultResolveHost(host: string): Promise<string[]> {
-  const result = await lookup(host, { all: true, verbatim: true });
+  const result = await dns.lookup(host, { all: true, verbatim: true });
   return result.map(item => item.address);
 }
 
