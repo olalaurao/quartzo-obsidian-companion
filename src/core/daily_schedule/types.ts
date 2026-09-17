@@ -1,11 +1,18 @@
+export type DailyScheduleOrigin = 'schedule' | 'reminder' | 'legacyTime' | 'externalEvent';
+
 export interface NormalizedItem {
   id: string;
   sourceId: string;
+  sourceType: string;
+  sourceLabel: string;
   date: string;
   start?: string;
   end?: string;
   isTimed: boolean;
   isAllDay?: boolean;
+  isCompletable: boolean;
+  isCompleted: boolean;
+  origin: DailyScheduleOrigin;
   slotIndex?: number;
   reminderId?: string;
   occurrenceId?: string;
