@@ -38,23 +38,11 @@ export class GoogleOAuthDesktop {
   constructor(
     config: OAuthConfig,
     secretStorage: { get: (key: string) => Promise<string | null>; set: (key: string, value: string) => Promise<void>; delete: (key: string) => Promise<void> },
-    browserOpener?: BrowserOpener
+    browserOpener: BrowserOpener
   ) {
     this.config = config;
     this.secretStorage = secretStorage;
-    this.browserOpener = browserOpener || {
-      open: async (url: string) => {
-        const { exec } = require('child_process');
-        const platform = process.platform;
-        let command: string;
-        switch (platform) {
-          case 'darwin': command = `open "${url}"`; break;
-          case 'win32': command = `start "" "${url}"`; break;
-          default: command = `xdg-open "${url}"`; break;
-        }
-        exec(command);
-      }
-    };
+    this.browserOpener = browserOpener;
   }
 
   generatePKCE(): { verifier: string; challenge: string; state: string } {
