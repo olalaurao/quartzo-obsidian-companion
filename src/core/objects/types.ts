@@ -20,6 +20,7 @@ export type ObjectType =
   | 'daily_note'
   | 'combined_analysis'
   | 'wellbeing_indicator'
+  | 'resource'
   | 'area'
   | 'project'
   | 'activity'
@@ -186,6 +187,36 @@ export interface WellbeingIndicator extends BaseObject {
   signal_count?: number;
 }
 
+export interface Resource extends BaseObject {
+  type: 'resource';
+  media_type: string;
+  cover?: string;
+  source_url?: string;
+  book_id?: string;
+  status?: string;
+  rating?: number;
+  priority?: string;
+  author?: string;
+  year?: number;
+  pages?: number;
+  category?: string;
+  isbn?: string;
+  title_pt_br?: string;
+  title_original?: string;
+  publisher?: string;
+  language?: string;
+  google_books_id?: string;
+  imdb_id?: string;
+  read?: string;
+  start_date?: string;
+  end_date?: string;
+  scheduler?: Record<string, unknown>;
+  links?: string[];
+  categories?: string[];
+  tags?: string[];
+  aliases?: string[];
+}
+
 export interface Area extends BaseObject {
   type: 'area';
   organizer_type: 'area';
@@ -282,6 +313,7 @@ export type QuartzoObject =
   | DailyNote
   | CombinedAnalysis
   | WellbeingIndicator
+  | Resource
   | Area
   | Project
   | Activity
