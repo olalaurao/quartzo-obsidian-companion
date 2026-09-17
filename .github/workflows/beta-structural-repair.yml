@@ -1,0 +1,32 @@
+name: Beta structural repair
+
+on:
+  push:
+    branches:
+      - feat/beta-product-completion
+    paths:
+      - scripts/apply-beta-structural-fixes.mjs
+      - .github/workflows/beta-structural-repair.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/beta-product-completion
+          fetch-depth: 0
+      - name: Apply structural fixes
+        run: node scripts/apply-beta-structural-fixes.mjs
+      - name: Commit patched sources
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/ui/shell/view.ts src/main.ts scripts/architecture-check.mjs
+          git diff --cached --check
+          git commit -m "fix(ui): use local dates safe DOM and canonical ids"
+          git push origin HEAD:feat/beta-product-completion
