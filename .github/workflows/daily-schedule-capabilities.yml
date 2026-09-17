@@ -1,0 +1,30 @@
+name: Daily Schedule capability projection
+
+on:
+  push:
+    branches:
+      - feat/beta-product-completion
+    paths:
+      - scripts/enrich-daily-schedule-contract.mjs
+      - .github/workflows/daily-schedule-capabilities.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/beta-product-completion
+          fetch-depth: 0
+      - run: node scripts/enrich-daily-schedule-contract.mjs
+      - name: Commit capability projection
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/core/daily_schedule/engine.ts
+          git diff --cached --check
+          git commit -m "feat(schedule): preserve occurrence presentation capabilities"
+          git push origin HEAD:feat/beta-product-completion
