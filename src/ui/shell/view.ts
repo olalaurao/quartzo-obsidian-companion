@@ -6,6 +6,7 @@ import { ObjectParser } from '../../core/objects';
 import type { TrackerDefinition } from '../../core/objects/types';
 import { findResourceDuplicates, type ResourceIdentity } from '../../core/resource-capture/policy';
 import { ResourceMetadataService, type ResourceMetadataDraft } from '../../integrations/resource-metadata/service';
+import type { GoogleCalendarProjection } from '../../integrations/google/calendar';
 import { addLocalDays, daysInLocalMonth, localIsoDate, parseLocalIsoDate, shiftLocalMonth } from '../../core/local-date';
 import { createCanonicalObjectId } from '../../platform/object-id';
 import { VaultIndexEngine } from '../../vault/index';
@@ -512,16 +513,25 @@ export class QuartzoView extends ItemView {
 
     if (this.section === 'home') await this.renderHome(content);
     if (this.section === 'planner') await this.renderPlanner(content);
-    if (this.section === 'journal') this.renderJournal(content);
+    if (this.section === 'journal') await this.renderJournal(content);
     if (this.section === 'browse') this.renderBrowse(content);
   }
 
-  private buildSchedule(date: string) {
+  private buildSchedule(date: string, googleEvents: GoogleCalendarProjection[] = []) {
     return DailyScheduleEngine.normalize({
       date,
       today: isoDate(new Date()),
       objects: scheduleObjects(this.getIndex()),
-      googleEvents: [],
+      googleEvents: googleEvents.map(event => ({
+        id: event.id,
+        summary: event.summary,
+        start: event.start,
+        end: event.end,
+        allDay: event.allDay,
+        calendarId: event.calendarId,
+        colorHex: event.colorHex,
+        htmlLink: event.htmlLink,
+      })),
     });
   }
 
@@ -535,7 +545,8 @@ export class QuartzoView extends ItemView {
     for (const item of items) {
       const row = document.createElement('li');
       const time = item.start ? `${item.start} · ` : '';
-      row.textContent = `${time}${this.titleForSource(item.sourceId)}`;
+      const title = item.origin === 'externalEvent' ? item.sourceLabel : this.titleForSource(item.sourceId);
+      row.textContent = `${time}${title}`;
       const object = this.getIndex()?.objects.get(item.sourceId);
       if (object) {
         row.className = 'quartzo-clickable';
@@ -546,8 +557,8 @@ export class QuartzoView extends ItemView {
     container.appendChild(list);
   }
 
-  private renderScheduleItems(container: HTMLElement, date: string): void {
-    const schedule = this.buildSchedule(date);
+  private renderScheduleItems(container: HTMLElement, date: string, googleEvents: GoogleCalendarProjection[] = []): void {
+    const schedule = this.buildSchedule(date, googleEvents);
     const heading = document.createElement('h3');
     heading.textContent = date;
     container.appendChild(heading);
@@ -586,7 +597,8 @@ export class QuartzoView extends ItemView {
     date.textContent = this.selectedDate;
     container.appendChild(date);
 
-    const schedule = this.buildSchedule(this.selectedDate);
+    const googleEvents = await this.context.plugin.listGoogleCalendarEvents(this.selectedDate, 1);
+    const schedule = this.buildSchedule(this.selectedDate, googleEvents);
     const projection = projectHomeSchedule(schedule, this.selectedDate, new Date());
 
     const dial = document.createElement('section');
@@ -656,7 +668,8 @@ export class QuartzoView extends ItemView {
 
     const selected = parseIsoDate(this.selectedDate);
     if (this.plannerMode === 'day') {
-      this.renderScheduleItems(container, this.selectedDate);
+      const googleEvents = await this.context.plugin.listGoogleCalendarEvents(this.selectedDate, 1);
+      this.renderScheduleItems(container, this.selectedDate, googleEvents);
       return;
     }
 
@@ -666,19 +679,22 @@ export class QuartzoView extends ItemView {
       const weekday = selected.getDay();
       const delta = (weekday - startOfWeek + 7) % 7;
       const start = addDays(selected, -delta);
-      for (let i = 0; i < 7; i++) this.renderScheduleItems(container, isoDate(addDays(start, i)));
+      const googleEvents = await this.context.plugin.listGoogleCalendarEvents(isoDate(start), 7);
+      for (let i = 0; i < 7; i++) this.renderScheduleItems(container, isoDate(addDays(start, i)), googleEvents);
       return;
     }
 
     const year = selected.getFullYear();
     const month = selected.getMonth();
     const days = daysInLocalMonth(selected);
+    const monthStart = isoDate(new Date(year, month, 1));
+    const googleEvents = await this.context.plugin.listGoogleCalendarEvents(monthStart, days);
     for (let day = 1; day <= days; day++) {
-      this.renderScheduleItems(container, isoDate(new Date(year, month, day)));
+      this.renderScheduleItems(container, isoDate(new Date(year, month, day)), googleEvents);
     }
   }
 
-  private renderJournal(container: HTMLElement): void {
+  private async renderJournal(container: HTMLElement): Promise<void> {
     const title = document.createElement('h2');
     title.textContent = 'Journal';
     container.appendChild(title);
@@ -801,7 +817,8 @@ export class QuartzoView extends ItemView {
     const timelineHeading = document.createElement('h3');
     timelineHeading.textContent = 'Timeline';
     timeline.appendChild(timelineHeading);
-    const schedule = this.buildSchedule(this.selectedDate);
+    const googleEvents = await this.context.plugin.listGoogleCalendarEvents(this.selectedDate, 1);
+    const schedule = this.buildSchedule(this.selectedDate, googleEvents);
     if (schedule.items.length === 0) {
       const empty = document.createElement('p');
       empty.textContent = 'Nothing on the canonical Daily Schedule for this date.';
