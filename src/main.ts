@@ -2,15 +2,24 @@ import { App, Plugin, PluginSettingTab, Setting, Notice, TFile, TAbstractFile, F
 import { VaultIndexEngine } from './vault/index';
 import { DriveSyncCoordinator } from './sync/coordinator';
 import { GoogleDriveAdapter } from './integrations/google/drive';
+import { GoogleCalendarAdapter, GoogleCalendarAuthorizationError, type GoogleCalendarProjection } from './integrations/google/calendar';
 import { GoogleOAuthDesktop, OAuthConfig } from './integrations/google/auth/loopback';
+import { GOOGLE_COMPANION_SCOPES } from './integrations/google/auth/scopes';
 import { QuartzoView, QUARTZO_VIEW_TYPE, type QuartzoSection, type QuartzoAction } from './ui';
 import { ViewContext } from './ui/types';
-import { localIsoDate } from './core/local-date';
+import { addLocalDays, localIsoDate, parseLocalIsoDate } from './core/local-date';
 import { normalizeVaultPath } from './sync/coordinator/path-utils';
 import { VaultSyncFilePolicy } from './sync/coordinator/file-policy';
 import { SHARED_SETTINGS_PATH, SharedSettingsRepository, parseObjectWithSharedSettings, type QuartzoSharedSettings } from './vault/shared-settings';
 import * as path from 'path';
 import * as fs from 'fs';
+
+type GoogleCalendarStatus = 'disconnected' | 'ready' | 'authorization_required' | 'error';
+
+interface CalendarCacheEntry {
+  expiresAt: number;
+  events: GoogleCalendarProjection[];
+}
 
 interface QuartzoCompanionSettings {
   googleDriveFolderId: string | null;
@@ -38,7 +47,7 @@ const BUILD_CLIENT_ID: string = (typeof process !== 'undefined' && process.env &
 const OAUTH_CONFIG: OAuthConfig = {
   clientId: '',
   redirectUri: '',
-  scopes: ['https://www.googleapis.com/auth/drive'],
+  scopes: [...GOOGLE_COMPANION_SCOPES],
   authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
   tokenUrl: 'https://oauth2.googleapis.com/token'
   // V1 decision: full Drive scope is required because the plugin uses Drive Changes API
@@ -52,12 +61,16 @@ export default class QuartzoCompanionPlugin extends Plugin {
   vaultIndexEngine: VaultIndexEngine | null = null;
   driveSyncCoordinator: DriveSyncCoordinator | null = null;
   driveAdapter: GoogleDriveAdapter | null = null;
+  googleCalendarAdapter: GoogleCalendarAdapter | null = null;
   oauthClient: GoogleOAuthDesktop | null = null;
   viewContext: ViewContext | null = null;
   private syncIntervalId: ReturnType<typeof setInterval> | null = null;
   private eventRefs: ReturnType<typeof this.app.vault.on>[] = [];
   private sharedSettingsRepository: SharedSettingsRepository | null = null;
   private sharedSettings: QuartzoSharedSettings | null = null;
+  private googleAccessRefreshInFlight: Promise<string | null> | null = null;
+  private readonly calendarCache = new Map<string, CalendarCacheEntry>();
+  calendarStatus: GoogleCalendarStatus = 'disconnected';
   authState: 'disconnected' | 'authenticating' | 'authenticated_unpaired' | 'paired' | 'authentication_required' = 'disconnected';
 
   async onload() {
@@ -65,6 +78,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
 
     this.vaultIndexEngine = new VaultIndexEngine();
     this.driveAdapter = new GoogleDriveAdapter();
+    this.googleCalendarAdapter = new GoogleCalendarAdapter();
 
     const vaultPath = this.getVaultFileSystemPath();
     const stateStorePath = this.getPluginDataPath();
@@ -164,6 +178,84 @@ export default class QuartzoCompanionPlugin extends Plugin {
     };
   }
 
+  private configureGoogleAccessToken(token: string): void {
+    this.driveAdapter?.setAccessToken(token);
+    this.googleCalendarAdapter?.setAccessToken(token);
+    const refresh = () => this.refreshGoogleAccessToken();
+    this.driveAdapter?.setTokenRefreshCallback(refresh);
+    this.googleCalendarAdapter?.setTokenRefreshCallback(refresh);
+    this.calendarCache.clear();
+  }
+
+  private async refreshGoogleAccessToken(): Promise<string | null> {
+    if (!this.oauthClient) return null;
+    if (this.googleAccessRefreshInFlight) return this.googleAccessRefreshInFlight;
+    this.googleAccessRefreshInFlight = (async () => {
+      try {
+        const refreshed = await this.oauthClient!.refreshAccessToken();
+        this.configureGoogleAccessToken(refreshed.access_token);
+        return refreshed.access_token;
+      } catch {
+        return null;
+      } finally {
+        this.googleAccessRefreshInFlight = null;
+      }
+    })();
+    return this.googleAccessRefreshInFlight;
+  }
+
+  async listGoogleCalendarEvents(startDate: string, days: number): Promise<GoogleCalendarProjection[]> {
+    if (!this.googleCalendarAdapter || this.authState === 'disconnected' || this.authState === 'authentication_required') {
+      this.calendarStatus = 'disconnected';
+      return [];
+    }
+    const safeDays = Math.max(1, Math.min(62, Math.trunc(days)));
+    const start = parseLocalIsoDate(startDate);
+    const end = addLocalDays(start, safeDays);
+    const key = `${startDate}:${safeDays}`;
+    const cached = this.calendarCache.get(key);
+    if (cached && cached.expiresAt > Date.now()) return cached.events;
+
+    try {
+      const events = await this.googleCalendarAdapter.listVisibleEvents(start, end);
+      this.calendarCache.set(key, { expiresAt: Date.now() + 60_000, events });
+      this.calendarStatus = 'ready';
+      return events;
+    } catch (error) {
+      this.calendarCache.delete(key);
+      if (error instanceof GoogleCalendarAuthorizationError) {
+        this.calendarStatus = 'authorization_required';
+      } else {
+        this.calendarStatus = 'error';
+        console.error('Google Calendar read failed:', error);
+      }
+      return [];
+    }
+  }
+
+  async reauthorizeGoogleCalendar(): Promise<void> {
+    const clientId = this.getResolvedClientId();
+    if (!clientId || clientId === 'PLACEHOLDER_CLIENT_ID') {
+      new Notice('Configure your Google OAuth Client ID in settings first.');
+      return;
+    }
+    const previousAuthState = this.authState;
+    this.authState = 'authenticating';
+    const config = { ...OAUTH_CONFIG, clientId };
+    const secretStorage = this.getSecretStorage();
+    this.oauthClient = new GoogleOAuthDesktop(config, secretStorage);
+    try {
+      const tokenResponse = await this.oauthClient.startAuthLoopback(true);
+      this.configureGoogleAccessToken(tokenResponse.access_token);
+      this.calendarStatus = 'ready';
+      this.authState = this.settings.isPaired ? 'paired' : 'authenticated_unpaired';
+      new Notice('Google Calendar read-only access authorized.');
+    } catch (error) {
+      this.authState = previousAuthState;
+      this.calendarStatus = 'authorization_required';
+      new Notice(`Google Calendar authorization failed: ${error}`);
+    }
+  }
   private shouldIndexPath(rawPath: string): boolean {
     const normalized = normalizeVaultPath(rawPath);
     if (normalized === '_deleted' || normalized.startsWith('_deleted/')) return false;
@@ -392,22 +484,13 @@ export default class QuartzoCompanionPlugin extends Plugin {
       const config = { ...OAUTH_CONFIG, clientId: this.getResolvedClientId() };
       this.oauthClient = new GoogleOAuthDesktop(config, secretStorage);
       const tokenResponse = await this.oauthClient.refreshAccessToken();
-      this.driveAdapter.setAccessToken(tokenResponse.access_token);
+      this.configureGoogleAccessToken(tokenResponse.access_token);
       this.authState = this.settings.isPaired ? 'paired' : 'authenticated_unpaired';
 
       if (this.driveAdapter && this.settings.googleDriveFolderId) {
         await this.driveAdapter.setFolderId(this.settings.googleDriveFolderId);
         await this.driveSyncCoordinator?.setDriveFolderId(this.settings.googleDriveFolderId);
       }
-
-      this.driveAdapter.setTokenRefreshCallback(async () => {
-        try {
-          const refreshed = await this.oauthClient?.refreshAccessToken();
-          return refreshed?.access_token || null;
-        } catch {
-          return null;
-        }
-      });
 
       this.startAutoSync();
     } catch {
@@ -434,7 +517,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
       const storedRefresh = await secretStorage.get('quartzo_companion/refresh_token');
       const forceConsent = !storedRefresh;
       const tokenResponse = await this.oauthClient.startAuthLoopback(forceConsent);
-      this.driveAdapter?.setAccessToken(tokenResponse.access_token);
+      this.configureGoogleAccessToken(tokenResponse.access_token);
 
       if (!tokenResponse.refresh_token) {
         const storedRefresh = await secretStorage.get('quartzo_companion/refresh_token');
@@ -446,15 +529,6 @@ export default class QuartzoCompanionPlugin extends Plugin {
           return;
         }
       }
-
-      this.driveAdapter?.setTokenRefreshCallback(async () => {
-        try {
-          const refreshed = await this.oauthClient?.refreshAccessToken();
-          return refreshed?.access_token || null;
-        } catch {
-          return null;
-        }
-      });
 
       this.authState = 'authenticated_unpaired';
       new Notice('Google Drive authenticated. Select your vault folder.');
@@ -574,6 +648,9 @@ export default class QuartzoCompanionPlugin extends Plugin {
       await this.oauthClient.disconnect();
     }
     this.stopAutoSync();
+    this.googleCalendarAdapter?.setAccessToken(null);
+    this.calendarCache.clear();
+    this.calendarStatus = 'disconnected';
     this.settings.isPaired = false;
     this.authState = 'disconnected';
     this.settings.googleDriveFolderId = null;
@@ -712,6 +789,16 @@ class QuartzoSettingTab extends PluginSettingTab {
           } else {
             this.plugin.stopAutoSync();
           }
+        }));
+
+    new Setting(containerEl)
+      .setName('Google Calendar')
+      .setDesc(`Read-only projection of Google-selected calendars. Status: ${this.plugin.calendarStatus.replace(/_/g, ' ')}. The Companion never creates, edits or deletes Calendar events.`)
+      .addButton(button => button
+        .setButtonText(this.plugin.calendarStatus === 'ready' ? 'Reauthorize' : 'Authorize')
+        .onClick(async () => {
+          await this.plugin.reauthorizeGoogleCalendar();
+          this.display();
         }));
 
     new Setting(containerEl)
