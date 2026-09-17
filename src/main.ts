@@ -773,10 +773,18 @@ export default class QuartzoCompanionPlugin extends Plugin {
   }
 
   async useWithoutSync(): Promise<void> {
-    this.settings.firstRunCompleted = true;
-    this.settings.isPaired = false;
-    await this.saveSettings();
+    if (this.oauthClient) await this.oauthClient.disconnect();
     this.stopAutoSync();
+    this.driveAdapter?.setAccessToken('');
+    this.googleCalendarAdapter?.setAccessToken(null);
+    this.calendarCache.clear();
+    this.calendarStatus = 'disconnected';
+    this.authState = 'disconnected';
+    this.settings.googleDriveFolderId = null;
+    this.settings.googleDriveFolderName = null;
+    this.settings.isPaired = false;
+    this.settings.firstRunCompleted = true;
+    await this.saveSettings();
     new Notice('Quartzo Companion will stay local on this device until you connect Google Drive.');
   }
 
