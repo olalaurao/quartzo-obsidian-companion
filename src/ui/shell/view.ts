@@ -9,6 +9,7 @@ import { ResourceMetadataService, type ResourceMetadataDraft } from '../../integ
 import type { GoogleCalendarProjection } from '../../integrations/google/calendar';
 import { addLocalDays, daysInLocalMonth, localIsoDate, parseLocalIsoDate, shiftLocalMonth } from '../../core/local-date';
 import { createCanonicalObjectId } from '../../platform/object-id';
+import { chooseNewestConflictResolution } from '../../sync/coordinator';
 import { VaultIndexEngine } from '../../vault/index';
 import { renderObjectDetail } from '../detail/object-detail';
 import { projectHomeSchedule } from '../home/home-projection';
@@ -19,6 +20,7 @@ import {
 } from '../../vault/shared-settings';
 import type { IndexedObject, VaultIndex } from '../../vault/index/types';
 import type { ViewContext } from '../types';
+import { buildConflictDiff, formatConflictDiff } from '../sync/conflict-diff';
 
 export const QUARTZO_VIEW_TYPE = 'quartzo-view';
 export type QuartzoSection = 'home' | 'planner' | 'journal' | 'browse';
@@ -890,14 +892,56 @@ export class QuartzoView extends ItemView {
     container.appendChild(title);
 
     const plugin = this.context.plugin;
-    const status = document.createElement('p');
-    status.textContent = `Status: ${plugin.authState.replace(/_/g, ' ')}`;
-    container.appendChild(status);
+    const coordinator = plugin.driveSyncCoordinator;
+    const snapshot = coordinator ? await coordinator.getSyncStatusSnapshot() : null;
+    const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+    const requiresAuth = plugin.authState === 'disconnected' || plugin.authState === 'authentication_required';
+    const statusLabel = requiresAuth
+      ? 'Authentication required'
+      : offline
+        ? 'Offline'
+        : snapshot == null
+          ? 'Error'
+          : ({
+              synced: 'Synced',
+              local_changes: 'Local changes',
+              syncing: 'Syncing',
+              conflict: 'Conflict',
+              error: 'Error',
+            } as const)[snapshot.status];
 
-    if (plugin.authState === 'disconnected' || plugin.authState === 'authentication_required') {
+    const summary = document.createElement('section');
+    summary.className = 'quartzo-sync-summary';
+    const summaryLines = [
+      `Status: ${statusLabel}`,
+      `Last successful sync: ${snapshot?.lastSuccessfulSyncAt ? new Date(snapshot.lastSuccessfulSyncAt).toLocaleString() : 'Never'}`,
+      `Pending local changes: ${snapshot?.pendingLocalChanges ?? 0}`,
+      `Current Google Drive vault: ${plugin.settings.googleDriveFolderName ?? 'Not paired'}`,
+      `Google account: ${plugin.authState.replace(/_/g, ' ')}`,
+      `Conflicts: ${snapshot?.conflictCount ?? coordinator?.getConflicts().length ?? 0}`,
+    ];
+    for (const lineText of summaryLines) {
+      const line = document.createElement('p');
+      line.textContent = lineText;
+      summary.appendChild(line);
+    }
+    if (snapshot?.lastError) {
+      const lastError = document.createElement('p');
+      lastError.textContent = `Last error: ${snapshot.lastError}`;
+      summary.appendChild(lastError);
+    }
+    container.appendChild(summary);
+
+    if (requiresAuth) {
       const connect = document.createElement('button');
-      connect.textContent = 'Connect Google Drive';
-      connect.addEventListener('click', async () => { await plugin.startPairingFlow(); await this.render(); });
+      const canReconnect = Boolean(plugin.settings.googleDriveFolderId);
+      connect.textContent = canReconnect ? 'Reconnect Google' : 'Connect Google Drive';
+      connect.disabled = offline;
+      connect.addEventListener('click', async () => {
+        if (canReconnect) await plugin.reconnectGoogle();
+        else await plugin.startPairingFlow();
+        await this.render();
+      });
       container.appendChild(connect);
       return;
     }
@@ -922,61 +966,140 @@ export class QuartzoView extends ItemView {
       return;
     }
 
-    if (!conflictsOnly) {
-      const folder = document.createElement('p');
-      folder.textContent = `Vault: ${plugin.settings.googleDriveFolderName ?? 'Quartzo'}`;
-      container.appendChild(folder);
+    if (!conflictsOnly && coordinator) {
+      const actions = document.createElement('div');
+      actions.className = 'quartzo-sync-actions';
+
       const sync = document.createElement('button');
       sync.textContent = 'Sync now';
+      sync.disabled = offline || snapshot?.status === 'syncing';
       sync.addEventListener('click', async () => {
-        const result = await plugin.driveSyncCoordinator?.triggerManualSync();
-        if (result) new Notice(`Sync complete: ${result.synced} synced, ${result.conflicts} conflicts`);
+        const result = await coordinator.triggerManualSync();
+        if (result.errors.length > 0) new Notice(result.errors[result.errors.length - 1]);
+        else new Notice(`Sync complete: ${result.synced} synced, ${result.conflicts} conflicts`);
         await this.render();
       });
-      container.appendChild(sync);
+      actions.appendChild(sync);
+
+      const full = document.createElement('button');
+      full.textContent = 'Run full reconciliation';
+      full.disabled = offline || snapshot?.status === 'syncing';
+      full.addEventListener('click', async () => {
+        const result = await coordinator.triggerFullReconciliation();
+        if (result.errors.length > 0) new Notice(result.errors[result.errors.length - 1]);
+        else new Notice(`Full reconciliation complete: ${result.synced} synced, ${result.conflicts} conflicts`);
+        await this.render();
+      });
+      actions.appendChild(full);
+
       const showConflicts = document.createElement('button');
-      showConflicts.textContent = 'View conflicts';
+      showConflicts.textContent = `View conflicts (${coordinator.getConflicts().length})`;
       showConflicts.addEventListener('click', () => { void this.handleAction('conflicts'); });
-      container.appendChild(showConflicts);
+      actions.appendChild(showConflicts);
+
+      const reconnect = document.createElement('button');
+      reconnect.textContent = 'Reconnect Google';
+      reconnect.disabled = offline;
+      reconnect.addEventListener('click', async () => { await plugin.reconnectGoogle(); await this.render(); });
+      actions.appendChild(reconnect);
+
       const disconnect = document.createElement('button');
       disconnect.textContent = 'Disconnect this device';
       disconnect.addEventListener('click', async () => { await plugin.disconnectDrive(); await this.render(); });
-      container.appendChild(disconnect);
+      actions.appendChild(disconnect);
+      container.appendChild(actions);
     }
 
-    const conflicts = plugin.driveSyncCoordinator?.getConflicts() ?? [];
+    const conflicts = coordinator?.getConflicts() ?? [];
     if (conflicts.length === 0) {
       const empty = document.createElement('p');
       empty.textContent = 'No conflicts.';
       container.appendChild(empty);
       return;
     }
+
     const decoder = new TextDecoder();
     for (const conflict of conflicts) {
       const card = document.createElement('section');
+      card.className = 'quartzo-conflict-card';
+
       const heading = document.createElement('h3');
       heading.textContent = conflict.originalPath;
       card.appendChild(heading);
+
+      const metadata = document.createElement('p');
+      const localModified = conflict.localModifiedAt ? new Date(conflict.localModifiedAt).toLocaleString() : 'Unknown';
+      const driveModified = conflict.remoteModifiedAt ? new Date(conflict.remoteModifiedAt).toLocaleString() : 'Unknown';
+      metadata.textContent = `Local modified: ${localModified} · Drive modified: ${driveModified}`;
+      card.appendChild(metadata);
+
       const hashes = document.createElement('p');
       hashes.textContent = `Local ${conflict.localSha256.slice(0, 12)} · Drive ${conflict.remoteSha256.slice(0, 12)}`;
       card.appendChild(hashes);
-      if (!conflict.isBinary) {
+
+      const newest = chooseNewestConflictResolution(conflict);
+      const newestInfo = document.createElement('p');
+      newestInfo.textContent = newest === 'keep_local'
+        ? 'Newest by modification time: Local'
+        : newest === 'keep_drive'
+          ? 'Newest by modification time: Drive'
+          : 'Newest by modification time: unavailable; choose a side explicitly.';
+      card.appendChild(newestInfo);
+
+      if (conflict.isBinary) {
+        const binary = document.createElement('p');
+        binary.textContent = `Binary conflict. Local bytes: ${conflict.localContent.length}; Drive bytes: ${conflict.remoteContent.length}.`;
+        card.appendChild(binary);
+      } else {
+        const localText = conflict.localExists ? decoder.decode(conflict.localContent) : '';
+        const driveText = conflict.remoteExists ? decoder.decode(conflict.remoteContent) : '';
+
         const local = document.createElement('pre');
-        local.textContent = conflict.localExists ? `Local:\n${decoder.decode(conflict.localContent)}` : 'Local: deleted';
+        local.textContent = conflict.localExists ? `Local:\n${localText}` : 'Local: deleted';
         card.appendChild(local);
+
         const remote = document.createElement('pre');
-        remote.textContent = conflict.remoteExists ? `Drive:\n${decoder.decode(conflict.remoteContent)}` : 'Drive: deleted';
+        remote.textContent = conflict.remoteExists ? `Drive:\n${driveText}` : 'Drive: deleted';
         card.appendChild(remote);
+
+        if (conflict.localExists && conflict.remoteExists) {
+          const diffTitle = document.createElement('strong');
+          diffTitle.textContent = 'Diff';
+          card.appendChild(diffTitle);
+          const diff = buildConflictDiff(localText, driveText);
+          const diffView = document.createElement('pre');
+          diffView.textContent = diff == null
+            ? 'Diff unavailable for this file size.'
+            : formatConflictDiff(diff);
+          card.appendChild(diffView);
+        }
       }
-      for (const [resolution, label] of [['keep_local', 'Keep local'], ['keep_drive', 'Keep Drive']] as const) {
+
+      const actionRow = document.createElement('div');
+      actionRow.className = 'quartzo-conflict-actions';
+      const choices = [
+        ['keep_local', 'Keep local'],
+        ['keep_drive', 'Keep Drive'],
+        ['keep_newest', 'Keep newest'],
+      ] as const;
+      for (const [resolution, label] of choices) {
         const button = document.createElement('button');
         button.textContent = label;
+        if (resolution === 'keep_newest' && newest == null) {
+          button.disabled = true;
+          button.title = 'Keep newest requires two distinct trustworthy modification times.';
+        }
         button.addEventListener('click', async () => {
-          await plugin.driveSyncCoordinator?.resolveConflict(conflict.originalPath, resolution);
+          try {
+            await coordinator?.resolveConflict(conflict.originalPath, resolution);
+          } catch (error) {
+            new Notice(error instanceof Error ? error.message : String(error));
+          }
           await this.render();
         });
-        card.appendChild(button);
+        actionRow.appendChild(button);
       }
+      card.appendChild(actionRow);
       container.appendChild(card);
     }
   }
