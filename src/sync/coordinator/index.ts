@@ -1040,6 +1040,8 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     syncFile.localHash = localFile.hash;
     syncFile.localExists = true;
     syncFile.remoteExists = true;
+    syncFile.localModifiedAt = fs.statSync(localFilePath).mtime.toISOString();
+    syncFile.remoteModifiedAt = metadata.modifiedTime || null;
 
     this.syncState.files.set(filePath, syncFile);
   }
@@ -1066,6 +1068,8 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     syncFile.localExists = true;
     syncFile.remoteExists = true;
     syncFile.isBinary = !isKnownTextFile(filePath) && isBinaryByContent(content);
+    syncFile.localModifiedAt = fs.statSync(localFilePath).mtime.toISOString();
+    syncFile.remoteModifiedAt = remoteFile.modifiedTime || null;
 
     this.syncState.files.set(filePath, syncFile);
   }
@@ -1412,6 +1416,10 @@ export class DriveSyncCoordinator implements ConflictRegistry {
   }
 
   private createSyncFile(filePath: string, localFile: { hash: string; exists: boolean }): SyncFile {
+    const localFilePath = pathModule.join(this.vaultPath, filePath);
+    const localModifiedAt = localFile.exists && fs.existsSync(localFilePath)
+      ? fs.statSync(localFilePath).mtime.toISOString()
+      : null;
     return {
       path: filePath,
       localHash: localFile.hash,
@@ -1420,7 +1428,9 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       remoteFileId: null,
       localExists: localFile.exists,
       remoteExists: false,
-      isBinary: !isKnownTextFile(filePath)
+      isBinary: !isKnownTextFile(filePath),
+      localModifiedAt,
+      remoteModifiedAt: null
     };
   }
 
