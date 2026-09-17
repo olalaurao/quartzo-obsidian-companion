@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DailyScheduleEngine } from '../../src/core/daily_schedule';
 
 describe('Google Calendar Daily Schedule projection', () => {
-  it('uses the remote summary as the external source label', () => {
+  it('preserves canonical external source identity and local event clock', () => {
     const schedule = DailyScheduleEngine.normalize({
       date: '2026-09-17',
       googleEvents: [{
@@ -18,7 +18,7 @@ describe('Google Calendar Daily Schedule projection', () => {
         id: 'google_calendar:primary::event-1',
         sourceId: 'primary::event-1',
         sourceType: 'google_calendar',
-        sourceLabel: 'Design review',
+        sourceLabel: 'google_calendar:primary::event-1',
         start: '14:30',
         end: '15:15',
         origin: 'externalEvent',
@@ -41,7 +41,7 @@ describe('Google Calendar Daily Schedule projection', () => {
       expect(schedule.items).toEqual([
         expect.objectContaining({
           sourceId: 'team::offsite',
-          sourceLabel: 'Offsite',
+          sourceLabel: 'google_calendar:team::offsite',
           isTimed: false,
           isAllDay: true,
         }),
