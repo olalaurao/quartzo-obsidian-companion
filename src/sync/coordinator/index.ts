@@ -1091,7 +1091,6 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     syncFile: SyncFile
   ): Promise<void> {
     const localFilePath = pathModule.join(this.vaultPath, filePath);
-    const isBinary = !isKnownTextFile(filePath) && fs.existsSync(localFilePath) && isBinaryByContent(fs.readFileSync(localFilePath));
 
     let localContent = new Uint8Array();
     let remoteContent = new Uint8Array();
@@ -1103,6 +1102,15 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     if (remoteFile) {
       remoteContent = await this.driveAdapter.downloadFile(remoteFile.id);
     }
+
+    const isBinary = !isKnownTextFile(filePath) && (
+      (localContent.length > 0 && isBinaryByContent(localContent)) ||
+      (remoteContent.length > 0 && isBinaryByContent(remoteContent))
+    );
+    const localModifiedAt = localFile.exists && fs.existsSync(localFilePath)
+      ? fs.statSync(localFilePath).mtime.toISOString()
+      : null;
+    const remoteModifiedAt = remoteFile?.modifiedTime || null;
 
     const localSha256 = crypto.createHash('sha256').update(localContent).digest('hex');
     const remoteSha256 = remoteFile?.quartzoHash || crypto.createHash('sha256').update(remoteContent).digest('hex');
@@ -1121,8 +1129,8 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       const metadata = {
         originalPath: filePath,
         conflictType: 'binary',
-        local: { sha256: localSha256, size: localContent.length, exists: localFile.exists },
-        remote: { sha256: remoteSha256, size: remoteContent.length, fileId: remoteFile?.id || syncFile.remoteFileId || null, exists: remoteFile != null },
+        local: { sha256: localSha256, size: localContent.length, exists: localFile.exists, modifiedAt: localModifiedAt },
+        remote: { sha256: remoteSha256, size: remoteContent.length, fileId: remoteFile?.id || syncFile.remoteFileId || null, exists: remoteFile != null, modifiedAt: remoteModifiedAt },
         timestamp: new Date().toISOString()
       };
       fs.writeFileSync(pathModule.join(this.vaultPath, `${conflictBase}.conflict.json`), JSON.stringify(metadata, null, 2));
@@ -1138,8 +1146,8 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       const metadata = {
         originalPath: filePath,
         conflictType: 'text',
-        local: { sha256: localSha256, size: localContent.length, exists: localFile.exists },
-        remote: { sha256: remoteSha256, size: remoteContent.length, fileId: remoteFile?.id || syncFile.remoteFileId || null, exists: remoteFile != null },
+        local: { sha256: localSha256, size: localContent.length, exists: localFile.exists, modifiedAt: localModifiedAt },
+        remote: { sha256: remoteSha256, size: remoteContent.length, fileId: remoteFile?.id || syncFile.remoteFileId || null, exists: remoteFile != null, modifiedAt: remoteModifiedAt },
         timestamp: new Date().toISOString()
       };
       fs.writeFileSync(pathModule.join(this.vaultPath, `${conflictBase}.conflict.json`), JSON.stringify(metadata, null, 2));
@@ -1155,7 +1163,9 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       isBinary,
       timestamp: new Date().toISOString(),
       localExists: localFile.exists,
-      remoteExists: remoteFile != null
+      remoteExists: remoteFile != null,
+      localModifiedAt,
+      remoteModifiedAt
     });
   }
 
