@@ -349,6 +349,44 @@ function checkOAuthDesktopPlatformBoundary() {
   console.log('PASS: OAuth desktop browser launch stays inside Obsidian/Electron with loopback PKCE');
   return true;
 }
+function checkReleasePipelineHardening() {
+  const releasePath = path.join(rootDir, '.github/workflows/release.yml');
+  const preflightPath = path.join(rootDir, '.github/workflows/release-preflight.yml');
+  const validatePath = path.join(rootDir, 'scripts/release-validate.mjs');
+  const packagePath = path.join(rootDir, 'scripts/package-release.mjs');
+  for (const file of [releasePath, preflightPath, validatePath, packagePath]) {
+    if (!fs.existsSync(file)) {
+      console.error(`FAIL: Release pipeline file missing: ${path.relative(rootDir, file)}`);
+      return false;
+    }
+  }
+  const release = fs.readFileSync(releasePath, 'utf8');
+  const preflight = fs.readFileSync(preflightPath, 'utf8');
+  const validate = fs.readFileSync(validatePath, 'utf8');
+  const packager = fs.readFileSync(packagePath, 'utf8');
+  if (!release.includes('git merge-base --is-ancestor') || !release.includes('fetch-depth: 0')) {
+    console.error('FAIL: Release workflow does not prove tagged commit provenance from main');
+    return false;
+  }
+  if (!release.includes('QUARTZO_GOOGLE_DESKTOP_CLIENT_ID') || !preflight.includes('QUARTZO_GOOGLE_DESKTOP_CLIENT_ID')) {
+    console.error('FAIL: Release/preflight do not require the production OAuth Client ID');
+    return false;
+  }
+  if (!release.includes('npm run release:package') || !preflight.includes('npm run release:package')) {
+    console.error('FAIL: Release workflows bypass the canonical release packager');
+    return false;
+  }
+  if (!release.includes('.release-artifact/SHA256SUMS.txt') || !packager.includes('SHA256SUMS.txt')) {
+    console.error('FAIL: Release package does not publish checksums');
+    return false;
+  }
+  if (!validate.includes("['main.js', 'manifest.json', 'styles.css']") || !validate.includes('apps\\.googleusercontent\\.com')) {
+    console.error('FAIL: Production release validation is missing artifact/OAuth checks');
+    return false;
+  }
+  console.log('PASS: Beta release pipeline is preflighted, provenance-checked and checksummed');
+  return true;
+}
 function main() {
   console.log('Running architecture/completeness checks...\n');
   let allPassed = true;
@@ -369,6 +407,7 @@ function main() {
   if (!checkConflictResolutionIsExplicit()) allPassed = false;
   if (!checkDeviceLocalSettingsBoundaries()) allPassed = false;
   if (!checkOAuthDesktopPlatformBoundary()) allPassed = false;
+  if (!checkReleasePipelineHardening()) allPassed = false;
 
   console.log('\n' + (allPassed ? 'All architecture checks passed' : 'Some architecture checks failed'));
   process.exit(allPassed ? 0 : 1);
