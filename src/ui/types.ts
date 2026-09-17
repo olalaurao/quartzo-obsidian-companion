@@ -31,6 +31,7 @@ export interface ViewContext {
     };
     saveSettings(): Promise<void>;
     startPairingFlow(): Promise<void>;
+    reconnectGoogle(): Promise<void>;
     confirmPairing(folderId: string, folderName: string, autoAdopt: boolean, autoPull: boolean): Promise<void>;
     disconnectDrive(): Promise<void>;
     listGoogleCalendarEvents(startDate: string, days: number): Promise<GoogleCalendarProjection[]>;
