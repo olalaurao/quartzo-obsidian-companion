@@ -146,16 +146,16 @@ function dailyOccurrencesForDate(object: ReminderSourceObject, date: string): Ba
 }
 
 function baseOccurrencesForDate(object: ReminderSourceObject, date: string): BaseOccurrence[] {
-  const combined = [
-    ...standaloneReminderOccurrenceForDate(object, date),
-    ...dailyOccurrencesForDate(object, date),
-    ...schedulerOccurrenceForDate(object, date),
-  ];
-  const unique = new Map<string, BaseOccurrence>();
-  for (const occurrence of combined) {
-    unique.set(`${occurrence.occurrenceId}:${occurrence.dueAt.getTime()}`, occurrence);
-  }
-  return [...unique.values()];
+  const standalone = standaloneReminderOccurrenceForDate(object, date);
+  const daily = dailyOccurrencesForDate(object, date);
+  const hasScheduler = object.scheduler != null && typeof object.scheduler === 'object' && !Array.isArray(object.scheduler);
+  if (!hasScheduler) return standalone.length > 0 ? standalone : daily;
+
+  const scheduled = schedulerOccurrenceForDate(object, date);
+  if (scheduled.length === 0) return [];
+  if (standalone.length > 0) return standalone;
+  if (daily.length > 0) return daily;
+  return scheduled;
 }
 
 function candidateDatesForMinuteOffset(from: Date, to: Date, offsetMs: number): string[] {
