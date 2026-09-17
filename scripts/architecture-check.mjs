@@ -338,7 +338,7 @@ function checkOAuthDesktopPlatformBoundary() {
     console.error(`FAIL: OAuth browser launch depends on external OS commands: ${violations.join(', ')}`);
     return false;
   }
-  if (!opener.includes("from 'electron'") || !opener.includes('shell.openExternal') || !main.includes('this.browserOpener')) {
+  if (!opener.includes("require('electron')") || !opener.includes('shell.openExternal') || !main.includes('this.browserOpener')) {
     console.error('FAIL: OAuth loopback is not wired through the Electron platform browser opener');
     return false;
   }
