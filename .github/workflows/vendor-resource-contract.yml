@@ -23,11 +23,11 @@ jobs:
           node-version: 22
       - name: Vendor upstream contracts
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ secrets.QUARTZO_UPSTREAM_TOKEN }}
         run: node scripts/sync-contracts.mjs sync 86a04ff8ce552991548b07ec5ab17170fc389d2c
       - name: Verify vendored contracts
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ secrets.QUARTZO_UPSTREAM_TOKEN }}
         run: node scripts/sync-contracts.mjs verify
       - name: Commit vendored contracts
         run: |
