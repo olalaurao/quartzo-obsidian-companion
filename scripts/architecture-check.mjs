@@ -217,6 +217,44 @@ function checkGoogleCalendarRemainsReadOnly() {
   console.log('PASS: Google Calendar integration is read-only and least-privilege');
   return true;
 }
+function checkReminderRuntimeBoundaries() {
+  const servicePath = path.join(rootDir, 'src/core/reminders/service.ts');
+  const projectionPath = path.join(rootDir, 'src/core/reminders/projection.ts');
+  const platformPath = path.join(rootDir, 'src/platform/notifications.ts');
+  const registryPath = path.join(rootDir, 'src/local-state/notification-delivery-registry.ts');
+  const mainPath = path.join(rootDir, 'src/main.ts');
+  for (const file of [servicePath, projectionPath, platformPath, registryPath, mainPath]) {
+    if (!fs.existsSync(file)) {
+      console.error(`FAIL: Reminder runtime file missing: ${path.relative(rootDir, file)}`);
+      return false;
+    }
+  }
+  const service = fs.readFileSync(servicePath, 'utf8');
+  const projection = fs.readFileSync(projectionPath, 'utf8');
+  const platform = fs.readFileSync(platformPath, 'utf8');
+  const registry = fs.readFileSync(registryPath, 'utf8');
+  const main = fs.readFileSync(mainPath, 'utf8');
+  const coreForbidden = ["from 'obsidian'", '.setInterval(', 'Notification.requestPermission', "toISOString().split('T')[0]", '24 * 60 * 60 * 1000'];
+  const coreViolations = coreForbidden.filter(pattern => service.includes(pattern) || projection.includes(pattern));
+  if (coreViolations.length > 0) {
+    console.error(`FAIL: Reminder core bypasses lifecycle/platform/local-date owners: ${coreViolations.join(', ')}`);
+    return false;
+  }
+  if (!main.includes("reminderDelivery: 'in_obsidian_only'") || !main.includes('registerInterval(window.setInterval') || !main.includes("quartzo-notification-delivery.json")) {
+    console.error('FAIL: Reminder runtime is not lifecycle-managed with device-local default delivery');
+    return false;
+  }
+  if (!platform.includes("from 'obsidian'") || !platform.includes('requestDesktopPermission()')) {
+    console.error('FAIL: Reminder platform delivery owner is incomplete');
+    return false;
+  }
+  if (!registry.includes("node:fs") || registry.includes('app/quartzo_shared_settings.md')) {
+    console.error('FAIL: Reminder delivery registry is not device-local');
+    return false;
+  }
+  console.log('PASS: Reminder delivery stays lifecycle-managed, device-local and platform-owned');
+  return true;
+}
 function main() {
   console.log('Running architecture/completeness checks...\n');
   let allPassed = true;
@@ -233,6 +271,7 @@ function main() {
   if (!checkNoUnsafeInnerHtml()) allPassed = false;
   if (!checkCanonicalUiDateAndIdentityOwners()) allPassed = false;
   if (!checkGoogleCalendarRemainsReadOnly()) allPassed = false;
+  if (!checkReminderRuntimeBoundaries()) allPassed = false;
 
   console.log('\n' + (allPassed ? 'All architecture checks passed' : 'Some architecture checks failed'));
   process.exit(allPassed ? 0 : 1);
