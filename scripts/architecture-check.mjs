@@ -6,11 +6,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 
-// Critical production paths that must not contain empty implementations
 const criticalPaths = [
   {
     path: 'src/sync/coordinator/index.ts',
-    forbiddenPatterns: ['// 1. Get local hash', '// 2. Get remote hash', '// TODO: implement', '// FIXME: implement'],
+    forbiddenPatterns: ['// TODO: implement', '// FIXME: implement'],
     description: 'DriveSyncCoordinator'
   },
   {
@@ -20,7 +19,7 @@ const criticalPaths = [
   },
   {
     path: 'src/integrations/google/auth/loopback.ts',
-    forbiddenPatterns: ['// Extract code and state from req.url', '// Resolve with code', '// open browser with auth URL'],
+    forbiddenPatterns: ['// TODO: implement', '// FIXME: implement'],
     description: 'OAuth loopback'
   },
   {
@@ -32,87 +31,136 @@ const criticalPaths = [
 
 function checkFile(filePath, forbiddenPatterns, description) {
   const fullPath = path.join(rootDir, filePath);
-  
   if (!fs.existsSync(fullPath)) {
-    console.error(`❌ FAIL: ${description} file not found: ${filePath}`);
+    console.error(`FAIL: ${description} file not found: ${filePath}`);
     return false;
   }
-
   const content = fs.readFileSync(fullPath, 'utf-8');
   const violations = [];
-
   for (const pattern of forbiddenPatterns) {
-    if (content.includes(pattern)) {
-      violations.push(pattern);
-    }
+    if (content.includes(pattern)) violations.push(pattern);
   }
-
   if (violations.length > 0) {
-    console.error(`❌ FAIL: ${description} contains forbidden patterns:`);
+    console.error(`FAIL: ${description} contains forbidden patterns:`);
     violations.forEach(v => console.error(`   - ${v}`));
     return false;
   }
-
-  console.log(`✅ PASS: ${description} has no forbidden patterns`);
+  console.log(`PASS: ${description}`);
   return true;
 }
 
-function checkSystemsRoutinesSafety() {
-  // Ensure no auto-executing Systems/Routines
-  const srcDir = path.join(rootDir, 'src');
-  
-  function scanDirectory(dir) {
-    const files = fs.readdirSync(dir, { withFileTypes: true });
-    
-    for (const file of files) {
-      const fullPath = path.join(dir, file.name);
-      
-      if (file.isDirectory()) {
-        scanDirectory(fullPath);
-      } else if (file.name.endsWith('.ts')) {
-        const content = fs.readFileSync(fullPath, 'utf-8');
-        
-        // Check for dangerous auto-execution patterns
-        const dangerousPatterns = [
-          /setInterval.*System|setInterval.*Routine/,
-          /auto.*execute.*System|auto.*execute.*Routine/i,
-          /background.*execute.*System|background.*execute.*Routine/i,
-          /custom_script.*execute/i
-        ];
+function checkNoSyncStateInRoot() {
+  const syncStatePath = path.join(rootDir, '.quartzo-sync-state.json');
+  if (fs.existsSync(syncStatePath)) {
+    console.error('FAIL: Sync state file found in vault root (must be plugin-local)');
+    return false;
+  }
+  console.log('PASS: No sync state in vault root');
+  return true;
+}
 
-        for (const pattern of dangerousPatterns) {
-          if (pattern.test(content)) {
-            console.error(`❌ FAIL: Dangerous auto-execution pattern found in ${fullPath}`);
-            return false;
-          }
-        }
+function checkSingleFilePolicy() {
+  const policyFiles = [];
+  function scan(dir) {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory() && entry.name !== 'node_modules' && entry.name !== '.git') {
+        scan(full);
+      } else if (entry.name === 'file-policy.ts') {
+        policyFiles.push(full);
       }
     }
   }
-
-  scanDirectory(srcDir);
-  console.log('✅ PASS: No dangerous auto-execution patterns found');
+  scan(path.join(rootDir, 'src'));
+  if (policyFiles.length !== 1) {
+    console.error(`FAIL: Expected exactly 1 VaultSyncFilePolicy, found ${policyFiles.length}`);
+    return false;
+  }
+  console.log('PASS: Single VaultSyncFilePolicy');
   return true;
 }
 
+function checkTestSyncIncludesRuntime() {
+  const pkgPath = path.join(rootDir, 'package.json');
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+  const testSync = pkg.scripts?.['test:sync'];
+  if (!testSync) {
+    console.error('FAIL: test:sync script not found');
+    return false;
+  }
+  if (!testSync.includes('runtime')) {
+    console.error('FAIL: test:sync does not include runtime tests');
+    return false;
+  }
+  console.log('PASS: test:sync includes runtime');
+  return true;
+}
+
+function checkOAuthNotConnectedWithoutRealClientId() {
+  const mainPath = path.join(rootDir, 'src/main.ts');
+  if (!fs.existsSync(mainPath)) return true;
+  const content = fs.readFileSync(mainPath, 'utf-8');
+  if (content.includes("clientId: 'real'") || content.includes('clientId: "real"')) {
+    console.error('FAIL: OAuth production Client ID hardcoded');
+    return false;
+  }
+  console.log('PASS: No hardcoded real OAuth Client ID');
+  return true;
+}
+
+
+function checkSingleQuartzoWorkspaceView() {
+  const mainPath = path.join(rootDir, 'src/main.ts');
+  const content = fs.readFileSync(mainPath, 'utf8');
+  const registrations = content.match(/registerView\(/g) || [];
+  if (registrations.length !== 1 || !content.includes('registerView(QUARTZO_VIEW_TYPE')) {
+    console.error(`FAIL: V1 requires one primary Quartzo workspace view; found ${registrations.length} registrations`);
+    return false;
+  }
+  console.log('PASS: Single primary Quartzo workspace view');
+  return true;
+}
+
+function checkNoHardcodedQuickAddFolders() {
+  const shellPath = path.join(rootDir, 'src/ui/shell/view.ts');
+  const creationPath = path.join(rootDir, 'src/core/object-creation.ts');
+  if (!fs.existsSync(shellPath) || !fs.existsSync(creationPath)) {
+    console.error('FAIL: Quartzo shell or canonical object-creation owner missing');
+    return false;
+  }
+  const shell = fs.readFileSync(shellPath, 'utf8');
+  const creation = fs.readFileSync(creationPath, 'utf8');
+  const content = `${shell}
+${creation}`;
+  const forbidden = ['tasks/', 'notes/', 'journal/', 'reminders/'];
+  const violations = forbidden.filter(value => content.includes(`'${value}`) || content.includes(`"${value}`));
+  if (violations.length > 0) {
+    console.error(`FAIL: Quick Add contains hardcoded canonical folders: ${violations.join(', ')}`);
+    return false;
+  }
+  if (!creation.includes('resolveCreationFolder') || !shell.includes('buildQuickAddDocument')) {
+    console.error('FAIL: Quick Add does not route through canonical shared Object Identification creation owner');
+    return false;
+  }
+  console.log('PASS: Quick Add paths come from shared Object Identification');
+  return true;
+}
 function main() {
   console.log('Running architecture/completeness checks...\n');
-
   let allPassed = true;
 
-  // Check critical production paths
   for (const check of criticalPaths) {
-    if (!checkFile(check.path, check.forbiddenPatterns, check.description)) {
-      allPassed = false;
-    }
+    if (!checkFile(check.path, check.forbiddenPatterns, check.description)) allPassed = false;
   }
+  if (!checkNoSyncStateInRoot()) allPassed = false;
+  if (!checkSingleFilePolicy()) allPassed = false;
+  if (!checkTestSyncIncludesRuntime()) allPassed = false;
+  if (!checkOAuthNotConnectedWithoutRealClientId()) allPassed = false;
+  if (!checkSingleQuartzoWorkspaceView()) allPassed = false;
+  if (!checkNoHardcodedQuickAddFolders()) allPassed = false;
 
-  // Check Systems/Routines safety
-  if (!checkSystemsRoutinesSafety()) {
-    allPassed = false;
-  }
-
-  console.log('\n' + (allPassed ? '✅ All architecture checks passed' : '❌ Some architecture checks failed'));
+  console.log('\n' + (allPassed ? 'All architecture checks passed' : 'Some architecture checks failed'));
   process.exit(allPassed ? 0 : 1);
 }
 

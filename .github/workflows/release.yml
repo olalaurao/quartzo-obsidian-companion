@@ -21,8 +21,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
       
+      - name: Audit dependencies
+        run: npm audit --omit=dev --audit-level=high
+      
       - name: Verify contracts
         run: npm run contracts:verify
+        env:
+          GITHUB_TOKEN: ${{ secrets.QUARTZO_UPSTREAM_TOKEN }}
       
       - name: Type check
         run: npm run typecheck
@@ -44,9 +49,17 @@ jobs:
       
       - name: Build
         run: npm run build
+        env:
+          QUARTZO_GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID }}
       
-      - name: Release validate
-        run: npm run release:validate
+      - name: Release validate (production mode)
+        run: RELEASE_MODE=true npm run release:validate
+        env:
+          RELEASE_MODE: 'true'
+          QUARTZO_GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID }}
+      
+      - name: Clean artifact smoke test
+        run: npm run smoke:clean-artifact
       
       - name: Create Release
         uses: softprops/action-gh-release@v1

@@ -13,7 +13,6 @@ const context = await esbuild.context({
   external: [
     "obsidian",
     "electron",
-    "googleapis",
     "@codemirror/autocomplete",
     "@codemirror/collab",
     "@codemirror/commands",
@@ -25,17 +24,27 @@ const context = await esbuild.context({
     "@lezer/common",
     "@lezer/highlight",
     "@lezer/lr",
-    ...builtins],
+    ...builtins,
+    ...builtins.map(b => `node:${b}`)],
+  define: {
+    'process.env.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID': JSON.stringify(process.env.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID || '')
+  },
   format: "cjs",
   target: "es2022",
   logLevel: "info",
   sourcemap: prod ? false : "inline",
   treeShaking: true,
+  minify: prod,
   outfile: "main.js",
+  metafile: true,
 });
 
 if (prod) {
-  await context.rebuild();
+  const result = await context.rebuild();
+  if (result.metafile) {
+    const fs = await import('fs');
+    fs.writeFileSync('metafile.json', JSON.stringify(result.metafile, null, 2));
+  }
   process.exit(0);
 } else {
   await context.watch();

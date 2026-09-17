@@ -1,18 +1,38 @@
+import type { App, Plugin } from 'obsidian';
+import type { VaultIndexEngine } from '../vault/index';
+import type { DriveSyncCoordinator } from '../sync/coordinator';
+import type { GoogleDriveAdapter } from '../integrations/google/drive';
+
 export interface UIState {
   currentView: string;
   dailyScheduleDate: string;
   privacyMode: boolean;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface ViewContext {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  app: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  plugin: any;
+  app: App;
+  plugin: Plugin & {
+    driveSyncCoordinator: DriveSyncCoordinator | null;
+    driveAdapter: GoogleDriveAdapter | null;
+    authState: 'disconnected' | 'authenticating' | 'authenticated_unpaired' | 'paired' | 'authentication_required';
+    vaultIndexEngine: VaultIndexEngine | null;
+    settings: {
+      googleDriveFolderId: string | null;
+      googleDriveFolderName: string | null;
+      syncAuto: boolean;
+      privacyMode: boolean;
+      firstRunCompleted: boolean;
+      oauthClientId: string;
+      isPaired: boolean;
+    };
+    saveSettings(): Promise<void>;
+    startPairingFlow(): Promise<void>;
+    confirmPairing(folderId: string, folderName: string, autoAdopt: boolean, autoPull: boolean): Promise<void>;
+    disconnectDrive(): Promise<void>;
+    adoptFile(filePath: string): Promise<void>;
+    openSettings(): void;
+  };
   state: UIState;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  vaultIndexEngine?: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  driveSyncCoordinator?: any;
+  vaultIndexEngine?: VaultIndexEngine;
+  driveSyncCoordinator?: DriveSyncCoordinator;
 }

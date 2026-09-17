@@ -1,109 +1,83 @@
-import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, Notice, ItemView } from 'obsidian';
-import { DailyScheduleEngine } from './core/daily_schedule';
+import { App, Plugin, PluginSettingTab, Setting, Notice, TFile, TAbstractFile, FileSystemAdapter } from 'obsidian';
 import { VaultIndexEngine } from './vault/index';
 import { DriveSyncCoordinator } from './sync/coordinator';
 import { GoogleDriveAdapter } from './integrations/google/drive';
-import { HomeView, PlannerView, DayDialView, JournalView, BrowseView, SearchView, QuickAddView, ConflictCenterView } from './ui';
+import { GoogleOAuthDesktop, OAuthConfig } from './integrations/google/auth/loopback';
+import { QuartzoView, QUARTZO_VIEW_TYPE, type QuartzoSection, type QuartzoAction } from './ui';
 import { ViewContext } from './ui/types';
+import { normalizeVaultPath } from './sync/coordinator/path-utils';
+import { VaultSyncFilePolicy } from './sync/coordinator/file-policy';
+import { SHARED_SETTINGS_PATH, SharedSettingsRepository, parseObjectWithSharedSettings, type QuartzoSharedSettings } from './vault/shared-settings';
+import * as path from 'path';
+import * as fs from 'fs';
 
 interface QuartzoCompanionSettings {
   googleDriveFolderId: string | null;
+  googleDriveFolderName: string | null;
   syncAuto: boolean;
   privacyMode: boolean;
   firstRunCompleted: boolean;
+  oauthClientId: string;
+  isPaired: boolean;
 }
 
 const DEFAULT_SETTINGS: QuartzoCompanionSettings = {
   googleDriveFolderId: null,
+  googleDriveFolderName: null,
   syncAuto: false,
   privacyMode: false,
   firstRunCompleted: false,
-}
+  oauthClientId: 'PLACEHOLDER_CLIENT_ID',
+  isPaired: false,
+};
 
-const HOME_VIEW_TYPE = 'quartzo-home-view';
-const PLANNER_VIEW_TYPE = 'quartzo-planner-view';
-const DAY_DIAL_VIEW_TYPE = 'quartzo-day-dial-view';
-const JOURNAL_VIEW_TYPE = 'quartzo-journal-view';
-const BROWSE_VIEW_TYPE = 'quartzo-browse-view';
-const SEARCH_VIEW_TYPE = 'quartzo-search-view';
-const QUICK_ADD_VIEW_TYPE = 'quartzo-quick-add-view';
-const SYNC_CENTER_VIEW_TYPE = 'quartzo-sync-center-view';
-const CONFLICT_CENTER_VIEW_TYPE = 'quartzo-conflict-center-view';
 
-class SyncCenterView extends ItemView {
-  private context: ViewContext;
+const BUILD_CLIENT_ID: string = (typeof process !== 'undefined' && process.env && process.env.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID) || '';
 
-  constructor(leaf: WorkspaceLeaf, context: ViewContext) {
-    super(leaf);
-    this.context = context;
-  }
-
-  getViewType() { return SYNC_CENTER_VIEW_TYPE; }
-  getDisplayText() { return 'Sync Center'; }
-  getIcon() { return 'sync'; }
-
-  async onOpen() {
-    this.contentEl.empty();
-    this.contentEl.innerHTML = `
-      <div class="quartzo-sync-center">
-        <h2>Sync Center</h2>
-        <p>Google Drive synchronization status</p>
-        <button id="sync-now-btn">Sync Now</button>
-        <div id="sync-status"></div>
-      </div>
-    `;
-    
-    const syncBtn = this.contentEl.querySelector('#sync-now-btn');
-    if (syncBtn) {
-      syncBtn.addEventListener('click', async () => {
-        if (this.context.plugin.driveSyncCoordinator) {
-          try {
-            const result = await this.context.plugin.driveSyncCoordinator.triggerManualSync();
-            new Notice(`Sync complete: ${result.synced} files synced, ${result.conflicts} conflicts`);
-          } catch (error) {
-            new Notice(`Sync failed: ${error}`);
-          }
-        } else {
-          new Notice('Sync not configured');
-        }
-      });
-    }
-  }
-
-  async onClose() {
-    this.contentEl.empty();
-  }
-}
+const OAUTH_CONFIG: OAuthConfig = {
+  clientId: '',
+  redirectUri: '',
+  scopes: ['https://www.googleapis.com/auth/drive'],
+  authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+  tokenUrl: 'https://oauth2.googleapis.com/token'
+  // V1 decision: full Drive scope is required because the plugin uses Drive Changes API
+  // (global to user's Drive) and must list folders for vault selection.
+  // Narrow drive.file scope is insufficient without Google Picker integration.
+  // Google verification/testing requirements apply before production listing.
+};
 
 export default class QuartzoCompanionPlugin extends Plugin {
   settings!: QuartzoCompanionSettings;
   vaultIndexEngine: VaultIndexEngine | null = null;
   driveSyncCoordinator: DriveSyncCoordinator | null = null;
   driveAdapter: GoogleDriveAdapter | null = null;
+  oauthClient: GoogleOAuthDesktop | null = null;
   viewContext: ViewContext | null = null;
+  private syncIntervalId: ReturnType<typeof setInterval> | null = null;
+  private eventRefs: ReturnType<typeof this.app.vault.on>[] = [];
+  private sharedSettingsRepository: SharedSettingsRepository | null = null;
+  private sharedSettings: QuartzoSharedSettings | null = null;
+  authState: 'disconnected' | 'authenticating' | 'authenticated_unpaired' | 'paired' | 'authentication_required' = 'disconnected';
 
   async onload() {
     await this.loadSettings();
 
-    // Initialize vault runtime
     this.vaultIndexEngine = new VaultIndexEngine();
-    
-    // Initialize Drive adapter (will be connected when OAuth is configured)
     this.driveAdapter = new GoogleDriveAdapter();
-    
-    // Initialize sync coordinator
+
+    const vaultPath = this.getVaultFileSystemPath();
+    const stateStorePath = this.getPluginDataPath();
     this.driveSyncCoordinator = new DriveSyncCoordinator(
       this.driveAdapter,
-      this.app.vault.adapter.getResourcePath(''),
-      this.app.vault.configDir + '/quartzo-sync-state.json'
+      vaultPath,
+      stateStorePath
     );
 
-    // Create view context
     this.viewContext = {
       app: this.app,
       plugin: this,
       state: {
-        currentView: HOME_VIEW_TYPE,
+        currentView: 'home',
         dailyScheduleDate: new Date().toISOString().split('T')[0],
         privacyMode: this.settings.privacyMode
       },
@@ -111,89 +85,30 @@ export default class QuartzoCompanionPlugin extends Plugin {
       driveSyncCoordinator: this.driveSyncCoordinator
     };
 
-    // Register views using canonical UI layer
-    this.registerView(HOME_VIEW_TYPE, (leaf) => new HomeView(leaf, this.viewContext!));
-    this.registerView(PLANNER_VIEW_TYPE, (leaf) => new PlannerView(leaf, this.viewContext!));
-    this.registerView(DAY_DIAL_VIEW_TYPE, (leaf) => new DayDialView(leaf, this.viewContext!));
-    this.registerView(JOURNAL_VIEW_TYPE, (leaf) => new JournalView(leaf, this.viewContext!));
-    this.registerView(BROWSE_VIEW_TYPE, (leaf) => new BrowseView(leaf, this.viewContext!));
-    this.registerView(SEARCH_VIEW_TYPE, (leaf) => new SearchView(leaf, this.viewContext!));
-    this.registerView(QUICK_ADD_VIEW_TYPE, (leaf) => new QuickAddView(leaf, this.viewContext!));
-    this.registerView(SYNC_CENTER_VIEW_TYPE, (leaf) => new SyncCenterView(leaf, this.viewContext!));
-    this.registerView(CONFLICT_CENTER_VIEW_TYPE, (leaf) => new ConflictCenterView(leaf, this.viewContext!));
+    this.registerView(QUARTZO_VIEW_TYPE, (leaf) => new QuartzoView(leaf, this.viewContext!));
 
-    // Register ribbon icon
     const ribbonIconEl = this.addRibbonIcon('calendar-clock', 'Open Quartzo', () => {
-      this.activateView(HOME_VIEW_TYPE);
+      void this.activateQuartzo('home');
     });
     ribbonIconEl.addClass('quartzo-ribbon-icon');
 
-    // Register commands
-    this.addCommand({
-      id: 'quartzo-open',
-      name: 'Quartzo: Open Home',
-      callback: () => this.activateView(HOME_VIEW_TYPE)
-    });
-
-    this.addCommand({
-      id: 'quartzo-planner',
-      name: 'Quartzo: Open Planner',
-      callback: () => this.activateView(PLANNER_VIEW_TYPE)
-    });
-
-    this.addCommand({
-      id: 'quartzo-day-dial',
-      name: 'Quartzo: Open Day Dial',
-      callback: () => this.activateView(DAY_DIAL_VIEW_TYPE)
-    });
-
-    this.addCommand({
-      id: 'quartzo-sync-center',
-      name: 'Quartzo: Open Sync Center',
-      callback: () => this.activateView(SYNC_CENTER_VIEW_TYPE)
-    });
-
-    this.addCommand({
-      id: 'quartzo-journal',
-      name: 'Quartzo: Open Journal',
-      callback: () => this.activateView(JOURNAL_VIEW_TYPE)
-    });
-
-    this.addCommand({
-      id: 'quartzo-browse',
-      name: 'Quartzo: Browse Objects',
-      callback: () => this.activateView(BROWSE_VIEW_TYPE)
-    });
-
-    this.addCommand({
-      id: 'quartzo-search',
-      name: 'Quartzo: Search Objects',
-      callback: () => this.activateView(SEARCH_VIEW_TYPE)
-    });
-
-    this.addCommand({
-      id: 'quartzo-quick-add',
-      name: 'Quartzo: Quick Add',
-      callback: () => this.activateView(QUICK_ADD_VIEW_TYPE)
-    });
-
-    this.addCommand({
-      id: 'quartzo-conflict-center',
-      name: 'Quartzo: Open Conflict Center',
-      callback: () => this.activateView(CONFLICT_CENTER_VIEW_TYPE)
-    });
-
+    this.addCommand({ id: 'quartzo-open', name: 'Quartzo: Open', callback: () => { void this.activateQuartzo('home'); } });
+    this.addCommand({ id: 'quartzo-planner', name: 'Quartzo: Planner', callback: () => { void this.activateQuartzo('planner'); } });
+    this.addCommand({ id: 'quartzo-day-dial', name: 'Quartzo: Day Dial', callback: () => { void this.activateQuartzo('home'); } });
+    this.addCommand({ id: 'quartzo-journal', name: 'Quartzo: Journal', callback: () => { void this.activateQuartzo('journal'); } });
+    this.addCommand({ id: 'quartzo-browse', name: 'Quartzo: Browse', callback: () => { void this.activateQuartzo('browse'); } });
+    this.addCommand({ id: 'quartzo-search', name: 'Quartzo: Search', callback: () => { void this.activateQuartzo('browse', 'search'); } });
+    this.addCommand({ id: 'quartzo-quick-add', name: 'Quartzo: Quick Add', callback: () => { void this.activateQuartzo('home', 'add'); } });
+    this.addCommand({ id: 'quartzo-sync-center', name: 'Quartzo: Sync', callback: () => { void this.activateQuartzo('home', 'sync'); } });
+    this.addCommand({ id: 'quartzo-conflict-center', name: 'Quartzo: Conflicts', callback: () => { void this.activateQuartzo('home', 'conflicts'); } });
     this.addCommand({
       id: 'quartzo-sync-now',
       name: 'Quartzo: Sync now',
       callback: async () => {
-        if (this.driveSyncCoordinator) {
+        if (this.driveSyncCoordinator && this.settings.isPaired) {
           try {
             const result = await this.driveSyncCoordinator.triggerManualSync();
             new Notice(`Sync complete: ${result.synced} files synced, ${result.conflicts} conflicts`);
-            if (result.errors.length > 0) {
-              console.error('Sync errors:', result.errors);
-            }
           } catch (error) {
             new Notice(`Sync failed: ${error}`);
           }
@@ -201,48 +116,492 @@ export default class QuartzoCompanionPlugin extends Plugin {
       }
     });
 
-    // Initialize vault index
+    this.sharedSettingsRepository = new SharedSettingsRepository(this.app.vault);
+    this.sharedSettings = await this.sharedSettingsRepository.load();
     await this.initializeVaultIndex();
+    this.registerVaultEvents();
 
-    // Show first-run pairing if needed
     if (!this.settings.firstRunCompleted) {
       this.showFirstRunDialog();
+    } else if (this.settings.isPaired) {
+      await this.restoreSessionAndStartSync();
     }
 
-    // Settings tab
     this.addSettingTab(new QuartzoSettingTab(this.app, this));
+  }
+
+  private getVaultFileSystemPath(): string {
+    const adapter = this.app.vault.adapter;
+    if (adapter instanceof FileSystemAdapter) {
+      return adapter.getBasePath();
+    }
+    throw new Error('Desktop-only: FileSystemAdapter required');
+  }
+
+  private getPluginDataPath(): string {
+    const adapter = this.app.vault.adapter;
+    if (adapter instanceof FileSystemAdapter) {
+      const pluginDir = path.join(adapter.getBasePath(), this.app.vault.configDir, 'plugins', this.manifest.id);
+      if (!fs.existsSync(pluginDir)) {
+        fs.mkdirSync(pluginDir, { recursive: true });
+      }
+      return path.join(pluginDir, 'quartzo-sync-state.json');
+    }
+    return '';
+  }
+
+  private getResolvedClientId(): string {
+    return BUILD_CLIENT_ID || this.settings.oauthClientId || '';
+  }
+
+  private getSecretStorage() {
+    const native = this.app.secretStorage;
+    return {
+      get: async (key: string) => native.getSecret(key),
+      set: async (key: string, value: string) => { native.setSecret(key, value); },
+      delete: async (key: string) => { native.setSecret(key, ''); }
+    };
+  }
+
+  private shouldIndexPath(rawPath: string): boolean {
+    const normalized = normalizeVaultPath(rawPath);
+    if (normalized === '_deleted' || normalized.startsWith('_deleted/')) return false;
+    return VaultSyncFilePolicy.shouldSyncFile(normalized);
   }
 
   private async initializeVaultIndex() {
     if (!this.vaultIndexEngine) return;
-
-    // Scan vault files
-    const files = this.app.vault.getMarkdownFiles();
+    const files = this.app.vault.getMarkdownFiles().filter(file => this.shouldIndexPath(file.path));
     const vaultFiles = await Promise.all(files.map(async file => ({
       path: file.path,
       content: await this.app.vault.read(file),
       modified: file.stat.mtime,
       size: file.stat.size
     })));
-
-    // Create initial index
-    const index = VaultIndexEngine.createInitialIndex(vaultFiles);
+    const index = VaultIndexEngine.createInitialIndex(
+      vaultFiles,
+      (content, filePath) => parseObjectWithSharedSettings(content, filePath, this.sharedSettings),
+    );
     this.vaultIndexEngine.setIndex(index);
-    console.log('Vault index initialized with', index.objects.size, 'objects');
   }
 
-  async activateView(viewType: string) {
+  private registerVaultEvents() {
+    const oncreate = this.app.vault.on('create', (file: TAbstractFile) => {
+      if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { void this.reloadSharedSettingsAndIndex(); return; }
+      if (file instanceof TFile && this.vaultIndexEngine && this.shouldIndexPath(file.path)) {
+        const idx = this.vaultIndexEngine.getIndex();
+        if (idx) {
+          this.app.vault.read(file).then(content => {
+            try {
+              const result = parseObjectWithSharedSettings(content, file.path, this.sharedSettings);
+              const object = {
+                id: result.object.id,
+                type: result.object.type,
+                path: file.path,
+                frontmatter: result.object as Record<string, unknown>,
+                body: (result.object as { body?: string }).body || ''
+              };
+              this.vaultIndexEngine!.setIndex(
+                VaultIndexEngine.updateIndex(idx, [{
+                  type: 'added',
+                  path: normalizeVaultPath(file.path),
+                  object
+                }])
+              );
+            } catch { /* not a valid quartzo object */ }
+          }).catch(() => {});
+        }
+      }
+    });
+    this.eventRefs.push(oncreate);
+
+    const onmodify = this.app.vault.on('modify', (file: TAbstractFile) => {
+      if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { void this.reloadSharedSettingsAndIndex(); return; }
+      if (file instanceof TFile && this.vaultIndexEngine && this.shouldIndexPath(file.path)) {
+        const idx = this.vaultIndexEngine.getIndex();
+        if (idx) {
+          this.app.vault.read(file).then(content => {
+            try {
+              const result = parseObjectWithSharedSettings(content, file.path, this.sharedSettings);
+              const object = {
+                id: result.object.id,
+                type: result.object.type,
+                path: file.path,
+                frontmatter: result.object as Record<string, unknown>,
+                body: (result.object as { body?: string }).body || ''
+              };
+              this.vaultIndexEngine!.setIndex(
+                VaultIndexEngine.updateIndex(idx, [{
+                  type: 'modified',
+                  path: normalizeVaultPath(file.path),
+                  object
+                }])
+              );
+            } catch { /* not a valid quartzo object */ }
+          }).catch(() => {});
+        }
+      }
+    });
+    this.eventRefs.push(onmodify);
+
+    const ondelete = this.app.vault.on('delete', (file: TAbstractFile) => {
+      if (file instanceof TFile && this.vaultIndexEngine && this.shouldIndexPath(file.path)) {
+        const idx = this.vaultIndexEngine.getIndex();
+        if (idx) {
+          this.vaultIndexEngine.setIndex(
+            VaultIndexEngine.updateIndex(idx, [{
+              type: 'deleted',
+              path: normalizeVaultPath(file.path)
+            }])
+          );
+        }
+      }
+    });
+    this.eventRefs.push(ondelete);
+
+    const onrename = this.app.vault.on('rename', (file: TAbstractFile, oldPath: string) => {
+      if (normalizeVaultPath(oldPath) === SHARED_SETTINGS_PATH || normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { void this.reloadSharedSettingsAndIndex(); return; }
+      if (!(file instanceof TFile) || !this.vaultIndexEngine) return;
+      const idx = this.vaultIndexEngine.getIndex();
+      if (!idx) return;
+      const changes: Array<{ type: 'deleted'; path: string } | { type: 'added'; path: string; object: { id: string; type: string; path: string; frontmatter: Record<string, unknown>; body: string } }> = [];
+      if (this.shouldIndexPath(oldPath)) changes.push({ type: 'deleted', path: normalizeVaultPath(oldPath) });
+      if (!this.shouldIndexPath(file.path)) {
+        if (changes.length > 0) this.vaultIndexEngine.setIndex(VaultIndexEngine.updateIndex(idx, changes));
+        return;
+      }
+      this.app.vault.read(file).then(content => {
+        try {
+          const result = parseObjectWithSharedSettings(content, file.path, this.sharedSettings);
+          changes.push({
+            type: 'added',
+            path: normalizeVaultPath(file.path),
+            object: {
+              id: result.object.id,
+              type: result.object.type,
+              path: file.path,
+              frontmatter: result.object as Record<string, unknown>,
+              body: (result.object as { body?: string }).body || ''
+            }
+          });
+          this.vaultIndexEngine!.setIndex(VaultIndexEngine.updateIndex(idx, changes));
+        } catch {
+          if (changes.length > 0) this.vaultIndexEngine!.setIndex(VaultIndexEngine.updateIndex(idx, changes));
+        }
+      }).catch(() => {
+        if (changes.length > 0) this.vaultIndexEngine!.setIndex(VaultIndexEngine.updateIndex(idx, changes));
+      });
+    });
+    this.eventRefs.push(onrename);
+
+    const onchange = this.app.vault.on('create', (file: TAbstractFile) => {
+      if (file instanceof TFile && VaultSyncFilePolicy.shouldSyncFile(file.path) && this.settings.isPaired && this.driveSyncCoordinator) {
+        this.app.vault.readBinary(file).then(bytes => {
+          if (this.driveSyncCoordinator?.consumeExpectedWatcherEvent(file.path, new Uint8Array(bytes))) return;
+          if (this.settings.syncAuto) this.driveSyncCoordinator?.triggerFocusSync().catch(() => {});
+        }).catch(() => {});
+      }
+    });
+    this.eventRefs.push(onchange);
+
+    const onmodifySync = this.app.vault.on('modify', (file: TAbstractFile) => {
+      if (file instanceof TFile && VaultSyncFilePolicy.shouldSyncFile(file.path) && this.settings.isPaired && this.driveSyncCoordinator) {
+        this.app.vault.readBinary(file).then(bytes => {
+          if (this.driveSyncCoordinator?.consumeExpectedWatcherEvent(file.path, new Uint8Array(bytes))) return;
+          if (this.settings.syncAuto) this.driveSyncCoordinator?.triggerFocusSync().catch(() => {});
+        }).catch(() => {});
+      }
+    });
+    this.eventRefs.push(onmodifySync);
+
+    const ondeleteSync = this.app.vault.on('delete', (file: TAbstractFile) => {
+      if (file instanceof TFile && VaultSyncFilePolicy.shouldSyncFile(file.path) && this.settings.isPaired && this.driveSyncCoordinator) {
+        if (this.driveSyncCoordinator.consumeExpectedWatcherEvent(file.path, null)) return;
+        this.driveSyncCoordinator.queueDelete(file.path);
+        if (this.settings.syncAuto) this.driveSyncCoordinator.triggerFocusSync().catch(() => {});
+      }
+    });
+    this.eventRefs.push(ondeleteSync);
+
+    const onrenameSync = this.app.vault.on('rename', (file: TAbstractFile, oldPath: string) => {
+      if (!(file instanceof TFile) || !this.settings.isPaired || !this.driveSyncCoordinator) return;
+      const oldSyncable = VaultSyncFilePolicy.shouldSyncFile(oldPath);
+      const newSyncable = VaultSyncFilePolicy.shouldSyncFile(file.path);
+      if (!oldSyncable && !newSyncable) return;
+
+      if (oldSyncable && !newSyncable) {
+        if (this.driveSyncCoordinator.consumeExpectedWatcherEvent(oldPath, null)) return;
+        this.driveSyncCoordinator.queueDelete(oldPath);
+        if (this.settings.syncAuto) this.driveSyncCoordinator.triggerFocusSync().catch(() => {});
+        return;
+      }
+
+      this.app.vault.readBinary(file).then(bytes => {
+        const content = new Uint8Array(bytes);
+        if (!oldSyncable && newSyncable) {
+          if (this.driveSyncCoordinator?.consumeExpectedWatcherEvent(file.path, content)) return;
+          if (this.settings.syncAuto) this.driveSyncCoordinator?.triggerFocusSync().catch(() => {});
+          return;
+        }
+        const oldSuppressed = this.driveSyncCoordinator?.consumeExpectedWatcherEvent(oldPath, null) ?? false;
+        const newSuppressed = this.driveSyncCoordinator?.consumeExpectedWatcherEvent(file.path, content) ?? false;
+        if (oldSuppressed && newSuppressed) return;
+        this.driveSyncCoordinator?.queueRename(oldPath, file.path);
+        if (this.settings.syncAuto) this.driveSyncCoordinator?.triggerFocusSync().catch(() => {});
+      }).catch(() => {});
+    });
+    this.eventRefs.push(onrenameSync);
+  }
+
+  startAutoSync() {
+    if (this.syncIntervalId) return;
+    if (!this.settings.syncAuto) return;
+    this.syncIntervalId = setInterval(async () => {
+      if (this.driveSyncCoordinator && this.settings.isPaired && this.settings.syncAuto) {
+        try {
+          await this.driveSyncCoordinator.triggerFocusSync();
+        } catch (error) {
+          console.error('Auto sync failed:', error);
+        }
+      }
+    }, 60000);
+  }
+
+  stopAutoSync() {
+    if (this.syncIntervalId) {
+      clearInterval(this.syncIntervalId);
+      this.syncIntervalId = null;
+    }
+  }
+
+  private async restoreSessionAndStartSync() {
+    if (!this.driveAdapter) return;
+
+    const secretStorage = this.getSecretStorage();
+    const refreshToken = await secretStorage.get('quartzo_companion/refresh_token');
+    if (!refreshToken) {
+      this.settings.isPaired = false;
+      await this.saveSettings();
+      this.authState = 'authentication_required';
+      new Notice('Session expired. Please reconnect Google Drive.');
+      return;
+    }
+
+    try {
+      const config = { ...OAUTH_CONFIG, clientId: this.getResolvedClientId() };
+      this.oauthClient = new GoogleOAuthDesktop(config, secretStorage);
+      const tokenResponse = await this.oauthClient.refreshAccessToken();
+      this.driveAdapter.setAccessToken(tokenResponse.access_token);
+      this.authState = this.settings.isPaired ? 'paired' : 'authenticated_unpaired';
+
+      if (this.driveAdapter && this.settings.googleDriveFolderId) {
+        await this.driveAdapter.setFolderId(this.settings.googleDriveFolderId);
+        await this.driveSyncCoordinator?.setDriveFolderId(this.settings.googleDriveFolderId);
+      }
+
+      this.driveAdapter.setTokenRefreshCallback(async () => {
+        try {
+          const refreshed = await this.oauthClient?.refreshAccessToken();
+          return refreshed?.access_token || null;
+        } catch {
+          return null;
+        }
+      });
+
+      this.startAutoSync();
+    } catch {
+      this.settings.isPaired = false;
+      await this.saveSettings();
+      new Notice('Session expired. Please reconnect Google Drive.');
+    }
+  }
+
+  async startPairingFlow() {
+    const clientId = this.getResolvedClientId();
+    if (!clientId || clientId === 'PLACEHOLDER_CLIENT_ID') {
+      this.authState = 'disconnected';
+      new Notice('Configure your Google OAuth Client ID in settings first.');
+      return;
+    }
+
+    this.authState = 'authenticating';
+    const config = { ...OAUTH_CONFIG, clientId };
+    const secretStorage = this.getSecretStorage();
+    this.oauthClient = new GoogleOAuthDesktop(config, secretStorage);
+
+    try {
+      const storedRefresh = await secretStorage.get('quartzo_companion/refresh_token');
+      const forceConsent = !storedRefresh;
+      const tokenResponse = await this.oauthClient.startAuthLoopback(forceConsent);
+      this.driveAdapter?.setAccessToken(tokenResponse.access_token);
+
+      if (!tokenResponse.refresh_token) {
+        const storedRefresh = await secretStorage.get('quartzo_companion/refresh_token');
+        if (!storedRefresh) {
+          new Notice('No refresh token received. Please re-authorize with full access.');
+          await this.oauthClient.disconnect();
+          this.driveAdapter?.setAccessToken('');
+          this.authState = 'disconnected';
+          return;
+        }
+      }
+
+      this.driveAdapter?.setTokenRefreshCallback(async () => {
+        try {
+          const refreshed = await this.oauthClient?.refreshAccessToken();
+          return refreshed?.access_token || null;
+        } catch {
+          return null;
+        }
+      });
+
+      this.authState = 'authenticated_unpaired';
+      new Notice('Google Drive authenticated. Select your vault folder.');
+    } catch (error) {
+      this.authState = 'disconnected';
+      new Notice(`Authentication failed: ${error}`);
+    }
+  }
+
+  async confirmPairing(folderId: string, folderName: string, autoAdopt: boolean, autoPull: boolean): Promise<void> {
+    if (!this.driveAdapter || !this.driveSyncCoordinator) {
+      new Notice('Drive not initialized.');
+      return;
+    }
+
+    const candidates = await this.driveAdapter.listQuartzoVaultCandidates();
+    const selected = candidates.find(candidate => candidate.id === folderId);
+    if (!selected) {
+      new Notice('Pairing blocked: the selected folder is no longer a valid Quartzo vault.');
+      return;
+    }
+
+    await this.driveSyncCoordinator.setDriveFolderId(folderId);
+    this.settings.googleDriveFolderId = folderId;
+    this.settings.googleDriveFolderName = selected.name || folderName;
+
+    const summary = await this.driveSyncCoordinator.generatePairingSummary();
+    const hasDivergent = summary.divergent.length > 0;
+    const hasAmbiguous = summary.ambiguous.length > 0;
+
+    if (hasDivergent || hasAmbiguous) {
+      new Notice(`Pairing blocked: ${summary.divergent.length} divergent and ${summary.ambiguous.length} ambiguous file(s) require resolution.`);
+      return;
+    }
+
+    if (autoAdopt || autoPull) {
+      const pairingResult = await this.driveSyncCoordinator.applyPairingDecisions(summary, { autoAdopt, autoPull });
+      if (pairingResult.errors.length > 0) {
+        new Notice(`Pairing incomplete: ${pairingResult.errors.join('; ')}`);
+        return;
+      }
+      this.settings.isPaired = true;
+      this.settings.firstRunCompleted = true;
+      this.authState = 'paired';
+      await this.saveSettings();
+      new Notice(`Paired with folder: ${folderName}`);
+      this.startAutoSync();
+    } else {
+      const modal = document.createElement('div');
+      modal.className = 'quartzo-pairing-summary-modal';
+      modal.innerHTML = `
+        <div class="modal-content" style="padding: 20px; background: var(--background-primary); border: 1px solid var(--background-modifier-border); border-radius: 8px; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000;">
+          <h2>Pairing Summary</h2>
+          <p>Folder: <strong>${folderName}</strong></p>
+          <ul>
+            <li>Identical files: ${summary.identical.length}</li>
+            <li>Remote-only (to pull): ${summary.remoteOnly.length}</li>
+            <li>Local-only (to adopt): ${summary.localOnly.length}</li>
+            <li>Ambiguous (blocked): ${summary.ambiguous.length}</li>
+          </ul>
+          <p>Do you want to adopt local-only files and pull remote-only files?</p>
+          <div style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
+            <button id="pairing-cancel">Cancel</button>
+            <button id="pairing-confirm">Accept & Pair</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+
+      modal.querySelector('#pairing-cancel')?.addEventListener('click', () => {
+        modal.remove();
+        new Notice('Pairing cancelled.');
+      });
+
+      modal.querySelector('#pairing-confirm')?.addEventListener('click', async () => {
+        modal.remove();
+        try {
+          const pairingResult = await this.driveSyncCoordinator!.applyPairingDecisions(summary, { autoAdopt: true, autoPull: true });
+          if (pairingResult.errors.length > 0) {
+            new Notice(`Pairing incomplete: ${pairingResult.errors.join('; ')}`);
+            return;
+          }
+          this.settings.isPaired = true;
+          this.settings.firstRunCompleted = true;
+          this.authState = 'paired';
+          await this.saveSettings();
+          new Notice(`Paired with folder: ${folderName}`);
+          this.startAutoSync();
+        } catch (error) {
+          new Notice(`Error applying pairing decisions: ${error}`);
+        }
+      });
+    }
+  }
+
+  async disconnectDrive() {
+    if (this.oauthClient) {
+      await this.oauthClient.disconnect();
+    }
+    this.stopAutoSync();
+    this.settings.isPaired = false;
+    this.authState = 'disconnected';
+    this.settings.googleDriveFolderId = null;
+    this.settings.googleDriveFolderName = null;
+    await this.saveSettings();
+    new Notice('Google Drive disconnected.');
+  }
+
+  async adoptFile(filePath: string): Promise<void> {
+    if (!this.driveSyncCoordinator || !this.settings.isPaired) {
+      new Notice('Not connected to Google Drive.');
+      return;
+    }
+    try {
+      await this.driveSyncCoordinator.explicitAdopt(filePath);
+      new Notice(`File adopted: ${filePath}`);
+    } catch (error) {
+      new Notice(`Adoption failed: ${error}`);
+    }
+  }
+
+  async activateQuartzo(section: QuartzoSection = 'home', action?: QuartzoAction) {
     const { workspace } = this.app;
-    
-    let leaf = workspace.getLeavesOfType(viewType)[0];
+    let leaf = workspace.getLeavesOfType(QUARTZO_VIEW_TYPE)[0];
     if (!leaf) {
       const newLeaf = workspace.getRightLeaf(false);
       if (!newLeaf) return;
       leaf = newLeaf;
     }
-    
-    await leaf.setViewState({ type: viewType, active: true });
+    await leaf.setViewState({ type: QUARTZO_VIEW_TYPE, active: true });
     workspace.revealLeaf(leaf);
+    if (leaf.view instanceof QuartzoView) {
+      await leaf.view.setSection(section);
+      if (action) await leaf.view.handleAction(action);
+    }
+  }
+
+  openSettings(): void {
+    const appWithSettings = this.app as App & { setting?: { open(): void; openTabById(id: string): void } };
+    appWithSettings.setting?.open();
+    appWithSettings.setting?.openTabById(this.manifest.id);
+  }
+
+  private async reloadSharedSettingsAndIndex(): Promise<void> {
+    this.sharedSettings = await this.sharedSettingsRepository?.load() ?? null;
+    await this.initializeVaultIndex();
+    const leaf = this.app.workspace.getLeavesOfType(QUARTZO_VIEW_TYPE)[0];
+    if (leaf?.view instanceof QuartzoView) await leaf.view.refresh();
   }
 
   showFirstRunDialog() {
@@ -256,23 +615,27 @@ export default class QuartzoCompanionPlugin extends Plugin {
         <button id="setup-now">Setup Now</button>
       </div>
     `;
-    
     document.body.appendChild(modal);
-    
     modal.querySelector('#setup-later')?.addEventListener('click', () => {
+      this.settings.firstRunCompleted = true;
+      this.saveSettings();
       modal.remove();
     });
-    
     modal.querySelector('#setup-now')?.addEventListener('click', () => {
       this.settings.firstRunCompleted = true;
       this.saveSettings();
       modal.remove();
-      this.activateView(SYNC_CENTER_VIEW_TYPE);
+      void this.activateQuartzo('home', 'sync');
     });
   }
 
   onunload() {
-    console.log('Quartzo Companion unloaded');
+    this.stopAutoSync();
+    this.oauthClient?.abort();
+    for (const ref of this.eventRefs) {
+      this.app.vault.offref(ref);
+    }
+    this.eventRefs = [];
   }
 
   async loadSettings() {
@@ -293,22 +656,18 @@ class QuartzoSettingTab extends PluginSettingTab {
   }
 
   display(): void {
-    const {containerEl} = this;
-
+    const { containerEl } = this;
     containerEl.empty();
 
     new Setting(containerEl)
-      .setName('Google Drive Folder ID')
-      .setDesc('Folder ID for Google Drive synchronization')
+      .setName('Google OAuth Client ID')
+      .setDesc('Desktop OAuth Client ID from Google Cloud Console (PKCE, no client secret)')
       .addText(text => text
-        .setPlaceholder('Enter folder ID')
-        .setValue(this.plugin.settings.googleDriveFolderId || '')
+        .setPlaceholder('Enter OAuth Client ID')
+        .setValue(this.plugin.settings.oauthClientId)
         .onChange(async (value) => {
-          this.plugin.settings.googleDriveFolderId = value || null;
+          this.plugin.settings.oauthClientId = value;
           await this.plugin.saveSettings();
-          if (this.plugin.driveSyncCoordinator) {
-            await this.plugin.driveSyncCoordinator.setDriveFolderId(value || '');
-          }
         }));
 
     new Setting(containerEl)
@@ -319,6 +678,11 @@ class QuartzoSettingTab extends PluginSettingTab {
         .onChange(async (value) => {
           this.plugin.settings.syncAuto = value;
           await this.plugin.saveSettings();
+          if (value && this.plugin.settings.isPaired) {
+            this.plugin.startAutoSync();
+          } else {
+            this.plugin.stopAutoSync();
+          }
         }));
 
     new Setting(containerEl)

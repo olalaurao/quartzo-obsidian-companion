@@ -12,12 +12,14 @@ export interface SyncFile {
 export interface SyncState {
   files: Map<string, SyncFile>;
   lastSyncTime: number;
-  pageToken: string | null;
+  driveChangeToken: string | null;
   driveFolderId: string | null;
-  version: string; // State format version for compatibility checking
+  version: string;
+  pendingRenames?: PendingRename[];
+  pendingDeletes?: string[];
 }
 
-export const CURRENT_STATE_VERSION = '1.0.0';
+export const CURRENT_STATE_VERSION = '1.1.0';
 
 export interface SyncResult {
   synced: number;
@@ -32,22 +34,45 @@ export interface DriveFileMetadata {
   modifiedTime: string;
   md5Checksum?: string | null;
   parents?: string[] | null;
+  quartzoHash?: string | null;
 }
 
 export interface DriveAdapter {
   getFolderId(): Promise<string | null>;
   setFolderId(folderId: string): Promise<void>;
+  listAllFiles(folderId: string): Promise<DriveFileMetadata[]>;
   listFiles(folderId: string, pageToken?: string): Promise<{ files: DriveFileMetadata[]; nextPageToken: string | null }>;
+  listQuartzoVaultCandidates(): Promise<Array<{ id: string; name: string }>>;
   getStartPageToken(): Promise<string>;
-  listChanges(pageToken: string): Promise<{ changes: DriveChange[]; newPageToken: string }>;
+  listChanges(pageToken: string): Promise<{ changes: DriveChange[]; newStartPageToken: string; nextPageToken: string | null }>;
   downloadFile(fileId: string): Promise<Uint8Array>;
-  uploadFile(folderId: string, name: string, content: Uint8Array, parentId?: string): Promise<DriveFileMetadata>;
+  uploadFile(params: UploadFileParams): Promise<DriveFileMetadata>;
+  updateFile(fileId: string, content: Uint8Array, quartzoHash: string): Promise<DriveFileMetadata>;
+  renameFile(fileId: string, newName: string, newParentId?: string): Promise<DriveFileMetadata>;
   deleteFile(fileId: string): Promise<void>;
   getFileMetadata(fileId: string): Promise<DriveFileMetadata>;
+  ensureParentFolder(rootFolderId: string, filePath: string): Promise<string>;
+  assertInsideSelectedVault(remoteFileId: string): Promise<void>;
+  resolveExactPath(fileId: string): Promise<string>;
+  resolveRemoteHash(metadata: DriveFileMetadata): Promise<string>;
+}
+
+export interface UploadFileParams {
+  folderId: string;
+  name: string;
+  content: Uint8Array;
+  quartzoHash: string;
+  parentId?: string;
 }
 
 export interface DriveChange {
   fileId: string;
   removed: boolean;
   file?: DriveFileMetadata;
+}
+
+export interface PendingRename {
+  oldPath: string;
+  newPath: string;
+  timestamp: number;
 }

@@ -1,5 +1,6 @@
 import { ObjectParser } from '../../core/objects';
 import { VaultFile, IndexedObject, VaultIndex, IndexChange } from './types';
+import type { ParseResult } from '../../core/objects/types';
 
 export class VaultIndexEngine {
   private index: VaultIndex | null = null;
@@ -16,7 +17,10 @@ export class VaultIndexEngine {
     this.index = index;
   }
 
-  static createInitialIndex(files: VaultFile[]): VaultIndex {
+  static createInitialIndex(
+    files: VaultFile[],
+    parseFile: (content: string, path: string) => ParseResult = (content) => ObjectParser.parse(content),
+  ): VaultIndex {
     const index: VaultIndex = {
       files: new Map(),
       objects: new Map(),
@@ -28,7 +32,7 @@ export class VaultIndexEngine {
       
       // Try to parse as object
       try {
-        const result = ObjectParser.parse(file.content);
+        const result = parseFile(file.content, file.path);
         const indexedObject: IndexedObject = {
           id: result.object.id,
           type: result.object.type,

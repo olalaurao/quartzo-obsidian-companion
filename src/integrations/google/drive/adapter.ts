@@ -1,27 +1,116 @@
-import { DriveAdapter, DriveFileMetadata, DriveChange } from '../../../sync/coordinator/types';
-import { drive_v3, google } from 'googleapis';
+import { DriveAdapter, DriveFileMetadata, DriveChange, UploadFileParams } from '../../../sync/coordinator/types';
+import { drive_v3, drive } from '@googleapis/drive';
+import { OAuth2Client } from 'google-auth-library';
+import { normalizeVaultPath } from '../../../sync/coordinator/path-utils';
+import * as crypto from 'crypto';
 
 export class GoogleDriveAdapter implements DriveAdapter {
   private accessToken: string | null = null;
   private folderId: string | null = null;
   private drive: drive_v3.Drive | null = null;
+  private tokenRefreshCallback: (() => Promise<string | null>) | null = null;
 
   constructor(accessToken?: string) {
     this.accessToken = accessToken || null;
+  }
+
+  setAccessToken(token: string): void {
+    this.accessToken = token;
+    this.drive = null;
+  }
+
+  setTokenRefreshCallback(callback: () => Promise<string | null>): void {
+    this.tokenRefreshCallback = callback;
   }
 
   private getDriveClient(): drive_v3.Drive {
     if (!this.accessToken) {
       throw new Error('No access token available');
     }
-
     if (!this.drive) {
-      const auth = new google.auth.OAuth2();
-      auth.setCredentials({ access_token: this.accessToken });
-      this.drive = google.drive({ version: 'v3', auth });
+      const authClient = new OAuth2Client();
+      authClient.setCredentials({ access_token: this.accessToken });
+      this.drive = drive({ version: 'v3', auth: authClient });
     }
-
     return this.drive;
+  }
+
+  public async withRetry<T>(operation: () => Promise<T>, maxRetries = 3): Promise<T> {
+    let lastError: unknown;
+    let authRefreshAttempted = false;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error: unknown) {
+        lastError = error;
+        const err = error as { code?: number; status?: number; response?: { status?: number; data?: { error?: string; error_description?: string } } };
+        const statusCode = err.code || err.status || err.response?.status;
+
+        if ((statusCode === 401 || (statusCode === 403 && this.isCredentialError(err))) && !authRefreshAttempted) {
+          authRefreshAttempted = true;
+          if (this.tokenRefreshCallback) {
+            const newToken = await this.tokenRefreshCallback();
+            if (newToken) {
+              this.setAccessToken(newToken);
+              continue;
+            }
+          }
+          throw error;
+        }
+
+        if (statusCode === 429 || (statusCode && statusCode >= 500) || !statusCode) {
+          if (attempt < maxRetries) {
+            const baseMs = statusCode === 429 ? 2000 : 1000;
+            const delay = baseMs * Math.pow(2, attempt) + Math.random() * baseMs;
+            await new Promise(r => setTimeout(r, delay));
+            continue;
+          }
+        }
+
+        throw error;
+      }
+    }
+    throw lastError;
+  }
+
+  private isCredentialError(err: { code?: number; status?: number; response?: { status?: number; data?: { error?: string; error_description?: string; errors?: Array<{ reason?: string }> } } }): boolean {
+    const statusCode = err.code || err.status || err.response?.status;
+    if (statusCode !== 403) return false;
+    const errorDesc = err.response?.data?.error_description || err.response?.data?.error || '';
+    const errorReasons = (err.response?.data?.errors || []).map(e => e.reason || '').join(' ');
+    const combined = `${errorDesc} ${errorReasons}`.toLowerCase().replace(/[_\s]+/g, '');
+    if (combined.includes('accessnotconfigur') || combined.includes('apisdisabled') ||
+        combined.includes('quotaexceeded') || combined.includes('ratelimitexceeded') ||
+        combined.includes('sharingratelimitexceeded') || combined.includes('cannotdownloadfile') ||
+        combined.includes('permission') || combined.includes('denied') ||
+        combined.includes('insufficientpermission') || combined.includes('forbidden')) {
+      return false;
+    }
+    if (combined.includes('tokenexpired') || combined.includes('invalidgrant') ||
+        combined.includes('unauthorized') || combined.includes('credential') ||
+        combined.includes('logintrequired')) {
+      return true;
+    }
+    return false;
+  }
+
+  private escapeQueryParam(param: string): string {
+    return param.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  }
+
+  
+  private extractQuartzoHash(file: Record<string, unknown> | drive_v3.Schema$File): string | null {
+    if ((file as Record<string, unknown>).properties && ((file as Record<string, unknown>).properties as Record<string, string>).Quartzo_hash) {
+      return ((file as Record<string, unknown>).properties as Record<string, string>).Quartzo_hash;
+    }
+    if ((file as Record<string, unknown>).appProperties && ((file as Record<string, unknown>).appProperties as Record<string, string>).Quartzo_hash) {
+      return ((file as Record<string, unknown>).appProperties as Record<string, string>).Quartzo_hash;
+    }
+    return null;
+  }
+
+  private calculateQuartzoHash(content: Uint8Array): string {
+    return crypto.createHash('sha256').update(content).digest('hex');
   }
 
   async getFolderId(): Promise<string | null> {
@@ -33,193 +122,107 @@ export class GoogleDriveAdapter implements DriveAdapter {
   }
 
   async listFiles(folderId: string, pageToken?: string): Promise<{ files: DriveFileMetadata[]; nextPageToken: string | null }> {
-    const drive = this.getDriveClient();
-
-    const response = await drive.files.list({
-      q: `'${folderId}' in parents and trashed = false`,
-      fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents)',
-      pageSize: 100,
-      pageToken: pageToken
-    });
-
-    const files: DriveFileMetadata[] = (response.data.files || []).map(file => ({
-      id: file.id || '',
-      name: file.name || '',
-      mimeType: file.mimeType || '',
-      modifiedTime: file.modifiedTime || new Date().toISOString(),
-      md5Checksum: file.md5Checksum || undefined,
-      parents: file.parents || undefined
-    }));
-
-    // Build full paths from hierarchy
-    const filesWithPaths = await this.buildFilePaths(files, folderId);
-
-    return {
-      files: filesWithPaths,
-      nextPageToken: response.data.nextPageToken || null
-    };
-  }
-
-  private async buildFilePaths(files: DriveFileMetadata[], rootFolderId: string): Promise<DriveFileMetadata[]> {
-    const drive = this.getDriveClient();
-    const pathCache = new Map<string, string>(); // fileId -> path
-    
-    // Set root folder path
-    pathCache.set(rootFolderId, '');
-
-    const getPath = async (fileId: string, parents: string[] | undefined): Promise<string> => {
-      if (pathCache.has(fileId)) {
-        return pathCache.get(fileId)!;
-      }
-
-      if (!parents || parents.length === 0) {
-        return '';
-      }
-
-      const parentId = parents[0];
-      const parentPath = await getPath(parentId, undefined);
-      
-      // Get parent name
-      try {
-        const parent = await drive.files.get({
-          fileId: parentId,
-          fields: 'name'
-        });
-        const parentName = parent.data.name || '';
-        const fullPath = parentPath ? `${parentPath}/${parentName}` : parentName;
-        pathCache.set(fileId, fullPath);
-        return fullPath;
-      } catch (error) {
-        console.error(`Failed to get path for file ${fileId}:`, error);
-        return '';
-      }
-    };
-
-    const result: DriveFileMetadata[] = [];
-    for (const file of files) {
-      const parentPath = file.parents && file.parents.length > 0 
-        ? await getPath(file.parents[0], file.parents.slice(1)) 
-        : '';
-      const fullPath = parentPath ? `${parentPath}/${file.name}` : file.name;
-      result.push({
-        ...file,
-        name: fullPath // Use full path as the logical name
-      });
-    }
-
-    return result;
-  }
-
-  async downloadFile(fileId: string): Promise<Uint8Array> {
-    const drive = this.getDriveClient();
-
-    const response = await drive.files.get({
-      fileId: fileId,
-      alt: 'media'
-    }, { responseType: 'stream' });
-
-    return new Promise((resolve, reject) => {
-      const chunks: Buffer[] = [];
-      const stream = response.data as { on: (event: string, handler: (chunk: Buffer) => void) => void };
-      stream.on('data', (chunk: Buffer) => chunks.push(chunk));
-      stream.on('end', () => resolve(Buffer.concat(chunks)));
-      stream.on('error', reject);
-    });
-  }
-
-  async uploadFile(folderId: string, name: string, content: Uint8Array, parentId?: string): Promise<DriveFileMetadata> {
-    const drive = this.getDriveClient();
-
-    // Parse the path to get filename and parent folder structure
-    const pathParts = name.split('/');
-    const fileName = pathParts.pop() || name;
-    let currentParentId = parentId || folderId;
-
-    // Create nested folder structure if needed
-    for (const folderName of pathParts) {
-      if (!folderName) continue;
-      
-      // Check if folder exists
-      const existingFolder = await this.findFolderByName(currentParentId, folderName);
-      if (existingFolder) {
-        currentParentId = existingFolder;
-      } else {
-        // Create new folder
-        const folderMetadata = await drive.files.create({
-          requestBody: {
-            name: folderName,
-            parents: [currentParentId],
-            mimeType: 'application/vnd.google-apps.folder'
-          },
-          fields: 'id'
-        });
-        currentParentId = folderMetadata.data.id || currentParentId;
-      }
-    }
-
-    const media = {
-      mimeType: 'application/octet-stream',
-      body: Buffer.from(content)
-    };
-
-    const response = await drive.files.create({
-      requestBody: {
-        name: fileName,
-        parents: [currentParentId]
-      },
-      media: media,
-      fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents'
-    });
-
-    const data = await response;
-    return {
-      id: data.data.id || '',
-      name: name, // Return the full logical path
-      mimeType: data.data.mimeType || '',
-      modifiedTime: data.data.modifiedTime || new Date().toISOString(),
-      md5Checksum: data.data.md5Checksum || undefined,
-      parents: data.data.parents || undefined
-    };
-  }
-
-  private async findFolderByName(parentId: string, folderName: string): Promise<string | null> {
-    const drive = this.getDriveClient();
-    
-    try {
+    return this.withRetry(async () => {
+      const drive = this.getDriveClient();
       const response = await drive.files.list({
-        q: `'${parentId}' in parents and name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
-        fields: 'files(id)',
-        pageSize: 1
+        q: `'${folderId}' in parents and trashed = false`,
+        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties)',
+        pageSize: 100,
+        pageToken: pageToken
       });
-      
-      const files = response.data.files || [];
-      return files.length > 0 ? (files[0].id || null) : null;
-    } catch (error) {
-      console.error(`Failed to find folder ${folderName}:`, error);
-      return null;
-    }
+
+      const files: DriveFileMetadata[] = (response.data.files || []).map(file => ({
+        id: file.id || '',
+        name: file.name || '',
+        mimeType: file.mimeType || '',
+        modifiedTime: file.modifiedTime || new Date().toISOString(),
+        md5Checksum: file.md5Checksum || undefined,
+        parents: file.parents || undefined,
+        quartzoHash: this.extractQuartzoHash(file)
+      }));
+
+      return {
+        files,
+        nextPageToken: response.data.nextPageToken || null
+      };
+    });
+  }
+
+  async listAllFiles(folderId: string): Promise<DriveFileMetadata[]> {
+    return this.withRetry(async () => {
+      const allFiles: DriveFileMetadata[] = [];
+      const drive = this.getDriveClient();
+      await this.listAllFilesRecursive(drive, folderId, allFiles);
+      return allFiles;
+    });
+  }
+
+  private async listAllFilesRecursive(drive: drive_v3.Drive, folderId: string, allFiles: DriveFileMetadata[]): Promise<void> {
+    let pageToken: string | undefined;
+    do {
+      const response = await drive.files.list({
+        q: `'${folderId}' in parents and trashed = false`,
+        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties)',
+        pageSize: 1000,
+        pageToken
+      });
+
+      const files: DriveFileMetadata[] = (response.data.files || []).map(file => ({
+        id: file.id || '',
+        name: file.name || '',
+        mimeType: file.mimeType || '',
+        modifiedTime: file.modifiedTime || new Date().toISOString(),
+        md5Checksum: file.md5Checksum || undefined,
+        parents: file.parents || undefined,
+        quartzoHash: this.extractQuartzoHash(file)
+      }));
+
+      for (const file of files) {
+        if (file.mimeType === 'application/vnd.google-apps.folder') {
+          await this.listAllFilesRecursive(drive, file.id, allFiles);
+        } else {
+          allFiles.push(file);
+        }
+      }
+
+      pageToken = response.data.nextPageToken || undefined;
+    } while (pageToken);
+  }
+
+  async listQuartzoVaultCandidates(): Promise<Array<{ id: string; name: string }>> {
+    let folders: Array<{ id: string; name: string }> = [];
+    let pageToken: string | undefined = undefined;
+    const drive = this.getDriveClient();
+    do {
+      const response = await this.withRetry(() => drive.files.list({
+        q: "mimeType = 'application/vnd.google-apps.folder' and trashed = false and properties has { key='Quartzo_vault' and value='true' }",
+        fields: 'nextPageToken, files(id, name)',
+        pageSize: 100,
+        pageToken
+      }));
+      for (const f of (response.data.files || [])) {
+        if (f.id && f.name) folders.push({ id: f.id, name: f.name });
+      }
+      pageToken = response.data.nextPageToken || undefined;
+    } while (pageToken);
+    return folders;
   }
 
   async getStartPageToken(): Promise<string> {
-    const drive = this.getDriveClient();
-    
-    try {
+    return this.withRetry(async () => {
+      const drive = this.getDriveClient();
       const response = await drive.changes.getStartPageToken();
       return response.data.startPageToken || '';
-    } catch (error) {
-      console.error('Failed to get start page token:', error);
-      throw new Error('Failed to get start page token from Drive API');
-    }
+    });
   }
 
-  async listChanges(pageToken: string): Promise<{ changes: DriveChange[]; newPageToken: string }> {
-    const drive = this.getDriveClient();
-    
-    try {
+  async listChanges(pageToken: string): Promise<{ changes: DriveChange[]; newStartPageToken: string; nextPageToken: string | null }> {
+    return this.withRetry(async () => {
+      const drive = this.getDriveClient();
       const response = await drive.changes.list({
-        pageToken: pageToken,
-        fields: 'nextPageToken, newStartPageToken, changes(fileId, removed, file(id, name, mimeType, modifiedTime, md5Checksum, parents))',
-        pageSize: 100
+        pageToken,
+        fields: 'nextPageToken, newStartPageToken, changes(fileId, removed, file(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties))',
+        pageSize: 1000
       });
 
       const changes: DriveChange[] = (response.data.changes || []).map(change => ({
@@ -231,45 +234,355 @@ export class GoogleDriveAdapter implements DriveAdapter {
           mimeType: change.file.mimeType || '',
           modifiedTime: change.file.modifiedTime || new Date().toISOString(),
           md5Checksum: change.file.md5Checksum || undefined,
-          parents: change.file.parents || undefined
+          parents: change.file.parents || undefined,
+          quartzoHash: this.extractQuartzoHash(change.file)
         } : undefined
       }));
 
-      const newPageToken = response.data.newStartPageToken || response.data.nextPageToken || pageToken;
+      return {
+        changes,
+        newStartPageToken: response.data.newStartPageToken || pageToken,
+        nextPageToken: response.data.nextPageToken || null
+      };
+    });
+  }
 
-      return { changes, newPageToken };
-    } catch (error) {
-      console.error('Failed to list changes:', error);
-      throw new Error('Failed to list changes from Drive API');
+    async resolveRemoteHash(metadata: DriveFileMetadata): Promise<string> {
+    if (metadata.quartzoHash) return metadata.quartzoHash;
+    const bytes = await this.downloadFile(metadata.id);
+    return this.calculateQuartzoHash(bytes);
+  }
+
+  async downloadFile(fileId: string): Promise<Uint8Array> {
+    return this.withRetry(async () => {
+      const drive = this.getDriveClient();
+      const response = await drive.files.get({
+        fileId,
+        alt: 'media'
+      }, { responseType: 'arraybuffer' });
+      return new Uint8Array(response.data as ArrayBuffer);
+    });
+  }
+
+  async assertInsideSelectedVault(remoteFileId: string): Promise<void> {
+    if (!this.folderId) throw new Error('No vault folderId set');
+    let currentId = remoteFileId;
+    const drive = this.getDriveClient();
+    const checked = new Set<string>();
+    while (currentId) {
+      if (currentId === this.folderId) return;
+      if (checked.has(currentId)) throw new Error('Cyclic structure detected');
+      checked.add(currentId);
+      const res = await this.withRetry(() => drive.files.get({ fileId: currentId, fields: 'parents' }));
+      const parents = res.data.parents;
+      if (!parents || parents.length === 0) {
+        throw new Error(`Boundary guard failed: file ${remoteFileId} is not inside selected vault ${this.folderId}`);
+      }
+      currentId = parents[0];
     }
   }
 
+  private errorStatus(error: unknown): number | undefined {
+    const err = error as { code?: number; status?: number; response?: { status?: number } };
+    return err.code || err.status || err.response?.status;
+  }
+
+  private isTransientCreateError(error: unknown): boolean {
+    const status = this.errorStatus(error);
+    return !status || status === 429 || status >= 500;
+  }
+
+  private async createBackoff(attempt: number): Promise<void> {
+    const base = 250 * Math.pow(2, attempt);
+    await new Promise(resolve => setTimeout(resolve, base + Math.random() * 250));
+  }
+
+  private async listNamedChildren(parentId: string, childName: string, foldersOnly: boolean): Promise<DriveFileMetadata[]> {
+    const driveClient = this.getDriveClient();
+    const results: DriveFileMetadata[] = [];
+    let pageToken: string | undefined;
+    const parent = this.escapeQueryParam(parentId);
+    const name = this.escapeQueryParam(childName);
+    const mimeClause = foldersOnly
+      ? "mimeType = 'application/vnd.google-apps.folder'"
+      : "mimeType != 'application/vnd.google-apps.folder'";
+    do {
+      const response = await this.withRetry(() => driveClient.files.list({
+        q: `'${parent}' in parents and name = '${name}' and ${mimeClause} and trashed = false`,
+        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties)',
+        pageSize: 100,
+        pageToken
+      }));
+      for (const file of response.data.files || []) {
+        results.push({
+          id: file.id || '',
+          name: file.name || '',
+          mimeType: file.mimeType || '',
+          modifiedTime: file.modifiedTime || new Date().toISOString(),
+          md5Checksum: file.md5Checksum || undefined,
+          parents: file.parents || undefined,
+          quartzoHash: this.extractQuartzoHash(file)
+        });
+      }
+      pageToken = response.data.nextPageToken || undefined;
+    } while (pageToken);
+    return results;
+  }
+
+  private async findFolderByName(parentId: string, folderName: string): Promise<string | null> {
+    const files = await this.listNamedChildren(parentId, folderName, true);
+    if (files.length > 1) {
+      throw new Error(`Ambiguous Drive folder identity for ${folderName} under ${parentId}`);
+    }
+    return files.length === 1 ? files[0].id : null;
+  }
+
+  private async createFolderIdempotent(parentId: string, folderName: string): Promise<string> {
+    const existing = await this.findFolderByName(parentId, folderName);
+    if (existing) return existing;
+    const driveClient = this.getDriveClient();
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const created = await driveClient.files.create({
+          requestBody: {
+            name: folderName,
+            parents: [parentId],
+            mimeType: 'application/vnd.google-apps.folder'
+          },
+          fields: 'id'
+        });
+        if (!created.data.id) throw new Error(`Drive create folder returned no ID for ${folderName}`);
+        return created.data.id;
+      } catch (error) {
+        const after = await this.findFolderByName(parentId, folderName);
+        if (after) return after;
+        if (!this.isTransientCreateError(error) || attempt === 2) throw error;
+        await this.createBackoff(attempt);
+      }
+    }
+    throw new Error(`Unable to create folder ${folderName}`);
+  }
+
+  async ensureParentFolder(rootFolderId: string, filePath: string): Promise<string> {
+    let currentParentId = rootFolderId;
+    const pathParts = normalizeVaultPath(filePath).split('/');
+    pathParts.pop();
+    for (const folderName of pathParts) {
+      if (!folderName) continue;
+      currentParentId = await this.createFolderIdempotent(currentParentId, folderName);
+    }
+    return currentParentId;
+  }
+
+  private async createFileIdempotent(parentId: string, fileName: string, fullPath: string, content: Uint8Array, quartzoHash: string): Promise<DriveFileMetadata> {
+    const findExpected = async (): Promise<DriveFileMetadata | null> => {
+      const candidates = await this.listNamedChildren(parentId, fileName, false);
+      if (candidates.length > 1) throw new Error(`Ambiguous remote identity for ${fullPath}`);
+      if (candidates.length === 0) return null;
+      const candidate = candidates[0];
+      const actualHash = await this.resolveRemoteHash(candidate);
+      if (actualHash !== quartzoHash) {
+        throw new Error(`Remote path ${fullPath} already exists with divergent content`);
+      }
+      candidate.quartzoHash = actualHash;
+      return candidate;
+    };
+
+    const preexisting = await findExpected();
+    if (preexisting) return preexisting;
+
+    const driveClient = this.getDriveClient();
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const response = await driveClient.files.create({
+          requestBody: {
+            name: fileName,
+            parents: [parentId],
+            properties: { Quartzo_hash: quartzoHash }
+          },
+          media: {
+            mimeType: 'application/octet-stream',
+            body: Buffer.from(content)
+          },
+          fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties'
+        });
+        const data = response.data;
+        return {
+          id: data.id || '',
+          name: fullPath,
+          mimeType: data.mimeType || '',
+          modifiedTime: data.modifiedTime || new Date().toISOString(),
+          md5Checksum: data.md5Checksum || undefined,
+          parents: data.parents || undefined,
+          quartzoHash
+        };
+      } catch (error) {
+        const after = await findExpected();
+        if (after) return after;
+        if (!this.isTransientCreateError(error) || attempt === 2) throw error;
+        await this.createBackoff(attempt);
+      }
+    }
+    throw new Error(`Unable to create ${fullPath}`);
+  }
+
+  async uploadFile(params: UploadFileParams): Promise<DriveFileMetadata> {
+    const normalized = normalizeVaultPath(params.name);
+    const pathParts = normalized.split('/');
+    const fileName = pathParts.pop() || normalized;
+    const parentId = await this.ensureParentFolder(params.parentId || params.folderId, normalized);
+    return this.createFileIdempotent(parentId, fileName, normalized, params.content, params.quartzoHash);
+  }
+
+  async updateFile(fileId: string, content: Uint8Array, quartzoHash: string): Promise<DriveFileMetadata> {
+    await this.assertInsideSelectedVault(fileId);
+    return this.withRetry(async () => {
+      const driveClient = this.getDriveClient();
+      const response = await driveClient.files.update({
+        fileId,
+        requestBody: { properties: { Quartzo_hash: quartzoHash } },
+        media: { mimeType: 'application/octet-stream', body: Buffer.from(content) },
+        fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties'
+      });
+      const data = response.data;
+      return {
+        id: data.id || fileId,
+        name: data.name || '',
+        mimeType: data.mimeType || '',
+        modifiedTime: data.modifiedTime || new Date().toISOString(),
+        md5Checksum: data.md5Checksum || undefined,
+        parents: data.parents || undefined,
+        quartzoHash
+      };
+    });
+  }
+
   async deleteFile(fileId: string): Promise<void> {
+    try {
+      await this.assertInsideSelectedVault(fileId);
+    } catch (error) {
+      if (this.errorStatus(error) === 404) return; // retry after a committed delete
+      throw error;
+    }
+    try {
+      await this.withRetry(async () => {
+        const driveClient = this.getDriveClient();
+        await driveClient.files.delete({ fileId });
+      });
+    } catch (error) {
+      if (this.errorStatus(error) === 404) return;
+      throw error;
+    }
+  }
+
+  async renameFile(fileId: string, newName: string, newParentId?: string): Promise<DriveFileMetadata> {
+    await this.assertInsideSelectedVault(fileId);
+    if (newParentId) await this.assertInsideSelectedVault(newParentId);
+
+    return this.withRetry(async () => {
+      const driveClient = this.getDriveClient();
+      const currentResponse = await driveClient.files.get({
+        fileId,
+        fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties'
+      });
+      const current = currentResponse.data;
+      const currentParents = current.parents || [];
+
+      if (newParentId) {
+        const parent = this.escapeQueryParam(newParentId);
+        const name = this.escapeQueryParam(newName);
+        let pageToken: string | undefined;
+        const collisions: string[] = [];
+        do {
+          const response = await driveClient.files.list({
+            q: `'${parent}' in parents and name = '${name}' and mimeType != 'application/vnd.google-apps.folder' and trashed = false`,
+            fields: 'nextPageToken, files(id)',
+            pageSize: 100,
+            pageToken
+          });
+          for (const candidate of response.data.files || []) {
+            if (candidate.id && candidate.id !== fileId) collisions.push(candidate.id);
+          }
+          pageToken = response.data.nextPageToken || undefined;
+        } while (pageToken);
+        if (collisions.length > 0) {
+          throw new Error(`Ambiguous remote rename target: ${newName} already exists under ${newParentId}`);
+        }
+      }
+
+      const alreadyAtTarget = current.name === newName &&
+        (!newParentId || currentParents.includes(newParentId));
+      if (alreadyAtTarget) {
+        return {
+          id: current.id || fileId,
+          name: current.name || newName,
+          mimeType: current.mimeType || '',
+          modifiedTime: current.modifiedTime || new Date().toISOString(),
+          md5Checksum: current.md5Checksum || undefined,
+          parents: current.parents || undefined,
+          quartzoHash: this.extractQuartzoHash(current)
+        };
+      }
+
+      const movingParent = !!newParentId && !currentParents.includes(newParentId);
+      const response = await driveClient.files.update({
+        fileId,
+        requestBody: { name: newName },
+        addParents: movingParent ? newParentId : undefined,
+        removeParents: movingParent && currentParents.length > 0 ? currentParents.join(',') : undefined,
+        fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties'
+      });
+      const data = response.data;
+      return {
+        id: data.id || fileId,
+        name: data.name || newName,
+        mimeType: data.mimeType || '',
+        modifiedTime: data.modifiedTime || new Date().toISOString(),
+        md5Checksum: data.md5Checksum || undefined,
+        parents: data.parents || undefined,
+        quartzoHash: this.extractQuartzoHash(data)
+      };
+    });
+  }
+
+  async resolveExactPath(fileId: string): Promise<string> {
+    if (!this.folderId) throw new Error('No vault folderId set');
+    let currentId = fileId;
     const drive = this.getDriveClient();
-    await drive.files.delete({ fileId: fileId });
+    const parts: string[] = [];
+    const checked = new Set<string>();
+    while (currentId && currentId !== this.folderId) {
+      if (checked.has(currentId)) throw new Error('Cyclic structure detected in path resolution');
+      checked.add(currentId);
+      const res = await this.withRetry(() => drive.files.get({ fileId: currentId, fields: 'name, parents' }));
+      parts.unshift(res.data.name || '');
+      const parents = res.data.parents;
+      if (!parents || parents.length === 0) {
+        throw new Error(`Boundary guard failed: file escapes vault`);
+      }
+      currentId = parents[0];
+    }
+    return parts.join('/');
   }
 
   async getFileMetadata(fileId: string): Promise<DriveFileMetadata> {
-    const drive = this.getDriveClient();
+    return this.withRetry(async () => {
+      const drive = this.getDriveClient();
+      const response = await drive.files.get({
+        fileId,
+        fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties'
+      });
 
-    const response = await drive.files.get({
-      fileId: fileId,
-      fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents'
+      const data = response.data;
+      return {
+        id: data.id || '',
+        name: data.name || '',
+        mimeType: data.mimeType || '',
+        modifiedTime: data.modifiedTime || new Date().toISOString(),
+        md5Checksum: data.md5Checksum || undefined,
+        parents: data.parents || undefined,
+        quartzoHash: this.extractQuartzoHash(data)
+      };
     });
-
-    const data = await response;
-    return {
-      id: data.data.id || '',
-      name: data.data.name || '',
-      mimeType: data.data.mimeType || '',
-      modifiedTime: data.data.modifiedTime || new Date().toISOString(),
-      md5Checksum: data.data.md5Checksum || undefined,
-      parents: data.data.parents || undefined
-    };
-  }
-
-  setAccessToken(token: string): void {
-    this.accessToken = token;
-    this.drive = null;
   }
 }

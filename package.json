@@ -10,10 +10,12 @@
     "lint": "eslint src/** tests/**",
     "test": "vitest run",
     "test:contracts": "vitest run tests/contracts",
-    "test:sync": "vitest run tests/contracts/sync.test.ts",
+    "test:sync": "vitest run tests/contracts/sync.test.ts tests/sync/runtime.test.ts tests/sync/regression.test.ts tests/sync/p0-regression.test.ts",
     "contracts:verify": "node scripts/sync-contracts.mjs verify",
     "architecture:check": "node scripts/architecture-check.mjs",
-    "release:validate": "node scripts/release-validate.mjs"
+    "release:validate": "node scripts/release-validate.mjs",
+    "smoke:clean-artifact": "node scripts/smoke-clean-artifact.mjs",
+    "audit:prod": "npm audit --omit=dev --audit-level=high"
   },
   "keywords": [],
   "author": "olalaurao",
@@ -32,8 +34,12 @@
     "yaml": "^2.4.1"
   },
   "dependencies": {
+    "@googleapis/drive": "21.0.0",
     "date-fns": "^4.4.0",
     "date-fns-tz": "^3.2.0",
-    "googleapis": "^133.0.0"
+    "google-auth-library": "10.5.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }
