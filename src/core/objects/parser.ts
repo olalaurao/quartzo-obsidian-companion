@@ -47,7 +47,7 @@ const KNOWN_FIELDS: Record<ObjectType, Set<string>> = {
   tracker_record: new Set(['id', 'type', 'title', 'tracker_id', 'date', 'field_values', 'body']),
   entry: new Set(['id', 'type', 'title', 'date', 'time', 'body']),
   note: new Set(['id', 'type', 'title', 'note_subtype', 'links', 'body']),
-  reminder: new Set(['id', 'type', 'title', 'date', 'time', 'is_completed', 'reminder_count', 'reminder_id', 'scheduled_date', 'body']),
+  reminder: new Set(['id', 'type', 'title', 'date', 'time', 'is_completed', 'is_completable', 'reminder_count', 'reminder_id', 'reminders', 'scheduled_date', 'scheduler', 'notes', 'time_block', 'time_block_id', 'checkboxes', 'habit_reminder', 'organizers', 'categories', 'tags', 'links', 'archived', 'pinned', 'created_at', 'updated_at', 'source_url', 'body']),
   goal: new Set(['id', 'type', 'title', 'state', 'start_date', 'deadline', 'description', 'body']),
   event: new Set(['id', 'type', 'title', 'date', 'time_of_day', 'duration', 'body']),
   pomodoro_session: new Set(['id', 'type', 'title', 'date', 'work_duration', 'start', 'duration', 'state', 'body']),
@@ -352,8 +352,17 @@ export class ObjectParser {
           date: this.transformReminderDate(frontmatter.date || frontmatter.scheduled_date),
           time: this.transformReminderTime(frontmatter.time),
           is_completed: frontmatter.is_completed as boolean,
-          reminder_count: frontmatter.reminder_count as number || 1,
+          is_completable: frontmatter.is_completable as boolean,
+          reminder_count: frontmatter.reminder_count as number || (Array.isArray(frontmatter.reminders) ? frontmatter.reminders.length : 1),
           reminder_id: frontmatter.reminder_id as string,
+          reminders: Array.isArray(frontmatter.reminders) ? frontmatter.reminders as Reminder['reminders'] : undefined,
+          scheduler: frontmatter.scheduler && typeof frontmatter.scheduler === 'object' && !Array.isArray(frontmatter.scheduler)
+            ? { ...(frontmatter.scheduler as Record<string, unknown>) }
+            : undefined,
+          notes: frontmatter.notes as string,
+          time_block: (frontmatter.time_block ?? frontmatter.time_block_id) as string,
+          checkboxes: Array.isArray(frontmatter.checkboxes) ? frontmatter.checkboxes.map(value => String(value)) : undefined,
+          habit_reminder: frontmatter.habit_reminder as boolean,
         } as Reminder;
         break;
       
