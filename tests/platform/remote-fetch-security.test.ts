@@ -43,6 +43,20 @@ describe('remote fetch security', () => {
     })).rejects.toThrow('Private or local');
   });
 
+  it('pins the exact public address returned by the security resolver', async () => {
+    let pinned: string | undefined;
+    const transport: RemoteFetchTransport = async (_uri, options) => {
+      pinned = options.resolvedAddress;
+      return {
+        statusCode: 200,
+        headers: { 'content-type': 'application/json' },
+        bodyBytes: new TextEncoder().encode('{}'),
+      };
+    };
+    await secureRemoteFetch('https://example.com/data', { policy, resolver: publicResolver, transport });
+    expect(pinned).toBe('93.184.216.34');
+  });
+
   it('revalidates redirects against the host allowlist', async () => {
     const transport: RemoteFetchTransport = async () => ({
       statusCode: 302,
