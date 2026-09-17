@@ -2,6 +2,8 @@ import { ItemView, Modal, Notice, TFile, WorkspaceLeaf, normalizePath } from 'ob
 import { DailyScheduleEngine } from '../../core/daily_schedule';
 import type { NormalizedItem } from '../../core/daily_schedule/types';
 import { buildQuickAddDocument, type QuickAddType } from '../../core/object-creation';
+import { ObjectParser } from '../../core/objects';
+import type { TrackerDefinition } from '../../core/objects/types';
 import { findResourceDuplicates, type ResourceIdentity } from '../../core/resource-capture/policy';
 import { ResourceMetadataService, type ResourceMetadataDraft } from '../../integrations/resource-metadata/service';
 import { addLocalDays, daysInLocalMonth, localIsoDate, parseLocalIsoDate, shiftLocalMonth } from '../../core/local-date';
@@ -9,6 +11,7 @@ import { createCanonicalObjectId } from '../../platform/object-id';
 import { VaultIndexEngine } from '../../vault/index';
 import { renderObjectDetail } from '../detail/object-detail';
 import { projectHomeSchedule } from '../home/home-projection';
+import { renderTrackerRecordQuickAdd, type TrackerRecordFormController } from '../quick-add/record-form';
 import {
   SharedSettingsRepository,
 } from '../../vault/shared-settings';
@@ -31,6 +34,7 @@ function parseIsoDate(value: string): Date {
 }
 
 function labelForType(type: string): string {
+  if (type === 'tracker_record') return 'Record';
   return type.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
 }
 
@@ -68,7 +72,7 @@ class QuickAddModal extends Modal {
     contentEl.appendChild(title);
 
     const typeSelect = document.createElement('select');
-    for (const type of ['task', 'entry', 'note', 'reminder', 'resource'] as QuickAddType[]) {
+    for (const type of ['task', 'entry', 'note', 'reminder', 'tracker_record', 'resource'] as QuickAddType[]) {
       const option = document.createElement('option');
       option.value = type;
       option.textContent = labelForType(type);
@@ -85,12 +89,12 @@ class QuickAddModal extends Modal {
     titleInput.type = 'text';
     titleInput.placeholder = this.type === 'entry' ? 'Entry title (optional)' : `${labelForType(this.type)} title`;
     titleInput.className = 'quartzo-input';
-    contentEl.appendChild(titleInput);
+    if (this.type !== 'tracker_record') contentEl.appendChild(titleInput);
 
     const bodyInput = document.createElement('textarea');
     bodyInput.placeholder = this.type === 'resource' ? 'Synopsis or notes' : 'Content';
     bodyInput.className = 'quartzo-input';
-    contentEl.appendChild(bodyInput);
+    if (this.type !== 'tracker_record') contentEl.appendChild(bodyInput);
 
     let dateInput: HTMLInputElement | null = null;
     let timeInput: HTMLInputElement | null = null;
@@ -103,6 +107,11 @@ class QuickAddModal extends Modal {
       timeInput.type = 'time';
       timeInput.value = this.type === 'reminder' ? '09:00' : new Date().toTimeString().slice(0, 5);
       contentEl.appendChild(timeInput);
+    }
+
+    let recordForm: TrackerRecordFormController | null = null;
+    if (this.type === 'tracker_record') {
+      recordForm = renderTrackerRecordQuickAdd(contentEl, this.trackerDefinitions(), isoDate(new Date()));
     }
 
     let sourceUrlInput: HTMLInputElement | null = null;
@@ -208,6 +217,7 @@ class QuickAddModal extends Modal {
         const currentMetadata = resourceMetadata?.sourceUrl === currentResourceUrl && resourceMetadata.fetched
           ? resourceMetadata
           : null;
+        const recordInput = this.type === 'tracker_record' ? recordForm?.value() : undefined;
         const resourceInput = this.type === 'resource'
           ? {
               mediaType: mediaTypeSelect?.value ?? '',
@@ -254,6 +264,7 @@ class QuickAddModal extends Modal {
           date: dateInput?.value,
           time: timeInput?.value,
           resource: resourceInput,
+          record: recordInput,
         }, id);
         await this.ensureParentFolders(documentData.path);
         if (this.context.app.vault.getAbstractFileByPath(documentData.path)) {
@@ -272,6 +283,22 @@ class QuickAddModal extends Modal {
 
   private getIndex(): VaultIndex | null {
     return this.context.vaultIndexEngine?.getIndex() ?? this.context.plugin.vaultIndexEngine?.getIndex() ?? null;
+  }
+
+  private trackerDefinitions(): TrackerDefinition[] {
+    const index = this.getIndex();
+    if (!index) return [];
+    const trackers: TrackerDefinition[] = [];
+    for (const indexed of index.objects.values()) {
+      if (indexed.type !== 'tracker_definition' || indexed.frontmatter.archived === true) continue;
+      try {
+        const parsed = ObjectParser.parse(ObjectParser.serializeMarkdown(indexed.frontmatter, indexed.body)).object;
+        if (parsed.type === 'tracker_definition') trackers.push(parsed);
+      } catch {
+        // Malformed Trackers fail closed and are not offered for Record creation.
+      }
+    }
+    return trackers.sort((left, right) => left.title.localeCompare(right.title));
   }
 
   private resourceObjects(): IndexedObject[] {

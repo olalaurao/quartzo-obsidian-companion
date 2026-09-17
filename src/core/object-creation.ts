@@ -7,7 +7,7 @@ import {
   type QuartzoSharedSettings,
 } from './shared-settings';
 
-export type QuickAddType = 'task' | 'entry' | 'note' | 'reminder' | 'resource';
+export type QuickAddType = 'task' | 'entry' | 'note' | 'reminder' | 'resource' | 'tracker_record';
 
 export interface ResourceQuickAddInput {
   mediaType: string;
@@ -27,12 +27,20 @@ export interface ResourceQuickAddInput {
   imdbId?: string;
 }
 
+export interface TrackerRecordQuickAddInput {
+  trackerId: string;
+  trackerTitle: string;
+  date: string;
+  fieldValues: Record<string, unknown>;
+}
+
 export interface QuickAddInput {
   title: string;
   body: string;
   date?: string;
   time?: string;
   resource?: ResourceQuickAddInput;
+  record?: TrackerRecordQuickAddInput;
 }
 
 export function buildQuickAddDocument(
@@ -50,7 +58,13 @@ export function buildQuickAddDocument(
   if (type === 'resource' && !trimmedTitle) {
     throw new Error('Resource title is required.');
   }
-  const title = trimmedTitle || (type === 'entry' ? 'Journal Entry' : 'Untitled');
+  const record = type === 'tracker_record' ? input.record : undefined;
+  if (type === 'tracker_record' && !record) throw new Error('Record fields are required.');
+  const recordTrackerTitle = record?.trackerTitle.trim() ?? '';
+  if (type === 'tracker_record' && !recordTrackerTitle) throw new Error('Record Tracker title is required.');
+  const title = type === 'tracker_record'
+    ? `${recordTrackerTitle} ${record?.date ?? ''}`.trim()
+    : trimmedTitle || (type === 'entry' ? 'Journal Entry' : 'Untitled');
   const frontmatter: Record<string, unknown> = { id, type, title };
 
   if (type === 'entry') {
@@ -63,6 +77,16 @@ export function buildQuickAddDocument(
     frontmatter.is_completed = false;
     frontmatter.reminder_id = id;
     frontmatter.reminder_count = 1;
+  }
+  if (type === 'tracker_record') {
+    const trackerId = record?.trackerId.trim() ?? '';
+    const date = record?.date.trim() ?? '';
+    if (!trackerId) throw new Error('Record Tracker is required.');
+    if (!date) throw new Error('Record date is required.');
+    frontmatter.tracker_id = trackerId;
+    frontmatter.date = date;
+    frontmatter.field_values = { ...(record?.fieldValues ?? {}) };
+    frontmatter.categories = ['[[tracker_records]]'];
   }
   if (type === 'resource') {
     const resource = input.resource;

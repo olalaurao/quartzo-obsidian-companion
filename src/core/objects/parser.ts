@@ -285,7 +285,7 @@ export class ObjectParser {
             if (section && typeof section === 'object') {
               // Try direct property access
               name = (section.name as string) || (section.id as string) || (section.title as string) || '';
-              fields = (section.fields as unknown[]) || [];
+              fields = (section.input_fields as unknown[]) || (section.fields as unknown[]) || [];
               
               // If still empty, try iterating over keys
               if (!name && !fields.length) {
@@ -293,7 +293,7 @@ export class ObjectParser {
                   if (key === 'name' || key === 'id' || key === 'title') {
                     name = String(section[key]);
                   }
-                  if (key === 'fields') {
+                  if (key === 'input_fields' || key === 'fields') {
                     fields = Array.isArray(section[key]) ? section[key] as unknown[] : [];
                   }
                 }
