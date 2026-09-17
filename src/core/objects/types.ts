@@ -1,3 +1,5 @@
+import type { ReminderConfigData } from '../reminders/types';
+
 export type ObjectType = 
   | 'task'
   | 'habit'
@@ -50,7 +52,7 @@ export interface Task extends BaseObject {
     start_date: string;
     rules: Array<{repeat_type: string; interval?: number}>;
   };
-  reminders?: Array<{id: string; minutes_before: number; type: string}>;
+  reminders?: ReminderConfigData[];
 }
 
 export interface Habit extends BaseObject {
@@ -94,6 +96,13 @@ export interface Reminder extends BaseObject {
   is_completed?: boolean;
   reminder_count?: number;
   reminder_id?: string;
+  reminders?: ReminderConfigData[];
+  is_completable?: boolean;
+  scheduler?: Record<string, unknown>;
+  notes?: string;
+  time_block?: string;
+  checkboxes?: string[];
+  habit_reminder?: boolean;
 }
 
 export interface Goal extends BaseObject {
