@@ -292,7 +292,9 @@ export class DriveSyncCoordinator implements ConflictRegistry {
               isBinary: meta.conflictType === 'binary',
               timestamp: meta.timestamp || new Date().toISOString(),
               localExists: meta.local?.exists ?? true,
-              remoteExists: meta.remote?.exists ?? (meta.remote?.fileId != null)
+              remoteExists: meta.remote?.exists ?? (meta.remote?.fileId != null),
+              localModifiedAt: typeof meta.local?.modifiedAt === 'string' ? meta.local.modifiedAt : null,
+              remoteModifiedAt: typeof meta.remote?.modifiedAt === 'string' ? meta.remote.modifiedAt : null
             });
           } catch { /* skip corrupt artifact */ }
         } else if (relativePath.endsWith('.conflict') && !relativePath.endsWith('.conflict.json')) {
@@ -337,7 +339,9 @@ export class DriveSyncCoordinator implements ConflictRegistry {
                 isBinary: false,
                 timestamp: new Date().toISOString(),
                 localExists: metaLocalExists,
-                remoteExists: metaRemoteExists
+                remoteExists: metaRemoteExists,
+                localModifiedAt: null,
+                remoteModifiedAt: null
               });
             } else {
               const localSha256 = crypto.createHash('sha256').update(rawContent).digest('hex');
@@ -351,7 +355,9 @@ export class DriveSyncCoordinator implements ConflictRegistry {
                 isBinary: false,
                 timestamp: new Date().toISOString(),
                 localExists: metaLocalExists,
-                remoteExists: metaRemoteExists
+                remoteExists: metaRemoteExists,
+                localModifiedAt: null,
+                remoteModifiedAt: null
               });
             }
           } catch { /* skip corrupt artifact */ }
