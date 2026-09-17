@@ -43,6 +43,11 @@ function validNonNegativeInt(value: unknown): number | null {
   return value;
 }
 
+function validEscalationLevel(value: unknown): number | null {
+  const parsed = validNonNegativeInt(value);
+  return parsed != null && parsed <= 2 ? parsed : null;
+}
+
 function rawReminderConfigs(object: ReminderSourceObject): ReminderConfigData[] {
   if (Array.isArray(object.reminders)) {
     return object.reminders.filter((value): value is ReminderConfigData =>
@@ -109,6 +114,18 @@ function schedulerOccurrenceForDate(object: ReminderSourceObject, date: string):
   }
 }
 
+function standaloneReminderOccurrenceForDate(object: ReminderSourceObject, date: string): BaseOccurrence[] {
+  if (object.type !== 'reminder') return [];
+  const rawDate = typeof object.date === 'string' ? object.date : '';
+  const rawTime = typeof object.time === 'string' ? object.time : '';
+  const directDate = rawDate.includes('T') ? parsePersistedInstant(rawDate) : null;
+  const directTime = rawTime.includes('T') ? parsePersistedInstant(rawTime) : null;
+  const dateOnly = rawDate.includes('T') ? rawDate.split('T')[0] : rawDate;
+  const timeOnly = rawTime.includes('T') ? rawTime.split('T')[1]?.substring(0, 8) ?? '' : rawTime;
+  const dueAt = directDate ?? directTime ?? (dateOnly && timeOnly ? dateAtClock(dateOnly, timeOnly) : null);
+  if (!dueAt || localIsoDate(dueAt) !== date) return [];
+  return [{ occurrenceId: `reminder:${object.id}`, dueAt }];
+}
 function dailyOccurrencesForDate(object: ReminderSourceObject, date: string): BaseOccurrence[] {
   if (object.type === 'reminder') return [];
   const schedule = DailyScheduleEngine.normalize({
@@ -129,7 +146,11 @@ function dailyOccurrencesForDate(object: ReminderSourceObject, date: string): Ba
 }
 
 function baseOccurrencesForDate(object: ReminderSourceObject, date: string): BaseOccurrence[] {
-  const combined = [...dailyOccurrencesForDate(object, date), ...schedulerOccurrenceForDate(object, date)];
+  const combined = [
+    ...standaloneReminderOccurrenceForDate(object, date),
+    ...dailyOccurrencesForDate(object, date),
+    ...schedulerOccurrenceForDate(object, date),
+  ];
   const unique = new Map<string, BaseOccurrence>();
   for (const occurrence of combined) {
     unique.set(`${occurrence.occurrenceId}:${occurrence.dueAt.getTime()}`, occurrence);
@@ -168,7 +189,7 @@ function makeDelivery(
     triggerAt,
     notificationType: type,
     notificationBody: typeof config.notification_body === 'string' ? config.notification_body : undefined,
-    escalationLevel: validNonNegativeInt(config.escalation_level) ?? 0,
+    escalationLevel: validEscalationLevel(config.escalation_level) ?? 0,
   };
 }
 
@@ -190,6 +211,13 @@ export class ReminderProjectionEngine {
       for (const config of rawReminderConfigs(object)) {
         const type = notificationType(config.type);
         if (!type) continue;
+        const minutesBefore = validNonNegativeInt(config.minutes_before);
+        const daysBefore = validNonNegativeInt(config.days_before);
+        const escalationLevel = config.escalation_level == null ? 0 : validEscalationLevel(config.escalation_level);
+        if (config.minutes_before != null && minutesBefore == null) continue;
+        if (config.days_before != null && daysBefore == null) continue;
+        if (escalationLevel == null) continue;
+        if (config.time_of_day != null && (typeof config.time_of_day !== 'string' || !CLOCK_RE.test(config.time_of_day))) continue;
 
         const explicitTrigger = parsePersistedInstant(config.trigger_time);
         if (explicitTrigger) {
@@ -204,12 +232,6 @@ export class ReminderProjectionEngine {
           }
           continue;
         }
-
-        const minutesBefore = validNonNegativeInt(config.minutes_before);
-        const daysBefore = validNonNegativeInt(config.days_before);
-        if (config.minutes_before != null && minutesBefore == null) continue;
-        if (config.days_before != null && daysBefore == null) continue;
-        if (config.time_of_day != null && (typeof config.time_of_day !== 'string' || !CLOCK_RE.test(config.time_of_day))) continue;
 
         if (daysBefore != null || config.time_of_day != null) {
           const days = daysBefore ?? 0;
