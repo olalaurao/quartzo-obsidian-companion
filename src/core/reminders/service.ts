@@ -47,11 +47,16 @@ export class ReminderService {
   async poll(now = new Date()): Promise<number> {
     if (!this.started || this.pollInFlight) return 0;
     const previous = this.lastCheckedAt;
-    this.lastCheckedAt = new Date(now.getTime());
-    if (!previous || Number.isNaN(now.getTime()) || now <= previous) return 0;
+    if (!previous || Number.isNaN(now.getTime()) || now <= previous) {
+      this.lastCheckedAt = new Date(now.getTime());
+      return 0;
+    }
 
     const mode = this.options.getMode();
-    if (mode === 'off') return 0;
+    if (mode === 'off') {
+      this.lastCheckedAt = new Date(now.getTime());
+      return 0;
+    }
 
     this.pollInFlight = true;
     try {
@@ -63,6 +68,7 @@ export class ReminderService {
         await this.options.registry.markDelivered(occurrence.key, now);
         delivered += 1;
       }
+      this.lastCheckedAt = new Date(now.getTime());
       return delivered;
     } finally {
       this.pollInFlight = false;
