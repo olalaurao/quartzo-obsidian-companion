@@ -3,7 +3,7 @@ import type { ReminderDeliveryGateway, ReminderMode } from '../core/reminders';
 import type { ReminderDeliveryOccurrence } from '../core/reminders/types';
 
 interface DesktopNotificationLike {
-  onclick: (() => void) | null;
+  setOnClick(handler: () => void): void;
 }
 
 interface DesktopNotificationApi {
@@ -18,7 +18,10 @@ function browserNotificationApi(): DesktopNotificationApi | null {
   return {
     permission: NotificationCtor.permission,
     requestPermission: () => NotificationCtor.requestPermission(),
-    create: (title, options) => new NotificationCtor(title, options),
+    create: (title, options) => {
+      const notification = new NotificationCtor(title, options);
+      return { setOnClick: handler => { notification.onclick = () => handler(); } };
+    },
   };
 }
 
@@ -47,7 +50,7 @@ export class ObsidianReminderDeliveryGateway implements ReminderDeliveryGateway 
 
     if (mode === 'desktop_notifications' && this.desktopApi?.permission === 'granted') {
       const notification = this.desktopApi.create(title, body ? { body } : {});
-      notification.onclick = () => this.openQuartzo();
+      notification.setOnClick(() => this.openQuartzo());
       return;
     }
 
