@@ -156,7 +156,9 @@ export default class QuartzoCompanionPlugin extends Plugin {
     });
     await this.reminderService.start();
     this.registerInterval(window.setInterval(() => {
-      void this.reminderService?.poll(new Date());
+      void this.reminderService?.poll(new Date()).catch(error => {
+        console.error('Reminder delivery poll failed:', error instanceof Error ? error.message : String(error));
+      });
     }, 15_000));
 
     if (!this.settings.firstRunCompleted) {
