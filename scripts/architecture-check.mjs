@@ -325,6 +325,30 @@ function checkDeviceLocalSettingsBoundaries() {
   console.log('PASS: Device-local Settings and First Run preserve canonical ownership boundaries');
   return true;
 }
+function checkOAuthDesktopPlatformBoundary() {
+  const loopbackPath = path.join(rootDir, 'src/integrations/google/auth/loopback.ts');
+  const openerPath = path.join(rootDir, 'src/platform/browser-opener.ts');
+  const mainPath = path.join(rootDir, 'src/main.ts');
+  const loopback = fs.readFileSync(loopbackPath, 'utf8');
+  const opener = fs.readFileSync(openerPath, 'utf8');
+  const main = fs.readFileSync(mainPath, 'utf8');
+  const forbidden = ['child_process', 'xdg-open', 'start ""', 'exec(command)'];
+  const violations = forbidden.filter(pattern => loopback.includes(pattern) || opener.includes(pattern));
+  if (violations.length > 0) {
+    console.error(`FAIL: OAuth browser launch depends on external OS commands: ${violations.join(', ')}`);
+    return false;
+  }
+  if (!opener.includes("from 'electron'") || !opener.includes('shell.openExternal') || !main.includes('this.browserOpener')) {
+    console.error('FAIL: OAuth loopback is not wired through the Electron platform browser opener');
+    return false;
+  }
+  if (!loopback.includes("http://127.0.0.1:${this.port}") || !loopback.includes("code_challenge_method', 'S256'")) {
+    console.error('FAIL: OAuth desktop loopback/PKCE contract regressed');
+    return false;
+  }
+  console.log('PASS: OAuth desktop browser launch stays inside Obsidian/Electron with loopback PKCE');
+  return true;
+}
 function main() {
   console.log('Running architecture/completeness checks...\n');
   let allPassed = true;
@@ -344,6 +368,7 @@ function main() {
   if (!checkReminderRuntimeBoundaries()) allPassed = false;
   if (!checkConflictResolutionIsExplicit()) allPassed = false;
   if (!checkDeviceLocalSettingsBoundaries()) allPassed = false;
+  if (!checkOAuthDesktopPlatformBoundary()) allPassed = false;
 
   console.log('\n' + (allPassed ? 'All architecture checks passed' : 'Some architecture checks failed'));
   process.exit(allPassed ? 0 : 1);
