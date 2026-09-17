@@ -627,14 +627,23 @@ export default class QuartzoCompanionPlugin extends Plugin {
   showFirstRunDialog() {
     const modal = document.createElement('div');
     modal.className = 'quartzo-first-run-modal';
-    modal.innerHTML = `
-      <div class="modal-content">
-        <h2>Welcome to Quartzo Companion</h2>
-        <p>Set up your Google Drive sync to get started.</p>
-        <button id="setup-later">Setup Later</button>
-        <button id="setup-now">Setup Now</button>
-      </div>
-    `;
+    const modalContent = document.createElement('div');
+    modalContent.className = 'modal-content';
+    const title = document.createElement('h2');
+    title.textContent = 'Welcome to Quartzo Companion';
+    modalContent.appendChild(title);
+    const description = document.createElement('p');
+    description.textContent = 'Set up your Google Drive sync to get started.';
+    modalContent.appendChild(description);
+    const setupLater = document.createElement('button');
+    setupLater.id = 'setup-later';
+    setupLater.textContent = 'Setup Later';
+    modalContent.appendChild(setupLater);
+    const setupNow = document.createElement('button');
+    setupNow.id = 'setup-now';
+    setupNow.textContent = 'Setup Now';
+    modalContent.appendChild(setupNow);
+    modal.appendChild(modalContent);
     document.body.appendChild(modal);
     modal.querySelector('#setup-later')?.addEventListener('click', () => {
       this.settings.firstRunCompleted = true;
