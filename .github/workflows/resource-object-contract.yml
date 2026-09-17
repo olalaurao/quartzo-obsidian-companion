@@ -1,0 +1,33 @@
+name: Resource object contract patch
+
+on:
+  push:
+    branches:
+      - feat/beta-product-completion
+    paths:
+      - scripts/patch-resource-object-contract.mjs
+      - .github/workflows/resource-object-contract.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/beta-product-completion
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/patch-resource-object-contract.mjs
+      - name: Commit Resource object support
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/core/objects/types.ts src/core/objects/parser.ts
+          git diff --cached --check
+          git commit -m "feat(resource): add canonical object parser support"
+          git push origin HEAD:feat/beta-product-completion
