@@ -116,7 +116,6 @@ function renderDefinition(
   definition: TrackerCaptureDefinition,
   readers: Map<string, ValueReader>,
 ): void {
-  container.empty?.();
   while (container.firstChild) container.removeChild(container.firstChild);
   for (const section of definition.sections) {
     const sectionEl = document.createElement('section');
