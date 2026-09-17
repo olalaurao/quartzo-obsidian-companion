@@ -3,6 +3,7 @@ import type { VaultIndexEngine } from '../vault/index';
 import type { DriveSyncCoordinator } from '../sync/coordinator';
 import type { GoogleDriveAdapter } from '../integrations/google/drive';
 import type { GoogleCalendarProjection } from '../integrations/google/calendar';
+import type { ReminderMode } from '../core/reminders';
 
 export interface UIState {
   currentView: string;
@@ -26,6 +27,7 @@ export interface ViewContext {
       firstRunCompleted: boolean;
       oauthClientId: string;
       isPaired: boolean;
+      reminderDelivery: ReminderMode;
     };
     saveSettings(): Promise<void>;
     startPairingFlow(): Promise<void>;
@@ -33,6 +35,7 @@ export interface ViewContext {
     disconnectDrive(): Promise<void>;
     listGoogleCalendarEvents(startDate: string, days: number): Promise<GoogleCalendarProjection[]>;
     reauthorizeGoogleCalendar(): Promise<void>;
+    setReminderDelivery(mode: ReminderMode): Promise<void>;
     adoptFile(filePath: string): Promise<void>;
     openSettings(): void;
   };
