@@ -23,6 +23,11 @@ const criticalPaths = [
     description: 'OAuth loopback'
   },
   {
+    path: 'src/integrations/google/calendar/adapter.ts',
+    forbiddenPatterns: ['// TODO: implement', '// FIXME: implement', 'throw new Error("Not implemented")'],
+    description: 'Google Calendar read-only adapter'
+  },
+  {
     path: 'src/main.ts',
     forbiddenPatterns: ['// TODO: implement', '// FIXME: implement'],
     description: 'Plugin main (composition root)'
@@ -186,6 +191,32 @@ function checkCanonicalUiDateAndIdentityOwners() {
   return true;
 }
 
+function checkGoogleCalendarRemainsReadOnly() {
+  const adapterPath = path.join(rootDir, 'src/integrations/google/calendar/adapter.ts');
+  const scopesPath = path.join(rootDir, 'src/integrations/google/auth/scopes.ts');
+  if (!fs.existsSync(adapterPath) || !fs.existsSync(scopesPath)) {
+    console.error('FAIL: Google Calendar read-only integration files are missing');
+    return false;
+  }
+  const adapter = fs.readFileSync(adapterPath, 'utf8');
+  const scopes = fs.readFileSync(scopesPath, 'utf8');
+  const writePatterns = ["method: 'POST'", "method: 'PUT'", "method: 'PATCH'", "method: 'DELETE'", '.insert(', '.update(', '.delete('];
+  const writes = writePatterns.filter(pattern => adapter.includes(pattern));
+  if (writes.length > 0) {
+    console.error(`FAIL: Google Calendar V1 adapter contains write paths: ${writes.join(', ')}`);
+    return false;
+  }
+  if (!scopes.includes('https://www.googleapis.com/auth/calendar.readonly')) {
+    console.error('FAIL: Google Calendar read-only scope is missing');
+    return false;
+  }
+  if (/['"]https:\/\/www\.googleapis\.com\/auth\/calendar['"]/.test(scopes)) {
+    console.error('FAIL: Companion requests broad Google Calendar write scope');
+    return false;
+  }
+  console.log('PASS: Google Calendar integration is read-only and least-privilege');
+  return true;
+}
 function main() {
   console.log('Running architecture/completeness checks...\n');
   let allPassed = true;
@@ -201,6 +232,7 @@ function main() {
   if (!checkNoHardcodedQuickAddFolders()) allPassed = false;
   if (!checkNoUnsafeInnerHtml()) allPassed = false;
   if (!checkCanonicalUiDateAndIdentityOwners()) allPassed = false;
+  if (!checkGoogleCalendarRemainsReadOnly()) allPassed = false;
 
   console.log('\n' + (allPassed ? 'All architecture checks passed' : 'Some architecture checks failed'));
   process.exit(allPassed ? 0 : 1);
