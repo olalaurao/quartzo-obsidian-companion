@@ -4,6 +4,7 @@ import { buildQuickAddDocument, type QuickAddType } from '../../core/object-crea
 import { addLocalDays, daysInLocalMonth, localIsoDate, parseLocalIsoDate, shiftLocalMonth } from '../../core/local-date';
 import { createCanonicalObjectId } from '../../platform/object-id';
 import { VaultIndexEngine } from '../../vault/index';
+import { renderObjectDetail } from '../detail/object-detail';
 import {
   SharedSettingsRepository,
 } from '../../vault/shared-settings';
@@ -141,6 +142,7 @@ class QuickAddModal extends Modal {
 export class QuartzoView extends ItemView {
   private section: QuartzoSection = 'home';
   private action: QuartzoAction | null = null;
+  private selectedObjectId: string | null = null;
   private selectedDate = isoDate(new Date());
   private plannerMode: 'day' | 'week' | 'month' = 'day';
   private sharedSettingsRepository: SharedSettingsRepository;
@@ -161,10 +163,12 @@ export class QuartzoView extends ItemView {
   async setSection(section: QuartzoSection): Promise<void> {
     this.section = section;
     this.action = null;
+    this.selectedObjectId = null;
     await this.render();
   }
 
   async handleAction(action: QuartzoAction): Promise<void> {
+    this.selectedObjectId = null;
     if (action === 'add') {
       new QuickAddModal(this.context).open();
       return;
@@ -222,6 +226,18 @@ export class QuartzoView extends ItemView {
     content.className = 'quartzo-shell-content';
     shell.appendChild(content);
 
+    if (this.selectedObjectId) {
+      const object = this.getIndex()?.objects.get(this.selectedObjectId);
+      if (object) {
+        renderObjectDetail(content, object, {
+          onBack: () => { this.selectedObjectId = null; void this.render(); },
+          onOpenMarkdown: () => this.openMarkdown(object),
+        });
+        return;
+      }
+      this.selectedObjectId = null;
+    }
+
     if (this.action === 'search') {
       this.renderSearch(content);
       return;
@@ -270,7 +286,7 @@ export class QuartzoView extends ItemView {
       const object = this.getIndex()?.objects.get(item.sourceId);
       if (object) {
         row.className = 'quartzo-clickable';
-        row.addEventListener('click', () => this.openMarkdown(object));
+        row.addEventListener('click', () => this.openObjectDetail(object));
       }
       list.appendChild(row);
     }
@@ -548,8 +564,13 @@ export class QuartzoView extends ItemView {
     const row = document.createElement('button');
     row.className = 'quartzo-object-row';
     row.textContent = `${String(object.frontmatter.title ?? 'Untitled')} · ${labelForType(object.type)}`;
-    row.addEventListener('click', () => this.openMarkdown(object));
+    row.addEventListener('click', () => this.openObjectDetail(object));
     container.appendChild(row);
+  }
+
+  private openObjectDetail(object: IndexedObject): void {
+    this.selectedObjectId = object.id;
+    void this.render();
   }
 
   private openMarkdown(object: IndexedObject): void {
