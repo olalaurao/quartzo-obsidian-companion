@@ -283,6 +283,48 @@ function checkConflictResolutionIsExplicit() {
   console.log('PASS: Conflict resolution never silently chooses newest');
   return true;
 }
+function checkDeviceLocalSettingsBoundaries() {
+  const mainPath = path.join(rootDir, 'src/main.ts');
+  const sharedCorePath = path.join(rootDir, 'src/core/shared-settings.ts');
+  const sharedVaultPath = path.join(rootDir, 'src/vault/shared-settings.ts');
+  const main = fs.readFileSync(mainPath, 'utf8');
+  const shared = `${fs.readFileSync(sharedCorePath, 'utf8')}\n${fs.readFileSync(sharedVaultPath, 'utf8')}`;
+  const requiredLocal = [
+    'syncPollingIntervalSeconds',
+    'syncOnStartup',
+    'syncOnFocus',
+    'hideSensitivePreviews',
+    'hideJournalPreviewText',
+    'hideNotificationBody',
+  ];
+  const missing = requiredLocal.filter(key => !main.includes(key));
+  if (missing.length > 0) {
+    console.error(`FAIL: Companion-local settings are missing: ${missing.join(', ')}`);
+    return false;
+  }
+  const leaked = requiredLocal.filter(key => shared.includes(key));
+  if (leaked.length > 0) {
+    console.error(`FAIL: Device-local settings leaked into shared Quartzo settings: ${leaked.join(', ')}`);
+    return false;
+  }
+  if (main.includes('this.settings.privacyMode') || main.includes("setName('Privacy Mode')")) {
+    console.error('FAIL: Legacy monolithic privacyMode remains a runtime settings owner');
+    return false;
+  }
+  if (!main.includes("registerDomEvent(window, 'focus'") || !main.includes('this.settings.syncPollingIntervalSeconds') || !main.includes('seconds * 1000')) {
+    console.error('FAIL: Sync Settings are not wired to lifecycle-managed runtime triggers');
+    return false;
+  }
+  const firstRunStart = main.indexOf('class QuartzoFirstRunModal extends Modal');
+  const firstRunEnd = main.indexOf('class QuartzoSettingTab', firstRunStart);
+  const firstRun = firstRunStart >= 0 && firstRunEnd > firstRunStart ? main.slice(firstRunStart, firstRunEnd) : '';
+  if (!firstRun.includes('startPairingFlow()') || !firstRun.includes('useWithoutSync()') || firstRun.includes('firstRunCompleted = true')) {
+    console.error('FAIL: First Run bypasses canonical pairing or marks setup complete prematurely');
+    return false;
+  }
+  console.log('PASS: Device-local Settings and First Run preserve canonical ownership boundaries');
+  return true;
+}
 function main() {
   console.log('Running architecture/completeness checks...\n');
   let allPassed = true;
@@ -301,6 +343,7 @@ function main() {
   if (!checkGoogleCalendarRemainsReadOnly()) allPassed = false;
   if (!checkReminderRuntimeBoundaries()) allPassed = false;
   if (!checkConflictResolutionIsExplicit()) allPassed = false;
+  if (!checkDeviceLocalSettingsBoundaries()) allPassed = false;
 
   console.log('\n' + (allPassed ? 'All architecture checks passed' : 'Some architecture checks failed'));
   process.exit(allPassed ? 0 : 1);
