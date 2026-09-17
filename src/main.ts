@@ -11,6 +11,7 @@ import { addLocalDays, localIsoDate, parseLocalIsoDate } from './core/local-date
 import { ReminderService, type ReminderMode, type ReminderSourceObject } from './core/reminders';
 import { FileNotificationDeliveryRegistry } from './local-state/notification-delivery-registry';
 import { ObsidianReminderDeliveryGateway } from './platform/notifications';
+import { ElectronBrowserOpener } from './platform/browser-opener';
 import { normalizeVaultPath } from './sync/coordinator/path-utils';
 import { VaultSyncFilePolicy } from './sync/coordinator/file-policy';
 import { SHARED_SETTINGS_PATH, SharedSettingsRepository, parseObjectWithSharedSettings, type QuartzoSharedSettings } from './vault/shared-settings';
@@ -87,6 +88,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
   private sharedSettings: QuartzoSharedSettings | null = null;
   private googleAccessRefreshInFlight: Promise<string | null> | null = null;
   private readonly calendarCache = new Map<string, CalendarCacheEntry>();
+  private readonly browserOpener = new ElectronBrowserOpener();
   calendarStatus: GoogleCalendarStatus = 'disconnected';
   authState: 'disconnected' | 'authenticating' | 'authenticated_unpaired' | 'paired' | 'authentication_required' = 'disconnected';
 
@@ -287,7 +289,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.authState = 'authenticating';
     const config = { ...OAUTH_CONFIG, clientId };
     const secretStorage = this.getSecretStorage();
-    this.oauthClient = new GoogleOAuthDesktop(config, secretStorage);
+    this.oauthClient = new GoogleOAuthDesktop(config, secretStorage, this.browserOpener);
     try {
       const tokenResponse = await this.oauthClient.startAuthLoopback(true);
       this.configureGoogleAccessToken(tokenResponse.access_token);
@@ -558,7 +560,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
 
     try {
       const config = { ...OAUTH_CONFIG, clientId: this.getResolvedClientId() };
-      this.oauthClient = new GoogleOAuthDesktop(config, secretStorage);
+      this.oauthClient = new GoogleOAuthDesktop(config, secretStorage, this.browserOpener);
       const tokenResponse = await this.oauthClient.refreshAccessToken();
       this.configureGoogleAccessToken(tokenResponse.access_token);
       this.authState = this.settings.isPaired ? 'paired' : 'authenticated_unpaired';
@@ -592,7 +594,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.authState = 'authenticating';
     const config = { ...OAUTH_CONFIG, clientId };
     const secretStorage = this.getSecretStorage();
-    this.oauthClient = new GoogleOAuthDesktop(config, secretStorage);
+    this.oauthClient = new GoogleOAuthDesktop(config, secretStorage, this.browserOpener);
 
     try {
       const storedRefresh = await secretStorage.get('quartzo_companion/refresh_token');
@@ -630,7 +632,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.authState = 'authenticating';
     const config = { ...OAUTH_CONFIG, clientId };
     const secretStorage = this.getSecretStorage();
-    this.oauthClient = new GoogleOAuthDesktop(config, secretStorage);
+    this.oauthClient = new GoogleOAuthDesktop(config, secretStorage, this.browserOpener);
     try {
       const tokenResponse = await this.oauthClient.startAuthLoopback(true);
       this.configureGoogleAccessToken(tokenResponse.access_token);
