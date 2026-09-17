@@ -591,6 +591,36 @@ export default class QuartzoCompanionPlugin extends Plugin {
     }
   }
 
+  async reconnectGoogle(): Promise<void> {
+    const clientId = this.getResolvedClientId();
+    if (!clientId || clientId === 'PLACEHOLDER_CLIENT_ID') {
+      new Notice('Configure your Google OAuth Client ID in settings first.');
+      return;
+    }
+
+    const wasPaired = this.settings.isPaired && Boolean(this.settings.googleDriveFolderId);
+    this.authState = 'authenticating';
+    const config = { ...OAUTH_CONFIG, clientId };
+    const secretStorage = this.getSecretStorage();
+    this.oauthClient = new GoogleOAuthDesktop(config, secretStorage);
+    try {
+      const tokenResponse = await this.oauthClient.startAuthLoopback(true);
+      this.configureGoogleAccessToken(tokenResponse.access_token);
+      if (wasPaired && this.settings.googleDriveFolderId) {
+        await this.driveAdapter?.setFolderId(this.settings.googleDriveFolderId);
+        await this.driveSyncCoordinator?.setDriveFolderId(this.settings.googleDriveFolderId);
+        this.authState = 'paired';
+        this.startAutoSync();
+        new Notice('Google Drive reconnected.');
+      } else {
+        this.authState = 'authenticated_unpaired';
+        new Notice('Google Drive authenticated. Select your Quartzo vault.');
+      }
+    } catch (error) {
+      this.authState = wasPaired ? 'authentication_required' : 'disconnected';
+      new Notice(`Google Drive reconnect failed: ${error}`);
+    }
+  }
   async confirmPairing(folderId: string, folderName: string, autoAdopt: boolean, autoPull: boolean): Promise<void> {
     if (!this.driveAdapter || !this.driveSyncCoordinator) {
       new Notice('Drive not initialized.');
