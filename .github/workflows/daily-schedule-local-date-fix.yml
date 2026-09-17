@@ -1,0 +1,30 @@
+name: Daily Schedule local-date fix
+
+on:
+  push:
+    branches:
+      - feat/beta-product-completion
+    paths:
+      - scripts/fix-daily-schedule-local-date.mjs
+      - .github/workflows/daily-schedule-local-date-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/beta-product-completion
+          fetch-depth: 0
+      - run: node scripts/fix-daily-schedule-local-date.mjs
+      - name: Commit patched sources
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/core/daily_schedule/engine.ts scripts/architecture-check.mjs
+          git diff --cached --check
+          git commit -m "fix(schedule): use canonical local date semantics"
+          git push origin HEAD:feat/beta-product-completion
