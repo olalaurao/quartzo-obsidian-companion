@@ -21,7 +21,9 @@ jobs:
           node-version: '20'
           cache: npm
       - name: Apply V1 shell/shared-settings repair
-        run: python scripts/agent_v1_ui_repair.py
+        run: |
+          python scripts/agent_v1_ui_repair.py
+          python scripts/agent_v1_ui_repair_fix.py
       - run: npm ci
       - run: npm audit --omit=dev --audit-level=high
       - name: Verify canonical contracts
@@ -39,7 +41,7 @@ jobs:
       - run: npm run smoke:clean-artifact
       - name: Commit validated repair
         run: |
-          rm scripts/agent_v1_ui_repair.py
+          rm scripts/agent_v1_ui_repair.py scripts/agent_v1_ui_repair_fix.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
