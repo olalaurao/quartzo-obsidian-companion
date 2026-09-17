@@ -368,9 +368,10 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     walkDir(conflictDir, '');
   }
 
-  async reconcile(): Promise<SyncResult> {
+  async reconcile(forceFull = false): Promise<SyncResult> {
     if (this.syncMutex) {
       this.syncRerunRequested = true;
+      this.syncRerunForceFull = this.syncRerunForceFull || forceFull;
       return { synced: 0, conflicts: 0, errors: ['Sync already in progress, coalesced'] };
     }
 
@@ -394,7 +395,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
       const localInventory = await this.buildLocalInventory();
 
-      if (this.syncState.driveChangeToken) {
+      if (!forceFull && this.syncState.driveChangeToken) {
         await this.processChanges(localInventory, result);
         const freshLocalInventory = await this.buildLocalInventory();
         await this.processLocalDirty(freshLocalInventory, result);
@@ -404,18 +405,27 @@ export class DriveSyncCoordinator implements ConflictRegistry {
         this.syncState.driveChangeToken = startToken;
       }
 
-      this.syncState.lastSyncTime = Date.now();
+      if (result.errors.length === 0) {
+        this.syncState.lastSyncTime = Date.now();
+        this.lastError = null;
+      } else {
+        this.lastError = result.errors[result.errors.length - 1] ?? null;
+      }
       await this.saveSyncState();
       this.backoffMs = 1000;
     } catch (error) {
-      result.errors.push(`Sync failed: ${error}`);
+      const message = `Sync failed: ${error}`;
+      result.errors.push(message);
+      this.lastError = message;
       this.backoffMs = Math.min(this.backoffMs * 2, this.maxBackoffMs);
     } finally {
       this.syncMutex = false;
       this.currentTransactionId = null;
       if (this.syncRerunRequested) {
         this.syncRerunRequested = false;
-        void this.reconcile();
+        const rerunForceFull = this.syncRerunForceFull;
+        this.syncRerunForceFull = false;
+        void this.reconcile(rerunForceFull);
       }
     }
 
@@ -1187,6 +1197,46 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     return { ...this.syncState, files: new Map(this.syncState.files) };
   }
 
+  async getSyncStatusSnapshot(): Promise<SyncStatusSnapshot> {
+    const pendingLocalChanges = await this.countPendingLocalChanges();
+    const conflictCount = this.conflicts.size;
+    const status: SyncCenterStatus = this.syncMutex
+      ? 'syncing'
+      : conflictCount > 0
+        ? 'conflict'
+        : this.lastError
+          ? 'error'
+          : pendingLocalChanges > 0
+            ? 'local_changes'
+            : 'synced';
+    return {
+      status,
+      lastSuccessfulSyncAt: this.syncState.lastSyncTime > 0 ? new Date(this.syncState.lastSyncTime).toISOString() : null,
+      pendingLocalChanges,
+      conflictCount,
+      lastError: this.lastError,
+    };
+  }
+
+  private async countPendingLocalChanges(): Promise<number> {
+    const changed = new Set<string>();
+    for (const rename of this.pendingRenames) {
+      changed.add(rename.oldPath);
+      changed.add(rename.newPath);
+    }
+    for (const deleted of this.pendingDeletes) changed.add(deleted);
+
+    const localInventory = await this.buildLocalInventory();
+    for (const [filePath, localFile] of localInventory) {
+      const syncFile = this.syncState.files.get(filePath);
+      if (!syncFile || !syncFile.remoteFileId || syncFile.localHash !== localFile.hash) changed.add(filePath);
+    }
+    for (const [filePath, syncFile] of this.syncState.files) {
+      if (syncFile.localExists && !localInventory.has(filePath)) changed.add(filePath);
+    }
+    return changed.size;
+  }
+
   async setDriveFolderId(folderId: string): Promise<void> {
     await this.driveAdapter.setFolderId(folderId);
     this.syncState.driveFolderId = folderId;
@@ -1531,6 +1581,10 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
   async triggerManualSync(): Promise<SyncResult> {
     return this.reconcile();
+  }
+
+  async triggerFullReconciliation(): Promise<SyncResult> {
+    return this.reconcile(true);
   }
 
   async triggerStartupSync(): Promise<SyncResult> {
