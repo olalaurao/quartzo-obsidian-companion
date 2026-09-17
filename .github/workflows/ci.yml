@@ -32,7 +32,6 @@ jobs:
     - run: npm run release:validate
     - run: npm run smoke:clean-artifact
     - run: npm run release:package
-    - run: npm run release:package
 
   test-windows:
     runs-on: windows-latest
@@ -49,3 +48,4 @@ jobs:
     - run: npm run test:sync
     - run: npm run build
     - run: npm run smoke:clean-artifact
+    - run: npm run release:package
