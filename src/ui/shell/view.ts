@@ -1,6 +1,8 @@
 import { ItemView, Modal, Notice, TFile, WorkspaceLeaf, normalizePath } from 'obsidian';
 import { DailyScheduleEngine } from '../../core/daily_schedule';
 import { buildQuickAddDocument, type QuickAddType } from '../../core/object-creation';
+import { addLocalDays, daysInLocalMonth, localIsoDate, parseLocalIsoDate, shiftLocalMonth } from '../../core/local-date';
+import { createCanonicalObjectId } from '../../platform/object-id';
 import { VaultIndexEngine } from '../../vault/index';
 import {
   SharedSettingsRepository,
@@ -12,17 +14,15 @@ export const QUARTZO_VIEW_TYPE = 'quartzo-view';
 export type QuartzoSection = 'home' | 'planner' | 'journal' | 'browse';
 export type QuartzoAction = 'search' | 'add' | 'sync' | 'conflicts' | 'settings';
 function isoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  return localIsoDate(date);
 }
 
 function addDays(date: Date, days: number): Date {
-  const copy = new Date(date);
-  copy.setUTCDate(copy.getUTCDate() + days);
-  return copy;
+  return addLocalDays(date, days);
 }
 
 function parseIsoDate(value: string): Date {
-  return new Date(`${value}T00:00:00.000Z`);
+  return parseLocalIsoDate(value);
 }
 
 function labelForType(type: string): string {
@@ -105,7 +105,7 @@ class QuickAddModal extends Modal {
     create.addEventListener('click', async () => {
       try {
         const settings = await this.settingsRepository.load();
-        const id = `${this.type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const id = createCanonicalObjectId();
         const documentData = buildQuickAddDocument(settings, this.type, {
           title: titleInput.value,
           body: bodyInput.value,
@@ -302,8 +302,12 @@ export class QuartzoView extends ItemView {
     const previous = document.createElement('button');
     previous.textContent = '‹';
     previous.addEventListener('click', () => {
-      const step = this.plannerMode === 'week' ? -7 : this.plannerMode === 'month' ? -30 : -1;
-      this.selectedDate = isoDate(addDays(parseIsoDate(this.selectedDate), step));
+      if (this.plannerMode === 'month') {
+        this.selectedDate = shiftLocalMonth(this.selectedDate, -1);
+      } else {
+        const step = this.plannerMode === 'week' ? -7 : -1;
+        this.selectedDate = isoDate(addDays(parseIsoDate(this.selectedDate), step));
+      }
       void this.render();
     });
     controls.appendChild(previous);
@@ -320,8 +324,12 @@ export class QuartzoView extends ItemView {
     const next = document.createElement('button');
     next.textContent = '›';
     next.addEventListener('click', () => {
-      const step = this.plannerMode === 'week' ? 7 : this.plannerMode === 'month' ? 30 : 1;
-      this.selectedDate = isoDate(addDays(parseIsoDate(this.selectedDate), step));
+      if (this.plannerMode === 'month') {
+        this.selectedDate = shiftLocalMonth(this.selectedDate, 1);
+      } else {
+        const step = this.plannerMode === 'week' ? 7 : 1;
+        this.selectedDate = isoDate(addDays(parseIsoDate(this.selectedDate), step));
+      }
       void this.render();
     });
     controls.appendChild(next);
@@ -344,18 +352,18 @@ export class QuartzoView extends ItemView {
     if (this.plannerMode === 'week') {
       const settings = await this.sharedSettingsRepository.load();
       const startOfWeek = settings?.startOfWeek ?? 1;
-      const weekday = selected.getUTCDay();
+      const weekday = selected.getDay();
       const delta = (weekday - startOfWeek + 7) % 7;
       const start = addDays(selected, -delta);
       for (let i = 0; i < 7; i++) this.renderScheduleItems(container, isoDate(addDays(start, i)));
       return;
     }
 
-    const year = selected.getUTCFullYear();
-    const month = selected.getUTCMonth();
-    const days = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+    const year = selected.getFullYear();
+    const month = selected.getMonth();
+    const days = daysInLocalMonth(selected);
     for (let day = 1; day <= days; day++) {
-      this.renderScheduleItems(container, isoDate(new Date(Date.UTC(year, month, day))));
+      this.renderScheduleItems(container, isoDate(new Date(year, month, day)));
     }
   }
 

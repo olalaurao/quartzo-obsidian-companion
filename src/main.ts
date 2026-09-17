@@ -5,6 +5,7 @@ import { GoogleDriveAdapter } from './integrations/google/drive';
 import { GoogleOAuthDesktop, OAuthConfig } from './integrations/google/auth/loopback';
 import { QuartzoView, QUARTZO_VIEW_TYPE, type QuartzoSection, type QuartzoAction } from './ui';
 import { ViewContext } from './ui/types';
+import { localIsoDate } from './core/local-date';
 import { normalizeVaultPath } from './sync/coordinator/path-utils';
 import { VaultSyncFilePolicy } from './sync/coordinator/file-policy';
 import { SHARED_SETTINGS_PATH, SharedSettingsRepository, parseObjectWithSharedSettings, type QuartzoSharedSettings } from './vault/shared-settings';
@@ -78,7 +79,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
       plugin: this,
       state: {
         currentView: 'home',
-        dailyScheduleDate: new Date().toISOString().split('T')[0],
+        dailyScheduleDate: localIsoDate(new Date()),
         privacyMode: this.settings.privacyMode
       },
       vaultIndexEngine: this.vaultIndexEngine,
@@ -504,23 +505,42 @@ export default class QuartzoCompanionPlugin extends Plugin {
     } else {
       const modal = document.createElement('div');
       modal.className = 'quartzo-pairing-summary-modal';
-      modal.innerHTML = `
-        <div class="modal-content" style="padding: 20px; background: var(--background-primary); border: 1px solid var(--background-modifier-border); border-radius: 8px; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000;">
-          <h2>Pairing Summary</h2>
-          <p>Folder: <strong>${folderName}</strong></p>
-          <ul>
-            <li>Identical files: ${summary.identical.length}</li>
-            <li>Remote-only (to pull): ${summary.remoteOnly.length}</li>
-            <li>Local-only (to adopt): ${summary.localOnly.length}</li>
-            <li>Ambiguous (blocked): ${summary.ambiguous.length}</li>
-          </ul>
-          <p>Do you want to adopt local-only files and pull remote-only files?</p>
-          <div style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
-            <button id="pairing-cancel">Cancel</button>
-            <button id="pairing-confirm">Accept & Pair</button>
-          </div>
-        </div>
-      `;
+      const modalContent = document.createElement('div');
+      modalContent.className = 'modal-content';
+      modalContent.style.cssText = 'padding: 20px; background: var(--background-primary); border: 1px solid var(--background-modifier-border); border-radius: 8px; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000;';
+      const modalTitle = document.createElement('h2');
+      modalTitle.textContent = 'Pairing Summary';
+      modalContent.appendChild(modalTitle);
+      const folder = document.createElement('p');
+      folder.textContent = `Folder: ${folderName}`;
+      modalContent.appendChild(folder);
+      const counts = document.createElement('ul');
+      for (const text of [
+        `Identical files: ${summary.identical.length}`,
+        `Remote-only (to pull): ${summary.remoteOnly.length}`,
+        `Local-only (to adopt): ${summary.localOnly.length}`,
+        `Ambiguous (blocked): ${summary.ambiguous.length}`,
+      ]) {
+        const item = document.createElement('li');
+        item.textContent = text;
+        counts.appendChild(item);
+      }
+      modalContent.appendChild(counts);
+      const question = document.createElement('p');
+      question.textContent = 'Do you want to adopt local-only files and pull remote-only files?';
+      modalContent.appendChild(question);
+      const actions = document.createElement('div');
+      actions.style.cssText = 'margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;';
+      const cancelButton = document.createElement('button');
+      cancelButton.id = 'pairing-cancel';
+      cancelButton.textContent = 'Cancel';
+      actions.appendChild(cancelButton);
+      const confirmButton = document.createElement('button');
+      confirmButton.id = 'pairing-confirm';
+      confirmButton.textContent = 'Accept & Pair';
+      actions.appendChild(confirmButton);
+      modalContent.appendChild(actions);
+      modal.appendChild(modalContent);
       document.body.appendChild(modal);
 
       modal.querySelector('#pairing-cancel')?.addEventListener('click', () => {

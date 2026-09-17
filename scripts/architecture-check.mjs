@@ -146,6 +146,45 @@ ${creation}`;
   console.log('PASS: Quick Add paths come from shared Object Identification');
   return true;
 }
+function checkNoUnsafeInnerHtml() {
+  const violations = [];
+  function scan(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        scan(full);
+      } else if (entry.name.endsWith('.ts')) {
+        const source = fs.readFileSync(full, 'utf8');
+        if (source.includes('.innerHTML')) violations.push(path.relative(rootDir, full));
+      }
+    }
+  }
+  scan(path.join(rootDir, 'src'));
+  if (violations.length > 0) {
+    console.error(`FAIL: Runtime source uses innerHTML instead of safe DOM/textContent: ${violations.join(', ')}`);
+    return false;
+  }
+  console.log('PASS: Runtime UI does not use innerHTML');
+  return true;
+}
+
+function checkCanonicalUiDateAndIdentityOwners() {
+  const shell = fs.readFileSync(path.join(rootDir, 'src/ui/shell/view.ts'), 'utf8');
+  const main = fs.readFileSync(path.join(rootDir, 'src/main.ts'), 'utf8');
+  const forbidden = ['toISOString().slice(0, 10)', 'setUTCDate(', 'getUTCDay(', 'Date.UTC(', 'Math.random().toString(36)'];
+  const violations = forbidden.filter(pattern => shell.includes(pattern) || main.includes(pattern));
+  if (violations.length > 0) {
+    console.error(`FAIL: Quartzo UI bypasses canonical local-date/identity owners: ${violations.join(', ')}`);
+    return false;
+  }
+  if (!shell.includes('createCanonicalObjectId()') || !shell.includes('shiftLocalMonth(') || !main.includes('localIsoDate(new Date())')) {
+    console.error('FAIL: Quartzo UI is not wired to canonical local-date and object identity owners');
+    return false;
+  }
+  console.log('PASS: UI uses canonical local-date and object identity owners');
+  return true;
+}
+
 function main() {
   console.log('Running architecture/completeness checks...\n');
   let allPassed = true;
@@ -159,6 +198,8 @@ function main() {
   if (!checkOAuthNotConnectedWithoutRealClientId()) allPassed = false;
   if (!checkSingleQuartzoWorkspaceView()) allPassed = false;
   if (!checkNoHardcodedQuickAddFolders()) allPassed = false;
+  if (!checkNoUnsafeInnerHtml()) allPassed = false;
+  if (!checkCanonicalUiDateAndIdentityOwners()) allPassed = false;
 
   console.log('\n' + (allPassed ? 'All architecture checks passed' : 'Some architecture checks failed'));
   process.exit(allPassed ? 0 : 1);
