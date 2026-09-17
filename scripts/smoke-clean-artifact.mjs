@@ -172,7 +172,7 @@ function checkStubLoad() {
       TAbstractFile: class TAbstractFile {},
       FileSystemAdapter: class FileSystemAdapter {},
     },
-    'electron': {},
+    'electron': { shell: { openExternal: async () => {} } },
   };
 
   try {
