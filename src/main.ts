@@ -28,7 +28,12 @@ interface QuartzoCompanionSettings {
   googleDriveFolderId: string | null;
   googleDriveFolderName: string | null;
   syncAuto: boolean;
-  privacyMode: boolean;
+  syncPollingIntervalSeconds: number;
+  syncOnStartup: boolean;
+  syncOnFocus: boolean;
+  hideSensitivePreviews: boolean;
+  hideJournalPreviewText: boolean;
+  hideNotificationBody: boolean;
   firstRunCompleted: boolean;
   oauthClientId: string;
   isPaired: boolean;
@@ -39,7 +44,12 @@ const DEFAULT_SETTINGS: QuartzoCompanionSettings = {
   googleDriveFolderId: null,
   googleDriveFolderName: null,
   syncAuto: false,
-  privacyMode: false,
+  syncPollingIntervalSeconds: 60,
+  syncOnStartup: true,
+  syncOnFocus: true,
+  hideSensitivePreviews: false,
+  hideJournalPreviewText: false,
+  hideNotificationBody: false,
   firstRunCompleted: false,
   oauthClientId: 'PLACEHOLDER_CLIENT_ID',
   isPaired: false,
@@ -101,7 +111,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
       state: {
         currentView: 'home',
         dailyScheduleDate: localIsoDate(new Date()),
-        privacyMode: this.settings.privacyMode
+        privacyMode: this.settings.hideSensitivePreviews
       },
       vaultIndexEngine: this.vaultIndexEngine,
       driveSyncCoordinator: this.driveSyncCoordinator
@@ -143,7 +153,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     await this.initializeVaultIndex();
     this.registerVaultEvents();
     this.reminderDeliveryGateway = new ObsidianReminderDeliveryGateway(
-      () => this.settings.privacyMode,
+      () => this.settings.hideNotificationBody,
       () => { void this.activateQuartzo('home'); },
     );
     this.reminderService = new ReminderService({
