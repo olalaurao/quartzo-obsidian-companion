@@ -57,4 +57,45 @@ folder_paths:
     expect(main).not.toContain("registerView(HOME_VIEW_TYPE");
     expect(main).not.toContain("registerView(QUICK_ADD_VIEW_TYPE");
   });
+
+  it('implements the canonical grouped device-local Settings contract', () => {
+    const main = fs.readFileSync(path.join(process.cwd(), 'src/main.ts'), 'utf8');
+    for (const heading of ['Connection', 'Sync', 'Calendar', 'Notifications', 'Appearance', 'Privacy']) {
+      expect(main).toContain(`this.addHeading(containerEl, '${heading}')`);
+    }
+    expect(main).toContain('syncPollingIntervalSeconds');
+    expect(main).toContain('syncOnStartup');
+    expect(main).toContain('syncOnFocus');
+    expect(main).toContain('hideSensitivePreviews');
+    expect(main).toContain('hideJournalPreviewText');
+    expect(main).toContain('hideNotificationBody');
+    expect(main).toContain('app/quartzo_shared_settings.md');
+    expect(main).not.toContain('this.settings.privacyMode');
+  });
+
+  it('keeps first run explicit without marking setup complete before pairing', () => {
+    const main = fs.readFileSync(path.join(process.cwd(), 'src/main.ts'), 'utf8');
+    const start = main.indexOf('class QuartzoFirstRunModal extends Modal');
+    const end = main.indexOf('class QuartzoSettingTab', start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const firstRun = main.slice(start, end);
+    expect(firstRun).toContain('Connect Google Drive');
+    expect(firstRun).toContain('Use without sync');
+    expect(firstRun).toContain('startPairingFlow()');
+    expect(firstRun).toContain("activateQuartzo('home', 'sync')");
+    expect(firstRun).not.toContain('firstRunCompleted = true');
+  });
+
+  it('uses configurable lifecycle-managed sync triggers', () => {
+    const main = fs.readFileSync(path.join(process.cwd(), 'src/main.ts'), 'utf8');
+    expect(main).toContain("registerDomEvent(window, 'focus'");
+    expect(main).toContain('this.settings.syncOnFocus');
+    expect(main).toContain('this.settings.syncOnStartup');
+    expect(main).toContain('this.settings.syncPollingIntervalSeconds');
+    expect(main).toContain('seconds * 1000');
+    expect(main).toContain('triggerStartupSync()');
+    expect(main).toContain('restartAutoSync()');
+  });
+
 });
