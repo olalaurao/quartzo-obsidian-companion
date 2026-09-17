@@ -46,6 +46,7 @@ npm run architecture:check
 npm run build
 npm run release:validate
 npm run smoke:clean-artifact
+npm run release:package
 ```
 
 ## Releases
@@ -53,3 +54,5 @@ npm run smoke:clean-artifact
 A tag da release, a versão do `package.json` e a versão do `manifest.json` devem coincidir. O GitHub Actions recompila e valida o artefato antes de publicar a prerelease.
 
 O build de release exige `QUARTZO_GOOGLE_DESKTOP_CLIENT_ID` configurado no ambiente do GitHub Actions. Tokens OAuth do usuário nunca são empacotados no plugin e permanecem no `SecretStorage` do Obsidian.
+
+Antes de criar uma tag, execute manualmente o workflow **Release Preflight** em `main`. O passo a passo completo de Google Cloud, preflight, publicação e BRAT está em [`docs/BETA_RELEASE_RUNBOOK.md`](docs/BETA_RELEASE_RUNBOOK.md).
