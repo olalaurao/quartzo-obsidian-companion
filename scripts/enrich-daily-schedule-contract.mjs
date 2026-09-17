@@ -20,11 +20,6 @@ replaceExact(
 );
 source = source.replaceAll('items: NormalizedItem[]', 'items: RawNormalizedItem[]');
 replaceExact(
-  '    const items: NormalizedItem[] = [];',
-  '    const items: RawNormalizedItem[] = [];',
-  'normalize raw items',
-);
-replaceExact(
   `    // Determine kind based on what was processed\n    const kind = this.determineKind(items, objects, googleEvents);\n\n    return {\n      kind,\n      count: items.length,\n      items\n    };`,
   `    // Enrich the canonical occurrence projection with presentation capabilities.\n    // UI surfaces consume these values and must never infer them independently.\n    const normalizedItems = this.enrichPresentationContract(items, objects);\n\n    // Determine kind based on what was processed\n    const kind = this.determineKind(items, objects, googleEvents);\n\n    return {\n      kind,\n      count: normalizedItems.length,\n      items: normalizedItems\n    };`,
   'presentation enrichment invocation',
