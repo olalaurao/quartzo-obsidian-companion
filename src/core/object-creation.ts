@@ -72,11 +72,24 @@ export function buildQuickAddDocument(
     if (input.time) frontmatter.time = input.time;
   }
   if (type === 'reminder') {
-    frontmatter.date = input.date ?? localIsoDate(new Date());
-    frontmatter.time = input.time ?? '09:00';
+    const date = input.date ?? localIsoDate(new Date());
+    const time = input.time ?? '09:00';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Reminder date is invalid.');
+    if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new Error('Reminder time is invalid.');
+    const triggerTime = `${date}T${time}:00.000`;
+    const primaryReminderId = `${id}_primary`;
+    frontmatter.date = triggerTime;
+    frontmatter.time = triggerTime;
     frontmatter.is_completed = false;
-    frontmatter.reminder_id = id;
+    frontmatter.is_completable = true;
+    frontmatter.reminder_id = primaryReminderId;
     frontmatter.reminder_count = 1;
+    frontmatter.reminders = [{
+      id: primaryReminderId,
+      trigger_time: triggerTime,
+      type: 'popup',
+      notification_body: title,
+    }];
   }
   if (type === 'tracker_record') {
     const trackerId = record?.trackerId.trim() ?? '';
