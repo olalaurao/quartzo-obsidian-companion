@@ -279,6 +279,7 @@ describe('Runtime Sync Tests', () => {
   });
 
   it('8a: pairing summary does not hash or download remote-only files', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
     adapter.addRemoteFile('remote-only-a.md', Buffer.from('a'));
     adapter.addRemoteFile('remote-only-b.md', Buffer.from('b'));
     adapter.resolveRemoteHashCalls = 0;
@@ -292,6 +293,7 @@ describe('Runtime Sync Tests', () => {
   });
 
   it('8b: pairing apply uses one remote inventory pass for many remote-only files', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
     adapter.addRemoteFile('pull-a.md', Buffer.from('a'));
     adapter.addRemoteFile('pull-b.md', Buffer.from('b'));
     adapter.addRemoteFile('pull-c.md', Buffer.from('c'));
@@ -308,6 +310,7 @@ describe('Runtime Sync Tests', () => {
   });
 
   it('8c: pairing apply establishes baselines for identical files without uploading', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
     const content = Buffer.from('same');
     fs.writeFileSync(path.join(tmpDir, 'same.md'), content);
     adapter.addRemoteFile('same.md', content);
