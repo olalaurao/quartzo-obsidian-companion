@@ -739,6 +739,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
             driveFolderId
           );
           if (trackedOwnerStillLive) {
+            this.quarantinedPaths.add(normalizedRemote);
             throw new Error(
               `Ambiguous incremental remote identity for ${normalizedRemote}: ${trackedRemoteId} vs ${change.file.id}`
             );
@@ -1334,6 +1335,10 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
   getSyncState(): SyncState {
     return { ...this.syncState, files: new Map(this.syncState.files) };
+  }
+
+  getRemoteIdentityAmbiguityPaths(): string[] {
+    return [...this.quarantinedPaths].sort((a, b) => a.localeCompare(b));
   }
 
   async getSyncStatusSnapshot(): Promise<SyncStatusSnapshot> {
