@@ -46,6 +46,7 @@ export interface ViewContext {
       autoPull: boolean,
       onProgress?: (progress: PairingScanProgress) => void
     ): Promise<void>;
+    reviewSyncRemoteDuplicates(): Promise<void>;
     disconnectDrive(): Promise<void>;
     useWithoutSync(): Promise<void>;
     listGoogleCalendarEvents(startDate: string, days: number): Promise<GoogleCalendarProjection[]>;
