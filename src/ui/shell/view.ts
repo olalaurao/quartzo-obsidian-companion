@@ -997,6 +997,10 @@ export class QuartzoView extends ItemView {
                 button.textContent = 'Scanning local vault…';
               } else if (progress.phase === 'remote_inventory') {
                 button.textContent = 'Listing Drive vault…';
+              } else if (progress.phase === 'resolving_ambiguities') {
+                button.textContent = progress.total > 0
+                  ? `Hashing duplicates ${progress.completed}/${progress.total}…`
+                  : 'Hashing duplicate candidates…';
               } else if (progress.total > 0) {
                 button.textContent = `Comparing ${progress.completed}/${progress.total}…`;
               } else {
