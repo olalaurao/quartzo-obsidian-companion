@@ -54,6 +54,6 @@ npm run release:package
 
 A tag da release, a versão do `package.json` e a versão do `manifest.json` devem coincidir. O GitHub Actions recompila e valida o artefato antes de publicar a prerelease.
 
-O build de release exige `QUARTZO_GOOGLE_DESKTOP_CLIENT_ID` configurado no ambiente do GitHub Actions. Tokens OAuth do usuário nunca são empacotados no plugin e permanecem no `SecretStorage` do Obsidian.
+O build de release exige `QUARTZO_GOOGLE_DESKTOP_CLIENT_ID` e `QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET` configurados como GitHub Actions secrets para o mesmo cliente OAuth do tipo Desktop app. O valor de client credential do app desktop é empacotado no artefato (apps nativos são clientes públicos); tokens OAuth do usuário nunca são empacotados e permanecem no `SecretStorage` do Obsidian. PKCE continua obrigatório.
 
 Antes de criar uma tag, execute manualmente o workflow **Release Preflight** em `main`. O passo a passo completo de Google Cloud, preflight, publicação e BRAT está em [`docs/BETA_RELEASE_RUNBOOK.md`](docs/BETA_RELEASE_RUNBOOK.md).
