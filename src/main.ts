@@ -1,11 +1,12 @@
 import { App, Modal, Plugin, PluginSettingTab, Setting, Notice, TFile, TAbstractFile, FileSystemAdapter } from 'obsidian';
 import { VaultIndexEngine } from './vault/index';
-import { DriveSyncCoordinator, type PairingScanProgress } from './sync/coordinator';
+import { DriveSyncCoordinator, type PairingScanProgress, type PairingSummary } from './sync/coordinator';
 import { GoogleDriveAdapter } from './integrations/google/drive';
 import { GoogleCalendarAdapter, GoogleCalendarAuthorizationError, type GoogleCalendarProjection } from './integrations/google/calendar';
 import { GoogleOAuthDesktop, type OAuthConfig } from './integrations/google/auth/loopback';
 import { GOOGLE_COMPANION_SCOPES } from './integrations/google/auth/scopes';
 import { QuartzoView, QUARTZO_VIEW_TYPE, type QuartzoSection, type QuartzoAction } from './ui';
+import { buildPairingDiagnosticsText } from './ui/sync/pairing-diagnostics';
 import { ViewContext } from './ui/types';
 import { addLocalDays, localIsoDate, parseLocalIsoDate } from './core/local-date';
 import { ReminderService, type ReminderMode, type ReminderSourceObject } from './core/reminders';
@@ -672,6 +673,119 @@ export default class QuartzoCompanionPlugin extends Plugin {
       new Notice(`Google Drive reconnect failed: ${error}`);
     }
   }
+  private showBlockedPairingSummary(folderName: string, summary: PairingSummary): void {
+    const modal = document.createElement('div');
+    modal.className = 'quartzo-pairing-summary-modal';
+
+    const modalContent = document.createElement('div');
+    modalContent.className = 'modal-content';
+    modalContent.style.cssText = [
+      'padding: 20px',
+      'background: var(--background-primary)',
+      'border: 1px solid var(--background-modifier-border)',
+      'border-radius: 8px',
+      'position: fixed',
+      'top: 50%',
+      'left: 50%',
+      'transform: translate(-50%, -50%)',
+      'z-index: 1000',
+      'width: min(760px, calc(100vw - 32px))',
+      'max-height: min(760px, calc(100vh - 32px))',
+      'overflow: auto',
+    ].join(';');
+
+    const title = document.createElement('h2');
+    title.textContent = 'Pairing blocked';
+    modalContent.appendChild(title);
+
+    const intro = document.createElement('p');
+    intro.textContent = `Folder: ${folderName}. ${summary.divergent.length} divergent and ${summary.ambiguous.length} ambiguous path(s) must be resolved before pairing.`;
+    modalContent.appendChild(intro);
+
+    if (summary.divergent.length === 0 && summary.ambiguous.length > 0) {
+      const explanation = document.createElement('p');
+      explanation.textContent = 'No compared files differ by content. Ambiguous means Google Drive returned more than one remote file candidate for the same Quartzo-relative path. Quartzo will not choose one automatically.';
+      modalContent.appendChild(explanation);
+    }
+
+    if (summary.divergent.length > 0) {
+      const heading = document.createElement('h3');
+      heading.textContent = `Divergent paths (${summary.divergent.length})`;
+      modalContent.appendChild(heading);
+      const list = document.createElement('ul');
+      for (const item of summary.divergent) {
+        const li = document.createElement('li');
+        li.textContent = item.path;
+        list.appendChild(li);
+      }
+      modalContent.appendChild(list);
+    }
+
+    if (summary.ambiguous.length > 0) {
+      const heading = document.createElement('h3');
+      heading.textContent = `Ambiguous Drive paths (${summary.ambiguous.length})`;
+      modalContent.appendChild(heading);
+
+      for (const item of summary.ambiguous) {
+        const details = document.createElement('details');
+        details.style.cssText = 'margin: 8px 0; border: 1px solid var(--background-modifier-border); border-radius: 6px; padding: 8px;';
+
+        const summaryEl = document.createElement('summary');
+        summaryEl.textContent = `${item.path} — ${item.remoteCandidates?.length ?? 0} candidates`;
+        details.appendChild(summaryEl);
+
+        const candidates = document.createElement('ul');
+        for (const candidate of item.remoteCandidates ?? []) {
+          const li = document.createElement('li');
+          li.style.cssText = 'margin: 8px 0;';
+
+          const meta = document.createElement('div');
+          meta.textContent = `ID ${candidate.id} · modified ${candidate.modifiedTime ?? 'unknown'} · Quartzo_hash ${candidate.quartzoHash ? 'present' : 'missing'}`;
+          li.appendChild(meta);
+
+          const link = document.createElement('a');
+          link.href = `https://drive.google.com/open?id=${encodeURIComponent(candidate.id)}`;
+          link.textContent = 'Open this candidate in Google Drive';
+          link.target = '_blank';
+          link.rel = 'noreferrer';
+          li.appendChild(link);
+
+          candidates.appendChild(li);
+        }
+        details.appendChild(candidates);
+        modalContent.appendChild(details);
+      }
+    }
+
+    const instructions = document.createElement('p');
+    instructions.textContent = 'Resolve the duplicate Drive identity first, then run Pair again. Do not delete a candidate unless you have confirmed which copy should remain.';
+    modalContent.appendChild(instructions);
+
+    const actions = document.createElement('div');
+    actions.style.cssText = 'margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;';
+
+    const copyButton = document.createElement('button');
+    copyButton.textContent = 'Copy diagnostics';
+    copyButton.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(buildPairingDiagnosticsText(folderName, summary));
+        new Notice('Pairing diagnostics copied.');
+      } catch (error) {
+        new Notice(`Could not copy pairing diagnostics: ${error}`);
+      }
+    });
+    actions.appendChild(copyButton);
+
+    const closeButton = document.createElement('button');
+    closeButton.textContent = 'Close';
+    closeButton.addEventListener('click', () => modal.remove());
+    actions.appendChild(closeButton);
+
+    modalContent.appendChild(actions);
+    modal.appendChild(modalContent);
+    document.body.appendChild(modal);
+  }
+
   async confirmPairing(
     folderId: string,
     folderName: string,
@@ -700,6 +814,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     const hasAmbiguous = summary.ambiguous.length > 0;
 
     if (hasDivergent || hasAmbiguous) {
+      this.showBlockedPairingSummary(folderName, summary);
       new Notice(`Pairing blocked: ${summary.divergent.length} divergent and ${summary.ambiguous.length} ambiguous file(s) require resolution.`);
       return;
     }
