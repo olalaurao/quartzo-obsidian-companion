@@ -99,4 +99,58 @@ describe('Google OAuth desktop loopback', () => {
     const client = new GoogleOAuthDesktop(config, new MemorySecretStorage(), opener);
     await expect(client.startAuthLoopback()).rejects.toThrow('State mismatch');
   });
+  it('sends the Desktop client credential for authorization-code and refresh-token exchanges', async () => {
+    const requestBodies: string[] = [];
+    const tokenServer = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', () => {
+        requestBodies.push(body);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          access_token: `access_${requestBodies.length}`,
+          expires_in: 3600,
+          token_type: 'Bearer',
+        }));
+      });
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      tokenServer.once('error', reject);
+      tokenServer.listen(0, '127.0.0.1', () => resolve());
+    });
+
+    try {
+      const address = tokenServer.address();
+      if (!address || typeof address === 'string') throw new Error('Token test server did not expose a TCP port');
+
+      const storage = new MemorySecretStorage();
+      await storage.set('quartzo_companion/refresh_token', 'stored_refresh_token');
+      const client = new GoogleOAuthDesktop({
+        ...config,
+        clientSecret: 'desktop_client_credential',
+        tokenUrl: `http://127.0.0.1:${address.port}/token`,
+      }, storage);
+
+      client.generatePKCE();
+      await client.exchangeCodeForToken('authorization_code');
+      await client.refreshAccessToken();
+
+      expect(requestBodies).toHaveLength(2);
+      const authorizationCodeRequest = new URLSearchParams(requestBodies[0]);
+      expect(authorizationCodeRequest.get('client_id')).toBe(config.clientId);
+      expect(authorizationCodeRequest.get('client_secret')).toBe('desktop_client_credential');
+      expect(authorizationCodeRequest.get('code')).toBe('authorization_code');
+      expect(authorizationCodeRequest.get('code_verifier')).toBeTruthy();
+
+      const refreshRequest = new URLSearchParams(requestBodies[1]);
+      expect(refreshRequest.get('client_id')).toBe(config.clientId);
+      expect(refreshRequest.get('client_secret')).toBe('desktop_client_credential');
+      expect(refreshRequest.get('refresh_token')).toBe('stored_refresh_token');
+      expect(refreshRequest.get('grant_type')).toBe('refresh_token');
+    } finally {
+      await new Promise<void>(resolve => tokenServer.close(() => resolve()));
+    }
+  });
+
 });
