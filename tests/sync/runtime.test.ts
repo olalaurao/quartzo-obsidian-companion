@@ -603,6 +603,83 @@ describe('Runtime Sync Tests', () => {
     expect(coordinator.getPairingLastError()).toContain('Pairing changed for stale-pair.md');
   });
 
+  it('8e6: identical pairing accepts a fresh converged hash when local and Drive changed together', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+    const before = Buffer.from('before');
+    fs.writeFileSync(path.join(tmpDir, 'converged-after-scan.md'), before);
+    adapter.addRemoteFile('converged-after-scan.md', before);
+
+    const summary = await coordinator.generatePairingSummary();
+    expect(summary.identical).toHaveLength(1);
+
+    const after = Buffer.from('after');
+    const afterHash = crypto.createHash('sha256').update(after).digest('hex');
+    fs.writeFileSync(path.join(tmpDir, 'converged-after-scan.md'), after);
+    const remote = adapter.files.get('converged-after-scan.md');
+    if (!remote) throw new Error('missing fake remote entry');
+    remote.content = after;
+    remote.quartzoHash = afterHash;
+    remote.modifiedTime = '2026-09-18T22:00:00.000Z';
+
+    const result = await coordinator.applyPairingDecisions(summary, { autoAdopt: true, autoPull: true });
+
+    expect(result.errors).toEqual([]);
+    const state = coordinator.getSyncState().files.get('converged-after-scan.md');
+    expect(state?.baseHash).toBe(afterHash);
+    expect(state?.localHash).toBe(afterHash);
+    expect(state?.remoteHash).toBe(afterHash);
+  });
+
+  it('8e7: local-only pairing baselines instead of uploading when an identical remote appears', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+    const content = Buffer.from('appeared-identical');
+    fs.writeFileSync(path.join(tmpDir, 'appeared-remote.md'), content);
+
+    const summary = await coordinator.generatePairingSummary();
+    expect(summary.localOnly).toHaveLength(1);
+    const remote = adapter.addRemoteFile('appeared-remote.md', content);
+    adapter.uploadCalls = 0;
+
+    const result = await coordinator.applyPairingDecisions(summary, { autoAdopt: true, autoPull: true });
+
+    expect(result.errors).toEqual([]);
+    expect(adapter.uploadCalls).toBe(0);
+    expect(coordinator.getSyncState().files.get('appeared-remote.md')?.remoteFileId).toBe(remote.id);
+  });
+
+  it('8e8: remote-only pairing baselines instead of overwriting when an identical local appears', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+    const content = Buffer.from('appeared-identical');
+    const remote = adapter.addRemoteFile('appeared-local.md', content);
+
+    const summary = await coordinator.generatePairingSummary();
+    expect(summary.remoteOnly).toHaveLength(1);
+    adapter.downloadCalls = 0;
+    fs.writeFileSync(path.join(tmpDir, 'appeared-local.md'), content);
+
+    const result = await coordinator.applyPairingDecisions(summary, { autoAdopt: true, autoPull: true });
+
+    expect(result.errors).toEqual([]);
+    expect(adapter.downloadCalls).toBe(0);
+    expect(coordinator.getSyncState().files.get('appeared-local.md')?.remoteFileId).toBe(remote.id);
+    expect(fs.readFileSync(path.join(tmpDir, 'appeared-local.md')).toString()).toBe('appeared-identical');
+  });
+
+  it('8e9: remote-only pairing never overwrites a different local file that appeared after scan', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+    adapter.addRemoteFile('appeared-divergent.md', Buffer.from('drive'));
+
+    const summary = await coordinator.generatePairingSummary();
+    expect(summary.remoteOnly).toHaveLength(1);
+    fs.writeFileSync(path.join(tmpDir, 'appeared-divergent.md'), Buffer.from('local'));
+
+    const result = await coordinator.applyPairingDecisions(summary, { autoAdopt: true, autoPull: true });
+
+    expect(result.synced).toBe(0);
+    expect(result.errors.join(' ')).toContain('a local file appeared with different content');
+    expect(fs.readFileSync(path.join(tmpDir, 'appeared-divergent.md')).toString()).toBe('local');
+  });
+
   it('8f: pairing ambiguity retains every distinct Drive candidate for diagnosis', async () => {
     await coordinator.setDriveFolderId('root-folder-id');
     const h1 = crypto.createHash('sha256').update(Buffer.from('one')).digest('hex');
