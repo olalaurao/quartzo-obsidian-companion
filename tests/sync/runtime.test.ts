@@ -532,7 +532,7 @@ describe('Runtime Sync Tests', () => {
     expect(summary.localOnly).toHaveLength(1);
 
     const originalUpload = adapter.uploadFile.bind(adapter);
-    let releaseUpload: (() => void) | null = null;
+    let releaseUpload!: () => void;
     const blocked = new Promise<void>(resolve => { releaseUpload = resolve; });
     adapter.uploadFile = async params => {
       await blocked;
@@ -551,7 +551,7 @@ describe('Runtime Sync Tests', () => {
       'Pairing already in progress. Wait for the current pairing operation to finish.',
     ]);
 
-    releaseUpload?.();
+    releaseUpload();
     const firstResult = await first;
     expect(firstResult.errors).toEqual([]);
     expect(coordinator.isPairingApplyInProgress()).toBe(false);
