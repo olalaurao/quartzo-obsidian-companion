@@ -835,15 +835,30 @@ describe('Sync Regression Tests', () => {
     it('main.ts has confirmPairing method for explicit selection', () => {
       const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/main.ts'), 'utf-8');
       expect(mainSrc).toContain('confirmPairing');
-      expect(mainSrc).toContain('async confirmPairing(folderId: string, folderName: string, autoAdopt: boolean, autoPull: boolean)');
+      expect(mainSrc).toContain('async confirmPairing(');
+      expect(mainSrc).toContain('onProgress?: (progress: PairingScanProgress) => void');
     });
 
     it('startPairingFlow does not auto-set isPaired', () => {
       const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/main.ts'), 'utf-8');
-      const startFlow = mainSrc.substring(
-        mainSrc.indexOf('async startPairingFlow()'),
-        mainSrc.indexOf('async confirmPairing()')
-      );
+      const methodStart = mainSrc.indexOf('async startPairingFlow()');
+      expect(methodStart).toBeGreaterThanOrEqual(0);
+      const bodyStart = mainSrc.indexOf('{', methodStart);
+      expect(bodyStart).toBeGreaterThan(methodStart);
+      let depth = 0;
+      let methodEnd = -1;
+      for (let index = bodyStart; index < mainSrc.length; index++) {
+        if (mainSrc[index] === '{') depth++;
+        if (mainSrc[index] === '}') {
+          depth--;
+          if (depth === 0) {
+            methodEnd = index + 1;
+            break;
+          }
+        }
+      }
+      expect(methodEnd).toBeGreaterThan(bodyStart);
+      const startFlow = mainSrc.substring(methodStart, methodEnd);
       expect(startFlow).not.toContain('isPaired = true');
     });
   });
@@ -952,7 +967,7 @@ describe('Sync Regression Tests', () => {
       const shellSrc = fs.readFileSync(path.join(__dirname, '../../src/ui/shell/view.ts'), 'utf-8');
       expect(shellSrc).toContain('listQuartzoVaultCandidates');
       expect(shellSrc).toContain('Pair with');
-      expect(shellSrc).toContain('confirmPairing(candidate.id, candidate.name, false, false)');
+      expect(shellSrc).toContain('confirmPairing(candidate.id, candidate.name, false, false, progress =>');
     });
   });
 

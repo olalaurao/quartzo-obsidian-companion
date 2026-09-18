@@ -13,12 +13,21 @@ class FakeDriveAdapter implements DriveAdapter {
   async resolveExactPath(fileId: string): Promise<string> { return fileId; }
   async resolveRemoteHash(metadata: DriveFileMetadata): Promise<string> {
     this.resolveRemoteHashCalls++;
-    if (metadata.quartzoHash) return metadata.quartzoHash;
-    const content = await this.downloadFile(metadata.id);
-    return crypto.createHash('sha256').update(content).digest('hex');
+    this.activeRemoteHashCalls++;
+    this.maxConcurrentRemoteHashCalls = Math.max(this.maxConcurrentRemoteHashCalls, this.activeRemoteHashCalls);
+    try {
+      if (this.hashResolutionDelayMs > 0) {
+        await new Promise(resolve => setTimeout(resolve, this.hashResolutionDelayMs));
+      }
+      if (metadata.quartzoHash) return metadata.quartzoHash;
+      const content = await this.downloadFile(metadata.id);
+      return crypto.createHash('sha256').update(content).digest('hex');
+    } finally {
+      this.activeRemoteHashCalls--;
+    }
   }
 
-  private _files = new Map<string, { id: string; content: Uint8Array; quartzoHash: string }>();
+  private _files = new Map<string, { id: string; content: Uint8Array; quartzoHash: string; modifiedTime?: string }>();
   private folderId = 'root-folder-id';
   private changeToken = 0;
   public pendingChanges: Array<{ fileId: string; removed: boolean; file?: DriveFileMetadata }> = [];
@@ -28,9 +37,12 @@ class FakeDriveAdapter implements DriveAdapter {
   public updateCalls = 0;
   public resolveRemoteHashCalls = 0;
   public downloadCalls = 0;
+  public hashResolutionDelayMs = 0;
+  public activeRemoteHashCalls = 0;
+  public maxConcurrentRemoteHashCalls = 0;
 
   get files() { return this._files; }
-  set files(v: Map<string, { id: string; content: Uint8Array; quartzoHash: string }>) { this._files = v; }
+  set files(v: Map<string, { id: string; content: Uint8Array; quartzoHash: string; modifiedTime?: string }>) { this._files = v; }
 
   async getFolderId() { return this.folderId; }
   async setFolderId(id: string) { this.folderId = id; }
@@ -68,16 +80,18 @@ class FakeDriveAdapter implements DriveAdapter {
   async uploadFile(params: { folderId: string; name: string; content: Uint8Array; quartzoHash: string }) {
     this.uploadCalls++;
     const id = `file-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    this._files.set(params.name, { id, content: params.content, quartzoHash: params.quartzoHash });
-    return this.makeMetadata(id, params.name, params.quartzoHash);
+    const modifiedTime = new Date().toISOString();
+    this._files.set(params.name, { id, content: params.content, quartzoHash: params.quartzoHash, modifiedTime });
+    return this.makeMetadata(id, params.name, params.quartzoHash, modifiedTime);
   }
 
   async updateFile(fileId: string, content: Uint8Array, quartzoHash: string) {
     this.updateCalls++;
     for (const [name, f] of this._files.entries()) {
       if (f.id === fileId) {
-        this._files.set(name, { ...f, content, quartzoHash });
-        return this.makeMetadata(fileId, name, quartzoHash);
+        const modifiedTime = new Date().toISOString();
+        this._files.set(name, { ...f, content, quartzoHash, modifiedTime });
+        return this.makeMetadata(fileId, name, quartzoHash, modifiedTime);
       }
     }
     throw new Error(`Not found: ${fileId}`);
@@ -98,7 +112,7 @@ class FakeDriveAdapter implements DriveAdapter {
       if (f.id === fileId) {
         this._files.delete(name);
         this._files.set(newName, { ...f });
-        return this.makeMetadata(fileId, newName, f.quartzoHash);
+        return this.makeMetadata(fileId, newName, f.quartzoHash, f.modifiedTime);
       }
     }
     throw new Error(`Not found: ${fileId}`);
@@ -106,7 +120,7 @@ class FakeDriveAdapter implements DriveAdapter {
 
   async getFileMetadata(fileId: string) {
     for (const [name, f] of this._files.entries()) {
-      if (f.id === fileId) return this.makeMetadata(f.id, name, f.quartzoHash);
+      if (f.id === fileId) return this.makeMetadata(f.id, name, f.quartzoHash, f.modifiedTime);
     }
     throw new Error(`Not found: ${fileId}`);
   }
@@ -118,29 +132,40 @@ class FakeDriveAdapter implements DriveAdapter {
   addRemoteFile(name: string, content: Uint8Array) {
     const id = `remote-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const quartzoHash = crypto.createHash('sha256').update(content).digest('hex');
-    this._files.set(name, { id, content, quartzoHash });
-    this.pendingChanges.push({ fileId: id, removed: false, file: this.makeMetadata(id, name, quartzoHash) });
+    const modifiedTime = new Date().toISOString();
+    this._files.set(name, { id, content, quartzoHash, modifiedTime });
+    this.pendingChanges.push({ fileId: id, removed: false, file: this.makeMetadata(id, name, quartzoHash, modifiedTime) });
     return { id, quartzoHash };
   }
 
   addRemoteFileWithId(name: string, id: string, content: Uint8Array) {
     const quartzoHash = crypto.createHash('sha256').update(content).digest('hex');
-    this._files.set(name, { id, content, quartzoHash });
-    this.pendingChanges.push({ fileId: id, removed: false, file: this.makeMetadata(id, name, quartzoHash) });
+    const modifiedTime = new Date().toISOString();
+    this._files.set(name, { id, content, quartzoHash, modifiedTime });
+    this.pendingChanges.push({ fileId: id, removed: false, file: this.makeMetadata(id, name, quartzoHash, modifiedTime) });
     return { id, quartzoHash };
   }
 
-  private buildMetadataList(): DriveFileMetadata[] {
-    return Array.from(this._files.entries()).map(([name, f]) => this.makeMetadata(f.id, name, f.quartzoHash));
+  addLegacyRemoteFile(name: string, content: Uint8Array) {
+    const id = `legacy-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const modifiedTime = new Date().toISOString();
+    this._files.set(name, { id, content, quartzoHash: '', modifiedTime });
+    return { id, modifiedTime };
   }
 
-  private makeMetadata(id: string, name: string, quartzoHash: string): DriveFileMetadata {
+  private buildMetadataList(): DriveFileMetadata[] {
+    return Array.from(this._files.entries()).map(([name, f]) =>
+      this.makeMetadata(f.id, name, f.quartzoHash, f.modifiedTime)
+    );
+  }
+
+  private makeMetadata(id: string, name: string, quartzoHash: string, modifiedTime?: string): DriveFileMetadata {
     return {
       id,
       name: name.split('/').pop() || name,
       relativePath: normalizeVaultPath(name),
       mimeType: 'application/octet-stream',
-      modifiedTime: new Date().toISOString(),
+      modifiedTime: modifiedTime || '2026-01-01T00:00:00.000Z',
       quartzoHash,
       parents: [this.folderId],
     };
@@ -324,6 +349,48 @@ describe('Runtime Sync Tests', () => {
     const state = coordinator.getSyncState().files.get('same.md');
     expect(state?.baseHash).toBe(crypto.createHash('sha256').update(content).digest('hex'));
     expect(state?.remoteFileId).toBeTruthy();
+  });
+
+  it('8d: legacy missing-hash pairing uses bounded concurrency and reports progress', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+    adapter.hashResolutionDelayMs = 10;
+    for (let i = 0; i < 16; i++) {
+      const content = Buffer.from(`legacy-${i}`);
+      fs.writeFileSync(path.join(tmpDir, `legacy-${i}.md`), content);
+      adapter.addLegacyRemoteFile(`legacy-${i}.md`, content);
+    }
+    const progress: Array<{ phase: string; completed: number; total: number }> = [];
+
+    const summary = await coordinator.generatePairingSummary(update => progress.push(update));
+
+    expect(summary.identical).toHaveLength(16);
+    expect(summary.divergent).toHaveLength(0);
+    expect(adapter.downloadCalls).toBe(16);
+    expect(adapter.maxConcurrentRemoteHashCalls).toBeGreaterThan(1);
+    expect(adapter.maxConcurrentRemoteHashCalls).toBeLessThanOrEqual(8);
+    expect(progress.some(update => update.phase === 'local_inventory')).toBe(true);
+    expect(progress.some(update => update.phase === 'remote_inventory')).toBe(true);
+    expect(progress[progress.length - 1]).toEqual({ phase: 'comparing', completed: 16, total: 16 });
+  });
+
+  it('8e: accepting an unchanged legacy pairing reuses scan SHA-256 results', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+    const content = Buffer.from('legacy-same');
+    fs.writeFileSync(path.join(tmpDir, 'legacy-same.md'), content);
+    adapter.addLegacyRemoteFile('legacy-same.md', content);
+
+    const summary = await coordinator.generatePairingSummary();
+    expect(summary.identical).toHaveLength(1);
+    expect(adapter.downloadCalls).toBe(1);
+
+    adapter.resolveRemoteHashCalls = 0;
+    adapter.downloadCalls = 0;
+    const result = await coordinator.applyPairingDecisions(summary, { autoAdopt: true, autoPull: true });
+
+    expect(result.errors).toEqual([]);
+    expect(adapter.resolveRemoteHashCalls).toBe(0);
+    expect(adapter.downloadCalls).toBe(0);
+    expect(coordinator.getSyncState().files.get('legacy-same.md')?.baseHash).toBe(summary.identical[0].remoteHash);
   });
 
   it('9: coordinator calls listChanges after initial inventory', async () => {
