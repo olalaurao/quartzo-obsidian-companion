@@ -84,7 +84,7 @@ export interface PairingRemoteCandidate {
   id: string;
   modifiedTime: string | null;
   quartzoHash: string | null;
-  canTrash: boolean | null;
+  canTrash?: boolean | null;
   resolvedSha256: string;
   matchesLocal: boolean | null;
 }
