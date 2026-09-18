@@ -613,6 +613,7 @@ describe('Runtime Sync Tests', () => {
         quartzoHash: h1,
         resolvedSha256: h1,
         matchesLocal: null,
+        canTrash: null,
       },
       {
         id: 'candidate-b',
@@ -620,6 +621,7 @@ describe('Runtime Sync Tests', () => {
         quartzoHash: h2,
         resolvedSha256: h2,
         matchesLocal: null,
+        canTrash: null,
       },
     ]);
   });
@@ -680,9 +682,9 @@ describe('Runtime Sync Tests', () => {
         localHash: hash,
         remoteHash: null,
         remoteCandidates: [
-          { id: 'id-c', modifiedTime: '2026-09-18T10:00:00.000Z', quartzoHash: null, resolvedSha256: hash, matchesLocal: true },
-          { id: 'id-a', modifiedTime: '2026-09-18T10:00:00.000Z', quartzoHash: null, resolvedSha256: hash, matchesLocal: true },
-          { id: 'id-b', modifiedTime: '2026-09-18T10:00:00.000Z', quartzoHash: null, resolvedSha256: hash, matchesLocal: true },
+          { id: 'id-c', modifiedTime: '2026-09-18T10:00:00.000Z', quartzoHash: null, resolvedSha256: hash, matchesLocal: true, canTrash: true },
+          { id: 'id-a', modifiedTime: '2026-09-18T10:00:00.000Z', quartzoHash: null, resolvedSha256: hash, matchesLocal: true, canTrash: true },
+          { id: 'id-b', modifiedTime: '2026-09-18T10:00:00.000Z', quartzoHash: null, resolvedSha256: hash, matchesLocal: true, canTrash: true },
         ],
       }],
     };
@@ -699,6 +701,63 @@ describe('Runtime Sync Tests', () => {
     }]);
   });
 
+  it('8h2: byte-identical cleanup keeps the candidate that cannot be trashed', () => {
+    const hash = 'same-hash';
+    const summary = {
+      identical: [],
+      remoteOnly: [],
+      localOnly: [],
+      divergent: [],
+      ambiguous: [{
+        path: 'permission-aware.md',
+        status: 'ambiguous' as const,
+        localHash: hash,
+        remoteHash: null,
+        remoteCandidates: [
+          { id: 'id-a', modifiedTime: null, quartzoHash: null, resolvedSha256: hash, matchesLocal: true, canTrash: true },
+          { id: 'id-b', modifiedTime: null, quartzoHash: null, resolvedSha256: hash, matchesLocal: true, canTrash: false },
+        ],
+      }],
+    };
+
+    const plan = coordinator.buildSafeDuplicateTrashPlan(summary);
+
+    expect(plan.unresolvedPaths).toEqual([]);
+    expect(plan.resolutions).toEqual([{
+      path: 'permission-aware.md',
+      keepFileId: 'id-b',
+      trashFileIds: ['id-a'],
+      reason: 'byte_identical',
+    }]);
+  });
+
+  it('8h3: cleanup stays manual when more than one byte-identical candidate cannot be trashed', () => {
+    const hash = 'same-hash';
+    const summary = {
+      identical: [],
+      remoteOnly: [],
+      localOnly: [],
+      divergent: [],
+      ambiguous: [{
+        path: 'permission-blocked.md',
+        status: 'ambiguous' as const,
+        localHash: hash,
+        remoteHash: null,
+        remoteCandidates: [
+          { id: 'id-a', modifiedTime: null, quartzoHash: null, resolvedSha256: hash, matchesLocal: true, canTrash: false },
+          { id: 'id-b', modifiedTime: null, quartzoHash: null, resolvedSha256: hash, matchesLocal: true, canTrash: false },
+          { id: 'id-c', modifiedTime: null, quartzoHash: null, resolvedSha256: hash, matchesLocal: true, canTrash: true },
+        ],
+      }],
+    };
+
+    const plan = coordinator.buildSafeDuplicateTrashPlan(summary);
+
+    expect(plan.resolutions).toEqual([]);
+    expect(plan.unresolvedPaths).toEqual(['permission-blocked.md']);
+    expect(plan.totalTrashFiles).toBe(0);
+  });
+
   it('8i: safe duplicate plan keeps the only candidate matching local when bytes differ', () => {
     const summary = {
       identical: [],
@@ -711,8 +770,8 @@ describe('Runtime Sync Tests', () => {
         localHash: 'local-hash',
         remoteHash: null,
         remoteCandidates: [
-          { id: 'wrong', modifiedTime: '2026-09-18T11:00:00.000Z', quartzoHash: null, resolvedSha256: 'other-hash', matchesLocal: false },
-          { id: 'right', modifiedTime: '2026-09-18T09:00:00.000Z', quartzoHash: null, resolvedSha256: 'local-hash', matchesLocal: true },
+          { id: 'wrong', modifiedTime: '2026-09-18T11:00:00.000Z', quartzoHash: null, resolvedSha256: 'other-hash', matchesLocal: false, canTrash: true },
+          { id: 'right', modifiedTime: '2026-09-18T09:00:00.000Z', quartzoHash: null, resolvedSha256: 'local-hash', matchesLocal: true, canTrash: true },
         ],
       }],
     };
@@ -755,6 +814,8 @@ describe('Runtime Sync Tests', () => {
         mimeType: 'application/octet-stream',
         modifiedTime: '2026-09-18T10:00:00.000Z',
         quartzoHash: '',
+        
+        canTrash: true,
         parents: ['root-folder-id'],
       },
       {
@@ -764,6 +825,8 @@ describe('Runtime Sync Tests', () => {
         mimeType: 'application/octet-stream',
         modifiedTime: '2026-09-18T10:00:00.000Z',
         quartzoHash: '',
+        
+        canTrash: true,
         parents: ['root-folder-id'],
       },
     ];
@@ -779,8 +842,8 @@ describe('Runtime Sync Tests', () => {
         localHash: hash,
         remoteHash: null,
         remoteCandidates: [
-          { id: 'keep-id', modifiedTime: '2026-09-18T10:00:00.000Z', quartzoHash: null, resolvedSha256: hash, matchesLocal: true },
-          { id: 'trash-id', modifiedTime: '2026-09-18T10:00:00.000Z', quartzoHash: null, resolvedSha256: hash, matchesLocal: true },
+          { id: 'keep-id', modifiedTime: '2026-09-18T10:00:00.000Z', quartzoHash: null, resolvedSha256: hash, matchesLocal: true, canTrash: true },
+          { id: 'trash-id', modifiedTime: '2026-09-18T10:00:00.000Z', quartzoHash: null, resolvedSha256: hash, matchesLocal: true, canTrash: true },
         ],
       }],
     };
@@ -813,6 +876,8 @@ describe('Runtime Sync Tests', () => {
         modifiedTime: '2026-09-18T13:00:00.000Z',
         quartzoHash: hash,
         trashed: false,
+        
+        canTrash: true,
         parents: ['root-folder-id'],
       },
       {
@@ -850,6 +915,7 @@ describe('Runtime Sync Tests', () => {
             quartzoHash: hash,
             resolvedSha256: hash,
             matchesLocal: true,
+            canTrash: true,
           },
           {
             id: 'trash-stale-list',
@@ -897,6 +963,8 @@ describe('Runtime Sync Tests', () => {
         mimeType: 'application/octet-stream',
         modifiedTime: '2026-09-18T12:00:00.000Z',
         quartzoHash: '',
+        
+        canTrash: true,
         parents: ['root-folder-id'],
       },
       {
@@ -906,6 +974,8 @@ describe('Runtime Sync Tests', () => {
         mimeType: 'application/octet-stream',
         modifiedTime: '2026-09-18T12:05:00.000Z',
         quartzoHash: '',
+        
+        canTrash: true,
         parents: ['root-folder-id'],
       },
     ];
@@ -921,8 +991,8 @@ describe('Runtime Sync Tests', () => {
         localHash: hash,
         remoteHash: null,
         remoteCandidates: [
-          { id: 'keep-stale', modifiedTime: '2026-09-18T12:00:00.000Z', quartzoHash: null, resolvedSha256: hash, matchesLocal: true },
-          { id: 'trash-stale', modifiedTime: '2026-09-18T12:00:00.000Z', quartzoHash: null, resolvedSha256: hash, matchesLocal: true },
+          { id: 'keep-stale', modifiedTime: '2026-09-18T12:00:00.000Z', quartzoHash: null, resolvedSha256: hash, matchesLocal: true, canTrash: true },
+          { id: 'trash-stale', modifiedTime: '2026-09-18T12:00:00.000Z', quartzoHash: null, resolvedSha256: hash, matchesLocal: true, canTrash: true },
         ],
       }],
     };
