@@ -3,6 +3,7 @@ import * as https from 'https';
 import * as url from 'url';
 import { randomBytes, createHash, timingSafeEqual } from 'crypto';
 import type { OAuthConfig, TokenResponse } from '../../../core/oauth/types';
+import { GOOGLE_REFRESH_TOKEN_SECRET_ID } from '../../../platform/secret-ids';
 
 export type { OAuthConfig, TokenResponse } from '../../../core/oauth/types';
 
@@ -122,7 +123,7 @@ export class GoogleOAuthDesktop {
             this.refreshToken = tokenResponse.refresh_token || null;
             this.expiresAt = Date.now() + (tokenResponse.expires_in * 1000);
             if (this.refreshToken) {
-              await this.secretStorage.set('quartzo_companion/refresh_token', this.refreshToken);
+              await this.secretStorage.set(GOOGLE_REFRESH_TOKEN_SECRET_ID, this.refreshToken);
             }
             finish(() => resolve(tokenResponse));
           } catch (err) {
@@ -169,7 +170,7 @@ export class GoogleOAuthDesktop {
   }
 
   async refreshAccessToken(): Promise<TokenResponse> {
-    const storedRefreshToken = await this.secretStorage.get('quartzo_companion/refresh_token');
+    const storedRefreshToken = await this.secretStorage.get(GOOGLE_REFRESH_TOKEN_SECRET_ID);
     if (!storedRefreshToken) throw new Error('No refresh token available');
     const params = new URLSearchParams();
     params.append('refresh_token', storedRefreshToken);
@@ -181,7 +182,7 @@ export class GoogleOAuthDesktop {
     this.expiresAt = Date.now() + (tokenResponse.expires_in * 1000);
     if (tokenResponse.refresh_token) {
       this.refreshToken = tokenResponse.refresh_token;
-      await this.secretStorage.set('quartzo_companion/refresh_token', this.refreshToken);
+      await this.secretStorage.set(GOOGLE_REFRESH_TOKEN_SECRET_ID, this.refreshToken);
     }
     return tokenResponse;
   }
@@ -215,9 +216,9 @@ export class GoogleOAuthDesktop {
   }
 
   async disconnect(): Promise<void> {
-    const tokenToRevoke = this.accessToken || await this.secretStorage.get('quartzo_companion/refresh_token');
+    const tokenToRevoke = this.accessToken || await this.secretStorage.get(GOOGLE_REFRESH_TOKEN_SECRET_ID);
     this.cleanup();
-    await this.secretStorage.delete('quartzo_companion/refresh_token');
+    await this.secretStorage.delete(GOOGLE_REFRESH_TOKEN_SECRET_ID);
     this.accessToken = null;
     this.refreshToken = null;
     this.expiresAt = 0;
