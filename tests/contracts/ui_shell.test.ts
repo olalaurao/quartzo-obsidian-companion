@@ -68,6 +68,8 @@ folder_paths:
     expect(main).toContain(".addOption('manual', 'Manual')");
     expect(main).toContain(".addOption('automatic', 'Automatic')");
     expect(main).toContain("this.plugin.settings.syncMode === 'automatic'");
+    const shell = fs.readFileSync(path.join(process.cwd(), 'src/ui/shell/view.ts'), 'utf8');
+    expect(shell).toContain("Sync mode: ${plugin.settings.syncMode === 'automatic' ? 'Automatic' : 'Manual'}");
     expect(main).toContain('syncPollingIntervalSeconds');
     expect(main).toContain('hideSensitivePreviews');
     expect(main).toContain('hideJournalPreviewText');
