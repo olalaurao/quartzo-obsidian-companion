@@ -529,7 +529,10 @@ function checkFirstPairingApplyProgress() {
   ];
   if (!coordinator.includes('export interface PairingApplyProgress') ||
       requiredPhases.some(phase => !coordinator.includes(phase)) ||
-      !coordinator.includes('onProgress?: (progress: PairingApplyProgress) => void')) {
+      !coordinator.includes('onProgress?: (progress: PairingApplyProgress) => void') ||
+      !coordinator.includes('private pairingApplyInProgress = false') ||
+      !coordinator.includes('isPairingApplyInProgress()') ||
+      !coordinator.includes('getPairingApplyProgress()')) {
     console.error('FAIL: First-pairing mutation stage does not expose canonical apply progress');
     return false;
   }
@@ -540,7 +543,25 @@ function checkFirstPairingApplyProgress() {
     console.error('FAIL: Pairing UI can become visually idle/stale while first-pairing mutations are running');
     return false;
   }
-  console.log('PASS: First-pairing apply stage remains visibly in progress and refreshes UI on completion');
+  const viewPath = path.join(rootDir, 'src/ui/shell/view.ts');
+  const view = fs.readFileSync(viewPath, 'utf8');
+  if (!view.includes('coordinator?.isPairingApplyInProgress()') ||
+      !view.includes('Pairing is in progress. Keep Obsidian open.') ||
+      !view.includes('Pairing in progress…')) {
+    console.error('FAIL: Sync view can offer a second pairing while the coordinator still owns an active pairing');
+    return false;
+  }
+  const typesPath = path.join(rootDir, 'src/sync/coordinator/types.ts');
+  const types = fs.readFileSync(typesPath, 'utf8');
+  const adapterPath = path.join(rootDir, 'src/integrations/google/drive/adapter.ts');
+  const adapter = fs.readFileSync(adapterPath, 'utf8');
+  if (!types.includes('export class TemporaryDriveQuotaError') ||
+      !adapter.includes('throw new TemporaryDriveQuotaError') ||
+      !coordinator.includes('error instanceof TemporaryDriveQuotaError')) {
+    console.error('FAIL: Persistent temporary Drive quota does not abort pairing through a canonical typed error');
+    return false;
+  }
+  console.log('PASS: First-pairing progress is globally visible, single-owner, and aborts persistent quota safely');
   return true;
 }
 
