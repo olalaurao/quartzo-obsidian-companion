@@ -2,21 +2,9 @@ import * as http from 'http';
 import * as https from 'https';
 import * as url from 'url';
 import { randomBytes, createHash, timingSafeEqual } from 'crypto';
+import type { OAuthConfig, TokenResponse } from '../../../core/oauth/types';
 
-export interface OAuthConfig {
-  clientId: string;
-  redirectUri: string;
-  scopes: string[];
-  authUrl: string;
-  tokenUrl: string;
-}
-
-export interface TokenResponse {
-  access_token: string;
-  refresh_token?: string;
-  expires_in: number;
-  token_type: string;
-}
+export type { OAuthConfig, TokenResponse } from '../../../core/oauth/types';
 
 export interface BrowserOpener {
   open(url: string): Promise<void>;
@@ -173,6 +161,7 @@ export class GoogleOAuthDesktop {
     const params = new URLSearchParams();
     params.append('code', code);
     params.append('client_id', this.config.clientId);
+    if (this.config.clientSecret) params.append('client_secret', this.config.clientSecret);
     params.append('redirect_uri', this.getRedirectUri());
     params.append('grant_type', 'authorization_code');
     params.append('code_verifier', this.codeVerifier);
@@ -185,6 +174,7 @@ export class GoogleOAuthDesktop {
     const params = new URLSearchParams();
     params.append('refresh_token', storedRefreshToken);
     params.append('client_id', this.config.clientId);
+    if (this.config.clientSecret) params.append('client_secret', this.config.clientSecret);
     params.append('grant_type', 'refresh_token');
     const tokenResponse = await this.makeTokenRequest(params);
     this.accessToken = tokenResponse.access_token;
