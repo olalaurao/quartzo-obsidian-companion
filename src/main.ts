@@ -3,6 +3,7 @@ import { VaultIndexEngine } from './vault/index';
 import {
   DriveSyncCoordinator,
   type PairingScanProgress,
+  type PairingApplyProgress,
   type PairingSummary,
   type SafeDuplicateTrashPlan,
 } from './sync/coordinator';
@@ -1029,6 +1030,13 @@ export default class QuartzoCompanionPlugin extends Plugin {
       const question = document.createElement('p');
       question.textContent = 'Do you want to adopt local-only files and pull remote-only files?';
       modalContent.appendChild(question);
+      const progressText = document.createElement('p');
+      progressText.style.cssText = 'display: none; font-weight: 600; word-break: break-word;';
+      modalContent.appendChild(progressText);
+      const progressHelp = document.createElement('p');
+      progressHelp.style.cssText = 'display: none; font-size: 0.9em;';
+      progressHelp.textContent = 'Keep Obsidian open. If Google Drive reaches a temporary quota limit, this step can pause and resume automatically.';
+      modalContent.appendChild(progressHelp);
       const actions = document.createElement('div');
       actions.style.cssText = 'margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;';
       const cancelButton = document.createElement('button');
@@ -1049,20 +1057,59 @@ export default class QuartzoCompanionPlugin extends Plugin {
       });
 
       modal.querySelector('#pairing-confirm')?.addEventListener('click', async () => {
-        modal.remove();
+        cancelButton.disabled = true;
+        confirmButton.disabled = true;
+        confirmButton.textContent = 'Pairing…';
+        question.textContent = 'Pairing is in progress.';
+        progressText.style.display = '';
+        progressHelp.style.display = '';
+
+        const renderApplyProgress = (progress: PairingApplyProgress) => {
+          const suffix = progress.currentPath ? ` · ${progress.currentPath}` : '';
+          if (progress.phase === 'revalidating_remote') {
+            progressText.textContent = 'Revalidating Google Drive vault…';
+          } else if (progress.phase === 'baselining') {
+            progressText.textContent = progress.total > 0
+              ? `Establishing baselines ${progress.completed}/${progress.total}${suffix}`
+              : 'Establishing baselines…';
+          } else if (progress.phase === 'adopting_local') {
+            progressText.textContent = progress.total > 0
+              ? `Uploading local-only files ${progress.completed}/${progress.total}${suffix}`
+              : 'No local-only files to upload.';
+          } else if (progress.phase === 'pulling_remote') {
+            progressText.textContent = progress.total > 0
+              ? `Downloading remote-only files ${progress.completed}/${progress.total}${suffix}`
+              : 'No remote-only files to download.';
+          } else {
+            progressText.textContent = progress.completed >= progress.total
+              ? 'Finalizing pairing…'
+              : 'Saving pairing state…';
+          }
+        };
+
         try {
-          const pairingResult = await this.driveSyncCoordinator!.applyPairingDecisions(summary, { autoAdopt: true, autoPull: true });
+          const pairingResult = await this.driveSyncCoordinator!.applyPairingDecisions(
+            summary,
+            { autoAdopt: true, autoPull: true },
+            renderApplyProgress
+          );
           if (pairingResult.errors.length > 0) {
+            modal.remove();
             new Notice(`Pairing incomplete: ${pairingResult.errors.join('; ')}`);
+            await this.refreshQuartzoView();
             return;
           }
           this.settings.isPaired = true;
           this.settings.firstRunCompleted = true;
           this.authState = 'paired';
           await this.saveSettings();
-          new Notice(`Paired with folder: ${folderName}`);
           this.startAutoSync();
+          modal.remove();
+          await this.refreshQuartzoView();
+          new Notice(`Paired with folder: ${folderName}`);
         } catch (error) {
+          modal.remove();
+          await this.refreshQuartzoView();
           new Notice(`Error applying pairing decisions: ${error}`);
         }
       });
