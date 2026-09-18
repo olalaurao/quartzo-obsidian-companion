@@ -94,6 +94,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
   private sharedSettingsRepository: SharedSettingsRepository | null = null;
   private sharedSettings: QuartzoSharedSettings | null = null;
   private googleAccessRefreshInFlight: Promise<string | null> | null = null;
+  private pairingWorkflowModal: HTMLDivElement | null = null;
   private readonly calendarCache = new Map<string, CalendarCacheEntry>();
   private readonly browserOpener = new ElectronBrowserOpener();
   calendarStatus: GoogleCalendarStatus = 'disconnected';
@@ -679,83 +680,23 @@ export default class QuartzoCompanionPlugin extends Plugin {
       new Notice(`Google Drive reconnect failed: ${error}`);
     }
   }
-  private confirmSafeDuplicateTrash(plan: SafeDuplicateTrashPlan): Promise<boolean> {
-    return new Promise(resolve => {
-      const modal = new Modal(this.app);
-      let settled = false;
-      const finish = (value: boolean) => {
-        if (settled) return;
-        settled = true;
-        resolve(value);
-        modal.close();
-      };
+  private createPairingWorkflowSurface(): { modal: HTMLDivElement; modalContent: HTMLDivElement } {
+    if (this.pairingWorkflowModal?.isConnected) {
+      this.pairingWorkflowModal.remove();
+    }
 
-      modal.onOpen = () => {
-        const { contentEl } = modal;
-        contentEl.empty();
-
-        const title = document.createElement('h2');
-        title.textContent = 'Move safe duplicates to Drive trash?';
-        contentEl.appendChild(title);
-
-        const description = document.createElement('p');
-        description.textContent =
-          `The Companion will revalidate every affected local file and Drive candidate, then move ${plan.totalTrashFiles} proven duplicate file(s) across ${plan.resolutions.length} path(s) to Google Drive trash. It will keep one canonical candidate per path and will not empty Drive trash.`;
-        contentEl.appendChild(description);
-
-        if (plan.unresolvedPaths.length > 0) {
-          const unresolved = document.createElement('p');
-          unresolved.textContent =
-            `${plan.unresolvedPaths.length} ambiguous path(s) are not provably safe and will be left untouched.`;
-          contentEl.appendChild(unresolved);
-        }
-
-        const list = document.createElement('ul');
-        for (const resolution of plan.resolutions) {
-          const item = document.createElement('li');
-          item.textContent =
-            `${resolution.path}: keep ${resolution.keepFileId}; move ${resolution.trashFileIds.length} duplicate(s) to trash.`;
-          list.appendChild(item);
-        }
-        contentEl.appendChild(list);
-
-        const safety = document.createElement('p');
-        safety.textContent =
-          'Nothing is permanently deleted. If the Drive candidate set, modification snapshot, or local hash changed since the scan, that path is skipped and must be rescanned.';
-        contentEl.appendChild(safety);
-
-        const actions = document.createElement('div');
-        actions.style.cssText = 'display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;';
-
-        const cancel = document.createElement('button');
-        cancel.textContent = 'Cancel';
-        cancel.addEventListener('click', () => finish(false));
-        actions.appendChild(cancel);
-
-        const confirm = document.createElement('button');
-        confirm.className = 'mod-warning';
-        confirm.textContent = `Move ${plan.totalTrashFiles} file(s) to Drive trash`;
-        confirm.addEventListener('click', () => finish(true));
-        actions.appendChild(confirm);
-
-        contentEl.appendChild(actions);
-      };
-
-      modal.onClose = () => {
-        modal.contentEl.empty();
-        if (!settled) {
-          settled = true;
-          resolve(false);
-        }
-      };
-
-      modal.open();
-    });
-  }
-
-  private showBlockedPairingSummary(folderName: string, summary: PairingSummary): void {
     const modal = document.createElement('div');
     modal.className = 'quartzo-pairing-summary-modal';
+    modal.style.cssText = [
+      'position: fixed',
+      'inset: 0',
+      'z-index: 10000',
+      'background: rgba(0, 0, 0, 0.45)',
+      'display: flex',
+      'align-items: center',
+      'justify-content: center',
+      'padding: 16px',
+    ].join(';');
 
     const modalContent = document.createElement('div');
     modalContent.className = 'modal-content';
@@ -764,15 +705,96 @@ export default class QuartzoCompanionPlugin extends Plugin {
       'background: var(--background-primary)',
       'border: 1px solid var(--background-modifier-border)',
       'border-radius: 8px',
-      'position: fixed',
-      'top: 50%',
-      'left: 50%',
-      'transform: translate(-50%, -50%)',
-      'z-index: 1000',
       'width: min(760px, calc(100vw - 32px))',
       'max-height: min(760px, calc(100vh - 32px))',
       'overflow: auto',
+      'box-shadow: var(--shadow-l)',
     ].join(';');
+
+    modal.appendChild(modalContent);
+    document.body.appendChild(modal);
+    this.pairingWorkflowModal = modal;
+    return { modal, modalContent };
+  }
+
+  private closePairingWorkflowSurface(modal: HTMLDivElement): void {
+    modal.remove();
+    if (this.pairingWorkflowModal === modal) this.pairingWorkflowModal = null;
+  }
+
+  private renderPairingWorkflowError(
+    modal: HTMLDivElement,
+    modalContent: HTMLDivElement,
+    titleText: string,
+    message: string,
+    helpText: string,
+    back?: () => void
+  ): void {
+    modalContent.replaceChildren();
+
+    const title = document.createElement('h2');
+    title.textContent = titleText;
+    modalContent.appendChild(title);
+
+    const error = document.createElement('p');
+    error.style.cssText = 'font-weight: 600; word-break: break-word;';
+    error.textContent = message;
+    modalContent.appendChild(error);
+
+    const help = document.createElement('p');
+    help.textContent = helpText;
+    modalContent.appendChild(help);
+
+    const actions = document.createElement('div');
+    actions.style.cssText = 'display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; flex-wrap: wrap;';
+
+    if (back) {
+      const backButton = document.createElement('button');
+      backButton.textContent = 'Back';
+      backButton.addEventListener('click', back);
+      actions.appendChild(backButton);
+    }
+
+    const copy = document.createElement('button');
+    copy.textContent = 'Copy error';
+    copy.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(message);
+        new Notice('Pairing error copied.');
+      } catch (error) {
+        new Notice(`Could not copy pairing error: ${error}`);
+      }
+    });
+    actions.appendChild(copy);
+
+    const close = document.createElement('button');
+    close.textContent = 'Close';
+    close.addEventListener('click', () => this.closePairingWorkflowSurface(modal));
+    actions.appendChild(close);
+
+    modalContent.appendChild(actions);
+  }
+
+  private renderPairingSummaryContent(
+    modal: HTMLDivElement,
+    modalContent: HTMLDivElement,
+    folderName: string,
+    summary: PairingSummary
+  ): void {
+    if (summary.divergent.length > 0 || summary.ambiguous.length > 0) {
+      this.renderBlockedPairingContent(modal, modalContent, folderName, summary);
+      return;
+    }
+    this.renderReadyPairingContent(modal, modalContent, folderName, summary);
+  }
+
+  private renderBlockedPairingContent(
+    modal: HTMLDivElement,
+    modalContent: HTMLDivElement,
+    folderName: string,
+    summary: PairingSummary
+  ): void {
+    modalContent.replaceChildren();
 
     const title = document.createElement('h2');
     title.textContent = 'Pairing blocked';
@@ -882,7 +904,6 @@ export default class QuartzoCompanionPlugin extends Plugin {
             }
           });
           li.appendChild(openButton);
-
           candidates.appendChild(li);
         }
         details.appendChild(candidates);
@@ -902,36 +923,15 @@ export default class QuartzoCompanionPlugin extends Plugin {
     if (safeTrashPlan.totalTrashFiles > 0 && this.driveSyncCoordinator) {
       const cleanupButton = document.createElement('button');
       cleanupButton.className = 'mod-warning';
-      cleanupButton.textContent = `Move ${safeTrashPlan.totalTrashFiles} safe duplicate(s) to Drive trash`;
-      cleanupButton.addEventListener('click', async () => {
-        const confirmed = await this.confirmSafeDuplicateTrash(safeTrashPlan);
-        if (!confirmed || !this.driveSyncCoordinator) return;
-
-        cleanupButton.disabled = true;
-        cleanupButton.textContent = 'Revalidating and moving to trash…';
-        try {
-          const result = await this.driveSyncCoordinator.trashSafePairingDuplicates(summary);
-          modal.remove();
-
-          if (result.errors.length > 0) {
-            new Notice(
-              `Safe duplicate cleanup moved ${result.trashed} file(s), but ${result.errors.length} issue(s) require a rescan. No file was permanently deleted.`
-            );
-          } else {
-            new Notice(
-              `Moved ${result.trashed} safe duplicate file(s) to Google Drive trash across ${result.resolvedPaths} path(s). Drive trash was not emptied.`
-            );
-          }
-
-          const folderId = this.settings.googleDriveFolderId;
-          if (folderId) {
-            await this.confirmPairing(folderId, folderName, false, false);
-          }
-        } catch (error) {
-          cleanupButton.disabled = false;
-          cleanupButton.textContent = `Move ${safeTrashPlan.totalTrashFiles} safe duplicate(s) to Drive trash`;
-          new Notice(`Safe duplicate cleanup failed: ${error}`);
-        }
+      cleanupButton.textContent = `Review ${safeTrashPlan.totalTrashFiles} safe duplicate(s) to move to Drive trash`;
+      cleanupButton.addEventListener('click', () => {
+        this.renderSafeDuplicateTrashConfirmation(
+          modal,
+          modalContent,
+          folderName,
+          summary,
+          safeTrashPlan
+        );
       });
       actions.appendChild(cleanupButton);
     }
@@ -950,12 +950,266 @@ export default class QuartzoCompanionPlugin extends Plugin {
 
     const closeButton = document.createElement('button');
     closeButton.textContent = 'Close';
-    closeButton.addEventListener('click', () => modal.remove());
+    closeButton.addEventListener('click', () => this.closePairingWorkflowSurface(modal));
     actions.appendChild(closeButton);
 
     modalContent.appendChild(actions);
-    modal.appendChild(modalContent);
-    document.body.appendChild(modal);
+  }
+
+  private renderSafeDuplicateTrashConfirmation(
+    modal: HTMLDivElement,
+    modalContent: HTMLDivElement,
+    folderName: string,
+    summary: PairingSummary,
+    plan: SafeDuplicateTrashPlan
+  ): void {
+    modalContent.replaceChildren();
+
+    const title = document.createElement('h2');
+    title.textContent = 'Move safe duplicates to Drive trash?';
+    modalContent.appendChild(title);
+
+    const description = document.createElement('p');
+    description.textContent =
+      `The Companion will revalidate every affected local file and Drive candidate, then move ${plan.totalTrashFiles} proven duplicate file(s) across ${plan.resolutions.length} path(s) to Google Drive trash. It will keep one canonical candidate per path and will not empty Drive trash.`;
+    modalContent.appendChild(description);
+
+    if (plan.unresolvedPaths.length > 0) {
+      const unresolved = document.createElement('p');
+      unresolved.textContent =
+        `${plan.unresolvedPaths.length} ambiguous path(s) are not provably safe and will be left untouched.`;
+      modalContent.appendChild(unresolved);
+    }
+
+    const list = document.createElement('ul');
+    for (const resolution of plan.resolutions) {
+      const item = document.createElement('li');
+      item.textContent =
+        `${resolution.path}: keep ${resolution.keepFileId}; move ${resolution.trashFileIds.length} duplicate(s) to trash.`;
+      list.appendChild(item);
+    }
+    modalContent.appendChild(list);
+
+    const safety = document.createElement('p');
+    safety.textContent =
+      'Nothing is permanently deleted. If the Drive candidate set, modification snapshot, or local hash changed since the scan, that path is skipped and must be rescanned.';
+    modalContent.appendChild(safety);
+
+    const actions = document.createElement('div');
+    actions.style.cssText = 'display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; flex-wrap: wrap;';
+
+    const back = document.createElement('button');
+    back.textContent = 'Back to diagnostics';
+    back.addEventListener('click', () => {
+      this.renderBlockedPairingContent(modal, modalContent, folderName, summary);
+    });
+    actions.appendChild(back);
+
+    const confirm = document.createElement('button');
+    confirm.className = 'mod-warning';
+    confirm.textContent = `Move ${plan.totalTrashFiles} file(s) to Drive trash`;
+    confirm.addEventListener('click', async () => {
+      if (!this.driveSyncCoordinator) return;
+
+      modalContent.replaceChildren();
+      const progressTitle = document.createElement('h2');
+      progressTitle.textContent = 'Cleaning up safe duplicates';
+      modalContent.appendChild(progressTitle);
+
+      const progress = document.createElement('p');
+      progress.style.cssText = 'font-weight: 600; word-break: break-word;';
+      progress.textContent = 'Revalidating local and Google Drive candidates…';
+      modalContent.appendChild(progress);
+
+      const help = document.createElement('p');
+      help.textContent = 'Keep Obsidian open. This screen will update automatically; no second confirmation window will open.';
+      modalContent.appendChild(help);
+
+      try {
+        const result = await this.driveSyncCoordinator.trashSafePairingDuplicates(summary);
+        progress.textContent = 'Safe duplicate cleanup finished. Rescanning the vaults…';
+
+        const refreshedSummary = await this.driveSyncCoordinator.generatePairingSummary(scan => {
+          if (scan.phase === 'local_inventory') {
+            progress.textContent = 'Rescanning local vault…';
+          } else if (scan.phase === 'remote_inventory') {
+            progress.textContent = 'Relisting Google Drive vault…';
+          } else if (scan.phase === 'resolving_ambiguities') {
+            progress.textContent = scan.total > 0
+              ? `Rechecking duplicate contents ${scan.completed}/${scan.total}…`
+              : 'Rechecking duplicate contents…';
+          } else if (scan.total > 0) {
+            progress.textContent = `Recomparing vaults ${scan.completed}/${scan.total}…`;
+          } else {
+            progress.textContent = 'Recomparing vaults…';
+          }
+        });
+
+        if (result.errors.length > 0) {
+          new Notice(
+            `Safe duplicate cleanup moved ${result.trashed} file(s), but ${result.errors.length} issue(s) remain. The pairing summary was refreshed.`
+          );
+        } else {
+          new Notice(
+            `Moved ${result.trashed} safe duplicate file(s) to Google Drive trash across ${result.resolvedPaths} path(s). Drive trash was not emptied.`
+          );
+        }
+
+        this.renderPairingSummaryContent(modal, modalContent, folderName, refreshedSummary);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.renderPairingWorkflowError(
+          modal,
+          modalContent,
+          'Safe duplicate cleanup did not finish',
+          message,
+          'No file was permanently deleted. You can return to the diagnostics and try again after reviewing the error.',
+          () => this.renderBlockedPairingContent(modal, modalContent, folderName, summary)
+        );
+      }
+    });
+    actions.appendChild(confirm);
+    modalContent.appendChild(actions);
+  }
+
+  private renderReadyPairingContent(
+    modal: HTMLDivElement,
+    modalContent: HTMLDivElement,
+    folderName: string,
+    summary: PairingSummary
+  ): void {
+    modalContent.replaceChildren();
+
+    const modalTitle = document.createElement('h2');
+    modalTitle.textContent = 'Pairing Summary';
+    modalContent.appendChild(modalTitle);
+
+    const folder = document.createElement('p');
+    folder.textContent = `Folder: ${folderName}`;
+    modalContent.appendChild(folder);
+
+    const counts = document.createElement('ul');
+    for (const text of [
+      `Identical files: ${summary.identical.length}`,
+      `Remote-only (to pull): ${summary.remoteOnly.length}`,
+      `Local-only (to adopt): ${summary.localOnly.length}`,
+      `Ambiguous (blocked): ${summary.ambiguous.length}`,
+    ]) {
+      const item = document.createElement('li');
+      item.textContent = text;
+      counts.appendChild(item);
+    }
+    modalContent.appendChild(counts);
+
+    const question = document.createElement('p');
+    question.textContent = 'Do you want to adopt local-only files and pull remote-only files?';
+    modalContent.appendChild(question);
+
+    const progressText = document.createElement('p');
+    progressText.style.cssText = 'display: none; font-weight: 600; word-break: break-word;';
+    modalContent.appendChild(progressText);
+
+    const progressHelp = document.createElement('p');
+    progressHelp.style.cssText = 'display: none; font-size: 0.9em;';
+    progressHelp.textContent = 'Keep Obsidian open. If Google Drive reaches a temporary quota limit, this step can pause and resume automatically.';
+    modalContent.appendChild(progressHelp);
+
+    const actions = document.createElement('div');
+    actions.style.cssText = 'margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;';
+
+    const cancelButton = document.createElement('button');
+    cancelButton.textContent = 'Cancel';
+    cancelButton.addEventListener('click', () => {
+      this.closePairingWorkflowSurface(modal);
+      new Notice('Pairing cancelled.');
+    });
+    actions.appendChild(cancelButton);
+
+    const confirmButton = document.createElement('button');
+    confirmButton.textContent = 'Accept & Pair';
+    actions.appendChild(confirmButton);
+
+    modalContent.appendChild(actions);
+
+    confirmButton.addEventListener('click', async () => {
+      if (!this.driveSyncCoordinator) return;
+
+      cancelButton.disabled = true;
+      confirmButton.disabled = true;
+      confirmButton.textContent = 'Pairing…';
+      question.textContent = 'Pairing is in progress.';
+      progressText.style.display = '';
+      progressHelp.style.display = '';
+
+      const renderApplyProgress = (progress: PairingApplyProgress) => {
+        const suffix = progress.currentPath ? ` · ${progress.currentPath}` : '';
+        if (progress.phase === 'revalidating_remote') {
+          progressText.textContent = 'Revalidating Google Drive vault…';
+        } else if (progress.phase === 'baselining') {
+          progressText.textContent = progress.total > 0
+            ? `Establishing baselines ${progress.completed}/${progress.total}${suffix}`
+            : 'Establishing baselines…';
+        } else if (progress.phase === 'adopting_local') {
+          progressText.textContent = progress.total > 0
+            ? `Uploading local-only files ${progress.completed}/${progress.total}${suffix}`
+            : 'No local-only files to upload.';
+        } else if (progress.phase === 'pulling_remote') {
+          progressText.textContent = progress.total > 0
+            ? `Downloading remote-only files ${progress.completed}/${progress.total}${suffix}`
+            : 'No remote-only files to download.';
+        } else {
+          progressText.textContent = progress.completed >= progress.total
+            ? 'Finalizing pairing…'
+            : 'Saving pairing state…';
+        }
+      };
+
+      try {
+        const pairingResult = await this.driveSyncCoordinator.applyPairingDecisions(
+          summary,
+          { autoAdopt: true, autoPull: true },
+          renderApplyProgress
+        );
+        if (pairingResult.errors.length > 0) {
+          const message = pairingResult.errors.join('; ');
+          this.renderPairingWorkflowError(
+            modal,
+            modalContent,
+            'Pairing did not finish',
+            message,
+            'Completed uploads or downloads remain safe to rescan. Close this message, then run Pair again to build a fresh summary.'
+          );
+          new Notice('Pairing stopped. Error details are open in the pairing window.');
+          await this.refreshQuartzoView();
+          return;
+        }
+
+        this.settings.isPaired = true;
+        this.settings.firstRunCompleted = true;
+        this.authState = 'paired';
+        await this.saveSettings();
+        this.startAutoSync();
+        this.closePairingWorkflowSurface(modal);
+        await this.refreshQuartzoView();
+        new Notice(`Paired with folder: ${folderName}`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.renderPairingWorkflowError(
+          modal,
+          modalContent,
+          'Pairing did not finish',
+          message,
+          'Completed uploads or downloads remain safe to rescan. Close this message, then run Pair again to build a fresh summary.'
+        );
+        await this.refreshQuartzoView();
+        new Notice('Pairing stopped. Error details are open in the pairing window.');
+      }
+    });
+  }
+
+  private showPairingSummarySurface(folderName: string, summary: PairingSummary): void {
+    const { modal, modalContent } = this.createPairingWorkflowSurface();
+    this.renderPairingSummaryContent(modal, modalContent, folderName, summary);
   }
 
   async confirmPairing(
@@ -982,14 +1236,6 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.settings.googleDriveFolderName = selected.name || folderName;
 
     const summary = await this.driveSyncCoordinator.generatePairingSummary(onProgress);
-    const hasDivergent = summary.divergent.length > 0;
-    const hasAmbiguous = summary.ambiguous.length > 0;
-
-    if (hasDivergent || hasAmbiguous) {
-      this.showBlockedPairingSummary(folderName, summary);
-      new Notice(`Pairing blocked: ${summary.divergent.length} divergent and ${summary.ambiguous.length} ambiguous file(s) require resolution.`);
-      return;
-    }
 
     if (autoAdopt || autoPull) {
       const pairingResult = await this.driveSyncCoordinator.applyPairingDecisions(summary, { autoAdopt, autoPull });
@@ -1003,150 +1249,12 @@ export default class QuartzoCompanionPlugin extends Plugin {
       await this.saveSettings();
       new Notice(`Paired with folder: ${folderName}`);
       this.startAutoSync();
-    } else {
-      const modal = document.createElement('div');
-      modal.className = 'quartzo-pairing-summary-modal';
-      const modalContent = document.createElement('div');
-      modalContent.className = 'modal-content';
-      modalContent.style.cssText = 'padding: 20px; background: var(--background-primary); border: 1px solid var(--background-modifier-border); border-radius: 8px; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000;';
-      const modalTitle = document.createElement('h2');
-      modalTitle.textContent = 'Pairing Summary';
-      modalContent.appendChild(modalTitle);
-      const folder = document.createElement('p');
-      folder.textContent = `Folder: ${folderName}`;
-      modalContent.appendChild(folder);
-      const counts = document.createElement('ul');
-      for (const text of [
-        `Identical files: ${summary.identical.length}`,
-        `Remote-only (to pull): ${summary.remoteOnly.length}`,
-        `Local-only (to adopt): ${summary.localOnly.length}`,
-        `Ambiguous (blocked): ${summary.ambiguous.length}`,
-      ]) {
-        const item = document.createElement('li');
-        item.textContent = text;
-        counts.appendChild(item);
-      }
-      modalContent.appendChild(counts);
-      const question = document.createElement('p');
-      question.textContent = 'Do you want to adopt local-only files and pull remote-only files?';
-      modalContent.appendChild(question);
-      const progressText = document.createElement('p');
-      progressText.style.cssText = 'display: none; font-weight: 600; word-break: break-word;';
-      modalContent.appendChild(progressText);
-      const progressHelp = document.createElement('p');
-      progressHelp.style.cssText = 'display: none; font-size: 0.9em;';
-      progressHelp.textContent = 'Keep Obsidian open. If Google Drive reaches a temporary quota limit, this step can pause and resume automatically.';
-      modalContent.appendChild(progressHelp);
-      const actions = document.createElement('div');
-      actions.style.cssText = 'margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;';
-      const cancelButton = document.createElement('button');
-      cancelButton.id = 'pairing-cancel';
-      cancelButton.textContent = 'Cancel';
-      actions.appendChild(cancelButton);
-      const copyFailureButton = document.createElement('button');
-      copyFailureButton.textContent = 'Copy error';
-      copyFailureButton.style.display = 'none';
-      actions.appendChild(copyFailureButton);
-      const confirmButton = document.createElement('button');
-      confirmButton.id = 'pairing-confirm';
-      confirmButton.textContent = 'Accept & Pair';
-      actions.appendChild(confirmButton);
-      modalContent.appendChild(actions);
-      modal.appendChild(modalContent);
-      document.body.appendChild(modal);
+      return;
+    }
 
-      let pairingFailed = false;
-      let pairingFailureText = '';
-
-      const showPersistentPairingFailure = (message: string) => {
-        pairingFailed = true;
-        pairingFailureText = message;
-        modalTitle.textContent = 'Pairing did not finish';
-        question.textContent = 'The pairing stopped before it could be committed. The reason is shown below.';
-        progressText.style.display = '';
-        progressText.textContent = message;
-        progressHelp.style.display = '';
-        progressHelp.textContent = 'Completed uploads or downloads remain safe to rescan. Close this message, then run Pair again to build a fresh summary.';
-        cancelButton.disabled = false;
-        cancelButton.textContent = 'Close';
-        confirmButton.disabled = true;
-        confirmButton.textContent = 'Pairing stopped';
-        copyFailureButton.style.display = '';
-      };
-
-      copyFailureButton.addEventListener('click', async () => {
-        try {
-          await navigator.clipboard.writeText(pairingFailureText);
-          new Notice('Pairing error copied.');
-        } catch (error) {
-          new Notice(`Could not copy pairing error: ${error}`);
-        }
-      });
-
-      modal.querySelector('#pairing-cancel')?.addEventListener('click', () => {
-        modal.remove();
-        new Notice(pairingFailed ? 'Pairing stopped. Run Pair again to rescan.' : 'Pairing cancelled.');
-      });
-
-      modal.querySelector('#pairing-confirm')?.addEventListener('click', async () => {
-        cancelButton.disabled = true;
-        confirmButton.disabled = true;
-        confirmButton.textContent = 'Pairing…';
-        question.textContent = 'Pairing is in progress.';
-        progressText.style.display = '';
-        progressHelp.style.display = '';
-
-        const renderApplyProgress = (progress: PairingApplyProgress) => {
-          const suffix = progress.currentPath ? ` · ${progress.currentPath}` : '';
-          if (progress.phase === 'revalidating_remote') {
-            progressText.textContent = 'Revalidating Google Drive vault…';
-          } else if (progress.phase === 'baselining') {
-            progressText.textContent = progress.total > 0
-              ? `Establishing baselines ${progress.completed}/${progress.total}${suffix}`
-              : 'Establishing baselines…';
-          } else if (progress.phase === 'adopting_local') {
-            progressText.textContent = progress.total > 0
-              ? `Uploading local-only files ${progress.completed}/${progress.total}${suffix}`
-              : 'No local-only files to upload.';
-          } else if (progress.phase === 'pulling_remote') {
-            progressText.textContent = progress.total > 0
-              ? `Downloading remote-only files ${progress.completed}/${progress.total}${suffix}`
-              : 'No remote-only files to download.';
-          } else {
-            progressText.textContent = progress.completed >= progress.total
-              ? 'Finalizing pairing…'
-              : 'Saving pairing state…';
-          }
-        };
-
-        try {
-          const pairingResult = await this.driveSyncCoordinator!.applyPairingDecisions(
-            summary,
-            { autoAdopt: true, autoPull: true },
-            renderApplyProgress
-          );
-          if (pairingResult.errors.length > 0) {
-            const message = pairingResult.errors.join('; ');
-            showPersistentPairingFailure(message);
-            new Notice('Pairing stopped. Error details are open in the pairing window.');
-            await this.refreshQuartzoView();
-            return;
-          }
-          this.settings.isPaired = true;
-          this.settings.firstRunCompleted = true;
-          this.authState = 'paired';
-          await this.saveSettings();
-          this.startAutoSync();
-          modal.remove();
-          await this.refreshQuartzoView();
-          new Notice(`Paired with folder: ${folderName}`);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          showPersistentPairingFailure(message);
-          await this.refreshQuartzoView();
-          new Notice('Pairing stopped. Error details are open in the pairing window.');
-        }
-      });
+    this.showPairingSummarySurface(folderName, summary);
+    if (summary.divergent.length > 0 || summary.ambiguous.length > 0) {
+      new Notice(`Pairing blocked: ${summary.divergent.length} divergent and ${summary.ambiguous.length} ambiguous file(s) require resolution.`);
     }
   }
 
