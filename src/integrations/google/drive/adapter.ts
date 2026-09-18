@@ -233,20 +233,18 @@ export class GoogleDriveAdapter implements DriveAdapter {
 
   async listAllFiles(folderId: string): Promise<DriveFileMetadata[]> {
     const allFiles: DriveFileMetadata[] = [];
-    const drive = this.getDriveClient();
-    await this.listAllFilesRecursive(drive, folderId, allFiles, '');
+    await this.listAllFilesRecursive(folderId, allFiles, '');
     return allFiles;
   }
 
   private async listAllFilesRecursive(
-    drive: drive_v3.Drive,
     folderId: string,
     allFiles: DriveFileMetadata[],
     relativePrefix: string
   ): Promise<void> {
     let pageToken: string | undefined;
     do {
-      const response = await this.withRetry(() => drive.files.list({
+      const response = await this.withRetry(() => this.getDriveClient().files.list({
         q: `'${folderId}' in parents and trashed = false`,
         fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties)',
         pageSize: 1000,
@@ -268,7 +266,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
           relativePrefix ? `${relativePrefix}/${file.name}` : file.name
         );
         if (file.mimeType === 'application/vnd.google-apps.folder') {
-          await this.listAllFilesRecursive(drive, file.id, allFiles, relativePath);
+          await this.listAllFilesRecursive(file.id, allFiles, relativePath);
         } else {
           allFiles.push({ ...file, relativePath });
         }
