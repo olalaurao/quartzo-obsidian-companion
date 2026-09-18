@@ -992,7 +992,17 @@ export class QuartzoView extends ItemView {
           button.textContent = 'Scanning vaults…';
           new Notice('Scanning local and Google Drive vaults for a safe pairing summary…');
           try {
-            await plugin.confirmPairing(candidate.id, candidate.name, false, false);
+            await plugin.confirmPairing(candidate.id, candidate.name, false, false, progress => {
+              if (progress.phase === 'local_inventory') {
+                button.textContent = 'Scanning local vault…';
+              } else if (progress.phase === 'remote_inventory') {
+                button.textContent = 'Listing Drive vault…';
+              } else if (progress.total > 0) {
+                button.textContent = `Comparing ${progress.completed}/${progress.total}…`;
+              } else {
+                button.textContent = 'Comparing vaults…';
+              }
+            });
           } catch (error) {
             new Notice(`Pairing scan failed: ${error instanceof Error ? error.message : String(error)}`);
           } finally {
