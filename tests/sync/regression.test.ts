@@ -7,6 +7,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { tmpdir } from 'os';
+import { GOOGLE_OAUTH_CLIENT_SECRET_ID, GOOGLE_REFRESH_TOKEN_SECRET_ID } from '../../src/platform/secret-ids';
 
 class MockDriveAdapter implements DriveAdapter {
   async assertInsideSelectedVault(remoteFileId: string): Promise<void> { return Promise.resolve(); }
@@ -731,7 +732,7 @@ describe('Sync Regression Tests', () => {
   describe('Item 13: OAuth disconnect revokes', () => {
     it('GoogleOAuthDesktop disconnect calls revoke endpoint', async () => {
       const { GoogleOAuthDesktop } = await import('../../src/integrations/google/auth/loopback');
-      const store: Record<string, string> = { 'quartzo_companion/refresh_token': 'test-refresh-token' };
+      const store: Record<string, string> = { [GOOGLE_REFRESH_TOKEN_SECRET_ID]: 'test-refresh-token' };
       const mockSecretStorage = {
         get: async (key: string) => store[key] || null,
         set: async (key: string, value: string) => { store[key] = value; },
@@ -746,7 +747,7 @@ describe('Sync Regression Tests', () => {
       };
       const oauth = new GoogleOAuthDesktop(config, mockSecretStorage);
       await oauth.disconnect();
-      expect(store['quartzo_companion/refresh_token']).toBeUndefined();
+      expect(store[GOOGLE_REFRESH_TOKEN_SECRET_ID]).toBeUndefined();
     });
   });
 
@@ -1091,16 +1092,22 @@ describe('Sync Regression Tests', () => {
   });
 
   describe('Reviewer additional: SecretStorage namespace', () => {
-    it('loopback.ts uses plugin-specific secret key', () => {
-      const loopbackSrc = fs.readFileSync(path.join(__dirname, '../../src/integrations/google/auth/loopback.ts'), 'utf-8');
-      expect(loopbackSrc).toContain('quartzo_companion/refresh_token');
-      expect(loopbackSrc).not.toContain('oauth_refresh_token');
+    it('canonical SecretStorage IDs are plugin-specific and Obsidian-compatible', () => {
+      expect(GOOGLE_REFRESH_TOKEN_SECRET_ID).toBe('quartzo-companion-refresh-token');
+      expect(GOOGLE_OAUTH_CLIENT_SECRET_ID).toBe('quartzo-companion-oauth-client-secret');
+      for (const id of [GOOGLE_REFRESH_TOKEN_SECRET_ID, GOOGLE_OAUTH_CLIENT_SECRET_ID]) {
+        expect(id).toMatch(/^[a-z0-9-]{1,64}$/);
+      }
     });
 
-    it('main.ts uses plugin-specific secret key', () => {
+    it('runtime OAuth paths use the canonical SecretStorage ID owner', () => {
+      const loopbackSrc = fs.readFileSync(path.join(__dirname, '../../src/integrations/google/auth/loopback.ts'), 'utf-8');
       const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/main.ts'), 'utf-8');
-      expect(mainSrc).toContain('quartzo_companion/refresh_token');
-      expect(mainSrc).not.toContain('oauth_refresh_token');
+      expect(loopbackSrc).toContain('GOOGLE_REFRESH_TOKEN_SECRET_ID');
+      expect(mainSrc).toContain('GOOGLE_REFRESH_TOKEN_SECRET_ID');
+      expect(mainSrc).toContain('GOOGLE_OAUTH_CLIENT_SECRET_ID');
+      expect(loopbackSrc).not.toContain('quartzo_companion/');
+      expect(mainSrc).not.toContain('quartzo_companion/');
     });
   });
 
