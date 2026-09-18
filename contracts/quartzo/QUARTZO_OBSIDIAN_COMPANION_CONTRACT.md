@@ -2066,6 +2066,16 @@ Ambiguous remote identity
 
 requires user intervention.
 
+A Companion may offer an explicit reversible cleanup action only when candidate bytes prove which identities are redundant. Before offering or executing that action, use the current Drive file capability `capabilities.canTrash` for every candidate that would be moved to trash.
+
+Rules:
+
+- never infer trash permission from timestamps, ownership guesses, or folder membership;
+- a candidate with `canTrash != true` must never be selected for automatic trash;
+- for byte-identical candidates that all match local, one non-trashable candidate may be kept while trashable redundant candidates are removed;
+- if more than one required redundant identity cannot be trashed, ambiguity remains blocked/manual;
+- when exactly one candidate matches local and a nonmatching candidate cannot be trashed, ambiguity remains blocked/manual.
+
 ---
 
 # 44. First-Pairing Safety
