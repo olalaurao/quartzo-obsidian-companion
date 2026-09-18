@@ -514,6 +514,36 @@ function checkDriveQuotaResilience() {
   return true;
 }
 
+function checkFirstPairingApplyProgress() {
+  const coordinatorPath = path.join(rootDir, 'src/sync/coordinator/index.ts');
+  const mainPath = path.join(rootDir, 'src/main.ts');
+  const coordinator = fs.readFileSync(coordinatorPath, 'utf8');
+  const main = fs.readFileSync(mainPath, 'utf8');
+
+  const requiredPhases = [
+    "'revalidating_remote'",
+    "'baselining'",
+    "'adopting_local'",
+    "'pulling_remote'",
+    "'finalizing'",
+  ];
+  if (!coordinator.includes('export interface PairingApplyProgress') ||
+      requiredPhases.some(phase => !coordinator.includes(phase)) ||
+      !coordinator.includes('onProgress?: (progress: PairingApplyProgress) => void')) {
+    console.error('FAIL: First-pairing mutation stage does not expose canonical apply progress');
+    return false;
+  }
+  if (!main.includes("question.textContent = 'Pairing is in progress.'") ||
+      !main.includes('confirmButton.disabled = true') ||
+      !main.includes('Keep Obsidian open') ||
+      !main.includes('await this.refreshQuartzoView()')) {
+    console.error('FAIL: Pairing UI can become visually idle/stale while first-pairing mutations are running');
+    return false;
+  }
+  console.log('PASS: First-pairing apply stage remains visibly in progress and refreshes UI on completion');
+  return true;
+}
+
 function main() {
   console.log('Running architecture/completeness checks...\n');
   let allPassed = true;
@@ -538,6 +568,7 @@ function main() {
   if (!checkReleasePipelineHardening()) allPassed = false;
   if (!checkPairingDuplicateCleanupIsReversible()) allPassed = false;
   if (!checkDriveQuotaResilience()) allPassed = false;
+  if (!checkFirstPairingApplyProgress()) allPassed = false;
 
   console.log('\n' + (allPassed ? 'All architecture checks passed' : 'Some architecture checks failed'));
   process.exit(allPassed ? 0 : 1);

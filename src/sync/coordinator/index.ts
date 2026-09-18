@@ -95,6 +95,13 @@ export interface PairingScanProgress {
   total: number;
 }
 
+export interface PairingApplyProgress {
+  phase: 'revalidating_remote' | 'baselining' | 'adopting_local' | 'pulling_remote' | 'finalizing';
+  completed: number;
+  total: number;
+  currentPath?: string;
+}
+
 export interface PairingSummary {
   identical: PairingItem[];
   remoteOnly: PairingItem[];
@@ -1612,7 +1619,11 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     return result;
   }
 
-  async applyPairingDecisions(summary: PairingSummary, decisions: { autoAdopt: boolean; autoPull: boolean }): Promise<SyncResult> {
+  async applyPairingDecisions(
+    summary: PairingSummary,
+    decisions: { autoAdopt: boolean; autoPull: boolean },
+    onProgress?: (progress: PairingApplyProgress) => void
+  ): Promise<SyncResult> {
     const result: SyncResult = { synced: 0, conflicts: 0, errors: [] };
     const driveFolderId = this.syncState.driveFolderId || '';
 
@@ -1621,6 +1632,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       return result;
     }
 
+    onProgress?.({ phase: 'revalidating_remote', completed: 0, total: 0 });
     const remoteCandidates = await this.buildRemoteCandidates(driveFolderId);
     const remoteMap = new Map<string, DriveFileMetadata>();
     for (const [remotePath, candidates] of remoteCandidates) {
@@ -1633,7 +1645,15 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     }
     if (result.errors.length > 0) return result;
 
+    let baselineCompleted = 0;
+    onProgress?.({ phase: 'baselining', completed: baselineCompleted, total: summary.identical.length });
     for (const item of summary.identical) {
+      onProgress?.({
+        phase: 'baselining',
+        completed: baselineCompleted,
+        total: summary.identical.length,
+        currentPath: item.path,
+      });
       const remoteEntry = remoteMap.get(item.path);
       const localFilePath = pathModule.join(this.vaultPath, item.path);
       if (!remoteEntry || !fs.existsSync(localFilePath)) {
@@ -1665,11 +1685,26 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       syncFile.remoteExists = true;
       syncFile.remoteModifiedAt = remoteEntry.modifiedTime || null;
       this.syncState.files.set(item.path, syncFile);
+      baselineCompleted++;
+      onProgress?.({
+        phase: 'baselining',
+        completed: baselineCompleted,
+        total: summary.identical.length,
+        currentPath: item.path,
+      });
     }
     if (result.errors.length > 0) return result;
 
     if (decisions.autoAdopt) {
+      let adoptCompleted = 0;
+      onProgress?.({ phase: 'adopting_local', completed: adoptCompleted, total: summary.localOnly.length });
       for (const item of summary.localOnly) {
+        onProgress?.({
+          phase: 'adopting_local',
+          completed: adoptCompleted,
+          total: summary.localOnly.length,
+          currentPath: item.path,
+        });
         if (remoteMap.has(item.path)) {
           result.errors.push(`Pairing changed for ${item.path}: a remote file now exists. Rescan before pairing.`);
           continue;
@@ -1705,11 +1740,26 @@ export class DriveSyncCoordinator implements ConflictRegistry {
         } catch (error) {
           result.errors.push(`Failed to adopt ${item.path}: ${error}`);
         }
+        adoptCompleted++;
+        onProgress?.({
+          phase: 'adopting_local',
+          completed: adoptCompleted,
+          total: summary.localOnly.length,
+          currentPath: item.path,
+        });
       }
     }
 
     if (decisions.autoPull) {
+      let pullCompleted = 0;
+      onProgress?.({ phase: 'pulling_remote', completed: pullCompleted, total: summary.remoteOnly.length });
       for (const item of summary.remoteOnly) {
+        onProgress?.({
+          phase: 'pulling_remote',
+          completed: pullCompleted,
+          total: summary.remoteOnly.length,
+          currentPath: item.path,
+        });
         const remoteEntry = remoteMap.get(item.path);
         if (!remoteEntry) {
           result.errors.push(`Pairing changed for ${item.path}: remote file no longer exists. Rescan before pairing.`);
@@ -1723,13 +1773,22 @@ export class DriveSyncCoordinator implements ConflictRegistry {
         } catch (error) {
           result.errors.push(`Failed to pull ${item.path}: ${error}`);
         }
+        pullCompleted++;
+        onProgress?.({
+          phase: 'pulling_remote',
+          completed: pullCompleted,
+          total: summary.remoteOnly.length,
+          currentPath: item.path,
+        });
       }
     }
 
+    onProgress?.({ phase: 'finalizing', completed: 0, total: 1 });
     if (result.errors.length === 0) {
       this.syncState.driveChangeToken = await this.driveAdapter.getStartPageToken();
     }
     await this.saveSyncState();
+    onProgress?.({ phase: 'finalizing', completed: 1, total: 1 });
     return result;
   }
 
