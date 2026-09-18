@@ -782,7 +782,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     summary: PairingSummary
   ): void {
     if (summary.divergent.length > 0 || summary.ambiguous.length > 0) {
-      this.renderBlockedPairingContent(modal, modalContent, folderName, summary);
+      this.renderBlockedPairingContent(modal, modalContent, folderName, summary, mode);
       return;
     }
     this.renderReadyPairingContent(modal, modalContent, folderName, summary);
@@ -792,25 +792,30 @@ export default class QuartzoCompanionPlugin extends Plugin {
     modal: HTMLDivElement,
     modalContent: HTMLDivElement,
     folderName: string,
-    summary: PairingSummary
+    summary: PairingSummary,
+    mode: 'pairing' | 'sync_repair' = 'pairing'
   ): void {
     modalContent.replaceChildren();
 
     const title = document.createElement('h2');
-    title.textContent = 'Pairing blocked';
+    title.textContent = mode === 'sync_repair' ? 'Drive duplicates block sync' : 'Pairing blocked';
     modalContent.appendChild(title);
 
     const intro = document.createElement('p');
-    intro.textContent = `Folder: ${folderName}. ${summary.divergent.length} divergent and ${summary.ambiguous.length} ambiguous path(s) must be resolved before pairing.`;
+    intro.textContent = mode === 'sync_repair'
+      ? `Folder: ${folderName}. ${summary.ambiguous.length} ambiguous Drive path(s) are blocking sync. Quartzo will not choose between live remote candidates automatically.`
+      : `Folder: ${folderName}. ${summary.divergent.length} divergent and ${summary.ambiguous.length} ambiguous path(s) must be resolved before pairing.`;
     modalContent.appendChild(intro);
 
-    if (summary.divergent.length === 0 && summary.ambiguous.length > 0) {
+    if (summary.ambiguous.length > 0) {
       const explanation = document.createElement('p');
-      explanation.textContent = 'No compared files differ by content. Ambiguous means Google Drive returned more than one remote file candidate for the same Quartzo-relative path. Quartzo will not choose one automatically.';
+      explanation.textContent = mode === 'sync_repair'
+        ? 'The same SHA-256 and Drive trash safety checks used during first pairing are available here after pairing. Only content-proven duplicates can be moved to Drive trash.'
+        : 'Ambiguous means Google Drive returned more than one remote file candidate for the same Quartzo-relative path. Quartzo will not choose one automatically.';
       modalContent.appendChild(explanation);
     }
 
-    if (summary.divergent.length > 0) {
+    if (mode === 'pairing' && summary.divergent.length > 0) {
       const heading = document.createElement('h3');
       heading.textContent = `Divergent paths (${summary.divergent.length})`;
       modalContent.appendChild(heading);
@@ -919,7 +924,9 @@ export default class QuartzoCompanionPlugin extends Plugin {
     const instructions = document.createElement('p');
     instructions.textContent = safeTrashPlan.totalTrashFiles > 0
       ? 'The Companion can move only the content-proven duplicate candidates to Google Drive trash. Anything that is not provably safe remains untouched.'
-      : 'Resolve the duplicate Drive identity first, then run Pair again. Do not delete a candidate unless you have confirmed which copy should remain.';
+      : mode === 'sync_repair'
+        ? 'These live duplicates are not provably safe to clean automatically. Review the candidate contents/permissions and keep the paths blocked until they are explicitly resolved.'
+        : 'Resolve the duplicate Drive identity first, then run Pair again. Do not delete a candidate unless you have confirmed which copy should remain.';
     modalContent.appendChild(instructions);
 
     const actions = document.createElement('div');
@@ -935,7 +942,8 @@ export default class QuartzoCompanionPlugin extends Plugin {
           modalContent,
           folderName,
           summary,
-          safeTrashPlan
+          safeTrashPlan,
+          mode
         );
       });
       actions.appendChild(cleanupButton);
@@ -946,7 +954,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     copyButton.addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(buildPairingDiagnosticsText(folderName, summary));
-        new Notice('Pairing diagnostics copied.');
+        new Notice(mode === 'sync_repair' ? 'Drive duplicate diagnostics copied.' : 'Pairing diagnostics copied.');
       } catch (error) {
         new Notice(`Could not copy pairing diagnostics: ${error}`);
       }
@@ -966,7 +974,8 @@ export default class QuartzoCompanionPlugin extends Plugin {
     modalContent: HTMLDivElement,
     folderName: string,
     summary: PairingSummary,
-    plan: SafeDuplicateTrashPlan
+    plan: SafeDuplicateTrashPlan,
+    mode: 'pairing' | 'sync_repair' = 'pairing'
   ): void {
     modalContent.replaceChildren();
 
@@ -1058,7 +1067,9 @@ export default class QuartzoCompanionPlugin extends Plugin {
             'Safe duplicate cleanup did not fully finish',
             message,
             'The vaults were rescanned after the cleanup attempt. Use Back to inspect the refreshed diagnostics; no file was permanently deleted.',
-            () => this.renderPairingSummaryContent(modal, modalContent, folderName, refreshedSummary)
+            () => mode === 'sync_repair'
+              ? this.renderBlockedPairingContent(modal, modalContent, folderName, refreshedSummary, 'sync_repair')
+              : this.renderPairingSummaryContent(modal, modalContent, folderName, refreshedSummary)
           );
           new Notice('Safe duplicate cleanup stopped with details open in the pairing window.');
           return;
@@ -1077,7 +1088,9 @@ export default class QuartzoCompanionPlugin extends Plugin {
             'Drive has not confirmed duplicate cleanup yet',
             `Google Drive still reports recently trashed duplicate candidate(s) as active: ${lingering.join(', ')}`,
             'No additional delete will run automatically. Use Back to inspect the refreshed summary, wait a moment, and retry only if the same candidates remain.',
-            () => this.renderPairingSummaryContent(modal, modalContent, folderName, refreshedSummary)
+            () => mode === 'sync_repair'
+              ? this.renderBlockedPairingContent(modal, modalContent, folderName, refreshedSummary, 'sync_repair')
+              : this.renderPairingSummaryContent(modal, modalContent, folderName, refreshedSummary)
           );
           return;
         }
@@ -1085,6 +1098,23 @@ export default class QuartzoCompanionPlugin extends Plugin {
         new Notice(
           `Moved ${result.trashed} safe duplicate file(s) to Google Drive trash across ${result.resolvedPaths} path(s). Drive trash was not emptied.`
         );
+        if (mode === 'sync_repair') {
+          if (refreshedSummary.ambiguous.length > 0) {
+            this.renderBlockedPairingContent(modal, modalContent, folderName, refreshedSummary, 'sync_repair');
+            return;
+          }
+
+          progress.textContent = 'Duplicate cleanup verified. Running full reconciliation…';
+          const reconcileResult = await this.driveSyncCoordinator.triggerFullReconciliation();
+          this.closePairingWorkflowSurface(modal);
+          await this.refreshQuartzoView();
+          if (reconcileResult.errors.length > 0) {
+            new Notice(reconcileResult.errors[reconcileResult.errors.length - 1]);
+          } else {
+            new Notice(`Drive duplicates resolved. Full reconciliation complete: ${reconcileResult.synced} synced, ${reconcileResult.conflicts} conflicts.`);
+          }
+          return;
+        }
         this.renderPairingSummaryContent(modal, modalContent, folderName, refreshedSummary);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -1094,7 +1124,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
           'Safe duplicate cleanup did not finish',
           message,
           'No file was permanently deleted. You can return to the diagnostics and try again after reviewing the error.',
-          () => this.renderBlockedPairingContent(modal, modalContent, folderName, summary)
+          () => this.renderBlockedPairingContent(modal, modalContent, folderName, summary, mode)
         );
       }
     });
@@ -1240,6 +1270,69 @@ export default class QuartzoCompanionPlugin extends Plugin {
   private showPairingSummarySurface(folderName: string, summary: PairingSummary): void {
     const { modal, modalContent } = this.createPairingWorkflowSurface();
     this.renderPairingSummaryContent(modal, modalContent, folderName, summary);
+  }
+
+  async reviewSyncRemoteDuplicates(): Promise<void> {
+    if (!this.driveSyncCoordinator || !this.settings.isPaired) {
+      new Notice('Pair this device before reviewing Drive duplicates.');
+      return;
+    }
+
+    const folderName = this.settings.googleDriveFolderName ?? 'Quartzo vault';
+    const { modal, modalContent } = this.createPairingWorkflowSurface();
+    modalContent.replaceChildren();
+
+    const title = document.createElement('h2');
+    title.textContent = 'Reviewing Drive duplicates';
+    modalContent.appendChild(title);
+
+    const progress = document.createElement('p');
+    progress.style.cssText = 'font-weight: 600; word-break: break-word;';
+    progress.textContent = 'Scanning local vault…';
+    modalContent.appendChild(progress);
+
+    const describeProgress = (completed: number, total: number): string => {
+      if (total <= 0) return '';
+      const percent = Math.min(100, Math.round((completed / total) * 100));
+      return ` ${completed}/${total} (${percent}%)`;
+    };
+
+    try {
+      const summary = await this.driveSyncCoordinator.generatePairingSummary(scan => {
+        const amount = describeProgress(scan.completed, scan.total);
+        if (scan.phase === 'local_inventory') {
+          progress.textContent = 'Scanning local vault…';
+        } else if (scan.phase === 'remote_inventory') {
+          progress.textContent = 'Listing Google Drive vault…';
+        } else if (scan.phase === 'resolving_ambiguities') {
+          progress.textContent = `Hashing duplicate candidates…${amount}`;
+        } else {
+          progress.textContent = `Comparing local and Drive files…${amount}`;
+        }
+      });
+
+      if (summary.ambiguous.length === 0) {
+        this.renderPairingWorkflowError(
+          modal,
+          modalContent,
+          'No live Drive duplicates found',
+          'The fresh Drive inventory no longer contains more than one live remote candidate for the same Quartzo path.',
+          'Close this window and run full reconciliation again. If sync still fails, the next error is a different issue.'
+        );
+        return;
+      }
+
+      this.renderBlockedPairingContent(modal, modalContent, folderName, summary, 'sync_repair');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.renderPairingWorkflowError(
+        modal,
+        modalContent,
+        'Could not review Drive duplicates',
+        message,
+        'No duplicate was changed. Close this window and retry after the Drive request is available.'
+      );
+    }
   }
 
   async confirmPairing(
