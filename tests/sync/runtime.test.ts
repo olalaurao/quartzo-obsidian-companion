@@ -366,6 +366,31 @@ describe('Runtime Sync Tests', () => {
     expect(state?.remoteFileId).toBeTruthy();
   });
 
+  it('8c2: pairing ignores Finance Google Sheets sidecars from a legacy vault location', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+    adapter.listAllFiles = async () => [{
+      id: 'finance-sheet-id',
+      name: 'Quartzo Finance (Data)',
+      relativePath: 'Quartzo Finance (Data)',
+      mimeType: 'application/vnd.google-apps.spreadsheet',
+      modifiedTime: '2026-09-18T20:00:00.000Z',
+      quartzoHash: null,
+      parents: ['root-folder-id'],
+    }];
+
+    const summary = await coordinator.generatePairingSummary();
+
+    expect(summary).toEqual({
+      identical: [],
+      remoteOnly: [],
+      localOnly: [],
+      divergent: [],
+      ambiguous: [],
+    });
+    expect(adapter.resolveRemoteHashCalls).toBe(0);
+    expect(adapter.downloadCalls).toBe(0);
+  });
+
   it('8d: legacy missing-hash pairing uses bounded concurrency and reports progress', async () => {
     await coordinator.setDriveFolderId('root-folder-id');
     adapter.hashResolutionDelayMs = 10;
@@ -1063,26 +1088,32 @@ describe('Runtime Sync Tests', () => {
     expect(VaultSyncFilePolicy.shouldSyncFile('.git/config')).toBe(false);
     expect(VaultSyncFilePolicy.shouldSyncFile('node_modules/x/index.js')).toBe(false);
     expect(VaultSyncFilePolicy.shouldSyncFile('normal.md')).toBe(true);
+    expect(VaultSyncFilePolicy.shouldSyncFile('view.base')).toBe(true);
     expect(VaultSyncFilePolicy.shouldSyncFile('_attachments/photo.jpg')).toBe(true);
     expect(VaultSyncFilePolicy.shouldSyncFile('_deleted/foo.md')).toBe(true);
+    expect(VaultSyncFilePolicy.shouldSyncFile('Quartzo Finance (Data)')).toBe(false);
+    expect(VaultSyncFilePolicy.shouldSyncFile('documents/report.pdf')).toBe(false);
+    expect(VaultSyncFilePolicy.shouldSyncRemoteFile('normal.md', 'application/vnd.google-apps.document')).toBe(false);
+    expect(VaultSyncFilePolicy.shouldSyncRemoteFile('_attachments/photo.jpg', 'image/jpeg')).toBe(true);
   });
 
   it('18: unknown attachment binary remains byte-safe', async () => {
     const bin = Buffer.from([0x00, 0xFF, 0x01, 0xFE, 0x89, 0x50, 0x4E, 0x47]);
-    fs.mkdirSync(path.join(tmpDir, 'bin'), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, 'bin', 'custom.ext'), bin);
-    adapter.addRemoteFile('bin/custom.ext', Buffer.from([0x10, 0x20]));
+    fs.mkdirSync(path.join(tmpDir, '_attachments'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, '_attachments', 'custom.ext'), bin);
+    adapter.addRemoteFile('_attachments/custom.ext', Buffer.from([0x10, 0x20]));
     const result = await coordinator.reconcile();
     expect(result.conflicts).toBe(1);
-    const localContent = fs.readFileSync(path.join(tmpDir, 'bin', 'custom.ext'));
+    const localContent = fs.readFileSync(path.join(tmpDir, '_attachments', 'custom.ext'));
     expect(localContent).toEqual(bin);
   });
 
   it('19: binary conflict appears in conflict registry', async () => {
     const local = Buffer.from([0x00, 0xFF]);
     const remote = Buffer.from([0x10, 0x20]);
-    fs.writeFileSync(path.join(tmpDir, 'photo.bin'), local);
-    adapter.addRemoteFile('photo.bin', remote);
+    fs.mkdirSync(path.join(tmpDir, '_attachments'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, '_attachments', 'photo.bin'), local);
+    adapter.addRemoteFile('_attachments/photo.bin', remote);
     await coordinator.reconcile();
 
     const conflicts = coordinator.getConflicts();

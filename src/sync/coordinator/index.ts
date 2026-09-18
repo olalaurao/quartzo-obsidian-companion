@@ -526,7 +526,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
     for (const file of remoteFiles) {
       const remotePath = await this.resolveRemotePath(file, driveFolderId);
-      if (!remotePath || !VaultSyncFilePolicy.shouldSyncFile(remotePath)) continue;
+      if (!remotePath || !VaultSyncFilePolicy.shouldSyncRemoteFile(remotePath, file.mimeType)) continue;
       const normalizedRemote = normalizeVaultPath(remotePath);
       const candidates = candidatesByPath.get(normalizedRemote) || [];
       candidates.push(file);
@@ -690,7 +690,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
         const remotePath = await this.resolveRemotePath(change.file, driveFolderId);
         if (!remotePath) continue;
         const normalizedRemote = normalizeVaultPath(remotePath);
-        if (!VaultSyncFilePolicy.shouldSyncFile(normalizedRemote)) {
+        if (!VaultSyncFilePolicy.shouldSyncRemoteFile(normalizedRemote, change.file.mimeType)) {
           const trackedFile = this.findSyncFileByRemoteId(change.file.id);
           if (trackedFile) {
             this.syncState.files.delete(trackedFile.path);
@@ -1350,7 +1350,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       const remotePath = await this.resolveRemotePath(file, driveFolderId);
       if (!remotePath) continue;
       const normalizedRemote = normalizeVaultPath(remotePath);
-      if (!VaultSyncFilePolicy.shouldSyncFile(normalizedRemote)) continue;
+      if (!VaultSyncFilePolicy.shouldSyncRemoteFile(normalizedRemote, file.mimeType)) continue;
       const candidates = remoteCandidates.get(normalizedRemote) || [];
       candidates.push(file);
       remoteCandidates.set(normalizedRemote, candidates);
