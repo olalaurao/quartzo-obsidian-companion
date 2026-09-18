@@ -162,6 +162,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
   private pairingRemoteHashCache = new Map<string, { modifiedTime: string | null; hash: string }>();
   private pairingApplyInProgress = false;
   private pairingApplyProgress: PairingApplyProgress | null = null;
+  private pairingLastError: string | null = null;
 
   constructor(driveAdapter: DriveAdapter, vaultPath: string, stateStorePath?: string) {
     this.driveAdapter = driveAdapter;
@@ -186,6 +187,10 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
   getPairingApplyProgress(): PairingApplyProgress | null {
     return this.pairingApplyProgress ? { ...this.pairingApplyProgress } : null;
+  }
+
+  getPairingLastError(): string | null {
+    return this.pairingLastError;
   }
 
   private reportPairingApplyProgress(
@@ -1659,13 +1664,15 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
     this.pairingApplyInProgress = true;
     this.pairingApplyProgress = null;
+    this.pairingLastError = null;
     try {
       const driveFolderId = this.syncState.driveFolderId || '';
 
       if (summary.ambiguous.length > 0 || summary.divergent.length > 0) {
-      result.errors.push('Pairing decisions blocked: unresolved divergent or ambiguous identities remain.');
-      return result;
-    }
+        result.errors.push('Pairing decisions blocked: unresolved divergent or ambiguous identities remain.');
+        this.pairingLastError = result.errors.join('; ');
+        return result;
+      }
 
       this.reportPairingApplyProgress({ phase: 'revalidating_remote', completed: 0, total: 0 }, onProgress);
     const remoteCandidates = await this.buildRemoteCandidates(driveFolderId);
@@ -1678,7 +1685,10 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       }
       remoteMap.set(remotePath, candidates[0]);
     }
-    if (result.errors.length > 0) return result;
+    if (result.errors.length > 0) {
+      this.pairingLastError = result.errors.join('; ');
+      return result;
+    }
 
     let baselineCompleted = 0;
       this.reportPairingApplyProgress(
@@ -1731,7 +1741,10 @@ export class DriveSyncCoordinator implements ConflictRegistry {
           currentPath: item.path,
         }, onProgress);
     }
-    if (result.errors.length > 0) return result;
+    if (result.errors.length > 0) {
+      this.pairingLastError = result.errors.join('; ');
+      return result;
+    }
 
     if (decisions.autoAdopt) {
       let adoptCompleted = 0;
@@ -1835,7 +1848,11 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     }
     await this.saveSyncState();
       this.reportPairingApplyProgress({ phase: 'finalizing', completed: 1, total: 1 }, onProgress);
+      this.pairingLastError = result.errors.length > 0 ? result.errors.join('; ') : null;
       return result;
+    } catch (error) {
+      this.pairingLastError = error instanceof Error ? error.message : String(error);
+      throw error;
     } finally {
       this.pairingApplyInProgress = false;
       this.pairingApplyProgress = null;
