@@ -12,7 +12,7 @@ import { ReminderService, type ReminderMode, type ReminderSourceObject } from '.
 import { FileNotificationDeliveryRegistry } from './local-state/notification-delivery-registry';
 import { ObsidianReminderDeliveryGateway } from './platform/notifications';
 import { ElectronBrowserOpener } from './platform/browser-opener';
-import { GOOGLE_OAUTH_CLIENT_SECRET_ID } from './platform/secret-ids';
+import { GOOGLE_OAUTH_CLIENT_SECRET_ID, GOOGLE_REFRESH_TOKEN_SECRET_ID } from './platform/secret-ids';
 import { normalizeVaultPath } from './sync/coordinator/path-utils';
 import { VaultSyncFilePolicy } from './sync/coordinator/file-policy';
 import { SHARED_SETTINGS_PATH, SharedSettingsRepository, parseObjectWithSharedSettings, type QuartzoSharedSettings } from './vault/shared-settings';
@@ -569,7 +569,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     if (!this.driveAdapter) return;
 
     const secretStorage = this.getSecretStorage();
-    const refreshToken = await secretStorage.get('quartzo_companion/refresh_token');
+    const refreshToken = await secretStorage.get(GOOGLE_REFRESH_TOKEN_SECRET_ID);
     if (!refreshToken) {
       this.settings.isPaired = false;
       await this.saveSettings();
@@ -617,13 +617,13 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.oauthClient = new GoogleOAuthDesktop(config, secretStorage, this.browserOpener);
 
     try {
-      const storedRefresh = await secretStorage.get('quartzo_companion/refresh_token');
+      const storedRefresh = await secretStorage.get(GOOGLE_REFRESH_TOKEN_SECRET_ID);
       const forceConsent = !storedRefresh;
       const tokenResponse = await this.oauthClient.startAuthLoopback(forceConsent);
       this.configureGoogleAccessToken(tokenResponse.access_token);
 
       if (!tokenResponse.refresh_token) {
-        const storedRefresh = await secretStorage.get('quartzo_companion/refresh_token');
+        const storedRefresh = await secretStorage.get(GOOGLE_REFRESH_TOKEN_SECRET_ID);
         if (!storedRefresh) {
           new Notice('No refresh token received. Please re-authorize with full access.');
           await this.oauthClient.disconnect();
