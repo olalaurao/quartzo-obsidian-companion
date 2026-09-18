@@ -63,14 +63,20 @@ folder_paths:
     for (const heading of ['Connection', 'Sync', 'Calendar', 'Notifications', 'Appearance', 'Privacy']) {
       expect(main).toContain(`this.addHeading(containerEl, '${heading}')`);
     }
+    expect(main).toContain("syncMode: 'manual'");
+    expect(main).toContain(".setName('Sync mode')");
+    expect(main).toContain(".addOption('manual', 'Manual')");
+    expect(main).toContain(".addOption('automatic', 'Automatic')");
+    expect(main).toContain("this.plugin.settings.syncMode === 'automatic'");
     expect(main).toContain('syncPollingIntervalSeconds');
-    expect(main).toContain('syncOnStartup');
-    expect(main).toContain('syncOnFocus');
     expect(main).toContain('hideSensitivePreviews');
     expect(main).toContain('hideJournalPreviewText');
     expect(main).toContain('hideNotificationBody');
     expect(main).toContain('app/quartzo_shared_settings.md');
     expect(main).not.toContain('this.settings.privacyMode');
+    expect(main).not.toContain(".setName('Auto sync')");
+    expect(main).not.toContain(".setName('Sync on Obsidian startup')");
+    expect(main).not.toContain(".setName('Sync on window focus')");
   });
 
   it('keeps first run explicit without marking setup complete before pairing', () => {
@@ -87,15 +93,20 @@ folder_paths:
     expect(firstRun).not.toContain('firstRunCompleted = true');
   });
 
-  it('uses configurable lifecycle-managed sync triggers', () => {
+  it('uses one manual-default sync mode for every automatic trigger', () => {
     const main = fs.readFileSync(path.join(process.cwd(), 'src/main.ts'), 'utf8');
+    expect(main).toContain("syncMode: 'manual'");
     expect(main).toContain("registerDomEvent(window, 'focus'");
-    expect(main).toContain('this.settings.syncOnFocus');
-    expect(main).toContain('this.settings.syncOnStartup');
+    expect(main).toContain("this.settings.syncMode !== 'automatic'");
+    expect(main).toContain("this.settings.syncMode === 'automatic'");
     expect(main).toContain('this.settings.syncPollingIntervalSeconds');
     expect(main).toContain('seconds * 1000');
     expect(main).toContain('triggerStartupSync()');
     expect(main).toContain('restartAutoSync()');
+    expect(main).toContain("stored.syncAuto === true");
+    expect(main).not.toContain('this.settings.syncAuto');
+    expect(main).not.toContain('this.settings.syncOnStartup');
+    expect(main).not.toContain('this.settings.syncOnFocus');
   });
 
 });
