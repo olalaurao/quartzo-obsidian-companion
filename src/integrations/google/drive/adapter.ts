@@ -465,6 +465,29 @@ export class GoogleDriveAdapter implements DriveAdapter {
     });
   }
 
+  async trashFile(fileId: string): Promise<void> {
+    try {
+      await this.assertInsideSelectedVault(fileId);
+    } catch (error) {
+      if (this.errorStatus(error) === 404) return;
+      throw error;
+    }
+
+    try {
+      await this.withRetry(async () => {
+        const driveClient = this.getDriveClient();
+        await driveClient.files.update({
+          fileId,
+          requestBody: { trashed: true },
+          supportsAllDrives: true,
+        });
+      });
+    } catch (error) {
+      if (this.errorStatus(error) === 404) return;
+      throw error;
+    }
+  }
+
   async deleteFile(fileId: string): Promise<void> {
     try {
       await this.assertInsideSelectedVault(fileId);

@@ -53,6 +53,7 @@ export interface DriveAdapter {
   updateFile(fileId: string, content: Uint8Array, quartzoHash: string): Promise<DriveFileMetadata>;
   renameFile(fileId: string, newName: string, newParentId?: string): Promise<DriveFileMetadata>;
   deleteFile(fileId: string): Promise<void>;
+  trashFile(fileId: string): Promise<void>;
   getFileMetadata(fileId: string): Promise<DriveFileMetadata>;
   ensureParentFolder(rootFolderId: string, filePath: string): Promise<string>;
   assertInsideSelectedVault(remoteFileId: string): Promise<void>;

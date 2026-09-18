@@ -92,6 +92,12 @@ class MockDriveAdapter implements DriveAdapter {
     throw new Error(`File not found: ${fileId}`);
   }
 
+  async trashFile(fileId: string) {
+    for (const [name, data] of this.files.entries()) {
+      if (data.id === fileId) { this.files.delete(name); return; }
+    }
+  }
+
   async deleteFile(fileId: string) {
     this.deleteCalls++;
     for (const [name, data] of this.files.entries()) {
@@ -195,6 +201,8 @@ class HierarchicalDriveAdapter implements DriveAdapter {
     f.quartzoHash = quartzoHash;
     return { id: fileId, name: f.name, mimeType: 'application/octet-stream', modifiedTime: new Date().toISOString(), quartzoHash, parents: f.parents };
   }
+
+  async trashFile(fileId: string) { this.files.delete(fileId); }
 
   async deleteFile(fileId: string) { this.files.delete(fileId); }
 

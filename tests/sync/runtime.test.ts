@@ -35,6 +35,8 @@ class FakeDriveAdapter implements DriveAdapter {
   public listFilesCalls = 0;
   public uploadCalls = 0;
   public updateCalls = 0;
+  public trashCalls = 0;
+  public trashedFileIds: string[] = [];
   public resolveRemoteHashCalls = 0;
   public downloadCalls = 0;
   public hashResolutionDelayMs = 0;
@@ -92,6 +94,18 @@ class FakeDriveAdapter implements DriveAdapter {
         const modifiedTime = new Date().toISOString();
         this._files.set(name, { ...f, content, quartzoHash, modifiedTime });
         return this.makeMetadata(fileId, name, quartzoHash, modifiedTime);
+      }
+    }
+    throw new Error(`Not found: ${fileId}`);
+  }
+
+  async trashFile(fileId: string) {
+    this.trashCalls++;
+    for (const [name, f] of this._files.entries()) {
+      if (f.id === fileId) {
+        this._files.delete(name);
+        this.trashedFileIds.push(fileId);
+        return;
       }
     }
     throw new Error(`Not found: ${fileId}`);
@@ -483,6 +497,200 @@ describe('Runtime Sync Tests', () => {
     expect(matching?.resolvedSha256).toBe(crypto.createHash('sha256').update(localContent).digest('hex'));
   });
 
+  it('8h: safe duplicate plan keeps one byte-identical local match and trashes the rest', () => {
+    const hash = 'same-hash';
+    const summary = {
+      identical: [],
+      remoteOnly: [],
+      localOnly: [],
+      divergent: [],
+      ambiguous: [{
+        path: 'same.md',
+        status: 'ambiguous' as const,
+        localHash: hash,
+        remoteHash: null,
+        remoteCandidates: [
+          { id: 'id-c', modifiedTime: '2026-09-18T10:00:00.000Z', quartzoHash: null, resolvedSha256: hash, matchesLocal: true },
+          { id: 'id-a', modifiedTime: '2026-09-18T10:00:00.000Z', quartzoHash: null, resolvedSha256: hash, matchesLocal: true },
+          { id: 'id-b', modifiedTime: '2026-09-18T10:00:00.000Z', quartzoHash: null, resolvedSha256: hash, matchesLocal: true },
+        ],
+      }],
+    };
+
+    const plan = coordinator.buildSafeDuplicateTrashPlan(summary);
+
+    expect(plan.unresolvedPaths).toEqual([]);
+    expect(plan.totalTrashFiles).toBe(2);
+    expect(plan.resolutions).toEqual([{
+      path: 'same.md',
+      keepFileId: 'id-a',
+      trashFileIds: ['id-b', 'id-c'],
+      reason: 'byte_identical',
+    }]);
+  });
+
+  it('8i: safe duplicate plan keeps the only candidate matching local when bytes differ', () => {
+    const summary = {
+      identical: [],
+      remoteOnly: [],
+      localOnly: [],
+      divergent: [],
+      ambiguous: [{
+        path: 'different.md',
+        status: 'ambiguous' as const,
+        localHash: 'local-hash',
+        remoteHash: null,
+        remoteCandidates: [
+          { id: 'wrong', modifiedTime: '2026-09-18T11:00:00.000Z', quartzoHash: null, resolvedSha256: 'other-hash', matchesLocal: false },
+          { id: 'right', modifiedTime: '2026-09-18T09:00:00.000Z', quartzoHash: null, resolvedSha256: 'local-hash', matchesLocal: true },
+        ],
+      }],
+    };
+
+    const plan = coordinator.buildSafeDuplicateTrashPlan(summary);
+
+    expect(plan.unresolvedPaths).toEqual([]);
+    expect(plan.totalTrashFiles).toBe(1);
+    expect(plan.resolutions[0]).toEqual({
+      path: 'different.md',
+      keepFileId: 'right',
+      trashFileIds: ['wrong'],
+      reason: 'single_local_match',
+    });
+  });
+
+  it('8j: safe duplicate cleanup revalidates snapshot and moves only proven duplicates to Drive trash', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+    const content = Buffer.from('canonical');
+    const hash = crypto.createHash('sha256').update(content).digest('hex');
+    fs.writeFileSync(path.join(tmpDir, 'dup.md'), content);
+
+    adapter.files.set('dup-keep.md', {
+      id: 'keep-id',
+      content,
+      quartzoHash: '',
+      modifiedTime: '2026-09-18T10:00:00.000Z',
+    });
+    adapter.files.set('dup-trash.md', {
+      id: 'trash-id',
+      content,
+      quartzoHash: '',
+      modifiedTime: '2026-09-18T10:00:00.000Z',
+    });
+    adapter.listAllFiles = async () => [
+      {
+        id: 'keep-id',
+        name: 'dup.md',
+        relativePath: 'dup.md',
+        mimeType: 'application/octet-stream',
+        modifiedTime: '2026-09-18T10:00:00.000Z',
+        quartzoHash: '',
+        parents: ['root-folder-id'],
+      },
+      {
+        id: 'trash-id',
+        name: 'dup.md',
+        relativePath: 'dup.md',
+        mimeType: 'application/octet-stream',
+        modifiedTime: '2026-09-18T10:00:00.000Z',
+        quartzoHash: '',
+        parents: ['root-folder-id'],
+      },
+    ];
+
+    const summary = {
+      identical: [],
+      remoteOnly: [],
+      localOnly: [],
+      divergent: [],
+      ambiguous: [{
+        path: 'dup.md',
+        status: 'ambiguous' as const,
+        localHash: hash,
+        remoteHash: null,
+        remoteCandidates: [
+          { id: 'keep-id', modifiedTime: '2026-09-18T10:00:00.000Z', quartzoHash: null, resolvedSha256: hash, matchesLocal: true },
+          { id: 'trash-id', modifiedTime: '2026-09-18T10:00:00.000Z', quartzoHash: null, resolvedSha256: hash, matchesLocal: true },
+        ],
+      }],
+    };
+
+    const result = await coordinator.trashSafePairingDuplicates(summary);
+
+    expect(result.errors).toEqual([]);
+    expect(result.skippedPaths).toEqual([]);
+    expect(result.trashed).toBe(1);
+    expect(result.resolvedPaths).toBe(1);
+    expect(adapter.trashCalls).toBe(1);
+    expect(adapter.trashedFileIds).toEqual(['trash-id']);
+    expect(adapter.files.has('dup-keep.md')).toBe(true);
+    expect(adapter.files.has('dup-trash.md')).toBe(false);
+  });
+
+  it('8k: safe duplicate cleanup refuses stale Drive snapshots', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+    const content = Buffer.from('canonical');
+    const hash = crypto.createHash('sha256').update(content).digest('hex');
+    fs.writeFileSync(path.join(tmpDir, 'stale.md'), content);
+
+    adapter.files.set('stale-keep.md', {
+      id: 'keep-stale',
+      content,
+      quartzoHash: '',
+      modifiedTime: '2026-09-18T12:00:00.000Z',
+    });
+    adapter.files.set('stale-trash.md', {
+      id: 'trash-stale',
+      content,
+      quartzoHash: '',
+      modifiedTime: '2026-09-18T12:05:00.000Z',
+    });
+    adapter.listAllFiles = async () => [
+      {
+        id: 'keep-stale',
+        name: 'stale.md',
+        relativePath: 'stale.md',
+        mimeType: 'application/octet-stream',
+        modifiedTime: '2026-09-18T12:00:00.000Z',
+        quartzoHash: '',
+        parents: ['root-folder-id'],
+      },
+      {
+        id: 'trash-stale',
+        name: 'stale.md',
+        relativePath: 'stale.md',
+        mimeType: 'application/octet-stream',
+        modifiedTime: '2026-09-18T12:05:00.000Z',
+        quartzoHash: '',
+        parents: ['root-folder-id'],
+      },
+    ];
+
+    const summary = {
+      identical: [],
+      remoteOnly: [],
+      localOnly: [],
+      divergent: [],
+      ambiguous: [{
+        path: 'stale.md',
+        status: 'ambiguous' as const,
+        localHash: hash,
+        remoteHash: null,
+        remoteCandidates: [
+          { id: 'keep-stale', modifiedTime: '2026-09-18T12:00:00.000Z', quartzoHash: null, resolvedSha256: hash, matchesLocal: true },
+          { id: 'trash-stale', modifiedTime: '2026-09-18T12:00:00.000Z', quartzoHash: null, resolvedSha256: hash, matchesLocal: true },
+        ],
+      }],
+    };
+
+    const result = await coordinator.trashSafePairingDuplicates(summary);
+
+    expect(result.trashed).toBe(0);
+    expect(result.skippedPaths).toEqual(['stale.md']);
+    expect(result.errors.join(' ')).toContain('Drive content changed since scan');
+    expect(adapter.trashCalls).toBe(0);
+  });
+
   it('9: coordinator calls listChanges after initial inventory', async () => {
     await coordinator.reconcile();
     expect(adapter.listFilesCalls).toBeGreaterThanOrEqual(1);
@@ -728,6 +936,7 @@ describe('Runtime Sync Tests', () => {
       async downloadFile() { throw new Error('No token'); },
       async uploadFile() { throw new Error('No token'); },
       async updateFile() { throw new Error('No token'); },
+      async trashFile() { throw new Error('No token'); },
       async deleteFile() { throw new Error('No token'); },
       async renameFile() { throw new Error('No token'); },
       async getFileMetadata() { throw new Error('No token'); },

@@ -9,3 +9,5 @@ Estas regras são permanentes para o desenvolvimento do Quartzo Obsidian Compani
 5. **Typescript Rigoroso:** Utilize TypeScript Strict, sem type casting cego de objetos brutos.
 6. **Sincronização:** Todas as ações de sincronização com o Google Drive devem utilizar "three-way reconciliation" baseado no baseline e nos hashes.
 7. **Modo de sync:** O Companion expõe um único modo local de sincronização: `Manual` ou `Automatic`. `Manual` é o padrão e não pode disparar reconciliação por startup, foco, polling ou evento local; `Sync now`, conflitos e full reconciliation continuam disponíveis. `Automatic` habilita esses gatilhos através do mesmo coordenador canônico.
+
+8. **Limpeza de identidade ambígua no pairing:** o Companion só pode oferecer limpeza automática de candidatos duplicados após ação explícita do usuário e prova por SHA-256 de que a remoção é segura. A ação deve revalidar o snapshot local/remoto imediatamente antes da mutação, mover candidatos apenas para a Lixeira do Google Drive (nunca apagar permanentemente) e manter pelo menos um candidato canônico por caminho. Caminhos sem resolução inequívoca permanecem bloqueados para revisão manual.

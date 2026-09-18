@@ -447,6 +447,36 @@ function checkReleasePipelineHardening() {
   console.log('PASS: Beta release pipeline is preflighted, provenance-checked and checksummed');
   return true;
 }
+function checkPairingDuplicateCleanupIsReversible() {
+  const coordinatorPath = path.join(rootDir, 'src/sync/coordinator/index.ts');
+  const adapterPath = path.join(rootDir, 'src/integrations/google/drive/adapter.ts');
+  const mainPath = path.join(rootDir, 'src/main.ts');
+  const coordinator = fs.readFileSync(coordinatorPath, 'utf8');
+  const adapter = fs.readFileSync(adapterPath, 'utf8');
+  const main = fs.readFileSync(mainPath, 'utf8');
+
+  const cleanupStart = coordinator.indexOf('async trashSafePairingDuplicates(');
+  const cleanupEnd = coordinator.indexOf('async applyPairingDecisions(', cleanupStart);
+  const cleanup = cleanupStart >= 0 && cleanupEnd > cleanupStart
+    ? coordinator.slice(cleanupStart, cleanupEnd)
+    : '';
+
+  if (!cleanup.includes('this.driveAdapter.trashFile(') || cleanup.includes('this.driveAdapter.deleteFile(')) {
+    console.error('FAIL: Pairing duplicate cleanup is not routed exclusively through reversible Drive trash');
+    return false;
+  }
+  if (!adapter.includes('async trashFile(') || !adapter.includes('requestBody: { trashed: true }')) {
+    console.error('FAIL: Google Drive adapter does not implement reversible trash semantics for pairing cleanup');
+    return false;
+  }
+  if (!main.includes('Move safe duplicates to Drive trash?') || !main.includes('Nothing is permanently deleted')) {
+    console.error('FAIL: Pairing duplicate cleanup lacks explicit reversible user confirmation');
+    return false;
+  }
+  console.log('PASS: Pairing duplicate cleanup is explicit, content-proven and reversible through Drive trash');
+  return true;
+}
+
 function main() {
   console.log('Running architecture/completeness checks...\n');
   let allPassed = true;
@@ -469,6 +499,7 @@ function main() {
   if (!checkObsidianSecretStorageIds()) allPassed = false;
   if (!checkOAuthDesktopPlatformBoundary()) allPassed = false;
   if (!checkReleasePipelineHardening()) allPassed = false;
+  if (!checkPairingDuplicateCleanupIsReversible()) allPassed = false;
 
   console.log('\n' + (allPassed ? 'All architecture checks passed' : 'Some architecture checks failed'));
   process.exit(allPassed ? 0 : 1);

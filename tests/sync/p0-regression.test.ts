@@ -91,6 +91,15 @@ class MockDriveAdapter implements DriveAdapter {
     throw new Error(`Not found: ${fileId}`);
   }
 
+  async trashFile(fileId: string) {
+    for (const [name, f] of this._files.entries()) {
+      if (f.id === fileId) {
+        this._files.delete(name);
+        return;
+      }
+    }
+  }
+
   async deleteFile(fileId: string) {
     this.deleteCalls++;
     for (const [name, f] of this._files.entries()) {

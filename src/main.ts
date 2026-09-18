@@ -1,6 +1,11 @@
 import { App, Modal, Plugin, PluginSettingTab, Setting, Notice, TFile, TAbstractFile, FileSystemAdapter } from 'obsidian';
 import { VaultIndexEngine } from './vault/index';
-import { DriveSyncCoordinator, type PairingScanProgress, type PairingSummary } from './sync/coordinator';
+import {
+  DriveSyncCoordinator,
+  type PairingScanProgress,
+  type PairingSummary,
+  type SafeDuplicateTrashPlan,
+} from './sync/coordinator';
 import { GoogleDriveAdapter } from './integrations/google/drive';
 import { GoogleCalendarAdapter, GoogleCalendarAuthorizationError, type GoogleCalendarProjection } from './integrations/google/calendar';
 import { GoogleOAuthDesktop, type OAuthConfig } from './integrations/google/auth/loopback';
@@ -673,6 +678,80 @@ export default class QuartzoCompanionPlugin extends Plugin {
       new Notice(`Google Drive reconnect failed: ${error}`);
     }
   }
+  private confirmSafeDuplicateTrash(plan: SafeDuplicateTrashPlan): Promise<boolean> {
+    return new Promise(resolve => {
+      const modal = new Modal(this.app);
+      let settled = false;
+      const finish = (value: boolean) => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+        modal.close();
+      };
+
+      modal.onOpen = () => {
+        const { contentEl } = modal;
+        contentEl.empty();
+
+        const title = document.createElement('h2');
+        title.textContent = 'Move safe duplicates to Drive trash?';
+        contentEl.appendChild(title);
+
+        const description = document.createElement('p');
+        description.textContent =
+          `The Companion will revalidate every affected local file and Drive candidate, then move ${plan.totalTrashFiles} proven duplicate file(s) across ${plan.resolutions.length} path(s) to Google Drive trash. It will keep one canonical candidate per path and will not empty Drive trash.`;
+        contentEl.appendChild(description);
+
+        if (plan.unresolvedPaths.length > 0) {
+          const unresolved = document.createElement('p');
+          unresolved.textContent =
+            `${plan.unresolvedPaths.length} ambiguous path(s) are not provably safe and will be left untouched.`;
+          contentEl.appendChild(unresolved);
+        }
+
+        const list = document.createElement('ul');
+        for (const resolution of plan.resolutions) {
+          const item = document.createElement('li');
+          item.textContent =
+            `${resolution.path}: keep ${resolution.keepFileId}; move ${resolution.trashFileIds.length} duplicate(s) to trash.`;
+          list.appendChild(item);
+        }
+        contentEl.appendChild(list);
+
+        const safety = document.createElement('p');
+        safety.textContent =
+          'Nothing is permanently deleted. If the Drive candidate set, modification snapshot, or local hash changed since the scan, that path is skipped and must be rescanned.';
+        contentEl.appendChild(safety);
+
+        const actions = document.createElement('div');
+        actions.style.cssText = 'display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;';
+
+        const cancel = document.createElement('button');
+        cancel.textContent = 'Cancel';
+        cancel.addEventListener('click', () => finish(false));
+        actions.appendChild(cancel);
+
+        const confirm = document.createElement('button');
+        confirm.className = 'mod-warning';
+        confirm.textContent = `Move ${plan.totalTrashFiles} file(s) to Drive trash`;
+        confirm.addEventListener('click', () => finish(true));
+        actions.appendChild(confirm);
+
+        contentEl.appendChild(actions);
+      };
+
+      modal.onClose = () => {
+        modal.contentEl.empty();
+        if (!settled) {
+          settled = true;
+          resolve(false);
+        }
+      };
+
+      modal.open();
+    });
+  }
+
   private showBlockedPairingSummary(folderName: string, summary: PairingSummary): void {
     const modal = document.createElement('div');
     modal.className = 'quartzo-pairing-summary-modal';
@@ -721,6 +800,12 @@ export default class QuartzoCompanionPlugin extends Plugin {
       modalContent.appendChild(list);
     }
 
+    const safeTrashPlan = this.driveSyncCoordinator?.buildSafeDuplicateTrashPlan(summary) ?? {
+      resolutions: [],
+      unresolvedPaths: summary.ambiguous.map(item => item.path),
+      totalTrashFiles: 0,
+    };
+
     if (summary.ambiguous.length > 0) {
       const heading = document.createElement('h3');
       heading.textContent = `Ambiguous Drive paths (${summary.ambiguous.length})`;
@@ -734,8 +819,11 @@ export default class QuartzoCompanionPlugin extends Plugin {
         const distinctHashes = new Set(candidatesForPath.map(candidate => candidate.resolvedSha256));
         const matchingLocal = candidatesForPath.filter(candidate => candidate.matchesLocal === true).length;
 
+        const safeResolution = safeTrashPlan.resolutions.find(resolution => resolution.path === item.path);
         const summaryEl = document.createElement('summary');
-        summaryEl.textContent = `${item.path} — ${candidatesForPath.length} candidates`;
+        summaryEl.textContent = safeResolution
+          ? `${item.path} — ${candidatesForPath.length} candidates · safe cleanup available`
+          : `${item.path} — ${candidatesForPath.length} candidates`;
         details.appendChild(summaryEl);
 
         const relation = document.createElement('p');
@@ -773,7 +861,14 @@ export default class QuartzoCompanionPlugin extends Plugin {
             : candidate.matchesLocal
               ? 'matches local'
               : 'differs from local';
-          meta.textContent = `ID ${candidate.id} · modified ${candidate.modifiedTime ?? 'unknown'} · SHA-256 ${candidate.resolvedSha256} · ${localRelation} · Quartzo_hash ${candidate.quartzoHash ? 'present' : 'missing'}`;
+          const cleanupRelation = safeResolution
+            ? candidate.id === safeResolution.keepFileId
+              ? 'planned: keep'
+              : safeResolution.trashFileIds.includes(candidate.id)
+                ? 'planned: safe to trash'
+                : 'planned: untouched'
+            : 'planned: manual review';
+          meta.textContent = `ID ${candidate.id} · modified ${candidate.modifiedTime ?? 'unknown'} · SHA-256 ${candidate.resolvedSha256} · ${localRelation} · ${cleanupRelation} · Quartzo_hash ${candidate.quartzoHash ? 'present' : 'missing'}`;
           li.appendChild(meta);
 
           const openButton = document.createElement('button');
@@ -795,11 +890,50 @@ export default class QuartzoCompanionPlugin extends Plugin {
     }
 
     const instructions = document.createElement('p');
-    instructions.textContent = 'Resolve the duplicate Drive identity first, then run Pair again. Do not delete a candidate unless you have confirmed which copy should remain.';
+    instructions.textContent = safeTrashPlan.totalTrashFiles > 0
+      ? 'The Companion can move only the content-proven duplicate candidates to Google Drive trash. Anything that is not provably safe remains untouched.'
+      : 'Resolve the duplicate Drive identity first, then run Pair again. Do not delete a candidate unless you have confirmed which copy should remain.';
     modalContent.appendChild(instructions);
 
     const actions = document.createElement('div');
     actions.style.cssText = 'margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;';
+
+    if (safeTrashPlan.totalTrashFiles > 0 && this.driveSyncCoordinator) {
+      const cleanupButton = document.createElement('button');
+      cleanupButton.className = 'mod-warning';
+      cleanupButton.textContent = `Move ${safeTrashPlan.totalTrashFiles} safe duplicate(s) to Drive trash`;
+      cleanupButton.addEventListener('click', async () => {
+        const confirmed = await this.confirmSafeDuplicateTrash(safeTrashPlan);
+        if (!confirmed || !this.driveSyncCoordinator) return;
+
+        cleanupButton.disabled = true;
+        cleanupButton.textContent = 'Revalidating and moving to trash…';
+        try {
+          const result = await this.driveSyncCoordinator.trashSafePairingDuplicates(summary);
+          modal.remove();
+
+          if (result.errors.length > 0) {
+            new Notice(
+              `Safe duplicate cleanup moved ${result.trashed} file(s), but ${result.errors.length} issue(s) require a rescan. No file was permanently deleted.`
+            );
+          } else {
+            new Notice(
+              `Moved ${result.trashed} safe duplicate file(s) to Google Drive trash across ${result.resolvedPaths} path(s). Drive trash was not emptied.`
+            );
+          }
+
+          const folderId = this.settings.googleDriveFolderId;
+          if (folderId) {
+            await this.confirmPairing(folderId, folderName, false, false);
+          }
+        } catch (error) {
+          cleanupButton.disabled = false;
+          cleanupButton.textContent = `Move ${safeTrashPlan.totalTrashFiles} safe duplicate(s) to Drive trash`;
+          new Notice(`Safe duplicate cleanup failed: ${error}`);
+        }
+      });
+      actions.appendChild(cleanupButton);
+    }
 
     const copyButton = document.createElement('button');
     copyButton.textContent = 'Copy diagnostics';
