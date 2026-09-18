@@ -449,6 +449,59 @@ describe('Runtime Sync Tests', () => {
     expect(coordinator.getSyncState().files.get('legacy-same.md')?.baseHash).toBe(summary.identical[0].remoteHash);
   });
 
+  it('8e2: applying first pairing reports visible progress across baseline, upload, pull, and finalization', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+
+    const identical = Buffer.from('same');
+    fs.writeFileSync(path.join(tmpDir, 'same-progress.md'), identical);
+    adapter.addRemoteFile('same-progress.md', identical);
+
+    const localOnly = Buffer.from('local-only');
+    fs.writeFileSync(path.join(tmpDir, 'local-progress.md'), localOnly);
+
+    const remoteOnly = Buffer.from('remote-only');
+    adapter.addRemoteFile('remote-progress.md', remoteOnly);
+
+    const summary = await coordinator.generatePairingSummary();
+    expect(summary.identical).toHaveLength(1);
+    expect(summary.localOnly).toHaveLength(1);
+    expect(summary.remoteOnly).toHaveLength(1);
+
+    const progress: Array<{ phase: string; completed: number; total: number; currentPath?: string }> = [];
+    const result = await coordinator.applyPairingDecisions(
+      summary,
+      { autoAdopt: true, autoPull: true },
+      update => progress.push(update)
+    );
+
+    expect(result.errors).toEqual([]);
+    expect(progress.some(update => update.phase === 'revalidating_remote')).toBe(true);
+    expect(progress).toContainEqual({
+      phase: 'baselining',
+      completed: 1,
+      total: 1,
+      currentPath: 'same-progress.md',
+    });
+    expect(progress).toContainEqual({
+      phase: 'adopting_local',
+      completed: 1,
+      total: 1,
+      currentPath: 'local-progress.md',
+    });
+    expect(progress).toContainEqual({
+      phase: 'pulling_remote',
+      completed: 1,
+      total: 1,
+      currentPath: 'remote-progress.md',
+    });
+    expect(progress[progress.length - 1]).toEqual({
+      phase: 'finalizing',
+      completed: 1,
+      total: 1,
+    });
+    expect(fs.readFileSync(path.join(tmpDir, 'remote-progress.md')).toString()).toBe('remote-only');
+  });
+
   it('8f: pairing ambiguity retains every distinct Drive candidate for diagnosis', async () => {
     await coordinator.setDriveFolderId('root-folder-id');
     const h1 = crypto.createHash('sha256').update(Buffer.from('one')).digest('hex');
