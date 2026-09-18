@@ -290,9 +290,8 @@ function checkDeviceLocalSettingsBoundaries() {
   const main = fs.readFileSync(mainPath, 'utf8');
   const shared = `${fs.readFileSync(sharedCorePath, 'utf8')}\n${fs.readFileSync(sharedVaultPath, 'utf8')}`;
   const requiredLocal = [
+    'syncMode',
     'syncPollingIntervalSeconds',
-    'syncOnStartup',
-    'syncOnFocus',
     'hideSensitivePreviews',
     'hideJournalPreviewText',
     'hideNotificationBody',
@@ -311,8 +310,24 @@ function checkDeviceLocalSettingsBoundaries() {
     console.error('FAIL: Legacy monolithic privacyMode remains a runtime settings owner');
     return false;
   }
-  if (!main.includes("registerDomEvent(window, 'focus'") || !main.includes('this.settings.syncPollingIntervalSeconds') || !main.includes('seconds * 1000')) {
-    console.error('FAIL: Sync Settings are not wired to lifecycle-managed runtime triggers');
+  if (!main.includes("syncMode: 'manual'") || !main.includes(".setName('Sync mode')")) {
+    console.error('FAIL: Sync mode is not a single manual-default setting');
+    return false;
+  }
+  if (main.includes('this.settings.syncAuto') || main.includes('this.settings.syncOnStartup') || main.includes('this.settings.syncOnFocus')) {
+    console.error('FAIL: Legacy automatic sync toggles remain runtime owners');
+    return false;
+  }
+  if (main.includes(".setName('Auto sync')") || main.includes(".setName('Sync on Obsidian startup')") || main.includes(".setName('Sync on window focus')")) {
+    console.error('FAIL: Legacy automatic sync toggles remain visible in Settings');
+    return false;
+  }
+  if (!main.includes("stored.syncAuto === true") || !main.includes("? 'automatic'") || !main.includes(": 'manual'")) {
+    console.error('FAIL: Legacy sync settings do not migrate fail-safe to Manual');
+    return false;
+  }
+  if (!main.includes("registerDomEvent(window, 'focus'") || !main.includes("this.settings.syncMode !== 'automatic'") || !main.includes('this.settings.syncPollingIntervalSeconds') || !main.includes('seconds * 1000')) {
+    console.error('FAIL: Automatic sync triggers are not gated by the single sync mode');
     return false;
   }
   const firstRunStart = main.indexOf('class QuartzoFirstRunModal extends Modal');
