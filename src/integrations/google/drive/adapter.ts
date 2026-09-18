@@ -152,12 +152,17 @@ export class GoogleDriveAdapter implements DriveAdapter {
     return this.withRetry(async () => {
       const allFiles: DriveFileMetadata[] = [];
       const drive = this.getDriveClient();
-      await this.listAllFilesRecursive(drive, folderId, allFiles);
+      await this.listAllFilesRecursive(drive, folderId, allFiles, '');
       return allFiles;
     });
   }
 
-  private async listAllFilesRecursive(drive: drive_v3.Drive, folderId: string, allFiles: DriveFileMetadata[]): Promise<void> {
+  private async listAllFilesRecursive(
+    drive: drive_v3.Drive,
+    folderId: string,
+    allFiles: DriveFileMetadata[],
+    relativePrefix: string
+  ): Promise<void> {
     let pageToken: string | undefined;
     do {
       const response = await drive.files.list({
@@ -178,10 +183,13 @@ export class GoogleDriveAdapter implements DriveAdapter {
       }));
 
       for (const file of files) {
+        const relativePath = normalizeVaultPath(
+          relativePrefix ? `${relativePrefix}/${file.name}` : file.name
+        );
         if (file.mimeType === 'application/vnd.google-apps.folder') {
-          await this.listAllFilesRecursive(drive, file.id, allFiles);
+          await this.listAllFilesRecursive(drive, file.id, allFiles, relativePath);
         } else {
-          allFiles.push(file);
+          allFiles.push({ ...file, relativePath });
         }
       }
 
