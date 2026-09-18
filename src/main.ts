@@ -1038,11 +1038,15 @@ export default class QuartzoCompanionPlugin extends Plugin {
       progressHelp.textContent = 'Keep Obsidian open. If Google Drive reaches a temporary quota limit, this step can pause and resume automatically.';
       modalContent.appendChild(progressHelp);
       const actions = document.createElement('div');
-      actions.style.cssText = 'margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;';
+      actions.style.cssText = 'margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;';
       const cancelButton = document.createElement('button');
       cancelButton.id = 'pairing-cancel';
       cancelButton.textContent = 'Cancel';
       actions.appendChild(cancelButton);
+      const copyFailureButton = document.createElement('button');
+      copyFailureButton.textContent = 'Copy error';
+      copyFailureButton.style.display = 'none';
+      actions.appendChild(copyFailureButton);
       const confirmButton = document.createElement('button');
       confirmButton.id = 'pairing-confirm';
       confirmButton.textContent = 'Accept & Pair';
@@ -1051,9 +1055,37 @@ export default class QuartzoCompanionPlugin extends Plugin {
       modal.appendChild(modalContent);
       document.body.appendChild(modal);
 
+      let pairingFailed = false;
+      let pairingFailureText = '';
+
+      const showPersistentPairingFailure = (message: string) => {
+        pairingFailed = true;
+        pairingFailureText = message;
+        modalTitle.textContent = 'Pairing did not finish';
+        question.textContent = 'The pairing stopped before it could be committed. The reason is shown below.';
+        progressText.style.display = '';
+        progressText.textContent = message;
+        progressHelp.style.display = '';
+        progressHelp.textContent = 'Completed uploads or downloads remain safe to rescan. Close this message, then run Pair again to build a fresh summary.';
+        cancelButton.disabled = false;
+        cancelButton.textContent = 'Close';
+        confirmButton.disabled = true;
+        confirmButton.textContent = 'Pairing stopped';
+        copyFailureButton.style.display = '';
+      };
+
+      copyFailureButton.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(pairingFailureText);
+          new Notice('Pairing error copied.');
+        } catch (error) {
+          new Notice(`Could not copy pairing error: ${error}`);
+        }
+      });
+
       modal.querySelector('#pairing-cancel')?.addEventListener('click', () => {
         modal.remove();
-        new Notice('Pairing cancelled.');
+        new Notice(pairingFailed ? 'Pairing stopped. Run Pair again to rescan.' : 'Pairing cancelled.');
       });
 
       modal.querySelector('#pairing-confirm')?.addEventListener('click', async () => {
@@ -1094,8 +1126,9 @@ export default class QuartzoCompanionPlugin extends Plugin {
             renderApplyProgress
           );
           if (pairingResult.errors.length > 0) {
-            modal.remove();
-            new Notice(`Pairing incomplete: ${pairingResult.errors.join('; ')}`);
+            const message = pairingResult.errors.join('; ');
+            showPersistentPairingFailure(message);
+            new Notice('Pairing stopped. Error details are open in the pairing window.');
             await this.refreshQuartzoView();
             return;
           }
@@ -1108,9 +1141,10 @@ export default class QuartzoCompanionPlugin extends Plugin {
           await this.refreshQuartzoView();
           new Notice(`Paired with folder: ${folderName}`);
         } catch (error) {
-          modal.remove();
+          const message = error instanceof Error ? error.message : String(error);
+          showPersistentPairingFailure(message);
           await this.refreshQuartzoView();
-          new Notice(`Error applying pairing decisions: ${error}`);
+          new Notice('Pairing stopped. Error details are open in the pairing window.');
         }
       });
     }
