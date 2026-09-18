@@ -71,6 +71,12 @@ export interface ConflictRegistry {
   resolveConflict(originalPath: string, resolution: ConflictResolution): Promise<void>;
 }
 
+export interface PairingRemoteCandidate {
+  id: string;
+  modifiedTime: string | null;
+  quartzoHash: string | null;
+}
+
 export interface PairingItem {
   path: string;
   status: 'identical' | 'remote_only' | 'local_only' | 'divergent' | 'ambiguous';
@@ -78,6 +84,7 @@ export interface PairingItem {
   remoteHash: string | null;
   remoteFileId?: string | null;
   remoteModifiedAt?: string | null;
+  remoteCandidates?: PairingRemoteCandidate[];
 }
 
 export interface PairingScanProgress {
@@ -1283,11 +1290,22 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     for (const [remotePath, candidates] of remoteCandidates) {
       const uniqueIds = new Set(candidates.map(candidate => candidate.id));
       if (uniqueIds.size > 1) {
+        const candidatesById = new Map<string, PairingRemoteCandidate>();
+        for (const candidate of candidates) {
+          if (!candidatesById.has(candidate.id)) {
+            candidatesById.set(candidate.id, {
+              id: candidate.id,
+              modifiedTime: candidate.modifiedTime || null,
+              quartzoHash: candidate.quartzoHash || null,
+            });
+          }
+        }
         summary.ambiguous.push({
           path: remotePath,
           status: 'ambiguous',
           localHash: localInventory.get(remotePath)?.hash || null,
           remoteHash: null,
+          remoteCandidates: Array.from(candidatesById.values()).sort((a, b) => a.id.localeCompare(b.id)),
         });
         continue;
       }
