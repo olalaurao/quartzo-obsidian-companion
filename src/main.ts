@@ -1046,15 +1046,40 @@ export default class QuartzoCompanionPlugin extends Plugin {
         });
 
         if (result.errors.length > 0) {
-          new Notice(
-            `Safe duplicate cleanup moved ${result.trashed} file(s), but ${result.errors.length} issue(s) remain. The pairing summary was refreshed.`
+          const message = result.errors.join('; ');
+          this.renderPairingWorkflowError(
+            modal,
+            modalContent,
+            'Safe duplicate cleanup did not fully finish',
+            message,
+            'The vaults were rescanned after the cleanup attempt. Use Back to inspect the refreshed diagnostics; no file was permanently deleted.',
+            () => this.renderPairingSummaryContent(modal, modalContent, folderName, refreshedSummary)
           );
-        } else {
-          new Notice(
-            `Moved ${result.trashed} safe duplicate file(s) to Google Drive trash across ${result.resolvedPaths} path(s). Drive trash was not emptied.`
-          );
+          new Notice('Safe duplicate cleanup stopped with details open in the pairing window.');
+          return;
         }
 
+        const plannedTrashIds = new Set(plan.resolutions.flatMap(resolution => resolution.trashFileIds));
+        const lingering = refreshedSummary.ambiguous.flatMap(item =>
+          (item.remoteCandidates ?? [])
+            .filter(candidate => plannedTrashIds.has(candidate.id))
+            .map(candidate => `${item.path} [${candidate.id}]`)
+        );
+        if (lingering.length > 0) {
+          this.renderPairingWorkflowError(
+            modal,
+            modalContent,
+            'Drive has not confirmed duplicate cleanup yet',
+            `Google Drive still reports recently trashed duplicate candidate(s) as active: ${lingering.join(', ')}`,
+            'No additional delete will run automatically. Use Back to inspect the refreshed summary, wait a moment, and retry only if the same candidates remain.',
+            () => this.renderPairingSummaryContent(modal, modalContent, folderName, refreshedSummary)
+          );
+          return;
+        }
+
+        new Notice(
+          `Moved ${result.trashed} safe duplicate file(s) to Google Drive trash across ${result.resolvedPaths} path(s). Drive trash was not emptied.`
+        );
         this.renderPairingSummaryContent(modal, modalContent, folderName, refreshedSummary);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
