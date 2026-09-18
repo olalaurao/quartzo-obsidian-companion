@@ -182,6 +182,7 @@ class FakeDriveAdapter implements DriveAdapter {
       modifiedTime: modifiedTime || '2026-01-01T00:00:00.000Z',
       quartzoHash,
       parents: [this.folderId],
+      canTrash: true,
     };
   }
 }
@@ -589,6 +590,7 @@ describe('Runtime Sync Tests', () => {
         mimeType: 'application/octet-stream',
         modifiedTime: '2026-09-17T10:00:00.000Z',
         quartzoHash: h1,
+        canTrash: true,
         parents: ['folder-a'],
       },
       {
@@ -598,6 +600,7 @@ describe('Runtime Sync Tests', () => {
         mimeType: 'application/octet-stream',
         modifiedTime: '2026-09-18T10:00:00.000Z',
         quartzoHash: h2,
+        canTrash: true,
         parents: ['folder-a'],
       },
     ];
@@ -611,6 +614,7 @@ describe('Runtime Sync Tests', () => {
         id: 'candidate-a',
         modifiedTime: '2026-09-17T10:00:00.000Z',
         quartzoHash: h1,
+        canTrash: true,
         resolvedSha256: h1,
         matchesLocal: null,
       },
@@ -618,6 +622,7 @@ describe('Runtime Sync Tests', () => {
         id: 'candidate-b',
         modifiedTime: '2026-09-18T10:00:00.000Z',
         quartzoHash: h2,
+        canTrash: true,
         resolvedSha256: h2,
         matchesLocal: null,
       },
@@ -680,9 +685,9 @@ describe('Runtime Sync Tests', () => {
         localHash: hash,
         remoteHash: null,
         remoteCandidates: [
-          { id: 'id-c', modifiedTime: '2026-09-18T10:00:00.000Z', quartzoHash: null, resolvedSha256: hash, matchesLocal: true },
-          { id: 'id-a', modifiedTime: '2026-09-18T10:00:00.000Z', quartzoHash: null, resolvedSha256: hash, matchesLocal: true },
-          { id: 'id-b', modifiedTime: '2026-09-18T10:00:00.000Z', quartzoHash: null, resolvedSha256: hash, matchesLocal: true },
+          { id: 'id-c', modifiedTime: '2026-09-18T10:00:00.000Z', quartzoHash: null, canTrash: true, resolvedSha256: hash, matchesLocal: true },
+          { id: 'id-a', modifiedTime: '2026-09-18T10:00:00.000Z', quartzoHash: null, canTrash: true, resolvedSha256: hash, matchesLocal: true },
+          { id: 'id-b', modifiedTime: '2026-09-18T10:00:00.000Z', quartzoHash: null, canTrash: true, resolvedSha256: hash, matchesLocal: true },
         ],
       }],
     };
@@ -711,8 +716,8 @@ describe('Runtime Sync Tests', () => {
         localHash: 'local-hash',
         remoteHash: null,
         remoteCandidates: [
-          { id: 'wrong', modifiedTime: '2026-09-18T11:00:00.000Z', quartzoHash: null, resolvedSha256: 'other-hash', matchesLocal: false },
-          { id: 'right', modifiedTime: '2026-09-18T09:00:00.000Z', quartzoHash: null, resolvedSha256: 'local-hash', matchesLocal: true },
+          { id: 'wrong', modifiedTime: '2026-09-18T11:00:00.000Z', quartzoHash: null, canTrash: true, resolvedSha256: 'other-hash', matchesLocal: false },
+          { id: 'right', modifiedTime: '2026-09-18T09:00:00.000Z', quartzoHash: null, canTrash: true, resolvedSha256: 'local-hash', matchesLocal: true },
         ],
       }],
     };
@@ -755,6 +760,7 @@ describe('Runtime Sync Tests', () => {
         mimeType: 'application/octet-stream',
         modifiedTime: '2026-09-18T10:00:00.000Z',
         quartzoHash: '',
+        canTrash: true,
         parents: ['root-folder-id'],
       },
       {
@@ -764,6 +770,7 @@ describe('Runtime Sync Tests', () => {
         mimeType: 'application/octet-stream',
         modifiedTime: '2026-09-18T10:00:00.000Z',
         quartzoHash: '',
+        canTrash: true,
         parents: ['root-folder-id'],
       },
     ];
@@ -779,8 +786,8 @@ describe('Runtime Sync Tests', () => {
         localHash: hash,
         remoteHash: null,
         remoteCandidates: [
-          { id: 'keep-id', modifiedTime: '2026-09-18T10:00:00.000Z', quartzoHash: null, resolvedSha256: hash, matchesLocal: true },
-          { id: 'trash-id', modifiedTime: '2026-09-18T10:00:00.000Z', quartzoHash: null, resolvedSha256: hash, matchesLocal: true },
+          { id: 'keep-id', modifiedTime: '2026-09-18T10:00:00.000Z', quartzoHash: null, canTrash: true, resolvedSha256: hash, matchesLocal: true },
+          { id: 'trash-id', modifiedTime: '2026-09-18T10:00:00.000Z', quartzoHash: null, canTrash: true, resolvedSha256: hash, matchesLocal: true },
         ],
       }],
     };
@@ -813,6 +820,7 @@ describe('Runtime Sync Tests', () => {
         modifiedTime: '2026-09-18T13:00:00.000Z',
         quartzoHash: hash,
         trashed: false,
+        canTrash: true,
         parents: ['root-folder-id'],
       },
       {
@@ -823,6 +831,7 @@ describe('Runtime Sync Tests', () => {
         modifiedTime: '2026-09-18T13:00:00.000Z',
         quartzoHash: hash,
         trashed,
+        canTrash: true,
         parents: ['root-folder-id'],
       },
     ];
@@ -848,6 +857,7 @@ describe('Runtime Sync Tests', () => {
             id: 'keep-stale-list',
             modifiedTime: '2026-09-18T13:00:00.000Z',
             quartzoHash: hash,
+            canTrash: true,
             resolvedSha256: hash,
             matchesLocal: true,
           },
@@ -855,6 +865,7 @@ describe('Runtime Sync Tests', () => {
             id: 'trash-stale-list',
             modifiedTime: '2026-09-18T13:00:00.000Z',
             quartzoHash: hash,
+            canTrash: true,
             resolvedSha256: hash,
             matchesLocal: true,
           },
@@ -897,6 +908,7 @@ describe('Runtime Sync Tests', () => {
         mimeType: 'application/octet-stream',
         modifiedTime: '2026-09-18T12:00:00.000Z',
         quartzoHash: '',
+        canTrash: true,
         parents: ['root-folder-id'],
       },
       {
@@ -906,6 +918,7 @@ describe('Runtime Sync Tests', () => {
         mimeType: 'application/octet-stream',
         modifiedTime: '2026-09-18T12:05:00.000Z',
         quartzoHash: '',
+        canTrash: true,
         parents: ['root-folder-id'],
       },
     ];
@@ -921,8 +934,8 @@ describe('Runtime Sync Tests', () => {
         localHash: hash,
         remoteHash: null,
         remoteCandidates: [
-          { id: 'keep-stale', modifiedTime: '2026-09-18T12:00:00.000Z', quartzoHash: null, resolvedSha256: hash, matchesLocal: true },
-          { id: 'trash-stale', modifiedTime: '2026-09-18T12:00:00.000Z', quartzoHash: null, resolvedSha256: hash, matchesLocal: true },
+          { id: 'keep-stale', modifiedTime: '2026-09-18T12:00:00.000Z', quartzoHash: null, canTrash: true, resolvedSha256: hash, matchesLocal: true },
+          { id: 'trash-stale', modifiedTime: '2026-09-18T12:00:00.000Z', quartzoHash: null, canTrash: true, resolvedSha256: hash, matchesLocal: true },
         ],
       }],
     };

@@ -891,7 +891,12 @@ export default class QuartzoCompanionPlugin extends Plugin {
                 ? 'planned: safe to trash'
                 : 'planned: untouched'
             : 'planned: manual review';
-          meta.textContent = `ID ${candidate.id} · modified ${candidate.modifiedTime ?? 'unknown'} · SHA-256 ${candidate.resolvedSha256} · ${localRelation} · ${cleanupRelation} · Quartzo_hash ${candidate.quartzoHash ? 'present' : 'missing'}`;
+          const trashPermission = candidate.canTrash === true
+            ? 'Drive trash allowed'
+            : candidate.canTrash === false
+              ? 'Drive trash not permitted'
+              : 'Drive trash permission unknown';
+          meta.textContent = `ID ${candidate.id} · modified ${candidate.modifiedTime ?? 'unknown'} · SHA-256 ${candidate.resolvedSha256} · ${localRelation} · ${cleanupRelation} · ${trashPermission} · Quartzo_hash ${candidate.quartzoHash ? 'present' : 'missing'}`;
           li.appendChild(meta);
 
           const openButton = document.createElement('button');

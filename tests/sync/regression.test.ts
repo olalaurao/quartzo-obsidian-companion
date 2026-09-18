@@ -1297,4 +1297,129 @@ describe('Sync Regression Tests', () => {
       expect(refreshCalled).toBe(true);
     });
   });
+
+  describe('Safe duplicate cleanup honors Drive trash capability', () => {
+    it('keeps the sole non-trashable candidate when byte-identical duplicates all match local', () => {
+      const hash = crypto.createHash('sha256').update('same').digest('hex');
+      const plan = coordinator.buildSafeDuplicateTrashPlan({
+        identical: [],
+        remoteOnly: [],
+        localOnly: [],
+        divergent: [],
+        ambiguous: [{
+          path: 'dup.md',
+          status: 'ambiguous',
+          localHash: hash,
+          remoteHash: null,
+          remoteCandidates: [
+            { id: 'trashable', modifiedTime: null, quartzoHash: hash, canTrash: true, resolvedSha256: hash, matchesLocal: true },
+            { id: 'keep-no-permission', modifiedTime: null, quartzoHash: hash, canTrash: false, resolvedSha256: hash, matchesLocal: true },
+          ],
+        }],
+      });
+
+      expect(plan.unresolvedPaths).toEqual([]);
+      expect(plan.resolutions).toHaveLength(1);
+      expect(plan.resolutions[0].keepFileId).toBe('keep-no-permission');
+      expect(plan.resolutions[0].trashFileIds).toEqual(['trashable']);
+    });
+
+    it('fails closed when byte-identical cleanup would require trashing multiple non-trashable candidates', () => {
+      const hash = crypto.createHash('sha256').update('same').digest('hex');
+      const plan = coordinator.buildSafeDuplicateTrashPlan({
+        identical: [],
+        remoteOnly: [],
+        localOnly: [],
+        divergent: [],
+        ambiguous: [{
+          path: 'dup.md',
+          status: 'ambiguous',
+          localHash: hash,
+          remoteHash: null,
+          remoteCandidates: [
+            { id: 'no-1', modifiedTime: null, quartzoHash: hash, canTrash: false, resolvedSha256: hash, matchesLocal: true },
+            { id: 'no-2', modifiedTime: null, quartzoHash: hash, canTrash: null, resolvedSha256: hash, matchesLocal: true },
+            { id: 'yes', modifiedTime: null, quartzoHash: hash, canTrash: true, resolvedSha256: hash, matchesLocal: true },
+          ],
+        }],
+      });
+
+      expect(plan.resolutions).toEqual([]);
+      expect(plan.unresolvedPaths).toEqual(['dup.md']);
+      expect(plan.totalTrashFiles).toBe(0);
+    });
+
+    it('does not discard a unique local match when another candidate cannot be trashed', () => {
+      const localHash = crypto.createHash('sha256').update('local').digest('hex');
+      const otherHash = crypto.createHash('sha256').update('other').digest('hex');
+      const plan = coordinator.buildSafeDuplicateTrashPlan({
+        identical: [],
+        remoteOnly: [],
+        localOnly: [],
+        divergent: [],
+        ambiguous: [{
+          path: 'dup.md',
+          status: 'ambiguous',
+          localHash,
+          remoteHash: null,
+          remoteCandidates: [
+            { id: 'local-match', modifiedTime: null, quartzoHash: localHash, canTrash: true, resolvedSha256: localHash, matchesLocal: true },
+            { id: 'different-no-permission', modifiedTime: null, quartzoHash: otherHash, canTrash: false, resolvedSha256: otherHash, matchesLocal: false },
+          ],
+        }],
+      });
+
+      expect(plan.resolutions).toEqual([]);
+      expect(plan.unresolvedPaths).toEqual(['dup.md']);
+    });
+
+    it('revalidates canTrash before mutation and skips when Drive permission changed', async () => {
+      const content = Buffer.from('same');
+      const hash = crypto.createHash('sha256').update(content).digest('hex');
+      fs.writeFileSync(path.join(tmpDir, 'dup.md'), content);
+      await coordinator.setDriveFolderId('mock-folder-id');
+
+      const modifiedTime = '2026-09-18T12:00:00.000Z';
+      const summary = {
+        identical: [],
+        remoteOnly: [],
+        localOnly: [],
+        divergent: [],
+        ambiguous: [{
+          path: 'dup.md',
+          status: 'ambiguous' as const,
+          localHash: hash,
+          remoteHash: null,
+          remoteCandidates: [
+            { id: 'keep', modifiedTime, quartzoHash: hash, canTrash: false, resolvedSha256: hash, matchesLocal: true },
+            { id: 'trash', modifiedTime, quartzoHash: hash, canTrash: true, resolvedSha256: hash, matchesLocal: true },
+          ],
+        }],
+      };
+
+      adapter.listAllFiles = async () => [
+        { id: 'keep', name: 'dup.md', mimeType: 'text/markdown', modifiedTime, quartzoHash: hash, parents: ['mock-folder-id'], relativePath: 'dup.md', canTrash: false },
+        { id: 'trash', name: 'dup.md', mimeType: 'text/markdown', modifiedTime, quartzoHash: hash, parents: ['mock-folder-id'], relativePath: 'dup.md', canTrash: false },
+      ];
+      let trashCalls = 0;
+      adapter.trashFile = async () => { trashCalls++; };
+
+      const result = await coordinator.trashSafePairingDuplicates(summary);
+
+      expect(trashCalls).toBe(0);
+      expect(result.trashed).toBe(0);
+      expect(result.skippedPaths).toEqual(['dup.md']);
+      expect(result.errors.join(' ')).toContain('Drive content changed since scan: dup.md');
+    });
+
+    it('Drive inventory requests and projects capabilities.canTrash', () => {
+      const adapterSrc = fs.readFileSync(
+        path.join(__dirname, '../../src/integrations/google/drive/adapter.ts'),
+        'utf-8'
+      );
+      expect(adapterSrc).toContain('capabilities(canTrash)');
+      expect(adapterSrc).toContain('canTrash: file.capabilities?.canTrash ?? null');
+    });
+  });
+
 });
