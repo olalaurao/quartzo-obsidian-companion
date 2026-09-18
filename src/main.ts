@@ -911,7 +911,7 @@ class QuartzoFirstRunModal extends Modal {
     contentEl.appendChild(description);
 
     const safety = document.createElement('p');
-    safety.textContent = 'The Companion will never silently create a second Quartzo vault. After authorization, you explicitly select an existing Quartzo vault and review the pairing summary.';
+    safety.textContent = 'The Companion will never silently create a second Quartzo vault. After authorization, you explicitly select an existing Quartzo vault and review the pairing summary. Sync mode starts in Manual, so pairing does not enable background sync.';
     contentEl.appendChild(safety);
 
     const actions = document.createElement('div');
