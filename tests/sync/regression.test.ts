@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DriveSyncCoordinator } from '../../src/sync/coordinator/index';
 import { VaultSyncFilePolicy } from '../../src/sync/coordinator/file-policy';
 import { normalizeVaultPath, isSameVaultPath } from '../../src/sync/coordinator/path-utils';
@@ -255,6 +255,46 @@ describe('Sync Regression Tests', () => {
       const { GoogleDriveAdapter } = await import('../../src/integrations/google/drive/adapter');
       const realAdapter = new GoogleDriveAdapter();
       expect(typeof (realAdapter as unknown as Record<string, unknown>).withRetry).toBe('function');
+    });
+  });
+
+  describe('Drive quota backoff', () => {
+    it('retries per-minute 403 quota exhaustion instead of treating it as auth failure', async () => {
+      vi.useFakeTimers();
+      const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+      try {
+        const { GoogleDriveAdapter } = await import('../../src/integrations/google/drive/adapter');
+        const realAdapter = new GoogleDriveAdapter();
+        let calls = 0;
+        const quotaError = Object.assign(
+          new Error("Quota exceeded for quota metric 'Total Query Cost' and limit 'Units per minute per user'"),
+          {
+            response: {
+              status: 403,
+              data: {
+                error: {
+                  code: 403,
+                  message: "Quota exceeded for quota metric 'Total Query Cost' and limit 'Units per minute per user'",
+                  errors: [{ reason: 'quotaExceeded' }],
+                },
+              },
+            },
+          }
+        );
+
+        const operation = realAdapter.withRetry(async () => {
+          calls++;
+          if (calls === 1) throw quotaError;
+          return 'ok';
+        }, 0);
+
+        await vi.advanceTimersByTimeAsync(2500);
+        await expect(operation).resolves.toBe('ok');
+        expect(calls).toBe(2);
+      } finally {
+        random.mockRestore();
+        vi.useRealTimers();
+      }
     });
   });
 

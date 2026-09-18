@@ -4,11 +4,40 @@ import { OAuth2Client } from 'google-auth-library';
 import { normalizeVaultPath } from '../../../sync/coordinator/path-utils';
 import * as crypto from 'crypto';
 
+function driveErrorText(error: unknown): string {
+  const err = error as {
+    message?: string;
+    errors?: Array<{ reason?: string; message?: string }>;
+    response?: {
+      data?: unknown;
+    };
+  };
+  const parts: string[] = [];
+  if (err.message) parts.push(err.message);
+  for (const item of err.errors ?? []) {
+    if (item.reason) parts.push(item.reason);
+    if (item.message) parts.push(item.message);
+  }
+  if (err.response?.data != null) {
+    if (typeof err.response.data === 'string') {
+      parts.push(err.response.data);
+    } else {
+      try {
+        parts.push(JSON.stringify(err.response.data));
+      } catch {
+        parts.push(String(err.response.data));
+      }
+    }
+  }
+  return parts.join(' ').toLowerCase();
+}
+
 export class GoogleDriveAdapter implements DriveAdapter {
   private accessToken: string | null = null;
   private folderId: string | null = null;
   private drive: drive_v3.Drive | null = null;
   private tokenRefreshCallback: (() => Promise<string | null>) | null = null;
+  private rateLimitUntil = 0;
 
   constructor(accessToken?: string) {
     this.accessToken = accessToken || null;
@@ -39,14 +68,15 @@ export class GoogleDriveAdapter implements DriveAdapter {
     let lastError: unknown;
     let authRefreshAttempted = false;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      await this.waitForRateLimitCooldown();
       try {
         return await operation();
       } catch (error: unknown) {
         lastError = error;
-        const err = error as { code?: number; status?: number; response?: { status?: number; data?: { error?: string; error_description?: string } } };
+        const err = error as { code?: number; status?: number; response?: { status?: number } };
         const statusCode = err.code || err.status || err.response?.status;
 
-        if ((statusCode === 401 || (statusCode === 403 && this.isCredentialError(err))) && !authRefreshAttempted) {
+        if ((statusCode === 401 || (statusCode === 403 && this.isCredentialError(error))) && !authRefreshAttempted) {
           authRefreshAttempted = true;
           if (this.tokenRefreshCallback) {
             const newToken = await this.tokenRefreshCallback();
@@ -58,11 +88,23 @@ export class GoogleDriveAdapter implements DriveAdapter {
           throw error;
         }
 
-        if (statusCode === 429 || (statusCode && statusCode >= 500) || !statusCode) {
+        const rateLimited = this.isRateLimitError(error);
+        if (rateLimited) {
+          maxRetries = Math.max(maxRetries, 5);
+        }
+
+        if (rateLimited || statusCode === 429 || (statusCode && statusCode >= 500) || !statusCode) {
           if (attempt < maxRetries) {
-            const baseMs = statusCode === 429 ? 2000 : 1000;
-            const delay = baseMs * Math.pow(2, attempt) + Math.random() * baseMs;
-            await new Promise(r => setTimeout(r, delay));
+            const baseMs = rateLimited || statusCode === 429 ? 2000 : 1000;
+            const exponentialMs = Math.min(30000, baseMs * Math.pow(2, attempt));
+            const retryAfterMs = this.retryAfterMs(error);
+            const delay = Math.max(retryAfterMs, exponentialMs + Math.random() * baseMs);
+            if (rateLimited || statusCode === 429) {
+              this.rateLimitUntil = Math.max(this.rateLimitUntil, Date.now() + delay);
+              await this.waitForRateLimitCooldown();
+            } else {
+              await new Promise(resolve => setTimeout(resolve, delay));
+            }
             continue;
           }
         }
@@ -73,12 +115,53 @@ export class GoogleDriveAdapter implements DriveAdapter {
     throw lastError;
   }
 
-  private isCredentialError(err: { code?: number; status?: number; response?: { status?: number; data?: { error?: string; error_description?: string; errors?: Array<{ reason?: string }> } } }): boolean {
+  private isRateLimitError(error: unknown): boolean {
+    const err = error as { code?: number; status?: number; response?: { status?: number } };
     const statusCode = err.code || err.status || err.response?.status;
+    if (statusCode === 429) return true;
     if (statusCode !== 403) return false;
-    const errorDesc = err.response?.data?.error_description || err.response?.data?.error || '';
-    const errorReasons = (err.response?.data?.errors || []).map(e => e.reason || '').join(' ');
-    const combined = `${errorDesc} ${errorReasons}`.toLowerCase().replace(/[_\s]+/g, '');
+
+    const text = driveErrorText(error).replace(/[_\s-]+/g, '');
+    if (text.includes('dailylimitexceeded')) return false;
+    return text.includes('userratelimitexceeded') ||
+      text.includes('ratelimitexceeded') ||
+      text.includes('sharingratelimitexceeded') ||
+      (text.includes('quotaexceeded') && (
+        text.includes('perminute') ||
+        text.includes('unitsperminute') ||
+        text.includes('querycost')
+      ));
+  }
+
+  private retryAfterMs(error: unknown): number {
+    const err = error as {
+      response?: {
+        headers?: Record<string, string | number | string[] | undefined>;
+      };
+    };
+    const raw = err.response?.headers?.['retry-after'];
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    if (value == null) return 0;
+    const seconds = Number(value);
+    if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+    if (typeof value === 'string') {
+      const at = Date.parse(value);
+      if (Number.isFinite(at)) return Math.max(0, at - Date.now());
+    }
+    return 0;
+  }
+
+  private async waitForRateLimitCooldown(): Promise<void> {
+    const remaining = this.rateLimitUntil - Date.now();
+    if (remaining <= 0) return;
+    await new Promise(resolve => setTimeout(resolve, remaining + Math.random() * 250));
+  }
+
+  private isCredentialError(err: unknown): boolean {
+    const typed = err as { code?: number; status?: number; response?: { status?: number } };
+    const statusCode = typed.code || typed.status || typed.response?.status;
+    if (statusCode !== 403) return false;
+    const combined = driveErrorText(err).replace(/[_\s]+/g, '');
     if (combined.includes('accessnotconfigur') || combined.includes('apisdisabled') ||
         combined.includes('quotaexceeded') || combined.includes('ratelimitexceeded') ||
         combined.includes('sharingratelimitexceeded') || combined.includes('cannotdownloadfile') ||
@@ -149,28 +232,24 @@ export class GoogleDriveAdapter implements DriveAdapter {
   }
 
   async listAllFiles(folderId: string): Promise<DriveFileMetadata[]> {
-    return this.withRetry(async () => {
-      const allFiles: DriveFileMetadata[] = [];
-      const drive = this.getDriveClient();
-      await this.listAllFilesRecursive(drive, folderId, allFiles, '');
-      return allFiles;
-    });
+    const allFiles: DriveFileMetadata[] = [];
+    await this.listAllFilesRecursive(folderId, allFiles, '');
+    return allFiles;
   }
 
   private async listAllFilesRecursive(
-    drive: drive_v3.Drive,
     folderId: string,
     allFiles: DriveFileMetadata[],
     relativePrefix: string
   ): Promise<void> {
     let pageToken: string | undefined;
     do {
-      const response = await drive.files.list({
+      const response = await this.withRetry(() => this.getDriveClient().files.list({
         q: `'${folderId}' in parents and trashed = false`,
         fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties)',
         pageSize: 1000,
         pageToken
-      });
+      }));
 
       const files: DriveFileMetadata[] = (response.data.files || []).map(file => ({
         id: file.id || '',
@@ -187,7 +266,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
           relativePrefix ? `${relativePrefix}/${file.name}` : file.name
         );
         if (file.mimeType === 'application/vnd.google-apps.folder') {
-          await this.listAllFilesRecursive(drive, file.id, allFiles, relativePath);
+          await this.listAllFilesRecursive(file.id, allFiles, relativePath);
         } else {
           allFiles.push({ ...file, relativePath });
         }
