@@ -1,6 +1,6 @@
 import type { App, Plugin } from 'obsidian';
 import type { VaultIndexEngine } from '../vault/index';
-import type { DriveSyncCoordinator } from '../sync/coordinator';
+import type { DriveSyncCoordinator, PairingScanProgress } from '../sync/coordinator';
 import type { GoogleDriveAdapter } from '../integrations/google/drive';
 import type { GoogleCalendarProjection } from '../integrations/google/calendar';
 import type { ReminderMode } from '../core/reminders';
@@ -39,7 +39,13 @@ export interface ViewContext {
     restartAutoSync(): void;
     startPairingFlow(): Promise<void>;
     reconnectGoogle(): Promise<void>;
-    confirmPairing(folderId: string, folderName: string, autoAdopt: boolean, autoPull: boolean): Promise<void>;
+    confirmPairing(
+      folderId: string,
+      folderName: string,
+      autoAdopt: boolean,
+      autoPull: boolean,
+      onProgress?: (progress: PairingScanProgress) => void
+    ): Promise<void>;
     disconnectDrive(): Promise<void>;
     useWithoutSync(): Promise<void>;
     listGoogleCalendarEvents(startDate: string, days: number): Promise<GoogleCalendarProjection[]>;
