@@ -1345,6 +1345,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     const remoteCandidates = new Map<string, DriveFileMetadata[]>();
     const remoteFiles = await this.driveAdapter.listAllFiles(driveFolderId);
     for (const file of remoteFiles) {
+      if (file.trashed === true) continue;
       const remotePath = await this.resolveRemotePath(file, driveFolderId);
       if (!remotePath) continue;
       const normalizedRemote = normalizeVaultPath(remotePath);
