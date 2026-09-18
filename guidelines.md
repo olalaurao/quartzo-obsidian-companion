@@ -8,3 +8,4 @@ Estas regras são permanentes para o desenvolvimento do Quartzo Obsidian Compani
 4. **Sem Ferramentas Externas:** O ambiente não deve exigir Node.js, Python ou daemons locais fora do Obsidian.
 5. **Typescript Rigoroso:** Utilize TypeScript Strict, sem type casting cego de objetos brutos.
 6. **Sincronização:** Todas as ações de sincronização com o Google Drive devem utilizar "three-way reconciliation" baseado no baseline e nos hashes.
+7. **Modo de sync:** O Companion expõe um único modo local de sincronização: `Manual` ou `Automatic`. `Manual` é o padrão e não pode disparar reconciliação por startup, foco, polling ou evento local; `Sync now`, conflitos e full reconciliation continuam disponíveis. `Automatic` habilita esses gatilhos através do mesmo coordenador canônico.
