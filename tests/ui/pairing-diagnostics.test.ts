@@ -22,6 +22,7 @@ describe('pairing diagnostics', () => {
               quartzoHash: 'hash-a',
               resolvedSha256: 'hash-a',
               matchesLocal: true,
+              canTrash: false,
             },
             {
               id: 'drive-b',
@@ -29,6 +30,7 @@ describe('pairing diagnostics', () => {
               quartzoHash: null,
               resolvedSha256: 'hash-b',
               matchesLocal: false,
+              canTrash: true,
             },
           ],
         },
@@ -48,9 +50,11 @@ describe('pairing diagnostics', () => {
     expect(text).toContain('Quartzo_hash: hash-a');
     expect(text).toContain('resolvedSha256: hash-a');
     expect(text).toContain('matchesLocal: yes');
+    expect(text).toContain('canTrash: no');
     expect(text).toContain('id: drive-b');
     expect(text).toContain('Quartzo_hash: missing');
     expect(text).toContain('resolvedSha256: hash-b');
     expect(text).toContain('matchesLocal: no');
+    expect(text).toContain('canTrash: yes');
   });
 });
