@@ -500,7 +500,7 @@ function checkDriveQuotaResilience() {
     return false;
   }
   if (listAllBody.includes('return this.withRetry') ||
-      !recursiveBody.includes('const response = await this.withRetry(() => drive.files.list({')) {
+      !recursiveBody.includes('const response = await this.withRetry(() => this.getDriveClient().files.list({')) {
     console.error('FAIL: Recursive Drive inventory retries the whole traversal instead of only the failed page');
     return false;
   }
