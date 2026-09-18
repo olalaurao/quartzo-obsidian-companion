@@ -700,7 +700,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
       const drive = this.getDriveClient();
       const response = await drive.files.get({
         fileId,
-        fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties'
+        fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties, trashed'
       });
 
       const data = response.data;
@@ -711,7 +711,8 @@ export class GoogleDriveAdapter implements DriveAdapter {
         modifiedTime: data.modifiedTime || new Date().toISOString(),
         md5Checksum: data.md5Checksum || undefined,
         parents: data.parents || undefined,
-        quartzoHash: this.extractQuartzoHash(data)
+        quartzoHash: this.extractQuartzoHash(data),
+        trashed: data.trashed ?? false
       };
     });
   }
