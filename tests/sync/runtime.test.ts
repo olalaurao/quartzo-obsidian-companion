@@ -523,6 +523,7 @@ describe('Runtime Sync Tests', () => {
     expect(uploadAttempts).toBe(1);
     expect(coordinator.isPairingApplyInProgress()).toBe(false);
     expect(coordinator.getPairingApplyProgress()).toBeNull();
+    expect(coordinator.getPairingLastError()).toBe('temporary quota exhausted');
   });
 
   it('8e4: coordinator exposes active pairing globally and rejects a concurrent pairing', async () => {
@@ -556,6 +557,24 @@ describe('Runtime Sync Tests', () => {
     expect(firstResult.errors).toEqual([]);
     expect(coordinator.isPairingApplyInProgress()).toBe(false);
     expect(coordinator.getPairingApplyProgress()).toBeNull();
+    expect(coordinator.getPairingLastError()).toBeNull();
+  });
+
+  it('8e5: failed pairing result remains available after the active operation ends', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+    const content = Buffer.from('same-before-delete');
+    fs.writeFileSync(path.join(tmpDir, 'stale-pair.md'), content);
+    adapter.addRemoteFile('stale-pair.md', content);
+
+    const summary = await coordinator.generatePairingSummary();
+    expect(summary.identical).toHaveLength(1);
+    fs.unlinkSync(path.join(tmpDir, 'stale-pair.md'));
+
+    const result = await coordinator.applyPairingDecisions(summary, { autoAdopt: true, autoPull: true });
+
+    expect(result.errors.join(' ')).toContain('Pairing changed for stale-pair.md');
+    expect(coordinator.isPairingApplyInProgress()).toBe(false);
+    expect(coordinator.getPairingLastError()).toContain('Pairing changed for stale-pair.md');
   });
 
   it('8f: pairing ambiguity retains every distinct Drive candidate for diagnosis', async () => {
