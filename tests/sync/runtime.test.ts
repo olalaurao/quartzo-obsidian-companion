@@ -387,6 +387,48 @@ describe('Runtime Sync Tests', () => {
     expect(progress[progress.length - 1]).toEqual({ phase: 'comparing', completed: 16, total: 16 });
   });
 
+  it('8d2: repeated pairing scan reuses proven legacy hashes when remote snapshot is unchanged', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+    for (let i = 0; i < 4; i++) {
+      const content = Buffer.from(`legacy-cache-${i}`);
+      fs.writeFileSync(path.join(tmpDir, `legacy-cache-${i}.md`), content);
+      adapter.addLegacyRemoteFile(`legacy-cache-${i}.md`, content);
+    }
+
+    const first = await coordinator.generatePairingSummary();
+    expect(first.identical).toHaveLength(4);
+    expect(adapter.downloadCalls).toBe(4);
+
+    adapter.resolveRemoteHashCalls = 0;
+    adapter.downloadCalls = 0;
+    const second = await coordinator.generatePairingSummary();
+
+    expect(second.identical).toHaveLength(4);
+    expect(adapter.resolveRemoteHashCalls).toBe(0);
+    expect(adapter.downloadCalls).toBe(0);
+  });
+
+  it('8d3: pairing hash cache invalidates when the legacy remote modifiedTime changes', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+    const content = Buffer.from('legacy-cache-change');
+    fs.writeFileSync(path.join(tmpDir, 'legacy-cache-change.md'), content);
+    adapter.addLegacyRemoteFile('legacy-cache-change.md', content);
+
+    await coordinator.generatePairingSummary();
+    expect(adapter.downloadCalls).toBe(1);
+
+    const entry = adapter.files.get('legacy-cache-change.md');
+    if (!entry) throw new Error('missing fake remote entry');
+    entry.modifiedTime = '2026-09-18T18:00:00.000Z';
+
+    adapter.resolveRemoteHashCalls = 0;
+    adapter.downloadCalls = 0;
+    await coordinator.generatePairingSummary();
+
+    expect(adapter.resolveRemoteHashCalls).toBe(1);
+    expect(adapter.downloadCalls).toBe(1);
+  });
+
   it('8e: accepting an unchanged legacy pairing reuses scan SHA-256 results', async () => {
     await coordinator.setDriveFolderId('root-folder-id');
     const content = Buffer.from('legacy-same');
