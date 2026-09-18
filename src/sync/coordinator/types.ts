@@ -40,6 +40,13 @@ export interface DriveFileMetadata {
   relativePath?: string | null;
 }
 
+export class TemporaryDriveQuotaError extends Error {
+  constructor(message = 'Google Drive temporary quota limit remained exhausted after retries.') {
+    super(message);
+    this.name = 'TemporaryDriveQuotaError';
+  }
+}
+
 export interface DriveAdapter {
   getFolderId(): Promise<string | null>;
   setFolderId(folderId: string): Promise<void>;
