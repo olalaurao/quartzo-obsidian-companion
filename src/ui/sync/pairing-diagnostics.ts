@@ -37,6 +37,7 @@ export function buildPairingDiagnosticsText(folderName: string, summary: Pairing
           `  - id: ${candidate.id}`,
           `    modifiedTime: ${candidate.modifiedTime ?? 'unknown'}`,
           `    Quartzo_hash: ${candidate.quartzoHash ?? 'missing'}`,
+          `    canTrash: ${candidate.canTrash == null ? 'unknown' : candidate.canTrash ? 'yes' : 'no'}`,
           `    resolvedSha256: ${candidate.resolvedSha256}`,
           `    matchesLocal: ${candidate.matchesLocal == null ? 'n/a' : candidate.matchesLocal ? 'yes' : 'no'}`
         );
