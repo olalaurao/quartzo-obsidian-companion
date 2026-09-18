@@ -351,6 +351,48 @@ describe('Runtime Sync Tests', () => {
     expect(state?.remoteFileId).toBeTruthy();
   });
 
+  it('8d: legacy missing-hash pairing uses bounded concurrency and reports progress', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+    adapter.hashResolutionDelayMs = 10;
+    for (let i = 0; i < 16; i++) {
+      const content = Buffer.from(`legacy-${i}`);
+      fs.writeFileSync(path.join(tmpDir, `legacy-${i}.md`), content);
+      adapter.addLegacyRemoteFile(`legacy-${i}.md`, content);
+    }
+    const progress: Array<{ phase: string; completed: number; total: number }> = [];
+
+    const summary = await coordinator.generatePairingSummary(update => progress.push(update));
+
+    expect(summary.identical).toHaveLength(16);
+    expect(summary.divergent).toHaveLength(0);
+    expect(adapter.downloadCalls).toBe(16);
+    expect(adapter.maxConcurrentRemoteHashCalls).toBeGreaterThan(1);
+    expect(adapter.maxConcurrentRemoteHashCalls).toBeLessThanOrEqual(8);
+    expect(progress.some(update => update.phase === 'local_inventory')).toBe(true);
+    expect(progress.some(update => update.phase === 'remote_inventory')).toBe(true);
+    expect(progress.at(-1)).toEqual({ phase: 'comparing', completed: 16, total: 16 });
+  });
+
+  it('8e: accepting an unchanged legacy pairing reuses scan SHA-256 results', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+    const content = Buffer.from('legacy-same');
+    fs.writeFileSync(path.join(tmpDir, 'legacy-same.md'), content);
+    adapter.addLegacyRemoteFile('legacy-same.md', content);
+
+    const summary = await coordinator.generatePairingSummary();
+    expect(summary.identical).toHaveLength(1);
+    expect(adapter.downloadCalls).toBe(1);
+
+    adapter.resolveRemoteHashCalls = 0;
+    adapter.downloadCalls = 0;
+    const result = await coordinator.applyPairingDecisions(summary, { autoAdopt: true, autoPull: true });
+
+    expect(result.errors).toEqual([]);
+    expect(adapter.resolveRemoteHashCalls).toBe(0);
+    expect(adapter.downloadCalls).toBe(0);
+    expect(coordinator.getSyncState().files.get('legacy-same.md')?.baseHash).toBe(summary.identical[0].remoteHash);
+  });
+
   it('9: coordinator calls listChanges after initial inventory', async () => {
     await coordinator.reconcile();
     expect(adapter.listFilesCalls).toBeGreaterThanOrEqual(1);
