@@ -38,7 +38,8 @@ export function buildPairingDiagnosticsText(folderName: string, summary: Pairing
           `    modifiedTime: ${candidate.modifiedTime ?? 'unknown'}`,
           `    Quartzo_hash: ${candidate.quartzoHash ?? 'missing'}`,
           `    resolvedSha256: ${candidate.resolvedSha256}`,
-          `    matchesLocal: ${candidate.matchesLocal == null ? 'n/a' : candidate.matchesLocal ? 'yes' : 'no'}`
+          `    matchesLocal: ${candidate.matchesLocal == null ? 'n/a' : candidate.matchesLocal ? 'yes' : 'no'}`,
+          `    canTrash: ${candidate.canTrash == null ? 'unknown' : candidate.canTrash ? 'yes' : 'no'}`
         );
       }
     }
