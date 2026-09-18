@@ -3,7 +3,7 @@ import { VaultIndexEngine } from './vault/index';
 import { DriveSyncCoordinator } from './sync/coordinator';
 import { GoogleDriveAdapter } from './integrations/google/drive';
 import { GoogleCalendarAdapter, GoogleCalendarAuthorizationError, type GoogleCalendarProjection } from './integrations/google/calendar';
-import { GoogleOAuthDesktop, OAuthConfig } from './integrations/google/auth/loopback';
+import { GoogleOAuthDesktop, type OAuthConfig } from './integrations/google/auth/loopback';
 import { GOOGLE_COMPANION_SCOPES } from './integrations/google/auth/scopes';
 import { QuartzoView, QUARTZO_VIEW_TYPE, type QuartzoSection, type QuartzoAction } from './ui';
 import { ViewContext } from './ui/types';
@@ -56,9 +56,12 @@ const DEFAULT_SETTINGS: QuartzoCompanionSettings = {
 
 
 const BUILD_CLIENT_ID: string = (typeof process !== 'undefined' && process.env && process.env.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID) || '';
+const BUILD_CLIENT_SECRET: string = (typeof process !== 'undefined' && process.env && process.env.QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET) || '';
+const OAUTH_CLIENT_SECRET_KEY = 'quartzo_companion/oauth_client_secret';
 
 const OAUTH_CONFIG: OAuthConfig = {
   clientId: '',
+  clientSecret: '',
   redirectUri: '',
   scopes: [...GOOGLE_COMPANION_SCOPES],
   authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
@@ -212,6 +215,20 @@ export default class QuartzoCompanionPlugin extends Plugin {
     return BUILD_CLIENT_ID || this.settings.oauthClientId || '';
   }
 
+  private async getResolvedOAuthConfig(): Promise<OAuthConfig | null> {
+    const clientId = this.getResolvedClientId();
+    if (!clientId || clientId === 'PLACEHOLDER_CLIENT_ID') return null;
+    const clientSecret = BUILD_CLIENT_SECRET || await this.getSecretStorage().get(OAUTH_CLIENT_SECRET_KEY) || '';
+    if (!clientSecret) return null;
+    return { ...OAUTH_CONFIG, clientId, clientSecret };
+  }
+
+  async setOAuthClientSecret(value: string): Promise<void> {
+    const storage = this.getSecretStorage();
+    if (value.trim()) await storage.set(OAUTH_CLIENT_SECRET_KEY, value.trim());
+    else await storage.delete(OAUTH_CLIENT_SECRET_KEY);
+  }
+
   private getSecretStorage() {
     const native = this.app.secretStorage;
     return {
@@ -277,14 +294,13 @@ export default class QuartzoCompanionPlugin extends Plugin {
   }
 
   async reauthorizeGoogleCalendar(): Promise<void> {
-    const clientId = this.getResolvedClientId();
-    if (!clientId || clientId === 'PLACEHOLDER_CLIENT_ID') {
-      new Notice('Configure your Google OAuth Client ID in settings first.');
+    const config = await this.getResolvedOAuthConfig();
+    if (!config) {
+      new Notice('Google OAuth credentials are incomplete. Update Quartzo Companion or configure both Client ID and Client Secret in Settings.');
       return;
     }
     const previousAuthState = this.authState;
     this.authState = 'authenticating';
-    const config = { ...OAUTH_CONFIG, clientId };
     const secretStorage = this.getSecretStorage();
     this.oauthClient = new GoogleOAuthDesktop(config, secretStorage, this.browserOpener);
     try {
@@ -563,7 +579,8 @@ export default class QuartzoCompanionPlugin extends Plugin {
     }
 
     try {
-      const config = { ...OAUTH_CONFIG, clientId: this.getResolvedClientId() };
+      const config = await this.getResolvedOAuthConfig();
+      if (!config) throw new Error('Google OAuth credentials are incomplete');
       this.oauthClient = new GoogleOAuthDesktop(config, secretStorage, this.browserOpener);
       const tokenResponse = await this.oauthClient.refreshAccessToken();
       this.configureGoogleAccessToken(tokenResponse.access_token);
@@ -588,15 +605,14 @@ export default class QuartzoCompanionPlugin extends Plugin {
   }
 
   async startPairingFlow() {
-    const clientId = this.getResolvedClientId();
-    if (!clientId || clientId === 'PLACEHOLDER_CLIENT_ID') {
+    const config = await this.getResolvedOAuthConfig();
+    if (!config) {
       this.authState = 'disconnected';
-      new Notice('Configure your Google OAuth Client ID in settings first.');
+      new Notice('Google OAuth credentials are incomplete. Update Quartzo Companion or configure both Client ID and Client Secret in Settings.');
       return;
     }
 
     this.authState = 'authenticating';
-    const config = { ...OAUTH_CONFIG, clientId };
     const secretStorage = this.getSecretStorage();
     this.oauthClient = new GoogleOAuthDesktop(config, secretStorage, this.browserOpener);
 
@@ -626,15 +642,14 @@ export default class QuartzoCompanionPlugin extends Plugin {
   }
 
   async reconnectGoogle(): Promise<void> {
-    const clientId = this.getResolvedClientId();
-    if (!clientId || clientId === 'PLACEHOLDER_CLIENT_ID') {
-      new Notice('Configure your Google OAuth Client ID in settings first.');
+    const config = await this.getResolvedOAuthConfig();
+    if (!config) {
+      new Notice('Google OAuth credentials are incomplete. Update Quartzo Companion or configure both Client ID and Client Secret in Settings.');
       return;
     }
 
     const wasPaired = Boolean(this.settings.googleDriveFolderId);
     this.authState = 'authenticating';
-    const config = { ...OAUTH_CONFIG, clientId };
     const secretStorage = this.getSecretStorage();
     this.oauthClient = new GoogleOAuthDesktop(config, secretStorage, this.browserOpener);
     try {
@@ -981,11 +996,11 @@ class QuartzoSettingTab extends PluginSettingTab {
     if (BUILD_CLIENT_ID) {
       new Setting(containerEl)
         .setName('Google OAuth Client ID')
-        .setDesc('Bundled in this Companion build. Tokens remain in Obsidian SecretStorage.');
+        .setDesc('Bundled in this Companion build.');
     } else {
       new Setting(containerEl)
         .setName('Google OAuth Client ID')
-        .setDesc('Desktop OAuth Client ID from Google Cloud Console (PKCE, no client secret). Stored only on this device.')
+        .setDesc('Desktop OAuth Client ID from Google Cloud Console. Stored only on this device.')
         .addText(text => text
           .setPlaceholder('Enter OAuth Client ID')
           .setValue(this.plugin.settings.oauthClientId === 'PLACEHOLDER_CLIENT_ID' ? '' : this.plugin.settings.oauthClientId)
@@ -993,6 +1008,24 @@ class QuartzoSettingTab extends PluginSettingTab {
             this.plugin.settings.oauthClientId = value.trim() || 'PLACEHOLDER_CLIENT_ID';
             await this.plugin.saveSettings();
           }));
+    }
+
+    if (BUILD_CLIENT_SECRET) {
+      new Setting(containerEl)
+        .setName('Google OAuth Client credential')
+        .setDesc('Bundled for this Desktop OAuth client. PKCE remains enabled and user tokens stay in Obsidian SecretStorage.');
+    } else {
+      new Setting(containerEl)
+        .setName('Google OAuth Client Secret')
+        .setDesc('Required by Google token exchange for this Desktop client. Stored in Obsidian SecretStorage, never in data.json.')
+        .addText(text => {
+          text.inputEl.type = 'password';
+          text
+            .setPlaceholder('Enter OAuth Client Secret')
+            .onChange(async value => {
+              await this.plugin.setOAuthClientSecret(value);
+            });
+        });
     }
 
     new Setting(containerEl)

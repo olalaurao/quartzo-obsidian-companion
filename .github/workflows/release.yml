@@ -18,6 +18,7 @@ jobs:
     
     env:
       QUARTZO_GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID }}
+      QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET }}
       RELEASE_MODE: 'true'
 
     steps:
@@ -35,11 +36,15 @@ jobs:
             exit 1
           fi
 
-      - name: Require production OAuth Client ID
+      - name: Require production OAuth credentials
         shell: bash
         run: |
           if [ -z "$QUARTZO_GOOGLE_DESKTOP_CLIENT_ID" ]; then
             echo "::error::Repository secret QUARTZO_GOOGLE_DESKTOP_CLIENT_ID is not configured."
+            exit 1
+          fi
+          if [ -z "$QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET" ]; then
+            echo "::error::Repository secret QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET is not configured."
             exit 1
           fi
           case "$QUARTZO_GOOGLE_DESKTOP_CLIENT_ID" in
@@ -88,12 +93,14 @@ jobs:
         run: npm run build
         env:
           QUARTZO_GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID }}
+          QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET }}
       
       - name: Release validate (production mode)
         run: RELEASE_MODE=true npm run release:validate
         env:
           RELEASE_MODE: 'true'
           QUARTZO_GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID }}
+          QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET }}
       
       - name: Clean artifact smoke test
         run: npm run smoke:clean-artifact

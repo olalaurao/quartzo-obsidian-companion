@@ -59,19 +59,24 @@ function validateRelease() {
 
   if (isRelease) {
     const clientIdEnv = process.env.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID;
+    const clientSecretEnv = process.env.QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET;
     if (!clientIdEnv || clientIdEnv === 'PLACEHOLDER_CLIENT_ID') {
       errors.push('OAuth Client ID is missing. Set QUARTZO_GOOGLE_DESKTOP_CLIENT_ID for release.');
     } else if (!/^[A-Za-z0-9._-]+\.apps\.googleusercontent\.com$/.test(clientIdEnv)) {
       errors.push('QUARTZO_GOOGLE_DESKTOP_CLIENT_ID does not look like a Google Desktop OAuth Client ID.');
     }
+    if (!clientSecretEnv) {
+      errors.push('OAuth Client Secret is missing. Set QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET for release.');
+    }
 
     const mainJsPath = path.join(rootDir, 'main.js');
     if (fs.existsSync(mainJsPath)) {
       const mainJsContent = fs.readFileSync(mainJsPath, 'utf8');
-      if (clientIdEnv && clientIdEnv !== 'PLACEHOLDER_CLIENT_ID') {
-        if (!mainJsContent.includes(clientIdEnv)) {
-          errors.push(`Built main.js does not contain QUARTZO_GOOGLE_DESKTOP_CLIENT_ID value. Build must inject the env var.`);
-        }
+      if (clientIdEnv && clientIdEnv !== 'PLACEHOLDER_CLIENT_ID' && !mainJsContent.includes(clientIdEnv)) {
+        errors.push('Built main.js does not contain QUARTZO_GOOGLE_DESKTOP_CLIENT_ID value. Build must inject the env var.');
+      }
+      if (clientSecretEnv && !mainJsContent.includes(clientSecretEnv)) {
+        errors.push('Built main.js does not contain QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET value. Build must inject the env var.');
       }
       if (mainJsContent.includes("require('googleapis')") && !mainJsContent.includes('const GoogleApis = require')) {
         errors.push('Built main.js contains unresolved runtime require("googleapis"). googleapis must be bundled.');
