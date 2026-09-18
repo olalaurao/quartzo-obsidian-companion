@@ -703,11 +703,18 @@ Groups:
 
 ### Sync
 
-- Auto sync
-- Remote polling interval
-- Sync on Obsidian startup
-- Sync on window focus
+- Sync mode: `Manual` or `Automatic`
+- `Manual` is the default and performs no background, startup, focus, polling or vault-event-triggered Drive reconciliation
+- `Automatic` enables startup, focus, polling and eligible local-change reconciliation through the same canonical sync coordinator
+- Remote polling interval, shown only for `Automatic`
 - Manual full reconciliation
+
+Migration rule:
+
+- legacy `syncAuto == true` migrates to `Automatic`;
+- otherwise migrate to `Manual`, regardless of legacy startup/focus defaults.
+
+The user can always use `Sync now`, `View conflicts` and `Run full reconciliation` while in `Manual` mode.
 
 ### Calendar
 
@@ -1796,42 +1803,39 @@ This closes the dangerous "fresh client" overwrite case.
 
 # 34. Local Change Pipeline
 
-When Obsidian reports a relevant local file change:
+When Obsidian reports a relevant local file change, the Companion always updates its local projection/bookkeeping. Network reconciliation depends on the device-local Sync mode.
 
 ```text
 Vault event
 ↓
-debounce
+calculate current hash / update local pending state
 ↓
-calculate current hash
-↓
-compare with local sync state
-↓
-queue reconciliation
-↓
-push/reconcile with Drive
+Manual    → stop; wait for explicit Sync now/full reconciliation
+Automatic → debounce/coalesce → reconcile with Drive
 ```
 
-Recommended local debounce:
+Recommended local debounce in `Automatic` mode:
 
 ```text
 ~1–2 seconds
 ```
 
-Rapid editor saves should collapse into one network operation.
+Rapid editor saves should collapse into one network operation when `Automatic` is enabled.
+
+`Manual` mode must never turn a local vault event into a Drive request by itself.
 
 ---
 
 # 35. Remote Change Pipeline
 
-After the initial full inventory, use Google Drive change tracking.
+After the initial full inventory, use Google Drive change tracking when reconciliation is requested.
 
 ```text
 changes.getStartPageToken
 ↓
 persist token locally
 ↓
-periodic changes.list
+changes.list during an allowed reconciliation
 ↓
 filter relevant vault descendants
 ↓
@@ -1840,17 +1844,23 @@ reconcile changed files
 persist new token
 ```
 
-Recommended default while Obsidian is open:
+In `Manual` mode, allowed reconciliation triggers are only explicit user actions:
+
+- `Sync now`;
+- `Run full reconciliation`.
+
+In `Automatic` mode, the same coordinator may additionally reconcile:
+
+- on startup;
+- when the Obsidian window regains focus;
+- after eligible local changes;
+- by periodic polling.
+
+Recommended polling interval for `Automatic` while Obsidian is open:
 
 ```text
 60 seconds
 ```
-
-Also reconcile:
-
-- on startup;
-- when the Obsidian window regains focus;
-- on manual `Sync now`.
 
 No remote webhook/server is required.
 
@@ -2070,7 +2080,9 @@ Before enabling destructive synchronization:
 4. scan local vault;
 5. display pairing summary;
 6. establish baselines;
-7. only then enable normal auto-sync.
+7. preserve the user's device-local Sync mode.
+
+Pairing must not switch `Manual` to `Automatic`. A newly configured Companion remains `Manual` until the user explicitly selects `Automatic`.
 
 Example summary:
 

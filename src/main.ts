@@ -19,6 +19,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 
 type GoogleCalendarStatus = 'disconnected' | 'ready' | 'authorization_required' | 'error';
+type SyncMode = 'manual' | 'automatic';
 
 interface CalendarCacheEntry {
   expiresAt: number;
@@ -28,10 +29,8 @@ interface CalendarCacheEntry {
 interface QuartzoCompanionSettings {
   googleDriveFolderId: string | null;
   googleDriveFolderName: string | null;
-  syncAuto: boolean;
+  syncMode: SyncMode;
   syncPollingIntervalSeconds: number;
-  syncOnStartup: boolean;
-  syncOnFocus: boolean;
   hideSensitivePreviews: boolean;
   hideJournalPreviewText: boolean;
   hideNotificationBody: boolean;
@@ -44,10 +43,8 @@ interface QuartzoCompanionSettings {
 const DEFAULT_SETTINGS: QuartzoCompanionSettings = {
   googleDriveFolderId: null,
   googleDriveFolderName: null,
-  syncAuto: false,
+  syncMode: 'manual',
   syncPollingIntervalSeconds: 60,
-  syncOnStartup: true,
-  syncOnFocus: true,
   hideSensitivePreviews: false,
   hideJournalPreviewText: false,
   hideNotificationBody: false,
@@ -156,7 +153,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     await this.initializeVaultIndex();
     this.registerVaultEvents();
     this.registerDomEvent(window, 'focus', () => {
-      if (!this.settings.syncOnFocus || !this.settings.isPaired || !this.driveSyncCoordinator) return;
+      if (this.settings.syncMode !== 'automatic' || !this.settings.isPaired || !this.driveSyncCoordinator) return;
       void this.driveSyncCoordinator.triggerFocusSync().catch(error => {
         console.error('Focus sync failed:', error);
       });
@@ -463,7 +460,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
       if (file instanceof TFile && VaultSyncFilePolicy.shouldSyncFile(file.path) && this.settings.isPaired && this.driveSyncCoordinator) {
         this.app.vault.readBinary(file).then(bytes => {
           if (this.driveSyncCoordinator?.consumeExpectedWatcherEvent(file.path, new Uint8Array(bytes))) return;
-          if (this.settings.syncAuto) this.driveSyncCoordinator?.triggerFocusSync().catch(() => {});
+          if (this.settings.syncMode === 'automatic') this.driveSyncCoordinator?.triggerFocusSync().catch(() => {});
         }).catch(() => {});
       }
     });
@@ -473,7 +470,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
       if (file instanceof TFile && VaultSyncFilePolicy.shouldSyncFile(file.path) && this.settings.isPaired && this.driveSyncCoordinator) {
         this.app.vault.readBinary(file).then(bytes => {
           if (this.driveSyncCoordinator?.consumeExpectedWatcherEvent(file.path, new Uint8Array(bytes))) return;
-          if (this.settings.syncAuto) this.driveSyncCoordinator?.triggerFocusSync().catch(() => {});
+          if (this.settings.syncMode === 'automatic') this.driveSyncCoordinator?.triggerFocusSync().catch(() => {});
         }).catch(() => {});
       }
     });
@@ -483,7 +480,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
       if (file instanceof TFile && VaultSyncFilePolicy.shouldSyncFile(file.path) && this.settings.isPaired && this.driveSyncCoordinator) {
         if (this.driveSyncCoordinator.consumeExpectedWatcherEvent(file.path, null)) return;
         this.driveSyncCoordinator.queueDelete(file.path);
-        if (this.settings.syncAuto) this.driveSyncCoordinator.triggerFocusSync().catch(() => {});
+        if (this.settings.syncMode === 'automatic') this.driveSyncCoordinator.triggerFocusSync().catch(() => {});
       }
     });
     this.eventRefs.push(ondeleteSync);
@@ -497,7 +494,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
       if (oldSyncable && !newSyncable) {
         if (this.driveSyncCoordinator.consumeExpectedWatcherEvent(oldPath, null)) return;
         this.driveSyncCoordinator.queueDelete(oldPath);
-        if (this.settings.syncAuto) this.driveSyncCoordinator.triggerFocusSync().catch(() => {});
+        if (this.settings.syncMode === 'automatic') this.driveSyncCoordinator.triggerFocusSync().catch(() => {});
         return;
       }
 
@@ -505,14 +502,14 @@ export default class QuartzoCompanionPlugin extends Plugin {
         const content = new Uint8Array(bytes);
         if (!oldSyncable && newSyncable) {
           if (this.driveSyncCoordinator?.consumeExpectedWatcherEvent(file.path, content)) return;
-          if (this.settings.syncAuto) this.driveSyncCoordinator?.triggerFocusSync().catch(() => {});
+          if (this.settings.syncMode === 'automatic') this.driveSyncCoordinator?.triggerFocusSync().catch(() => {});
           return;
         }
         const oldSuppressed = this.driveSyncCoordinator?.consumeExpectedWatcherEvent(oldPath, null) ?? false;
         const newSuppressed = this.driveSyncCoordinator?.consumeExpectedWatcherEvent(file.path, content) ?? false;
         if (oldSuppressed && newSuppressed) return;
         this.driveSyncCoordinator?.queueRename(oldPath, file.path);
-        if (this.settings.syncAuto) this.driveSyncCoordinator?.triggerFocusSync().catch(() => {});
+        if (this.settings.syncMode === 'automatic') this.driveSyncCoordinator?.triggerFocusSync().catch(() => {});
       }).catch(() => {});
     });
     this.eventRefs.push(onrenameSync);
@@ -520,10 +517,10 @@ export default class QuartzoCompanionPlugin extends Plugin {
 
   startAutoSync() {
     if (this.syncIntervalId) return;
-    if (!this.settings.syncAuto) return;
+    if (this.settings.syncMode !== 'automatic') return;
     const seconds = Math.max(15, Math.min(3600, Math.trunc(this.settings.syncPollingIntervalSeconds)));
     this.syncIntervalId = setInterval(async () => {
-      if (this.driveSyncCoordinator && this.settings.isPaired && this.settings.syncAuto) {
+      if (this.driveSyncCoordinator && this.settings.isPaired && this.settings.syncMode === 'automatic') {
         try {
           await this.driveSyncCoordinator.triggerFocusSync();
         } catch (error) {
@@ -536,6 +533,13 @@ export default class QuartzoCompanionPlugin extends Plugin {
   restartAutoSync() {
     this.stopAutoSync();
     this.startAutoSync();
+  }
+
+  async setSyncMode(mode: SyncMode): Promise<void> {
+    this.settings.syncMode = mode;
+    await this.saveSettings();
+    this.stopAutoSync();
+    if (mode === 'automatic' && this.settings.isPaired) this.startAutoSync();
   }
 
   stopAutoSync() {
@@ -570,7 +574,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
         await this.driveSyncCoordinator?.setDriveFolderId(this.settings.googleDriveFolderId);
       }
 
-      if (this.settings.syncOnStartup && this.driveSyncCoordinator) {
+      if (this.settings.syncMode === 'automatic' && this.driveSyncCoordinator) {
         const result = await this.driveSyncCoordinator.triggerStartupSync();
         if (result.errors.length > 0) console.error('Startup sync failed:', result.errors[result.errors.length - 1]);
       }
@@ -861,13 +865,17 @@ export default class QuartzoCompanionPlugin extends Plugin {
       ? stored.syncPollingIntervalSeconds
       : DEFAULT_SETTINGS.syncPollingIntervalSeconds;
 
+    const syncMode: SyncMode = stored.syncMode === 'automatic' || stored.syncMode === 'manual'
+      ? stored.syncMode
+      : stored.syncAuto === true
+        ? 'automatic'
+        : 'manual';
+
     this.settings = {
       googleDriveFolderId: typeof stored.googleDriveFolderId === 'string' ? stored.googleDriveFolderId : null,
       googleDriveFolderName: typeof stored.googleDriveFolderName === 'string' ? stored.googleDriveFolderName : null,
-      syncAuto: typeof stored.syncAuto === 'boolean' ? stored.syncAuto : DEFAULT_SETTINGS.syncAuto,
+      syncMode,
       syncPollingIntervalSeconds: Math.max(15, Math.min(3600, Math.trunc(rawPolling))),
-      syncOnStartup: typeof stored.syncOnStartup === 'boolean' ? stored.syncOnStartup : DEFAULT_SETTINGS.syncOnStartup,
-      syncOnFocus: typeof stored.syncOnFocus === 'boolean' ? stored.syncOnFocus : DEFAULT_SETTINGS.syncOnFocus,
       hideSensitivePreviews: typeof stored.hideSensitivePreviews === 'boolean' ? stored.hideSensitivePreviews : legacyPrivacy,
       hideJournalPreviewText: typeof stored.hideJournalPreviewText === 'boolean' ? stored.hideJournalPreviewText : legacyPrivacy,
       hideNotificationBody: typeof stored.hideNotificationBody === 'boolean' ? stored.hideNotificationBody : legacyPrivacy,
@@ -903,7 +911,7 @@ class QuartzoFirstRunModal extends Modal {
     contentEl.appendChild(description);
 
     const safety = document.createElement('p');
-    safety.textContent = 'The Companion will never silently create a second Quartzo vault. After authorization, you explicitly select an existing Quartzo vault and review the pairing summary.';
+    safety.textContent = 'The Companion will never silently create a second Quartzo vault. After authorization, you explicitly select an existing Quartzo vault and review the pairing summary. Sync mode starts in Manual, so pairing does not enable background sync.';
     contentEl.appendChild(safety);
 
     const actions = document.createElement('div');
@@ -1025,53 +1033,35 @@ class QuartzoSettingTab extends PluginSettingTab {
     this.addHeading(containerEl, 'Sync');
 
     new Setting(containerEl)
-      .setName('Auto sync')
-      .setDesc('Poll Google Drive while Obsidian is open and reconcile local edits through the canonical sync coordinator.')
-      .addToggle(toggle => toggle
-        .setValue(this.plugin.settings.syncAuto)
-        .onChange(async value => {
-          this.plugin.settings.syncAuto = value;
-          await this.plugin.saveSettings();
-          if (value && this.plugin.settings.isPaired) this.plugin.startAutoSync();
-          else this.plugin.stopAutoSync();
-        }));
-
-    new Setting(containerEl)
-      .setName('Remote polling interval')
-      .setDesc('How often Auto sync checks Drive while Obsidian is open. Default: 60 seconds.')
+      .setName('Sync mode')
+      .setDesc('Manual is the default: the Companion never reconciles with Drive unless you choose Sync now or Run full reconciliation. Use Manual when this vault is already synced by Google Drive Desktop or another filesystem sync tool. Automatic enables startup, focus, polling, and eligible local-change sync.')
       .addDropdown(dropdown => dropdown
-        .addOption('15', '15 seconds')
-        .addOption('30', '30 seconds')
-        .addOption('60', '60 seconds')
-        .addOption('120', '2 minutes')
-        .addOption('300', '5 minutes')
-        .addOption('900', '15 minutes')
-        .setValue(String(this.plugin.settings.syncPollingIntervalSeconds))
+        .addOption('manual', 'Manual')
+        .addOption('automatic', 'Automatic')
+        .setValue(this.plugin.settings.syncMode)
         .onChange(async value => {
-          this.plugin.settings.syncPollingIntervalSeconds = Number(value);
-          await this.plugin.saveSettings();
-          this.plugin.restartAutoSync();
+          await this.plugin.setSyncMode(value === 'automatic' ? 'automatic' : 'manual');
+          this.display();
         }));
 
-    new Setting(containerEl)
-      .setName('Sync on Obsidian startup')
-      .setDesc('After restoring Google authorization, run one reconciliation when the plugin starts.')
-      .addToggle(toggle => toggle
-        .setValue(this.plugin.settings.syncOnStartup)
-        .onChange(async value => {
-          this.plugin.settings.syncOnStartup = value;
-          await this.plugin.saveSettings();
-        }));
-
-    new Setting(containerEl)
-      .setName('Sync on window focus')
-      .setDesc('Run one reconciliation when the Obsidian window regains focus.')
-      .addToggle(toggle => toggle
-        .setValue(this.plugin.settings.syncOnFocus)
-        .onChange(async value => {
-          this.plugin.settings.syncOnFocus = value;
-          await this.plugin.saveSettings();
-        }));
+    if (this.plugin.settings.syncMode === 'automatic') {
+      new Setting(containerEl)
+        .setName('Remote polling interval')
+        .setDesc('How often Automatic mode checks Drive while Obsidian is open. Default: 60 seconds.')
+        .addDropdown(dropdown => dropdown
+          .addOption('15', '15 seconds')
+          .addOption('30', '30 seconds')
+          .addOption('60', '60 seconds')
+          .addOption('120', '2 minutes')
+          .addOption('300', '5 minutes')
+          .addOption('900', '15 minutes')
+          .setValue(String(this.plugin.settings.syncPollingIntervalSeconds))
+          .onChange(async value => {
+            this.plugin.settings.syncPollingIntervalSeconds = Number(value);
+            await this.plugin.saveSettings();
+            this.plugin.restartAutoSync();
+          }));
+    }
 
     new Setting(containerEl)
       .setName('Manual full reconciliation')

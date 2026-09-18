@@ -7,6 +7,7 @@ O Quartzo Companion é um plugin para Obsidian Desktop que atua como segundo cli
 - **Desktop only**: Windows, macOS e Linux.
 - **Mesmo vault canônico**: objetos continuam em Markdown + YAML, sem banco de dados canônico paralelo.
 - **Google Drive Sync**: pareia explicitamente com um vault Quartzo remoto existente e usa reconciliação three-way.
+- **Sync manual por padrão**: `Manual` não faz sync em startup, foco, polling ou mudanças locais; `Sync now` e full reconciliation continuam disponíveis. `Automatic` é opt-in.
 - **Offline-first**: o trabalho local não depende de conexão contínua; a reconciliação ocorre quando o Drive está disponível.
 - **Uma shell Quartzo**: Home, Planner, Journal e Browse, com Search, Add, Sync e Settings como ações.
 

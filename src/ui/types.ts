@@ -22,10 +22,8 @@ export interface ViewContext {
     settings: {
       googleDriveFolderId: string | null;
       googleDriveFolderName: string | null;
-      syncAuto: boolean;
+      syncMode: 'manual' | 'automatic';
       syncPollingIntervalSeconds: number;
-      syncOnStartup: boolean;
-      syncOnFocus: boolean;
       hideSensitivePreviews: boolean;
       hideJournalPreviewText: boolean;
       hideNotificationBody: boolean;
@@ -35,6 +33,7 @@ export interface ViewContext {
       reminderDelivery: ReminderMode;
     };
     saveSettings(): Promise<void>;
+    setSyncMode(mode: 'manual' | 'automatic'): Promise<void>;
     startAutoSync(): void;
     stopAutoSync(): void;
     restartAutoSync(): void;
