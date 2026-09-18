@@ -4,6 +4,34 @@ import { OAuth2Client } from 'google-auth-library';
 import { normalizeVaultPath } from '../../../sync/coordinator/path-utils';
 import * as crypto from 'crypto';
 
+function driveErrorText(error: unknown): string {
+  const err = error as {
+    message?: string;
+    errors?: Array<{ reason?: string; message?: string }>;
+    response?: {
+      data?: unknown;
+    };
+  };
+  const parts: string[] = [];
+  if (err.message) parts.push(err.message);
+  for (const item of err.errors ?? []) {
+    if (item.reason) parts.push(item.reason);
+    if (item.message) parts.push(item.message);
+  }
+  if (err.response?.data != null) {
+    if (typeof err.response.data === 'string') {
+      parts.push(err.response.data);
+    } else {
+      try {
+        parts.push(JSON.stringify(err.response.data));
+      } catch {
+        parts.push(String(err.response.data));
+      }
+    }
+  }
+  return parts.join(' ').toLowerCase();
+}
+
 export class GoogleDriveAdapter implements DriveAdapter {
   private accessToken: string | null = null;
   private folderId: string | null = null;
@@ -87,41 +115,13 @@ export class GoogleDriveAdapter implements DriveAdapter {
     throw lastError;
   }
 
-  private errorText(error: unknown): string {
-    const err = error as {
-      message?: string;
-      errors?: Array<{ reason?: string; message?: string }>;
-      response?: {
-        data?: unknown;
-      };
-    };
-    const parts: string[] = [];
-    if (err.message) parts.push(err.message);
-    for (const item of err.errors ?? []) {
-      if (item.reason) parts.push(item.reason);
-      if (item.message) parts.push(item.message);
-    }
-    if (err.response?.data != null) {
-      if (typeof err.response.data === 'string') {
-        parts.push(err.response.data);
-      } else {
-        try {
-          parts.push(JSON.stringify(err.response.data));
-        } catch {
-          parts.push(String(err.response.data));
-        }
-      }
-    }
-    return parts.join(' ').toLowerCase();
-  }
-
   private isRateLimitError(error: unknown): boolean {
     const err = error as { code?: number; status?: number; response?: { status?: number } };
     const statusCode = err.code || err.status || err.response?.status;
     if (statusCode === 429) return true;
     if (statusCode !== 403) return false;
 
-    const text = this.errorText(error).replace(/[_\s-]+/g, '');
+    const text = driveErrorText(error).replace(/[_\s-]+/g, '');
     if (text.includes('dailylimitexceeded')) return false;
     return text.includes('userratelimitexceeded') ||
       text.includes('ratelimitexceeded') ||
@@ -161,7 +161,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
     const typed = err as { code?: number; status?: number; response?: { status?: number } };
     const statusCode = typed.code || typed.status || typed.response?.status;
     if (statusCode !== 403) return false;
-    const combined = this.errorText(err).replace(/[_\s]+/g, '');
+    const combined = driveErrorText(err).replace(/[_\s]+/g, '');
     if (combined.includes('accessnotconfigur') || combined.includes('apisdisabled') ||
         combined.includes('quotaexceeded') || combined.includes('ratelimitexceeded') ||
         combined.includes('sharingratelimitexceeded') || combined.includes('cannotdownloadfile') ||
