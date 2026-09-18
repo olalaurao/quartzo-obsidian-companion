@@ -296,6 +296,42 @@ describe('Sync Regression Tests', () => {
         vi.useRealTimers();
       }
     });
+
+    it('surfaces a typed temporary quota error after retry budget is exhausted', async () => {
+      vi.useFakeTimers();
+      const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+      try {
+        const { GoogleDriveAdapter } = await import('../../src/integrations/google/drive/adapter');
+        const { TemporaryDriveQuotaError } = await import('../../src/sync/coordinator/types');
+        const realAdapter = new GoogleDriveAdapter();
+        const quotaError = Object.assign(
+          new Error("Quota exceeded for quota metric 'Total Query Cost' and limit 'Units per minute per user'"),
+          {
+            response: {
+              status: 403,
+              data: {
+                error: {
+                  code: 403,
+                  message: "Quota exceeded for quota metric 'Total Query Cost' and limit 'Units per minute per user'",
+                  errors: [{ reason: 'quotaExceeded' }],
+                },
+              },
+            },
+          }
+        );
+
+        const operation = realAdapter.withRetry(async () => {
+          throw quotaError;
+        }, 0);
+
+        const expectation = expect(operation).rejects.toBeInstanceOf(TemporaryDriveQuotaError);
+        await vi.advanceTimersByTimeAsync(70000);
+        await expectation;
+      } finally {
+        random.mockRestore();
+        vi.useRealTimers();
+      }
+    });
   });
 
   describe('SHA-256 hash comparison', () => {

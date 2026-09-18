@@ -1,5 +1,14 @@
 import { SyncEngine } from '../../core/sync';
-import { DriveAdapter, SyncFile, SyncState, SyncResult, DriveFileMetadata, CURRENT_STATE_VERSION, PendingRename } from './types';
+import {
+  DriveAdapter,
+  SyncFile,
+  SyncState,
+  SyncResult,
+  DriveFileMetadata,
+  CURRENT_STATE_VERSION,
+  PendingRename,
+  TemporaryDriveQuotaError,
+} from './types';
 import { VaultSyncFilePolicy } from './file-policy';
 import { normalizeVaultPath } from './path-utils';
 import * as crypto from 'crypto';
@@ -151,6 +160,8 @@ export class DriveSyncCoordinator implements ConflictRegistry {
   private pendingDeletes: Set<string> = new Set();
   private lastError: string | null = null;
   private pairingRemoteHashCache = new Map<string, { modifiedTime: string | null; hash: string }>();
+  private pairingApplyInProgress = false;
+  private pairingApplyProgress: PairingApplyProgress | null = null;
 
   constructor(driveAdapter: DriveAdapter, vaultPath: string, stateStorePath?: string) {
     this.driveAdapter = driveAdapter;
@@ -167,6 +178,22 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
   getConflicts(): ConflictArtifact[] {
     return Array.from(this.conflicts.values());
+  }
+
+  isPairingApplyInProgress(): boolean {
+    return this.pairingApplyInProgress;
+  }
+
+  getPairingApplyProgress(): PairingApplyProgress | null {
+    return this.pairingApplyProgress ? { ...this.pairingApplyProgress } : null;
+  }
+
+  private reportPairingApplyProgress(
+    progress: PairingApplyProgress,
+    onProgress?: (progress: PairingApplyProgress) => void
+  ): void {
+    this.pairingApplyProgress = { ...progress };
+    onProgress?.(progress);
   }
 
   async resolveConflict(originalPath: string, resolution: ConflictResolution): Promise<void> {
@@ -1250,7 +1277,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
   async getSyncStatusSnapshot(): Promise<SyncStatusSnapshot> {
     const pendingLocalChanges = await this.countPendingLocalChanges();
     const conflictCount = this.conflicts.size;
-    const status: SyncCenterStatus = this.syncMutex
+    const status: SyncCenterStatus = this.syncMutex || this.pairingApplyInProgress
       ? 'syncing'
       : conflictCount > 0
         ? 'conflict'
@@ -1625,14 +1652,22 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     onProgress?: (progress: PairingApplyProgress) => void
   ): Promise<SyncResult> {
     const result: SyncResult = { synced: 0, conflicts: 0, errors: [] };
-    const driveFolderId = this.syncState.driveFolderId || '';
+    if (this.pairingApplyInProgress) {
+      result.errors.push('Pairing already in progress. Wait for the current pairing operation to finish.');
+      return result;
+    }
 
-    if (summary.ambiguous.length > 0 || summary.divergent.length > 0) {
+    this.pairingApplyInProgress = true;
+    this.pairingApplyProgress = null;
+    try {
+      const driveFolderId = this.syncState.driveFolderId || '';
+
+      if (summary.ambiguous.length > 0 || summary.divergent.length > 0) {
       result.errors.push('Pairing decisions blocked: unresolved divergent or ambiguous identities remain.');
       return result;
     }
 
-    onProgress?.({ phase: 'revalidating_remote', completed: 0, total: 0 });
+      this.reportPairingApplyProgress({ phase: 'revalidating_remote', completed: 0, total: 0 }, onProgress);
     const remoteCandidates = await this.buildRemoteCandidates(driveFolderId);
     const remoteMap = new Map<string, DriveFileMetadata>();
     for (const [remotePath, candidates] of remoteCandidates) {
@@ -1646,14 +1681,17 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     if (result.errors.length > 0) return result;
 
     let baselineCompleted = 0;
-    onProgress?.({ phase: 'baselining', completed: baselineCompleted, total: summary.identical.length });
+      this.reportPairingApplyProgress(
+        { phase: 'baselining', completed: baselineCompleted, total: summary.identical.length },
+        onProgress
+      );
     for (const item of summary.identical) {
-      onProgress?.({
-        phase: 'baselining',
-        completed: baselineCompleted,
-        total: summary.identical.length,
-        currentPath: item.path,
-      });
+        this.reportPairingApplyProgress({
+          phase: 'baselining',
+          completed: baselineCompleted,
+          total: summary.identical.length,
+          currentPath: item.path,
+        }, onProgress);
       const remoteEntry = remoteMap.get(item.path);
       const localFilePath = pathModule.join(this.vaultPath, item.path);
       if (!remoteEntry || !fs.existsSync(localFilePath)) {
@@ -1686,25 +1724,28 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       syncFile.remoteModifiedAt = remoteEntry.modifiedTime || null;
       this.syncState.files.set(item.path, syncFile);
       baselineCompleted++;
-      onProgress?.({
-        phase: 'baselining',
-        completed: baselineCompleted,
-        total: summary.identical.length,
-        currentPath: item.path,
-      });
+        this.reportPairingApplyProgress({
+          phase: 'baselining',
+          completed: baselineCompleted,
+          total: summary.identical.length,
+          currentPath: item.path,
+        }, onProgress);
     }
     if (result.errors.length > 0) return result;
 
     if (decisions.autoAdopt) {
       let adoptCompleted = 0;
-      onProgress?.({ phase: 'adopting_local', completed: adoptCompleted, total: summary.localOnly.length });
+        this.reportPairingApplyProgress(
+          { phase: 'adopting_local', completed: adoptCompleted, total: summary.localOnly.length },
+          onProgress
+        );
       for (const item of summary.localOnly) {
-        onProgress?.({
-          phase: 'adopting_local',
-          completed: adoptCompleted,
-          total: summary.localOnly.length,
-          currentPath: item.path,
-        });
+          this.reportPairingApplyProgress({
+            phase: 'adopting_local',
+            completed: adoptCompleted,
+            total: summary.localOnly.length,
+            currentPath: item.path,
+          }, onProgress);
         if (remoteMap.has(item.path)) {
           result.errors.push(`Pairing changed for ${item.path}: a remote file now exists. Rescan before pairing.`);
           continue;
@@ -1738,28 +1779,32 @@ export class DriveSyncCoordinator implements ConflictRegistry {
           this.syncState.files.set(normalized, syncFile);
           result.synced++;
         } catch (error) {
+          if (error instanceof TemporaryDriveQuotaError) throw error;
           result.errors.push(`Failed to adopt ${item.path}: ${error}`);
         }
         adoptCompleted++;
-        onProgress?.({
-          phase: 'adopting_local',
-          completed: adoptCompleted,
-          total: summary.localOnly.length,
-          currentPath: item.path,
-        });
+          this.reportPairingApplyProgress({
+            phase: 'adopting_local',
+            completed: adoptCompleted,
+            total: summary.localOnly.length,
+            currentPath: item.path,
+          }, onProgress);
       }
     }
 
     if (decisions.autoPull) {
       let pullCompleted = 0;
-      onProgress?.({ phase: 'pulling_remote', completed: pullCompleted, total: summary.remoteOnly.length });
+        this.reportPairingApplyProgress(
+          { phase: 'pulling_remote', completed: pullCompleted, total: summary.remoteOnly.length },
+          onProgress
+        );
       for (const item of summary.remoteOnly) {
-        onProgress?.({
-          phase: 'pulling_remote',
-          completed: pullCompleted,
-          total: summary.remoteOnly.length,
-          currentPath: item.path,
-        });
+          this.reportPairingApplyProgress({
+            phase: 'pulling_remote',
+            completed: pullCompleted,
+            total: summary.remoteOnly.length,
+            currentPath: item.path,
+          }, onProgress);
         const remoteEntry = remoteMap.get(item.path);
         if (!remoteEntry) {
           result.errors.push(`Pairing changed for ${item.path}: remote file no longer exists. Rescan before pairing.`);
@@ -1771,25 +1816,30 @@ export class DriveSyncCoordinator implements ConflictRegistry {
           await this.pullFile(item.path, remoteEntry, syncFile);
           result.synced++;
         } catch (error) {
+          if (error instanceof TemporaryDriveQuotaError) throw error;
           result.errors.push(`Failed to pull ${item.path}: ${error}`);
         }
         pullCompleted++;
-        onProgress?.({
-          phase: 'pulling_remote',
-          completed: pullCompleted,
-          total: summary.remoteOnly.length,
-          currentPath: item.path,
-        });
+          this.reportPairingApplyProgress({
+            phase: 'pulling_remote',
+            completed: pullCompleted,
+            total: summary.remoteOnly.length,
+            currentPath: item.path,
+          }, onProgress);
       }
     }
 
-    onProgress?.({ phase: 'finalizing', completed: 0, total: 1 });
+      this.reportPairingApplyProgress({ phase: 'finalizing', completed: 0, total: 1 }, onProgress);
     if (result.errors.length === 0) {
       this.syncState.driveChangeToken = await this.driveAdapter.getStartPageToken();
     }
     await this.saveSyncState();
-    onProgress?.({ phase: 'finalizing', completed: 1, total: 1 });
-    return result;
+      this.reportPairingApplyProgress({ phase: 'finalizing', completed: 1, total: 1 }, onProgress);
+      return result;
+    } finally {
+      this.pairingApplyInProgress = false;
+      this.pairingApplyProgress = null;
+    }
   }
 
   async explicitAdopt(filePath: string): Promise<void> {
