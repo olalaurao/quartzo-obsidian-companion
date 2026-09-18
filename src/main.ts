@@ -1,6 +1,6 @@
 import { App, Modal, Plugin, PluginSettingTab, Setting, Notice, TFile, TAbstractFile, FileSystemAdapter } from 'obsidian';
 import { VaultIndexEngine } from './vault/index';
-import { DriveSyncCoordinator } from './sync/coordinator';
+import { DriveSyncCoordinator, type PairingScanProgress } from './sync/coordinator';
 import { GoogleDriveAdapter } from './integrations/google/drive';
 import { GoogleCalendarAdapter, GoogleCalendarAuthorizationError, type GoogleCalendarProjection } from './integrations/google/calendar';
 import { GoogleOAuthDesktop, type OAuthConfig } from './integrations/google/auth/loopback';
@@ -672,7 +672,13 @@ export default class QuartzoCompanionPlugin extends Plugin {
       new Notice(`Google Drive reconnect failed: ${error}`);
     }
   }
-  async confirmPairing(folderId: string, folderName: string, autoAdopt: boolean, autoPull: boolean): Promise<void> {
+  async confirmPairing(
+    folderId: string,
+    folderName: string,
+    autoAdopt: boolean,
+    autoPull: boolean,
+    onProgress?: (progress: PairingScanProgress) => void
+  ): Promise<void> {
     if (!this.driveAdapter || !this.driveSyncCoordinator) {
       new Notice('Drive not initialized.');
       return;
@@ -689,7 +695,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.settings.googleDriveFolderId = folderId;
     this.settings.googleDriveFolderName = selected.name || folderName;
 
-    const summary = await this.driveSyncCoordinator.generatePairingSummary();
+    const summary = await this.driveSyncCoordinator.generatePairingSummary(onProgress);
     const hasDivergent = summary.divergent.length > 0;
     const hasAmbiguous = summary.ambiguous.length > 0;
 
