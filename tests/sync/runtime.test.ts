@@ -927,6 +927,7 @@ describe('Runtime Sync Tests', () => {
         modifiedTime: '2026-09-18T13:00:00.000Z',
         quartzoHash: hash,
         trashed,
+        canTrash: true,
         parents: ['root-folder-id'],
       },
     ];
@@ -962,6 +963,7 @@ describe('Runtime Sync Tests', () => {
             quartzoHash: hash,
             resolvedSha256: hash,
             matchesLocal: true,
+            canTrash: true,
           },
         ],
       }],
