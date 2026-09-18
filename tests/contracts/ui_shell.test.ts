@@ -90,6 +90,7 @@ folder_paths:
     const firstRun = main.slice(start, end);
     expect(firstRun).toContain('Connect Google Drive');
     expect(firstRun).toContain('Use without sync');
+    expect(firstRun).toContain('Sync mode starts in Manual');
     expect(firstRun).toContain('startPairingFlow()');
     expect(firstRun).toContain("activateQuartzo('home', 'sync')");
     expect(firstRun).not.toContain('firstRunCompleted = true');
