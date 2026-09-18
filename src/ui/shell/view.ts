@@ -933,6 +933,7 @@ export class QuartzoView extends ItemView {
       `Sync mode: ${plugin.settings.syncMode === 'automatic' ? 'Automatic' : 'Manual'}`,
       `Current Google Drive vault: ${plugin.settings.googleDriveFolderName ?? 'Not paired'}`,
       `Google account: ${plugin.authState.replace(/_/g, ' ')}`,
+      `Companion version: ${plugin.manifest.version}`,
       `Conflicts: ${snapshot?.conflictCount ?? coordinator?.getConflicts().length ?? 0}`,
     ];
     for (const lineText of summaryLines) {
@@ -996,6 +997,26 @@ export class QuartzoView extends ItemView {
         blocked.disabled = true;
         container.appendChild(blocked);
         return;
+      }
+
+      const lastPairingError = coordinator?.getPairingLastError() ?? null;
+      if (lastPairingError) {
+        const failed = document.createElement('p');
+        failed.textContent = `Last pairing attempt failed: ${lastPairingError}`;
+        failed.style.cssText = 'word-break: break-word;';
+        container.appendChild(failed);
+
+        const copyError = document.createElement('button');
+        copyError.textContent = 'Copy last pairing error';
+        copyError.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(lastPairingError);
+            new Notice('Pairing error copied.');
+          } catch (error) {
+            new Notice(`Could not copy pairing error: ${error}`);
+          }
+        });
+        container.appendChild(copyError);
       }
 
       const candidates = await plugin.driveAdapter?.listQuartzoVaultCandidates() ?? [];
