@@ -477,6 +477,43 @@ function checkPairingDuplicateCleanupIsReversible() {
   return true;
 }
 
+function checkDriveQuotaResilience() {
+  const adapterPath = path.join(rootDir, 'src/integrations/google/drive/adapter.ts');
+  const coordinatorPath = path.join(rootDir, 'src/sync/coordinator/index.ts');
+  const adapter = fs.readFileSync(adapterPath, 'utf8');
+  const coordinator = fs.readFileSync(coordinatorPath, 'utf8');
+
+  const listAllStart = adapter.indexOf('async listAllFiles(folderId: string)');
+  const recursiveStart = adapter.indexOf('private async listAllFilesRecursive', listAllStart);
+  const vaultCandidatesStart = adapter.indexOf('async listQuartzoVaultCandidates', recursiveStart);
+  const listAllBody = listAllStart >= 0 && recursiveStart > listAllStart
+    ? adapter.slice(listAllStart, recursiveStart)
+    : '';
+  const recursiveBody = recursiveStart >= 0 && vaultCandidatesStart > recursiveStart
+    ? adapter.slice(recursiveStart, vaultCandidatesStart)
+    : '';
+
+  if (!adapter.includes('isRateLimitError(error)') ||
+      !adapter.includes('maxRetries = Math.max(maxRetries, 5)') ||
+      !adapter.includes('rateLimitUntil')) {
+    console.error('FAIL: Drive per-minute quota/rate-limit responses are not handled with shared retry backoff');
+    return false;
+  }
+  if (listAllBody.includes('return this.withRetry') ||
+      !recursiveBody.includes('const response = await this.withRetry(() => drive.files.list({')) {
+    console.error('FAIL: Recursive Drive inventory retries the whole traversal instead of only the failed page');
+    return false;
+  }
+  if (!coordinator.includes('pairingRemoteHashCache') ||
+      !coordinator.includes('cached.modifiedTime === modifiedTime') ||
+      !coordinator.includes('resolvePairingRemoteHash')) {
+    console.error('FAIL: Pairing rescans do not reuse proven legacy hashes by remote ID + modifiedTime');
+    return false;
+  }
+  console.log('PASS: Drive quota handling backs off per request and pairing rescans reuse proven hashes');
+  return true;
+}
+
 function main() {
   console.log('Running architecture/completeness checks...\n');
   let allPassed = true;
@@ -500,6 +537,7 @@ function main() {
   if (!checkOAuthDesktopPlatformBoundary()) allPassed = false;
   if (!checkReleasePipelineHardening()) allPassed = false;
   if (!checkPairingDuplicateCleanupIsReversible()) allPassed = false;
+  if (!checkDriveQuotaResilience()) allPassed = false;
 
   console.log('\n' + (allPassed ? 'All architecture checks passed' : 'Some architecture checks failed'));
   process.exit(allPassed ? 0 : 1);
