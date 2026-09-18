@@ -143,6 +143,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
   private pendingRenames: PendingRename[] = [];
   private pendingDeletes: Set<string> = new Set();
   private lastError: string | null = null;
+  private pairingRemoteHashCache = new Map<string, { modifiedTime: string | null; hash: string }>();
 
   constructor(driveAdapter: DriveAdapter, vaultPath: string, stateStorePath?: string) {
     this.driveAdapter = driveAdapter;
@@ -1280,8 +1281,25 @@ export class DriveSyncCoordinator implements ConflictRegistry {
   }
 
   async setDriveFolderId(folderId: string): Promise<void> {
+    if (this.syncState.driveFolderId && this.syncState.driveFolderId !== folderId) {
+      this.pairingRemoteHashCache.clear();
+    }
     await this.driveAdapter.setFolderId(folderId);
     this.syncState.driveFolderId = folderId;
+  }
+
+  private async resolvePairingRemoteHash(metadata: DriveFileMetadata): Promise<string> {
+    if (metadata.quartzoHash) return metadata.quartzoHash;
+
+    const modifiedTime = metadata.modifiedTime || null;
+    const cached = this.pairingRemoteHashCache.get(metadata.id);
+    if (cached && cached.modifiedTime === modifiedTime) {
+      return cached.hash;
+    }
+
+    const hash = await this.driveAdapter.resolveRemoteHash(metadata);
+    this.pairingRemoteHashCache.set(metadata.id, { modifiedTime, hash });
+    return hash;
   }
 
   private async buildRemoteCandidates(driveFolderId: string): Promise<Map<string, DriveFileMetadata[]>> {
@@ -1351,7 +1369,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
         const index = ambiguityIndex++;
         if (index >= ambiguousJobs.length) return;
         const { group, candidate } = ambiguousJobs[index];
-        const resolvedSha256 = await this.driveAdapter.resolveRemoteHash(candidate);
+        const resolvedSha256 = await this.resolvePairingRemoteHash(candidate);
         resolvedAmbiguousHashes.set(`${group.path}\0${candidate.id}`, resolvedSha256);
         ambiguityCompleted++;
         onProgress?.({
@@ -1428,7 +1446,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
         const remoteEntry = remoteMap.get(filePath);
         if (!localEntry || !remoteEntry) continue;
 
-        const remoteHash = await this.driveAdapter.resolveRemoteHash(remoteEntry);
+        const remoteHash = await this.resolvePairingRemoteHash(remoteEntry);
         const item: PairingItem = {
           path: filePath,
           status: localEntry.hash === remoteHash ? 'identical' : 'divergent',
