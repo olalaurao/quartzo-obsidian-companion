@@ -324,7 +324,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
       const drive = this.getDriveClient();
       const response = await drive.changes.list({
         pageToken,
-        fields: 'nextPageToken, newStartPageToken, changes(fileId, removed, file(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties, capabilities(canTrash)))',
+        fields: 'nextPageToken, newStartPageToken, changes(fileId, removed, file(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties, trashed, capabilities(canTrash)))',
         pageSize: 1000
       });
 
@@ -339,6 +339,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
           md5Checksum: change.file.md5Checksum || undefined,
           parents: change.file.parents || undefined,
           quartzoHash: this.extractQuartzoHash(change.file),
+          trashed: change.file.trashed ?? false,
           canTrash: change.file.capabilities?.canTrash ?? null
         } : undefined
       }));
