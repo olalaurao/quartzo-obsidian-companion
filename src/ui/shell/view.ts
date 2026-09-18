@@ -962,6 +962,42 @@ export class QuartzoView extends ItemView {
     }
 
     if (plugin.authState === 'authenticated_unpaired') {
+      if (coordinator?.isPairingApplyInProgress()) {
+        const progress = coordinator.getPairingApplyProgress();
+        const active = document.createElement('p');
+        active.textContent = 'Pairing is in progress. Keep Obsidian open.';
+        container.appendChild(active);
+
+        const detail = document.createElement('p');
+        if (!progress) {
+          detail.textContent = 'Preparing pairing…';
+        } else if (progress.phase === 'revalidating_remote') {
+          detail.textContent = 'Revalidating Google Drive vault…';
+        } else if (progress.phase === 'baselining') {
+          detail.textContent = progress.total > 0
+            ? `Establishing baselines ${progress.completed}/${progress.total}`
+            : 'Establishing baselines…';
+        } else if (progress.phase === 'adopting_local') {
+          detail.textContent = progress.total > 0
+            ? `Uploading local-only files ${progress.completed}/${progress.total}`
+            : 'Checking local-only files…';
+        } else if (progress.phase === 'pulling_remote') {
+          detail.textContent = progress.total > 0
+            ? `Downloading remote-only files ${progress.completed}/${progress.total}`
+            : 'Checking remote-only files…';
+        } else {
+          detail.textContent = 'Finalizing pairing…';
+        }
+        if (progress?.currentPath) detail.textContent += ` · ${progress.currentPath}`;
+        container.appendChild(detail);
+
+        const blocked = document.createElement('button');
+        blocked.textContent = 'Pairing in progress…';
+        blocked.disabled = true;
+        container.appendChild(blocked);
+        return;
+      }
+
       const candidates = await plugin.driveAdapter?.listQuartzoVaultCandidates() ?? [];
       if (candidates.length === 0) {
         const empty = document.createElement('p');
