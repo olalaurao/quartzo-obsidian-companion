@@ -1034,7 +1034,7 @@ class QuartzoSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Sync mode')
-      .setDesc('Manual is the default: the Companion never reconciles with Drive unless you choose Sync now or Run full reconciliation. Automatic enables startup, focus, polling, and eligible local-change sync.')
+      .setDesc('Manual is the default: the Companion never reconciles with Drive unless you choose Sync now or Run full reconciliation. Use Manual when this vault is already synced by Google Drive Desktop or another filesystem sync tool. Automatic enables startup, focus, polling, and eligible local-change sync.')
       .addDropdown(dropdown => dropdown
         .addOption('manual', 'Manual')
         .addOption('automatic', 'Automatic')
