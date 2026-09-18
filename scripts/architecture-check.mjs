@@ -376,6 +376,10 @@ function checkReleasePipelineHardening() {
     console.error('FAIL: Release workflows bypass the canonical release packager');
     return false;
   }
+  if (!release.includes('include-hidden-files: true') || !preflight.includes('include-hidden-files: true')) {
+    console.error('FAIL: Hidden canonical release artifact directory is not uploadable by GitHub Actions');
+    return false;
+  }
   if (!release.includes('.release-artifact/SHA256SUMS.txt') || !packager.includes('SHA256SUMS.txt')) {
     console.error('FAIL: Release package does not publish checksums');
     return false;
