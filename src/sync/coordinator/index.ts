@@ -75,6 +75,8 @@ export interface PairingRemoteCandidate {
   id: string;
   modifiedTime: string | null;
   quartzoHash: string | null;
+  resolvedSha256: string;
+  matchesLocal: boolean | null;
 }
 
 export interface PairingItem {
@@ -88,7 +90,7 @@ export interface PairingItem {
 }
 
 export interface PairingScanProgress {
-  phase: 'local_inventory' | 'remote_inventory' | 'comparing';
+  phase: 'local_inventory' | 'remote_inventory' | 'resolving_ambiguities' | 'comparing';
   completed: number;
   total: number;
 }
@@ -1286,30 +1288,81 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     onProgress?.({ phase: 'remote_inventory', completed: 0, total: 0 });
     const remoteCandidates = await this.buildRemoteCandidates(driveFolderId);
     const remoteMap = new Map<string, DriveFileMetadata>();
+    const ambiguousGroups: Array<{
+      path: string;
+      localHash: string | null;
+      candidates: DriveFileMetadata[];
+    }> = [];
 
     for (const [remotePath, candidates] of remoteCandidates) {
-      const uniqueIds = new Set(candidates.map(candidate => candidate.id));
-      if (uniqueIds.size > 1) {
-        const candidatesById = new Map<string, PairingRemoteCandidate>();
-        for (const candidate of candidates) {
-          if (!candidatesById.has(candidate.id)) {
-            candidatesById.set(candidate.id, {
-              id: candidate.id,
-              modifiedTime: candidate.modifiedTime || null,
-              quartzoHash: candidate.quartzoHash || null,
-            });
-          }
-        }
-        summary.ambiguous.push({
+      const candidatesById = new Map<string, DriveFileMetadata>();
+      for (const candidate of candidates) {
+        if (!candidatesById.has(candidate.id)) candidatesById.set(candidate.id, candidate);
+      }
+      const uniqueCandidates = Array.from(candidatesById.values());
+      if (uniqueCandidates.length > 1) {
+        ambiguousGroups.push({
           path: remotePath,
-          status: 'ambiguous',
           localHash: localInventory.get(remotePath)?.hash || null,
-          remoteHash: null,
-          remoteCandidates: Array.from(candidatesById.values()).sort((a, b) => a.id.localeCompare(b.id)),
+          candidates: uniqueCandidates,
         });
         continue;
       }
-      remoteMap.set(remotePath, candidates[0]);
+      if (uniqueCandidates.length === 1) remoteMap.set(remotePath, uniqueCandidates[0]);
+    }
+
+    const ambiguousJobs = ambiguousGroups.flatMap(group =>
+      group.candidates.map(candidate => ({ group, candidate }))
+    );
+    const resolvedAmbiguousHashes = new Map<string, string>();
+    let ambiguityCompleted = 0;
+    onProgress?.({
+      phase: 'resolving_ambiguities',
+      completed: ambiguityCompleted,
+      total: ambiguousJobs.length,
+    });
+
+    let ambiguityIndex = 0;
+    const ambiguityWorkerCount = Math.min(PAIRING_HASH_CONCURRENCY, ambiguousJobs.length);
+    const ambiguityWorkers = Array.from({ length: ambiguityWorkerCount }, async () => {
+      while (true) {
+        const index = ambiguityIndex++;
+        if (index >= ambiguousJobs.length) return;
+        const { group, candidate } = ambiguousJobs[index];
+        const resolvedSha256 = await this.driveAdapter.resolveRemoteHash(candidate);
+        resolvedAmbiguousHashes.set(`${group.path}\0${candidate.id}`, resolvedSha256);
+        ambiguityCompleted++;
+        onProgress?.({
+          phase: 'resolving_ambiguities',
+          completed: ambiguityCompleted,
+          total: ambiguousJobs.length,
+        });
+      }
+    });
+    await Promise.all(ambiguityWorkers);
+
+    for (const group of ambiguousGroups) {
+      summary.ambiguous.push({
+        path: group.path,
+        status: 'ambiguous',
+        localHash: group.localHash,
+        remoteHash: null,
+        remoteCandidates: group.candidates
+          .map(candidate => {
+            const resolvedSha256 = resolvedAmbiguousHashes.get(`${group.path}\0${candidate.id}`);
+            if (!resolvedSha256) {
+              throw new Error(`Missing resolved SHA-256 for ambiguous candidate ${candidate.id} at ${group.path}`);
+            }
+            return {
+              id: candidate.id,
+              modifiedTime: candidate.modifiedTime || null,
+              quartzoHash: candidate.quartzoHash || null,
+              resolvedSha256,
+              matchesLocal: group.localHash == null ? null : resolvedSha256 === group.localHash,
+            };
+          })
+          .sort((a, b) => a.id.localeCompare(b.id)),
+      });
     }
 
     const ambiguousPaths = new Set(summary.ambiguous.map(item => item.path));
