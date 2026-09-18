@@ -782,7 +782,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     summary: PairingSummary
   ): void {
     if (summary.divergent.length > 0 || summary.ambiguous.length > 0) {
-      this.renderBlockedPairingContent(modal, modalContent, folderName, summary, mode);
+      this.renderBlockedPairingContent(modal, modalContent, folderName, summary);
       return;
     }
     this.renderReadyPairingContent(modal, modalContent, folderName, summary);
@@ -1015,7 +1015,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     const back = document.createElement('button');
     back.textContent = 'Back to diagnostics';
     back.addEventListener('click', () => {
-      this.renderBlockedPairingContent(modal, modalContent, folderName, summary);
+      this.renderBlockedPairingContent(modal, modalContent, folderName, summary, mode);
     });
     actions.appendChild(back);
 
