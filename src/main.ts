@@ -12,6 +12,7 @@ import { ReminderService, type ReminderMode, type ReminderSourceObject } from '.
 import { FileNotificationDeliveryRegistry } from './local-state/notification-delivery-registry';
 import { ObsidianReminderDeliveryGateway } from './platform/notifications';
 import { ElectronBrowserOpener } from './platform/browser-opener';
+import { GOOGLE_OAUTH_CLIENT_SECRET_ID } from './platform/secret-ids';
 import { normalizeVaultPath } from './sync/coordinator/path-utils';
 import { VaultSyncFilePolicy } from './sync/coordinator/file-policy';
 import { SHARED_SETTINGS_PATH, SharedSettingsRepository, parseObjectWithSharedSettings, type QuartzoSharedSettings } from './vault/shared-settings';
@@ -57,7 +58,6 @@ const DEFAULT_SETTINGS: QuartzoCompanionSettings = {
 
 const BUILD_CLIENT_ID: string = (typeof process !== 'undefined' && process.env && process.env.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID) || '';
 const BUILD_CLIENT_SECRET: string = (typeof process !== 'undefined' && process.env && process.env.QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET) || '';
-const OAUTH_CLIENT_SECRET_KEY = 'quartzo_companion/oauth_client_secret';
 
 const OAUTH_CONFIG: OAuthConfig = {
   clientId: '',
@@ -218,15 +218,15 @@ export default class QuartzoCompanionPlugin extends Plugin {
   private async getResolvedOAuthConfig(): Promise<OAuthConfig | null> {
     const clientId = this.getResolvedClientId();
     if (!clientId || clientId === 'PLACEHOLDER_CLIENT_ID') return null;
-    const clientSecret = BUILD_CLIENT_SECRET || await this.getSecretStorage().get(OAUTH_CLIENT_SECRET_KEY) || '';
+    const clientSecret = BUILD_CLIENT_SECRET || await this.getSecretStorage().get(GOOGLE_OAUTH_CLIENT_SECRET_ID) || '';
     if (!clientSecret) return null;
     return { ...OAUTH_CONFIG, clientId, clientSecret };
   }
 
   async setOAuthClientSecret(value: string): Promise<void> {
     const storage = this.getSecretStorage();
-    if (value.trim()) await storage.set(OAUTH_CLIENT_SECRET_KEY, value.trim());
-    else await storage.delete(OAUTH_CLIENT_SECRET_KEY);
+    if (value.trim()) await storage.set(GOOGLE_OAUTH_CLIENT_SECRET_ID, value.trim());
+    else await storage.delete(GOOGLE_OAUTH_CLIENT_SECRET_ID);
   }
 
   private getSecretStorage() {
