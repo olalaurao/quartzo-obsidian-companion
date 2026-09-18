@@ -1402,7 +1402,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
         localHash !== item.localHash ||
         remoteHash !== item.remoteHash ||
         localHash !== remoteHash ||
-        (remoteEntry.quartzoHash != null && remoteEntry.quartzoHash !== remoteHash)
+        (remoteEntry.quartzoHash != null && remoteEntry.quartzoHash.length > 0 && remoteEntry.quartzoHash !== remoteHash)
       ) {
         result.errors.push(`Pairing changed for ${item.path}. Rescan before pairing.`);
         continue;
