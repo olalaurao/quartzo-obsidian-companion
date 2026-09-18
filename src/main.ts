@@ -730,18 +730,50 @@ export default class QuartzoCompanionPlugin extends Plugin {
         const details = document.createElement('details');
         details.style.cssText = 'margin: 8px 0; border: 1px solid var(--background-modifier-border); border-radius: 6px; padding: 8px;';
 
+        const candidatesForPath = item.remoteCandidates ?? [];
+        const distinctHashes = new Set(candidatesForPath.map(candidate => candidate.resolvedSha256));
+        const matchingLocal = candidatesForPath.filter(candidate => candidate.matchesLocal === true).length;
+
         const summaryEl = document.createElement('summary');
-        summaryEl.textContent = `${item.path} — ${item.remoteCandidates?.length ?? 0} candidates`;
+        summaryEl.textContent = `${item.path} — ${candidatesForPath.length} candidates`;
         details.appendChild(summaryEl);
 
+        const relation = document.createElement('p');
+        if (distinctHashes.size <= 1) {
+          relation.textContent = item.localHash
+            ? (matchingLocal === candidatesForPath.length
+              ? 'All remote candidates are byte-identical and match the local file.'
+              : 'All remote candidates are byte-identical, but they do not match the local file.')
+            : 'All remote candidates are byte-identical. There is no local copy to compare.';
+        } else if (item.localHash && matchingLocal === 1) {
+          relation.textContent = 'Candidates contain different bytes. Exactly one remote candidate matches the local file.';
+        } else if (item.localHash && matchingLocal > 1) {
+          relation.textContent = `Candidates contain different bytes. ${matchingLocal} candidates match the local file.`;
+        } else if (item.localHash) {
+          relation.textContent = 'Candidates contain different bytes and none matches the local file.';
+        } else {
+          relation.textContent = `Candidates contain ${distinctHashes.size} different byte contents and there is no local copy to compare.`;
+        }
+        details.appendChild(relation);
+
+        const localHash = document.createElement('div');
+        localHash.style.cssText = 'font-size: 0.9em; word-break: break-all; margin-bottom: 8px;';
+        localHash.textContent = `Local SHA-256: ${item.localHash ?? 'no local copy'}`;
+        details.appendChild(localHash);
+
         const candidates = document.createElement('ul');
-        for (const candidate of item.remoteCandidates ?? []) {
+        for (const candidate of candidatesForPath) {
           const li = document.createElement('li');
           li.style.cssText = 'margin: 8px 0;';
 
           const meta = document.createElement('div');
           meta.style.cssText = 'word-break: break-all;';
-          meta.textContent = `ID ${candidate.id} · modified ${candidate.modifiedTime ?? 'unknown'} · Quartzo_hash ${candidate.quartzoHash ? 'present' : 'missing'}`;
+          const localRelation = candidate.matchesLocal == null
+            ? 'no local comparison'
+            : candidate.matchesLocal
+              ? 'matches local'
+              : 'differs from local';
+          meta.textContent = `ID ${candidate.id} · modified ${candidate.modifiedTime ?? 'unknown'} · SHA-256 ${candidate.resolvedSha256} · ${localRelation} · Quartzo_hash ${candidate.quartzoHash ? 'present' : 'missing'}`;
           li.appendChild(meta);
 
           const openButton = document.createElement('button');
