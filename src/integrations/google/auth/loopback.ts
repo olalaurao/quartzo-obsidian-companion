@@ -80,6 +80,7 @@ export class GoogleOAuthDesktop {
   async startAuthLoopback(forceConsent?: boolean): Promise<TokenResponse> {
     return new Promise((resolve, reject) => {
       let settled = false;
+      let callbackClaimed = false;
 
       const finish = (fn: () => void) => {
         if (settled) return;
@@ -91,9 +92,21 @@ export class GoogleOAuthDesktop {
       this.server = http.createServer(async (req, res) => {
         const parsedUrl = url.parse(req.url || '', true);
         const { code, state, error } = parsedUrl.query;
+        const isOAuthCallback = parsedUrl.pathname === '/' &&
+          (typeof code === 'string' || typeof state === 'string' || typeof error === 'string');
 
+        // Browsers may request /favicon.ico or other auxiliary resources after
+        // rendering the success page. Those requests are not OAuth callbacks and
+        // must not consume/reject the active flow as a state mismatch.
+        if (!isOAuthCallback || callbackClaimed) {
+          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end('Not found');
+          return;
+        }
+
+        const receivedState = typeof state === 'string' ? state : '';
         const stateBuffer = Buffer.from(this.state);
-        const receivedStateBuffer = Buffer.from(state as string || '');
+        const receivedStateBuffer = Buffer.from(receivedState);
 
         if (stateBuffer.length !== receivedStateBuffer.length ||
             !timingSafeEqual(stateBuffer, receivedStateBuffer)) {
@@ -103,18 +116,20 @@ export class GoogleOAuthDesktop {
           return;
         }
 
-        if (error) {
+        if (typeof error === 'string') {
+          callbackClaimed = true;
           res.writeHead(400);
           res.end(`Auth failed: ${error}`);
-          finish(() => reject(new Error(error as string)));
+          finish(() => reject(new Error(error)));
           return;
         }
 
-        if (code) {
+        if (typeof code === 'string') {
+          callbackClaimed = true;
           res.writeHead(200, { 'Content-Type': 'text/html' });
           res.end('<html><body><h1>Success</h1><p>Close this tab.</p></body></html>');
           try {
-            const tokenResponse = await this.exchangeCodeForToken(code as string);
+            const tokenResponse = await this.exchangeCodeForToken(code);
             this.accessToken = tokenResponse.access_token;
             this.refreshToken = tokenResponse.refresh_token || null;
             this.expiresAt = Date.now() + (tokenResponse.expires_in * 1000);
