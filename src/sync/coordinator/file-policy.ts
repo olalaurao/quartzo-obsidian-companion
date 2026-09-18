@@ -27,10 +27,19 @@ const EXCLUDED_FILE_SUFFIXES = [
   '.remote',
 ];
 
+const CANONICAL_TEXT_EXTENSIONS = ['.md', '.base'];
+const CANONICAL_BINARY_ROOTS = new Set(['_attachments', '_deleted']);
+const GOOGLE_WORKSPACE_MIME_PREFIX = 'application/vnd.google-apps.';
+
 /**
  * VaultSyncFilePolicy - Canonical source of truth for file sync eligibility.
  * Uses normalized vault-relative paths with '/' separators.
- * Segment-based exclusion prevents false positives like _backups/foo.md matching .md.
+ *
+ * The sync contract is an allow-list, not merely a deny-list:
+ * - Markdown and Bases are canonical anywhere outside excluded directories.
+ * - _attachments/** and _deleted/** may contain arbitrary raw-byte files.
+ * - unrelated Drive sidecars (for example Finance's Google Sheet) are not
+ *   Obsidian-vault content and must never enter pairing/reconciliation.
  */
 export class VaultSyncFilePolicy {
   static shouldSyncFile(rawPath: string): boolean {
@@ -45,6 +54,17 @@ export class VaultSyncFilePolicy {
       if (EXCLUDED_DIRS.has(seg)) return false;
     }
 
+    const lowerPath = filePath.toLowerCase();
+    if (CANONICAL_TEXT_EXTENSIONS.some(extension => lowerPath.endsWith(extension))) {
+      return true;
+    }
+
+    return segments.length > 1 && CANONICAL_BINARY_ROOTS.has(segments[0]);
+  }
+
+  static shouldSyncRemoteFile(rawPath: string, mimeType: string | null | undefined): boolean {
+    if (!this.shouldSyncFile(rawPath)) return false;
+    if (mimeType?.startsWith(GOOGLE_WORKSPACE_MIME_PREFIX)) return false;
     return true;
   }
 
