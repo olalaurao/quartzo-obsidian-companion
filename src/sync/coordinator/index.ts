@@ -1333,7 +1333,6 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     const localInventory = await this.buildLocalInventory();
 
     onProgress?.({ phase: 'remote_inventory', completed: 0, total: 0 });
-    onProgress?.({ phase: 'revalidating_remote', completed: 0, total: 0 });
     const remoteCandidates = await this.buildRemoteCandidates(driveFolderId);
     const remoteMap = new Map<string, DriveFileMetadata>();
     const ambiguousGroups: Array<{
@@ -1633,6 +1632,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       return result;
     }
 
+    onProgress?.({ phase: 'revalidating_remote', completed: 0, total: 0 });
     const remoteCandidates = await this.buildRemoteCandidates(driveFolderId);
     const remoteMap = new Map<string, DriveFileMetadata>();
     for (const [remotePath, candidates] of remoteCandidates) {
