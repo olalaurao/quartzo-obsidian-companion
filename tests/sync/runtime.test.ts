@@ -936,6 +936,7 @@ describe('Runtime Sync Tests', () => {
       async downloadFile() { throw new Error('No token'); },
       async uploadFile() { throw new Error('No token'); },
       async updateFile() { throw new Error('No token'); },
+      async trashFile() { throw new Error('No token'); },
       async deleteFile() { throw new Error('No token'); },
       async renameFile() { throw new Error('No token'); },
       async getFileMetadata() { throw new Error('No token'); },
