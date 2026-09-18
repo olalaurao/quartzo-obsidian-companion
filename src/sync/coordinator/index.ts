@@ -1673,6 +1673,23 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     return result;
   }
 
+  private establishPairingBaseline(
+    filePath: string,
+    localHash: string,
+    remoteHash: string,
+    remoteEntry: DriveFileMetadata
+  ): void {
+    const syncFile = this.createSyncFile(filePath, { hash: localHash, exists: true });
+    syncFile.baseHash = localHash;
+    syncFile.localHash = localHash;
+    syncFile.remoteHash = remoteHash;
+    syncFile.remoteFileId = remoteEntry.id;
+    syncFile.localExists = true;
+    syncFile.remoteExists = true;
+    syncFile.remoteModifiedAt = remoteEntry.modifiedTime || null;
+    this.syncState.files.set(filePath, syncFile);
+  }
+
   async applyPairingDecisions(
     summary: PairingSummary,
     decisions: { autoAdopt: boolean; autoPull: boolean },
@@ -1726,8 +1743,12 @@ export class DriveSyncCoordinator implements ConflictRegistry {
         }, onProgress);
       const remoteEntry = remoteMap.get(item.path);
       const localFilePath = pathModule.join(this.vaultPath, item.path);
-      if (!remoteEntry || !fs.existsSync(localFilePath)) {
-        result.errors.push(`Pairing changed for ${item.path}. Rescan before pairing.`);
+      if (!remoteEntry) {
+        result.errors.push(`Pairing changed for ${item.path}: remote file no longer exists. Rescan before pairing.`);
+        continue;
+      }
+      if (!fs.existsSync(localFilePath)) {
+        result.errors.push(`Pairing changed for ${item.path}: local file no longer exists. Rescan before pairing.`);
         continue;
       }
       const localContent = new Uint8Array(fs.readFileSync(localFilePath));
@@ -1737,24 +1758,23 @@ export class DriveSyncCoordinator implements ConflictRegistry {
         (remoteEntry.modifiedTime || null) === (item.remoteModifiedAt || null);
       const remoteHash = sameRemoteSnapshot && item.remoteHash
         ? item.remoteHash
-        : await this.driveAdapter.resolveRemoteHash(remoteEntry);
-      if (
-        localHash !== item.localHash ||
-        remoteHash !== item.remoteHash ||
-        localHash !== remoteHash ||
-        (remoteEntry.quartzoHash != null && remoteEntry.quartzoHash.length > 0 && remoteEntry.quartzoHash !== remoteHash)
-      ) {
-        result.errors.push(`Pairing changed for ${item.path}. Rescan before pairing.`);
+        : await this.resolvePairingRemoteHash(remoteEntry);
+      if (localHash !== remoteHash) {
+        const drift: string[] = [];
+        if (localHash !== item.localHash) drift.push('local content changed since scan');
+        if (remoteEntry.id !== item.remoteFileId || remoteHash !== item.remoteHash) {
+          drift.push('Drive content or identity changed since scan');
+        }
+        const detail = drift.length > 0 ? drift.join('; ') : 'fresh local and Drive hashes differ';
+        result.errors.push(
+          `Pairing changed for ${item.path}: local and Drive content now differ (${detail}). Rescan to review the divergence.`
+        );
         continue;
       }
-      const syncFile = this.createSyncFile(item.path, { hash: localHash, exists: true });
-      syncFile.baseHash = localHash;
-      syncFile.localHash = localHash;
-      syncFile.remoteHash = remoteHash;
-      syncFile.remoteFileId = remoteEntry.id;
-      syncFile.remoteExists = true;
-      syncFile.remoteModifiedAt = remoteEntry.modifiedTime || null;
-      this.syncState.files.set(item.path, syncFile);
+      // Revalidation is about the current safe state, not strict snapshot equality.
+      // If both sides independently changed after the summary but converge to the
+      // same raw-byte SHA-256 now, establishing the current baseline is safe.
+      this.establishPairingBaseline(item.path, localHash, remoteHash, remoteEntry);
       baselineCompleted++;
         this.reportPairingApplyProgress({
           phase: 'baselining',
@@ -1781,10 +1801,6 @@ export class DriveSyncCoordinator implements ConflictRegistry {
             total: summary.localOnly.length,
             currentPath: item.path,
           }, onProgress);
-        if (remoteMap.has(item.path)) {
-          result.errors.push(`Pairing changed for ${item.path}: a remote file now exists. Rescan before pairing.`);
-          continue;
-        }
         const normalized = normalizeVaultPath(item.path);
         const localFilePath = pathModule.join(this.vaultPath, normalized);
         if (!fs.existsSync(localFilePath)) {
@@ -1793,6 +1809,25 @@ export class DriveSyncCoordinator implements ConflictRegistry {
         }
         const content = new Uint8Array(fs.readFileSync(localFilePath));
         const quartzoHash = this.calculateHash(content);
+        const appearedRemote = remoteMap.get(item.path);
+        if (appearedRemote) {
+          const remoteHash = await this.resolvePairingRemoteHash(appearedRemote);
+          if (remoteHash === quartzoHash) {
+            this.establishPairingBaseline(normalized, quartzoHash, remoteHash, appearedRemote);
+            adoptCompleted++;
+            this.reportPairingApplyProgress({
+              phase: 'adopting_local',
+              completed: adoptCompleted,
+              total: summary.localOnly.length,
+              currentPath: item.path,
+            }, onProgress);
+            continue;
+          }
+          result.errors.push(
+            `Pairing changed for ${item.path}: a remote file appeared with different content. Rescan to review the divergence.`
+          );
+          continue;
+        }
         if (item.localHash && item.localHash !== quartzoHash) {
           result.errors.push(`Pairing changed for ${item.path}: local content changed. Rescan before pairing.`);
           continue;
@@ -1845,10 +1880,37 @@ export class DriveSyncCoordinator implements ConflictRegistry {
           result.errors.push(`Pairing changed for ${item.path}: remote file no longer exists. Rescan before pairing.`);
           continue;
         }
-        const syncFile = this.createSyncFile(item.path, { hash: '', exists: false });
+        const normalized = normalizeVaultPath(item.path);
+        const localFilePath = pathModule.join(this.vaultPath, normalized);
+        if (fs.existsSync(localFilePath)) {
+          const localContent = new Uint8Array(fs.readFileSync(localFilePath));
+          const localHash = this.calculateHash(localContent);
+          const sameRemoteSnapshot =
+            remoteEntry.id === item.remoteFileId &&
+            (remoteEntry.modifiedTime || null) === (item.remoteModifiedAt || null);
+          const remoteHash = sameRemoteSnapshot && item.remoteHash
+            ? item.remoteHash
+            : await this.resolvePairingRemoteHash(remoteEntry);
+          if (localHash === remoteHash) {
+            this.establishPairingBaseline(normalized, localHash, remoteHash, remoteEntry);
+            pullCompleted++;
+            this.reportPairingApplyProgress({
+              phase: 'pulling_remote',
+              completed: pullCompleted,
+              total: summary.remoteOnly.length,
+              currentPath: item.path,
+            }, onProgress);
+            continue;
+          }
+          result.errors.push(
+            `Pairing changed for ${item.path}: a local file appeared with different content. Rescan to review the divergence.`
+          );
+          continue;
+        }
+        const syncFile = this.createSyncFile(normalized, { hash: '', exists: false });
         syncFile.remoteFileId = remoteEntry.id;
         try {
-          await this.pullFile(item.path, remoteEntry, syncFile);
+          await this.pullFile(normalized, remoteEntry, syncFile);
           result.synced++;
         } catch (error) {
           if (error instanceof TemporaryDriveQuotaError) throw error;
