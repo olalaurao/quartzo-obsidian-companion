@@ -423,9 +423,64 @@ describe('Runtime Sync Tests', () => {
     expect(summary.ambiguous).toHaveLength(1);
     expect(summary.ambiguous[0].path).toBe('folder/dup.md');
     expect(summary.ambiguous[0].remoteCandidates).toEqual([
-      { id: 'candidate-a', modifiedTime: '2026-09-17T10:00:00.000Z', quartzoHash: h1 },
-      { id: 'candidate-b', modifiedTime: '2026-09-18T10:00:00.000Z', quartzoHash: h2 },
+      {
+        id: 'candidate-a',
+        modifiedTime: '2026-09-17T10:00:00.000Z',
+        quartzoHash: h1,
+        resolvedSha256: h1,
+        matchesLocal: null,
+      },
+      {
+        id: 'candidate-b',
+        modifiedTime: '2026-09-18T10:00:00.000Z',
+        quartzoHash: h2,
+        resolvedSha256: h2,
+        matchesLocal: null,
+      },
     ]);
+  });
+
+  it('8g: ambiguity diagnostics hash legacy candidates and identify the one matching local', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+    const localContent = Buffer.from('local-winner');
+    const otherContent = Buffer.from('other-copy');
+    fs.mkdirSync(path.join(tmpDir, 'daily'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'daily', 'dup.md'), localContent);
+
+    const localMatch = adapter.addLegacyRemoteFile('daily/dup.md', localContent);
+    const other = adapter.addLegacyRemoteFile('daily/dup-other.md', otherContent);
+    adapter.listAllFiles = async () => [
+      {
+        id: localMatch.id,
+        name: 'dup.md',
+        relativePath: 'daily/dup.md',
+        mimeType: 'application/octet-stream',
+        modifiedTime: localMatch.modifiedTime,
+        quartzoHash: '',
+        parents: ['daily-folder'],
+      },
+      {
+        id: other.id,
+        name: 'dup.md',
+        relativePath: 'daily/dup.md',
+        mimeType: 'application/octet-stream',
+        modifiedTime: other.modifiedTime,
+        quartzoHash: '',
+        parents: ['daily-folder'],
+      },
+    ];
+    adapter.downloadCalls = 0;
+
+    const summary = await coordinator.generatePairingSummary();
+
+    expect(summary.ambiguous).toHaveLength(1);
+    expect(adapter.downloadCalls).toBe(2);
+    const candidates = summary.ambiguous[0].remoteCandidates ?? [];
+    expect(candidates).toHaveLength(2);
+    expect(candidates.filter(candidate => candidate.matchesLocal)).toHaveLength(1);
+    const matching = candidates.find(candidate => candidate.matchesLocal);
+    expect(matching?.id).toBe(localMatch.id);
+    expect(matching?.resolvedSha256).toBe(crypto.createHash('sha256').update(localContent).digest('hex'));
   });
 
   it('9: coordinator calls listChanges after initial inventory', async () => {
