@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { DriveSyncCoordinator, chooseNewestConflictResolution, type ConflictArtifact } from '../../src/sync/coordinator/index';
 import { VaultSyncFilePolicy } from '../../src/sync/coordinator/file-policy';
 import { normalizeVaultPath, isSameVaultPath } from '../../src/sync/coordinator/path-utils';
-import type { DriveAdapter, DriveFileMetadata, DriveChange } from '../../src/sync/coordinator/types';
+import { TemporaryDriveQuotaError, type DriveAdapter, type DriveFileMetadata, type DriveChange } from '../../src/sync/coordinator/types';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -500,6 +500,62 @@ describe('Runtime Sync Tests', () => {
       total: 1,
     });
     expect(fs.readFileSync(path.join(tmpDir, 'remote-progress.md')).toString()).toBe('remote-only');
+  });
+
+  it('8e3: first pairing aborts the whole adoption pass after exhausted temporary Drive quota', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+    fs.writeFileSync(path.join(tmpDir, 'quota-a.md'), Buffer.from('a'));
+    fs.writeFileSync(path.join(tmpDir, 'quota-b.md'), Buffer.from('b'));
+
+    const summary = await coordinator.generatePairingSummary();
+    expect(summary.localOnly).toHaveLength(2);
+
+    let uploadAttempts = 0;
+    adapter.uploadFile = async () => {
+      uploadAttempts++;
+      throw new TemporaryDriveQuotaError('temporary quota exhausted');
+    };
+
+    await expect(
+      coordinator.applyPairingDecisions(summary, { autoAdopt: true, autoPull: true })
+    ).rejects.toBeInstanceOf(TemporaryDriveQuotaError);
+
+    expect(uploadAttempts).toBe(1);
+    expect(coordinator.isPairingApplyInProgress()).toBe(false);
+    expect(coordinator.getPairingApplyProgress()).toBeNull();
+  });
+
+  it('8e4: coordinator exposes active pairing globally and rejects a concurrent pairing', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+    fs.writeFileSync(path.join(tmpDir, 'slow-pair.md'), Buffer.from('slow'));
+    const summary = await coordinator.generatePairingSummary();
+    expect(summary.localOnly).toHaveLength(1);
+
+    const originalUpload = adapter.uploadFile.bind(adapter);
+    let releaseUpload: (() => void) | null = null;
+    const blocked = new Promise<void>(resolve => { releaseUpload = resolve; });
+    adapter.uploadFile = async params => {
+      await blocked;
+      return originalUpload(params);
+    };
+
+    const first = coordinator.applyPairingDecisions(summary, { autoAdopt: true, autoPull: true });
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(coordinator.isPairingApplyInProgress()).toBe(true);
+    expect(coordinator.getPairingApplyProgress()?.phase).toBe('adopting_local');
+    expect(coordinator.getPairingApplyProgress()?.currentPath).toBe('slow-pair.md');
+
+    const second = await coordinator.applyPairingDecisions(summary, { autoAdopt: true, autoPull: true });
+    expect(second.errors).toEqual([
+      'Pairing already in progress. Wait for the current pairing operation to finish.',
+    ]);
+
+    releaseUpload?.();
+    const firstResult = await first;
+    expect(firstResult.errors).toEqual([]);
+    expect(coordinator.isPairingApplyInProgress()).toBe(false);
+    expect(coordinator.getPairingApplyProgress()).toBeNull();
   });
 
   it('8f: pairing ambiguity retains every distinct Drive candidate for diagnosis', async () => {
