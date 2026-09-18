@@ -1,4 +1,10 @@
-import { DriveAdapter, DriveFileMetadata, DriveChange, UploadFileParams } from '../../../sync/coordinator/types';
+import {
+  DriveAdapter,
+  DriveFileMetadata,
+  DriveChange,
+  UploadFileParams,
+  TemporaryDriveQuotaError,
+} from '../../../sync/coordinator/types';
 import { drive_v3, drive } from '@googleapis/drive';
 import { OAuth2Client } from 'google-auth-library';
 import { normalizeVaultPath } from '../../../sync/coordinator/path-utils';
@@ -109,6 +115,11 @@ export class GoogleDriveAdapter implements DriveAdapter {
           }
         }
 
+        if (rateLimited || statusCode === 429) {
+          throw new TemporaryDriveQuotaError(
+            'Google Drive temporary per-minute quota remained exhausted after retries. Wait a minute and retry pairing; completed file operations are safe to rescan.'
+          );
+        }
         throw error;
       }
     }
