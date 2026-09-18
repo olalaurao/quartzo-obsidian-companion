@@ -295,6 +295,8 @@ describe('Sync Regression Tests', () => {
         random.mockRestore();
         vi.useRealTimers();
       }
+    });
+
     it('surfaces a typed temporary quota error after retry budget is exhausted', async () => {
       vi.useFakeTimers();
       const random = vi.spyOn(Math, 'random').mockReturnValue(0);
@@ -329,8 +331,6 @@ describe('Sync Regression Tests', () => {
         random.mockRestore();
         vi.useRealTimers();
       }
-    });
-
     });
   });
 
