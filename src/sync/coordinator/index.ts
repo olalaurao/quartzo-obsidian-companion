@@ -732,7 +732,27 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
         const pathOwner = this.syncState.files.get(normalizedRemote);
         if (pathOwner?.remoteFileId && pathOwner.remoteFileId !== change.file.id) {
-          throw new Error(`Ambiguous incremental remote identity for ${normalizedRemote}: ${pathOwner.remoteFileId} vs ${change.file.id}`);
+          const trackedRemoteId = pathOwner.remoteFileId;
+          const trackedOwnerStillLive = await this.isTrackedRemoteIdentityLiveAtPath(
+            trackedRemoteId,
+            normalizedRemote,
+            driveFolderId
+          );
+          if (trackedOwnerStillLive) {
+            throw new Error(
+              `Ambiguous incremental remote identity for ${normalizedRemote}: ${trackedRemoteId} vs ${change.file.id}`
+            );
+          }
+
+          // The persisted owner can legitimately become stale after safe duplicate
+          // cleanup or another remote delete/move. Preserve the previous baseline
+          // hashes, but stop treating that stale file ID as a live path owner so
+          // the incoming live candidate can be reconciled through the normal
+          // three-way matrix.
+          pathOwner.remoteFileId = null;
+          pathOwner.remoteExists = false;
+          pathOwner.remoteModifiedAt = null;
+          this.syncState.files.set(normalizedRemote, pathOwner);
         }
 
         let localFile = localInventory.get(normalizedRemote);
@@ -1017,6 +1037,38 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       }
       processedPaths.add(normalizedLocal);
     }
+  }
+
+  private isDriveNotFoundError(error: unknown): boolean {
+    const typed = error as {
+      code?: number;
+      status?: number;
+      response?: { status?: number };
+    };
+    return typed.code === 404 || typed.status === 404 || typed.response?.status === 404;
+  }
+
+  private async isTrackedRemoteIdentityLiveAtPath(
+    remoteFileId: string,
+    expectedPath: string,
+    rootFolderId: string
+  ): Promise<boolean> {
+    let metadata: DriveFileMetadata;
+    try {
+      metadata = await this.driveAdapter.getFileMetadata(remoteFileId);
+    } catch (error) {
+      if (this.isDriveNotFoundError(error)) return false;
+      throw error;
+    }
+
+    if (metadata.trashed === true) return false;
+    if (!await this.proveAncestryToRoot(metadata, rootFolderId)) return false;
+
+    const actualPath = await this.resolveRemotePath(metadata, rootFolderId);
+    if (!actualPath) return false;
+    const normalizedActual = normalizeVaultPath(actualPath);
+    if (normalizedActual !== expectedPath) return false;
+    return VaultSyncFilePolicy.shouldSyncRemoteFile(normalizedActual, metadata.mimeType);
   }
 
   private findSyncFileByRemoteId(remoteId: string): SyncFile | undefined {

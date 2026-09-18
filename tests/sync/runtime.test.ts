@@ -751,6 +751,117 @@ describe('Runtime Sync Tests', () => {
     expect(coordinator.getSyncState().files.has(relativePath)).toBe(false);
   });
 
+  it('8e12: incremental sync replaces a stale trashed tracked owner with the current live remote ID', async () => {
+    const relativePath = 'social/tiktok-tiktok-make-your-day-67040b0c (1) (1).md';
+    const content = Buffer.from('same bytes');
+    fs.mkdirSync(path.join(tmpDir, 'social'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, relativePath), content);
+
+    const oldRemote = adapter.addRemoteFileWithId(relativePath, 'old-owner-id', content);
+    await coordinator.setDriveFolderId('root-folder-id');
+    const initial = await coordinator.reconcile();
+    expect(initial.errors).toEqual([]);
+    adapter.pendingChanges.length = 0;
+    expect(coordinator.getSyncState().files.get(relativePath)?.remoteFileId).toBe(oldRemote.id);
+
+    adapter.files.delete(relativePath);
+    const liveRemote = adapter.addRemoteFileWithId(relativePath, 'live-owner-id', content);
+    adapter.pendingChanges.length = 0;
+
+    const originalGetFileMetadata = adapter.getFileMetadata.bind(adapter);
+    adapter.getFileMetadata = async fileId => {
+      if (fileId === oldRemote.id) {
+        return {
+          id: oldRemote.id,
+          name: relativePath.split('/').pop() || relativePath,
+          relativePath,
+          mimeType: 'application/octet-stream',
+          modifiedTime: '2026-09-18T23:00:00.000Z',
+          quartzoHash: crypto.createHash('sha256').update(content).digest('hex'),
+          parents: ['root-folder-id'],
+          trashed: true,
+          canTrash: true,
+        };
+      }
+      return originalGetFileMetadata(fileId);
+    };
+
+    adapter.pendingChanges.push({
+      fileId: liveRemote.id,
+      removed: false,
+      file: {
+        id: liveRemote.id,
+        name: relativePath.split('/').pop() || relativePath,
+        relativePath,
+        mimeType: 'application/octet-stream',
+        modifiedTime: '2026-09-18T23:01:00.000Z',
+        quartzoHash: crypto.createHash('sha256').update(content).digest('hex'),
+        parents: ['root-folder-id'],
+        trashed: false,
+        canTrash: true,
+      },
+    });
+
+    const result = await coordinator.reconcile();
+
+    expect(result.errors).toEqual([]);
+    expect(result.conflicts).toBe(0);
+    expect(coordinator.getSyncState().files.get(relativePath)?.remoteFileId).toBe(liveRemote.id);
+    expect(fs.readFileSync(path.join(tmpDir, relativePath), 'utf8')).toBe('same bytes');
+  });
+
+  it('8e13: incremental sync still fails closed when both tracked and incoming remote IDs are live at the same path', async () => {
+    const relativePath = 'true-live-duplicate.md';
+    const content = Buffer.from('same bytes');
+    fs.writeFileSync(path.join(tmpDir, relativePath), content);
+
+    const oldRemote = adapter.addRemoteFileWithId(relativePath, 'live-a', content);
+    await coordinator.setDriveFolderId('root-folder-id');
+    const initial = await coordinator.reconcile();
+    expect(initial.errors).toEqual([]);
+    adapter.pendingChanges.length = 0;
+
+    const incomingHash = crypto.createHash('sha256').update(content).digest('hex');
+    const originalGetFileMetadata = adapter.getFileMetadata.bind(adapter);
+    adapter.getFileMetadata = async fileId => {
+      if (fileId === oldRemote.id) {
+        return {
+          id: oldRemote.id,
+          name: relativePath,
+          relativePath,
+          mimeType: 'application/octet-stream',
+          modifiedTime: '2026-09-18T23:05:00.000Z',
+          quartzoHash: incomingHash,
+          parents: ['root-folder-id'],
+          trashed: false,
+          canTrash: true,
+        };
+      }
+      return originalGetFileMetadata(fileId);
+    };
+
+    adapter.pendingChanges.push({
+      fileId: 'live-b',
+      removed: false,
+      file: {
+        id: 'live-b',
+        name: relativePath,
+        relativePath,
+        mimeType: 'application/octet-stream',
+        modifiedTime: '2026-09-18T23:06:00.000Z',
+        quartzoHash: incomingHash,
+        parents: ['root-folder-id'],
+        trashed: false,
+        canTrash: true,
+      },
+    });
+
+    const result = await coordinator.reconcile();
+
+    expect(result.errors.join(' ')).toContain('Ambiguous incremental remote identity');
+    expect(coordinator.getSyncState().files.get(relativePath)?.remoteFileId).toBe(oldRemote.id);
+  });
+
   it('8f: pairing ambiguity retains every distinct Drive candidate for diagnosis', async () => {
     await coordinator.setDriveFolderId('root-folder-id');
     const h1 = crypto.createHash('sha256').update(Buffer.from('one')).digest('hex');
