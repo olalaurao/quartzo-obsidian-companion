@@ -12,6 +12,7 @@ class FakeDriveAdapter implements DriveAdapter {
   async assertInsideSelectedVault(remoteFileId: string): Promise<void> { return Promise.resolve(); }
   async resolveExactPath(fileId: string): Promise<string> { return fileId; }
   async resolveRemoteHash(metadata: DriveFileMetadata): Promise<string> {
+    this.resolveRemoteHashCalls++;
     if (metadata.quartzoHash) return metadata.quartzoHash;
     const content = await this.downloadFile(metadata.id);
     return crypto.createHash('sha256').update(content).digest('hex');
@@ -25,6 +26,8 @@ class FakeDriveAdapter implements DriveAdapter {
   public listFilesCalls = 0;
   public uploadCalls = 0;
   public updateCalls = 0;
+  public resolveRemoteHashCalls = 0;
+  public downloadCalls = 0;
 
   get files() { return this._files; }
   set files(v: Map<string, { id: string; content: Uint8Array; quartzoHash: string }>) { this._files = v; }
@@ -55,6 +58,7 @@ class FakeDriveAdapter implements DriveAdapter {
   }
 
   async downloadFile(fileId: string) {
+    this.downloadCalls++;
     for (const f of this._files.values()) {
       if (f.id === fileId) return f.content;
     }
@@ -131,7 +135,15 @@ class FakeDriveAdapter implements DriveAdapter {
   }
 
   private makeMetadata(id: string, name: string, quartzoHash: string): DriveFileMetadata {
-    return { id, name, mimeType: 'application/octet-stream', modifiedTime: new Date().toISOString(), quartzoHash, parents: [this.folderId] };
+    return {
+      id,
+      name: name.split('/').pop() || name,
+      relativePath: normalizeVaultPath(name),
+      mimeType: 'application/octet-stream',
+      modifiedTime: new Date().toISOString(),
+      quartzoHash,
+      parents: [this.folderId],
+    };
   }
 }
 
@@ -264,6 +276,51 @@ describe('Runtime Sync Tests', () => {
     }
     const result = await coordinator.reconcile();
     expect(result.synced).toBe(5);
+  });
+
+  it('8a: pairing summary does not hash or download remote-only files', async () => {
+    adapter.addRemoteFile('remote-only-a.md', Buffer.from('a'));
+    adapter.addRemoteFile('remote-only-b.md', Buffer.from('b'));
+    adapter.resolveRemoteHashCalls = 0;
+    adapter.downloadCalls = 0;
+
+    const summary = await coordinator.generatePairingSummary();
+
+    expect(summary.remoteOnly.map(item => item.path).sort()).toEqual(['remote-only-a.md', 'remote-only-b.md']);
+    expect(adapter.resolveRemoteHashCalls).toBe(0);
+    expect(adapter.downloadCalls).toBe(0);
+  });
+
+  it('8b: pairing apply uses one remote inventory pass for many remote-only files', async () => {
+    adapter.addRemoteFile('pull-a.md', Buffer.from('a'));
+    adapter.addRemoteFile('pull-b.md', Buffer.from('b'));
+    adapter.addRemoteFile('pull-c.md', Buffer.from('c'));
+    const summary = await coordinator.generatePairingSummary();
+    adapter.listFilesCalls = 0;
+
+    const result = await coordinator.applyPairingDecisions(summary, { autoAdopt: false, autoPull: true });
+
+    expect(result.errors).toEqual([]);
+    expect(adapter.listFilesCalls).toBe(1);
+    expect(fs.readFileSync(path.join(tmpDir, 'pull-a.md'), 'utf8')).toBe('a');
+    expect(fs.readFileSync(path.join(tmpDir, 'pull-b.md'), 'utf8')).toBe('b');
+    expect(fs.readFileSync(path.join(tmpDir, 'pull-c.md'), 'utf8')).toBe('c');
+  });
+
+  it('8c: pairing apply establishes baselines for identical files without uploading', async () => {
+    const content = Buffer.from('same');
+    fs.writeFileSync(path.join(tmpDir, 'same.md'), content);
+    adapter.addRemoteFile('same.md', content);
+    const summary = await coordinator.generatePairingSummary();
+    adapter.uploadCalls = 0;
+
+    const result = await coordinator.applyPairingDecisions(summary, { autoAdopt: true, autoPull: true });
+
+    expect(result.errors).toEqual([]);
+    expect(adapter.uploadCalls).toBe(0);
+    const state = coordinator.getSyncState().files.get('same.md');
+    expect(state?.baseHash).toBe(crypto.createHash('sha256').update(content).digest('hex'));
+    expect(state?.remoteFileId).toBeTruthy();
   });
 
   it('9: coordinator calls listChanges after initial inventory', async () => {
