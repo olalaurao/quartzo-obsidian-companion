@@ -654,7 +654,11 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       newStartPageToken = response.newStartPageToken;
 
       for (const change of response.changes) {
-        if (change.removed) {
+        // Drive Changes may report a trashed resource as an ordinary file
+        // change (removed=false). Trashed resources are remote absence, never
+        // live path candidates, otherwise a recently cleaned duplicate can
+        // falsely collide with the retained canonical remote ID.
+        if (change.removed || change.file?.trashed === true) {
           const syncFile = this.findSyncFileByRemoteId(change.fileId);
           if (syncFile) {
             const localHash = localInventory.get(syncFile.path)?.hash || null;

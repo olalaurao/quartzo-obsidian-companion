@@ -680,6 +680,77 @@ describe('Runtime Sync Tests', () => {
     expect(fs.readFileSync(path.join(tmpDir, 'appeared-divergent.md')).toString()).toBe('local');
   });
 
+  it('8e10: incremental sync ignores an untracked trashed duplicate instead of reporting ambiguous identity', async () => {
+    const relativePath = 'social/tiktok-tiktok-make-your-day-67040b0c (1) (1).md';
+    const content = Buffer.from('same bytes');
+    fs.mkdirSync(path.join(tmpDir, 'social'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, relativePath), content);
+    const canonical = adapter.addRemoteFileWithId(relativePath, 'canonical-live-id', content);
+
+    await coordinator.setDriveFolderId('root-folder-id');
+    const initial = await coordinator.reconcile();
+    expect(initial.errors).toEqual([]);
+    adapter.pendingChanges.length = 0;
+
+    adapter.pendingChanges.push({
+      fileId: 'trashed-duplicate-id',
+      removed: false,
+      file: {
+        id: 'trashed-duplicate-id',
+        name: relativePath.split('/').pop() || relativePath,
+        relativePath,
+        mimeType: 'application/octet-stream',
+        modifiedTime: '2026-09-18T22:30:00.000Z',
+        quartzoHash: crypto.createHash('sha256').update(content).digest('hex'),
+        parents: ['root-folder-id'],
+        trashed: true,
+        canTrash: true,
+      },
+    });
+
+    const result = await coordinator.reconcile();
+
+    expect(result.errors).toEqual([]);
+    expect(result.conflicts).toBe(0);
+    expect(fs.readFileSync(path.join(tmpDir, relativePath), 'utf8')).toBe('same bytes');
+    expect(coordinator.getSyncState().files.get(relativePath)?.remoteFileId).toBe(canonical.id);
+  });
+
+  it('8e11: incremental sync treats a tracked trashed file as remote absence', async () => {
+    const relativePath = 'tracked-trash.md';
+    const content = Buffer.from('base');
+    fs.writeFileSync(path.join(tmpDir, relativePath), content);
+    const remote = adapter.addRemoteFileWithId(relativePath, 'tracked-trash-id', content);
+
+    await coordinator.setDriveFolderId('root-folder-id');
+    const initial = await coordinator.reconcile();
+    expect(initial.errors).toEqual([]);
+    adapter.pendingChanges.length = 0;
+    adapter.files.delete(relativePath);
+    adapter.pendingChanges.push({
+      fileId: remote.id,
+      removed: false,
+      file: {
+        id: remote.id,
+        name: relativePath,
+        relativePath,
+        mimeType: 'application/octet-stream',
+        modifiedTime: '2026-09-18T22:31:00.000Z',
+        quartzoHash: crypto.createHash('sha256').update(content).digest('hex'),
+        parents: ['root-folder-id'],
+        trashed: true,
+        canTrash: true,
+      },
+    });
+
+    const result = await coordinator.reconcile();
+
+    expect(result.errors).toEqual([]);
+    expect(result.conflicts).toBe(0);
+    expect(fs.existsSync(path.join(tmpDir, relativePath))).toBe(false);
+    expect(coordinator.getSyncState().files.has(relativePath)).toBe(false);
+  });
+
   it('8f: pairing ambiguity retains every distinct Drive candidate for diagnosis', async () => {
     await coordinator.setDriveFolderId('root-folder-id');
     const h1 = crypto.createHash('sha256').update(Buffer.from('one')).digest('hex');
