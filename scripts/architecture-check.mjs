@@ -541,11 +541,21 @@ function checkFirstPairingApplyProgress() {
   if (!main.includes("question.textContent = 'Pairing is in progress.'") ||
       !main.includes('confirmButton.disabled = true') ||
       !main.includes('Keep Obsidian open') ||
-      !main.includes('showPersistentPairingFailure') ||
+      !main.includes('renderPairingWorkflowError') ||
       !main.includes("'Pairing did not finish'") ||
       !main.includes("'Copy error'") ||
       !main.includes('await this.refreshQuartzoView()')) {
     console.error('FAIL: Pairing UI can become visually idle/stale while first-pairing mutations are running');
+    return false;
+  }
+  if (!main.includes('private pairingWorkflowModal: HTMLDivElement | null = null') ||
+      !main.includes('createPairingWorkflowSurface()') ||
+      !main.includes('renderSafeDuplicateTrashConfirmation(') ||
+      !main.includes('renderPairingSummaryContent(') ||
+      !main.includes('Rescanning the vaults') ||
+      main.includes('confirmSafeDuplicateTrash(') ||
+      main.includes('new Modal(this.app)')) {
+    console.error('FAIL: First pairing can split diagnostics, cleanup confirmation, rescan, or apply progress across stacked modal surfaces');
     return false;
   }
   const viewPath = path.join(rootDir, 'src/ui/shell/view.ts');
