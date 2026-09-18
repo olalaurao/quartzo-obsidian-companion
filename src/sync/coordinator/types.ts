@@ -38,6 +38,7 @@ export interface DriveFileMetadata {
   parents?: string[] | null;
   quartzoHash?: string | null;
   trashed?: boolean | null;
+  canTrash?: boolean | null;
   relativePath?: string | null;
 }
 
