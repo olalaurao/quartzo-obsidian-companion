@@ -361,7 +361,12 @@ function checkOAuthDesktopPlatformBoundary() {
     console.error('FAIL: OAuth desktop loopback/PKCE contract regressed');
     return false;
   }
-  console.log('PASS: OAuth desktop browser launch stays inside Obsidian/Electron with loopback PKCE');
+  const secretParams = loopback.match(/params\.append\('client_secret'/g) || [];
+  if (secretParams.length < 2) {
+    console.error('FAIL: OAuth desktop token exchange/refresh does not send the configured client credential');
+    return false;
+  }
+  console.log('PASS: OAuth desktop browser launch stays inside Obsidian/Electron with loopback PKCE and client credential token exchange');
   return true;
 }
 function checkReleasePipelineHardening() {
@@ -385,6 +390,10 @@ function checkReleasePipelineHardening() {
   }
   if (!release.includes('QUARTZO_GOOGLE_DESKTOP_CLIENT_ID') || !preflight.includes('QUARTZO_GOOGLE_DESKTOP_CLIENT_ID')) {
     console.error('FAIL: Release/preflight do not require the production OAuth Client ID');
+    return false;
+  }
+  if (!release.includes('QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET') || !preflight.includes('QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET') || !validate.includes('QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET')) {
+    console.error('FAIL: Release/preflight/validator do not require the Google Desktop OAuth client credential');
     return false;
   }
   if (!release.includes('npm run release:package') || !preflight.includes('npm run release:package')) {
