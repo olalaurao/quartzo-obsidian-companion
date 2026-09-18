@@ -491,6 +491,35 @@ function checkPairingDuplicateCleanupIsReversible() {
   return true;
 }
 
+function checkPostPairingDuplicateRecovery() {
+  const coordinatorPath = path.join(rootDir, 'src/sync/coordinator/index.ts');
+  const mainPath = path.join(rootDir, 'src/main.ts');
+  const viewPath = path.join(rootDir, 'src/ui/shell/view.ts');
+  const coordinator = fs.readFileSync(coordinatorPath, 'utf8');
+  const main = fs.readFileSync(mainPath, 'utf8');
+  const view = fs.readFileSync(viewPath, 'utf8');
+
+  if (!coordinator.includes('getRemoteIdentityAmbiguityPaths()') ||
+      !coordinator.includes('this.quarantinedPaths.add(normalizedRemote)')) {
+    console.error('FAIL: Coordinator does not expose true remote identity ambiguity as canonical read-only state');
+    return false;
+  }
+  if (!main.includes('async reviewSyncRemoteDuplicates()') ||
+      !main.includes("mode: 'pairing' | 'sync_repair'") ||
+      !main.includes('trashSafePairingDuplicates(summary)') ||
+      !main.includes('triggerFullReconciliation()')) {
+    console.error('FAIL: Paired duplicate repair bypasses the canonical safe cleanup/reconciliation path');
+    return false;
+  }
+  if (!view.includes('getRemoteIdentityAmbiguityPaths()') ||
+      !view.includes('Review Drive duplicates')) {
+    console.error('FAIL: Sync Center cannot surface coordinator-owned remote duplicate recovery');
+    return false;
+  }
+  console.log('PASS: Post-pairing Drive duplicates remain fail-closed and recover through canonical reversible cleanup');
+  return true;
+}
+
 function checkDriveQuotaResilience() {
   const adapterPath = path.join(rootDir, 'src/integrations/google/drive/adapter.ts');
   const coordinatorPath = path.join(rootDir, 'src/sync/coordinator/index.ts');
@@ -619,6 +648,7 @@ function main() {
   if (!checkOAuthDesktopPlatformBoundary()) allPassed = false;
   if (!checkReleasePipelineHardening()) allPassed = false;
   if (!checkPairingDuplicateCleanupIsReversible()) allPassed = false;
+  if (!checkPostPairingDuplicateRecovery()) allPassed = false;
   if (!checkDriveQuotaResilience()) allPassed = false;
   if (!checkFirstPairingApplyProgress()) allPassed = false;
 

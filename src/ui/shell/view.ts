@@ -1103,6 +1103,18 @@ export class QuartzoView extends ItemView {
       });
       actions.appendChild(full);
 
+      const ambiguityPaths = coordinator.getRemoteIdentityAmbiguityPaths();
+      if (ambiguityPaths.length > 0) {
+        const repairDuplicates = document.createElement('button');
+        repairDuplicates.textContent = `Review Drive duplicates (${ambiguityPaths.length})`;
+        repairDuplicates.disabled = offline || snapshot?.status === 'syncing';
+        repairDuplicates.addEventListener('click', async () => {
+          await plugin.reviewSyncRemoteDuplicates();
+          await this.render();
+        });
+        actions.appendChild(repairDuplicates);
+      }
+
       const showConflicts = document.createElement('button');
       showConflicts.textContent = `View conflicts (${coordinator.getConflicts().length})`;
       showConflicts.addEventListener('click', () => { void this.handleAction('conflicts'); });
