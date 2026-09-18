@@ -788,6 +788,45 @@ describe('Runtime Sync Tests', () => {
     });
   });
 
+  it('8i2: single-local-match cleanup stays manual when the nonmatching candidate cannot be trashed', () => {
+    const summary = {
+      identical: [],
+      remoteOnly: [],
+      localOnly: [],
+      divergent: [],
+      ambiguous: [{
+        path: 'different-permission-blocked.md',
+        status: 'ambiguous' as const,
+        localHash: 'local-hash',
+        remoteHash: null,
+        remoteCandidates: [
+          {
+            id: 'wrong-shared',
+            modifiedTime: null,
+            quartzoHash: null,
+            resolvedSha256: 'other-hash',
+            matchesLocal: false,
+            canTrash: false,
+          },
+          {
+            id: 'right-local-match',
+            modifiedTime: null,
+            quartzoHash: null,
+            resolvedSha256: 'local-hash',
+            matchesLocal: true,
+            canTrash: true,
+          },
+        ],
+      }],
+    };
+
+    const plan = coordinator.buildSafeDuplicateTrashPlan(summary);
+
+    expect(plan.resolutions).toEqual([]);
+    expect(plan.unresolvedPaths).toEqual(['different-permission-blocked.md']);
+    expect(plan.totalTrashFiles).toBe(0);
+  });
+
   it('8j: safe duplicate cleanup revalidates snapshot and moves only proven duplicates to Drive trash', async () => {
     await coordinator.setDriveFolderId('root-folder-id');
     const content = Buffer.from('canonical');
