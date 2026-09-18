@@ -930,6 +930,7 @@ export class QuartzoView extends ItemView {
       `Status: ${statusLabel}`,
       `Last successful sync: ${snapshot?.lastSuccessfulSyncAt ? new Date(snapshot.lastSuccessfulSyncAt).toLocaleString() : 'Never'}`,
       `Pending local changes: ${snapshot?.pendingLocalChanges ?? 0}`,
+      `Sync mode: ${plugin.settings.syncMode === 'automatic' ? 'Automatic' : 'Manual'}`,
       `Current Google Drive vault: ${plugin.settings.googleDriveFolderName ?? 'Not paired'}`,
       `Google account: ${plugin.authState.replace(/_/g, ' ')}`,
       `Conflicts: ${snapshot?.conflictCount ?? coordinator?.getConflicts().length ?? 0}`,
