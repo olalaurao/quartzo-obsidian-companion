@@ -370,7 +370,7 @@ describe('Runtime Sync Tests', () => {
     expect(adapter.maxConcurrentRemoteHashCalls).toBeLessThanOrEqual(8);
     expect(progress.some(update => update.phase === 'local_inventory')).toBe(true);
     expect(progress.some(update => update.phase === 'remote_inventory')).toBe(true);
-    expect(progress.at(-1)).toEqual({ phase: 'comparing', completed: 16, total: 16 });
+    expect(progress[progress.length - 1]).toEqual({ phase: 'comparing', completed: 16, total: 16 });
   });
 
   it('8e: accepting an unchanged legacy pairing reuses scan SHA-256 results', async () => {
