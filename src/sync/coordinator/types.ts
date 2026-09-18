@@ -37,6 +37,7 @@ export interface DriveFileMetadata {
   md5Checksum?: string | null;
   parents?: string[] | null;
   quartzoHash?: string | null;
+  trashed?: boolean | null;
   relativePath?: string | null;
 }
 

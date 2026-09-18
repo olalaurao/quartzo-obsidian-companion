@@ -797,6 +797,80 @@ describe('Runtime Sync Tests', () => {
     expect(adapter.files.has('dup-trash.md')).toBe(false);
   });
 
+  it('8j2: post-cleanup rescan ignores a just-trashed candidate even if Drive listing is stale', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+    const content = Buffer.from('canonical-stale-list');
+    const hash = crypto.createHash('sha256').update(content).digest('hex');
+    fs.writeFileSync(path.join(tmpDir, 'dup-stale-list.md'), content);
+
+    let trashed = false;
+    adapter.listAllFiles = async () => [
+      {
+        id: 'keep-stale-list',
+        name: 'dup-stale-list.md',
+        relativePath: 'dup-stale-list.md',
+        mimeType: 'application/octet-stream',
+        modifiedTime: '2026-09-18T13:00:00.000Z',
+        quartzoHash: hash,
+        trashed: false,
+        parents: ['root-folder-id'],
+      },
+      {
+        id: 'trash-stale-list',
+        name: 'dup-stale-list.md',
+        relativePath: 'dup-stale-list.md',
+        mimeType: 'application/octet-stream',
+        modifiedTime: '2026-09-18T13:00:00.000Z',
+        quartzoHash: hash,
+        trashed,
+        parents: ['root-folder-id'],
+      },
+    ];
+    adapter.trashFile = async fileId => {
+      adapter.trashCalls++;
+      expect(fileId).toBe('trash-stale-list');
+      trashed = true;
+      adapter.trashedFileIds.push(fileId);
+    };
+
+    const summary = {
+      identical: [],
+      remoteOnly: [],
+      localOnly: [],
+      divergent: [],
+      ambiguous: [{
+        path: 'dup-stale-list.md',
+        status: 'ambiguous' as const,
+        localHash: hash,
+        remoteHash: null,
+        remoteCandidates: [
+          {
+            id: 'keep-stale-list',
+            modifiedTime: '2026-09-18T13:00:00.000Z',
+            quartzoHash: hash,
+            resolvedSha256: hash,
+            matchesLocal: true,
+          },
+          {
+            id: 'trash-stale-list',
+            modifiedTime: '2026-09-18T13:00:00.000Z',
+            quartzoHash: hash,
+            resolvedSha256: hash,
+            matchesLocal: true,
+          },
+        ],
+      }],
+    };
+
+    const result = await coordinator.trashSafePairingDuplicates(summary);
+    expect(result.errors).toEqual([]);
+    expect(result.trashed).toBe(1);
+
+    const refreshed = await coordinator.generatePairingSummary();
+    expect(refreshed.ambiguous).toEqual([]);
+    expect(refreshed.identical.map(item => item.path)).toContain('dup-stale-list.md');
+  });
+
   it('8k: safe duplicate cleanup refuses stale Drive snapshots', async () => {
     await coordinator.setDriveFolderId('root-folder-id');
     const content = Buffer.from('canonical');

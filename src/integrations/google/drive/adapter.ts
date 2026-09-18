@@ -220,7 +220,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
       const drive = this.getDriveClient();
       const response = await drive.files.list({
         q: `'${folderId}' in parents and trashed = false`,
-        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties)',
+        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties, trashed)',
         pageSize: 100,
         pageToken: pageToken
       });
@@ -232,7 +232,8 @@ export class GoogleDriveAdapter implements DriveAdapter {
         modifiedTime: file.modifiedTime || new Date().toISOString(),
         md5Checksum: file.md5Checksum || undefined,
         parents: file.parents || undefined,
-        quartzoHash: this.extractQuartzoHash(file)
+        quartzoHash: this.extractQuartzoHash(file),
+        trashed: file.trashed ?? false
       }));
 
       return {
@@ -257,7 +258,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
     do {
       const response = await this.withRetry(() => this.getDriveClient().files.list({
         q: `'${folderId}' in parents and trashed = false`,
-        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties)',
+        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties, trashed)',
         pageSize: 1000,
         pageToken
       }));
@@ -269,13 +270,15 @@ export class GoogleDriveAdapter implements DriveAdapter {
         modifiedTime: file.modifiedTime || new Date().toISOString(),
         md5Checksum: file.md5Checksum || undefined,
         parents: file.parents || undefined,
-        quartzoHash: this.extractQuartzoHash(file)
+        quartzoHash: this.extractQuartzoHash(file),
+        trashed: file.trashed ?? false
       }));
 
       for (const file of files) {
         const relativePath = normalizeVaultPath(
           relativePrefix ? `${relativePrefix}/${file.name}` : file.name
         );
+        if (file.trashed === true) continue;
         if (file.mimeType === 'application/vnd.google-apps.folder') {
           await this.listAllFilesRecursive(file.id, allFiles, relativePath);
         } else {
@@ -407,7 +410,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
     do {
       const response = await this.withRetry(() => driveClient.files.list({
         q: `'${parent}' in parents and name = '${name}' and ${mimeClause} and trashed = false`,
-        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties)',
+        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties, trashed)',
         pageSize: 100,
         pageToken
       }));
@@ -419,7 +422,8 @@ export class GoogleDriveAdapter implements DriveAdapter {
           modifiedTime: file.modifiedTime || new Date().toISOString(),
           md5Checksum: file.md5Checksum || undefined,
           parents: file.parents || undefined,
-          quartzoHash: this.extractQuartzoHash(file)
+          quartzoHash: this.extractQuartzoHash(file),
+          trashed: file.trashed ?? false
         });
       }
       pageToken = response.data.nextPageToken || undefined;
@@ -502,7 +506,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
             mimeType: 'application/octet-stream',
             body: Buffer.from(content)
           },
-          fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties'
+          fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties, trashed'
         });
         const data = response.data;
         return {
@@ -566,11 +570,15 @@ export class GoogleDriveAdapter implements DriveAdapter {
     try {
       await this.withRetry(async () => {
         const driveClient = this.getDriveClient();
-        await driveClient.files.update({
+        const response = await driveClient.files.update({
           fileId,
           requestBody: { trashed: true },
           supportsAllDrives: true,
+          fields: 'id, trashed',
         });
+        if (response.data.trashed !== true) {
+          throw new Error(`Drive did not confirm trashed=true for file ${fileId}`);
+        }
       });
     } catch (error) {
       if (this.errorStatus(error) === 404) return;
@@ -661,7 +669,8 @@ export class GoogleDriveAdapter implements DriveAdapter {
         modifiedTime: data.modifiedTime || new Date().toISOString(),
         md5Checksum: data.md5Checksum || undefined,
         parents: data.parents || undefined,
-        quartzoHash: this.extractQuartzoHash(data)
+        quartzoHash: this.extractQuartzoHash(data),
+        trashed: data.trashed ?? false
       };
     });
   }
@@ -691,7 +700,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
       const drive = this.getDriveClient();
       const response = await drive.files.get({
         fileId,
-        fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties'
+        fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties, trashed'
       });
 
       const data = response.data;
@@ -702,7 +711,8 @@ export class GoogleDriveAdapter implements DriveAdapter {
         modifiedTime: data.modifiedTime || new Date().toISOString(),
         md5Checksum: data.md5Checksum || undefined,
         parents: data.parents || undefined,
-        quartzoHash: this.extractQuartzoHash(data)
+        quartzoHash: this.extractQuartzoHash(data),
+        trashed: data.trashed ?? false
       };
     });
   }

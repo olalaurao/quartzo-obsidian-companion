@@ -465,8 +465,22 @@ function checkPairingDuplicateCleanupIsReversible() {
     console.error('FAIL: Pairing duplicate cleanup is not routed exclusively through reversible Drive trash');
     return false;
   }
-  if (!adapter.includes('async trashFile(') || !adapter.includes('requestBody: { trashed: true }')) {
-    console.error('FAIL: Google Drive adapter does not implement reversible trash semantics for pairing cleanup');
+  if (!adapter.includes('async trashFile(') ||
+      !adapter.includes('requestBody: { trashed: true }') ||
+      !adapter.includes("fields: 'id, trashed'") ||
+      !adapter.includes('response.data.trashed !== true')) {
+    console.error('FAIL: Google Drive adapter does not verify reversible trash postcondition for pairing cleanup');
+    return false;
+  }
+  if (!adapter.includes("trashed = false") ||
+      !adapter.includes('trashed: file.trashed ?? false') ||
+      !coordinator.includes('if (file.trashed === true) continue;')) {
+    console.error('FAIL: Pairing remote inventory can re-admit resources already confirmed in Drive trash');
+    return false;
+  }
+  if (!main.includes('Safe duplicate cleanup did not fully finish') ||
+      !main.includes('Drive has not confirmed duplicate cleanup yet')) {
+    console.error('FAIL: Pairing cleanup can collapse back to Pairing blocked without preserving cleanup failure details');
     return false;
   }
   if (!main.includes('Move safe duplicates to Drive trash?') || !main.includes('Nothing is permanently deleted')) {
