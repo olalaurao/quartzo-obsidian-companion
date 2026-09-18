@@ -86,6 +86,7 @@ export interface PairingRemoteCandidate {
   quartzoHash: string | null;
   resolvedSha256: string;
   matchesLocal: boolean | null;
+  canTrash: boolean | null;
 }
 
 export interface PairingItem {
@@ -1439,6 +1440,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
               quartzoHash: candidate.quartzoHash || null,
               resolvedSha256,
               matchesLocal: group.localHash == null ? null : resolvedSha256 === group.localHash,
+              canTrash: candidate.canTrash ?? null,
             };
           })
           .sort((a, b) => a.id.localeCompare(b.id)),
@@ -1529,11 +1531,21 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       const matchingLocal = candidates.filter(candidate => candidate.matchesLocal === true);
 
       if (distinctHashes.size === 1 && matchingLocal.length === candidates.length) {
-        const keep = candidates[0];
+        const cannotTrash = candidates.filter(candidate => candidate.canTrash !== true);
+        if (cannotTrash.length > 1) {
+          unresolvedPaths.push(item.path);
+          continue;
+        }
+        const keep = cannotTrash.length === 1 ? cannotTrash[0] : candidates[0];
+        const trashCandidates = candidates.filter(candidate => candidate.id !== keep.id);
+        if (trashCandidates.some(candidate => candidate.canTrash !== true)) {
+          unresolvedPaths.push(item.path);
+          continue;
+        }
         resolutions.push({
           path: item.path,
           keepFileId: keep.id,
-          trashFileIds: candidates.slice(1).map(candidate => candidate.id),
+          trashFileIds: trashCandidates.map(candidate => candidate.id),
           reason: 'byte_identical',
         });
         continue;
@@ -1541,10 +1553,15 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
       if (matchingLocal.length === 1) {
         const keep = matchingLocal[0];
+        const trashCandidates = candidates.filter(candidate => candidate.id !== keep.id);
+        if (trashCandidates.some(candidate => candidate.canTrash !== true)) {
+          unresolvedPaths.push(item.path);
+          continue;
+        }
         resolutions.push({
           path: item.path,
           keepFileId: keep.id,
-          trashFileIds: candidates.filter(candidate => candidate.id !== keep.id).map(candidate => candidate.id),
+          trashFileIds: trashCandidates.map(candidate => candidate.id),
           reason: 'single_local_match',
         });
         continue;
@@ -1618,12 +1635,29 @@ export class DriveSyncCoordinator implements ConflictRegistry {
         continue;
       }
 
+      const permissionsChanged = scannedCandidates.some(candidate => {
+        const fresh = freshById.get(candidate.id);
+        return !fresh || (fresh.canTrash ?? null) !== candidate.canTrash;
+      });
+      if (permissionsChanged) {
+        result.skippedPaths.push(resolution.path);
+        result.errors.push(`Drive trash permission changed since scan: ${resolution.path}. Rescan before cleanup.`);
+        continue;
+      }
+
+      const currentSummaryItem: PairingItem = {
+        ...summaryItem,
+        remoteCandidates: scannedCandidates.map(candidate => ({
+          ...candidate,
+          canTrash: freshById.get(candidate.id)?.canTrash ?? null,
+        })),
+      };
       const currentPlan = this.buildSafeDuplicateTrashPlan({
         identical: [],
         remoteOnly: [],
         localOnly: [],
         divergent: [],
-        ambiguous: [summaryItem],
+        ambiguous: [currentSummaryItem],
       });
       const currentResolution = currentPlan.resolutions[0];
       if (
