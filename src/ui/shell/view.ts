@@ -987,8 +987,19 @@ export class QuartzoView extends ItemView {
         const button = document.createElement('button');
         button.textContent = `Pair with ${candidate.name}`;
         button.addEventListener('click', async () => {
-          await plugin.confirmPairing(candidate.id, candidate.name, false, false);
-          await this.render();
+          const originalLabel = button.textContent || `Pair with ${candidate.name}`;
+          button.disabled = true;
+          button.textContent = 'Scanning vaults…';
+          new Notice('Scanning local and Google Drive vaults for a safe pairing summary…');
+          try {
+            await plugin.confirmPairing(candidate.id, candidate.name, false, false);
+          } catch (error) {
+            new Notice(`Pairing scan failed: ${error instanceof Error ? error.message : String(error)}`);
+          } finally {
+            button.disabled = false;
+            button.textContent = originalLabel;
+            await this.render();
+          }
         });
         container.appendChild(button);
       }

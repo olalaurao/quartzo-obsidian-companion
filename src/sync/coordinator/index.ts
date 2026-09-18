@@ -982,7 +982,8 @@ export class DriveSyncCoordinator implements ConflictRegistry {
   }
 
   private async resolveRemotePath(file: DriveFileMetadata, rootFolderId: string): Promise<string | null> {
-    if (file.name && file.name.includes('/')) return file.name;
+    if (file.relativePath) return normalizeVaultPath(file.relativePath);
+    if (file.name && file.name.includes('/')) return normalizeVaultPath(file.name);
 
     if (!file.parents || file.parents.length === 0) return file.name || null;
 
@@ -1242,16 +1243,9 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     this.syncState.driveFolderId = folderId;
   }
 
-  async generatePairingSummary(): Promise<PairingSummary> {
-    const summary: PairingSummary = { identical: [], remoteOnly: [], localOnly: [], divergent: [], ambiguous: [] };
-    const driveFolderId = this.syncState.driveFolderId || '';
-    if (!driveFolderId) return summary;
-
-    const localInventory = await this.buildLocalInventory();
-    const remoteFiles = await this.driveAdapter.listAllFiles(driveFolderId);
-    const remoteMap = new Map<string, DriveFileMetadata>();
+  private async buildRemoteCandidates(driveFolderId: string): Promise<Map<string, DriveFileMetadata[]>> {
     const remoteCandidates = new Map<string, DriveFileMetadata[]>();
-
+    const remoteFiles = await this.driveAdapter.listAllFiles(driveFolderId);
     for (const file of remoteFiles) {
       const remotePath = await this.resolveRemotePath(file, driveFolderId);
       if (!remotePath) continue;
@@ -1261,11 +1255,27 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       candidates.push(file);
       remoteCandidates.set(normalizedRemote, candidates);
     }
+    return remoteCandidates;
+  }
+
+  async generatePairingSummary(): Promise<PairingSummary> {
+    const summary: PairingSummary = { identical: [], remoteOnly: [], localOnly: [], divergent: [], ambiguous: [] };
+    const driveFolderId = this.syncState.driveFolderId || '';
+    if (!driveFolderId) return summary;
+
+    const localInventory = await this.buildLocalInventory();
+    const remoteCandidates = await this.buildRemoteCandidates(driveFolderId);
+    const remoteMap = new Map<string, DriveFileMetadata>();
 
     for (const [remotePath, candidates] of remoteCandidates) {
       const uniqueIds = new Set(candidates.map(candidate => candidate.id));
       if (uniqueIds.size > 1) {
-        summary.ambiguous.push({ path: remotePath, status: 'ambiguous', localHash: localInventory.get(remotePath)?.hash || null, remoteHash: null });
+        summary.ambiguous.push({
+          path: remotePath,
+          status: 'ambiguous',
+          localHash: localInventory.get(remotePath)?.hash || null,
+          remoteHash: null,
+        });
         continue;
       }
       remoteMap.set(remotePath, candidates[0]);
@@ -1278,16 +1288,12 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       if (ambiguousPaths.has(filePath)) continue;
       const localEntry = localInventory.get(filePath);
       const remoteEntry = remoteMap.get(filePath);
-      let remoteHash: string | null = null;
-      if (remoteEntry) {
-        remoteHash = await this.driveAdapter.resolveRemoteHash(remoteEntry);
-      }
-
       const localHash = localEntry?.hash || null;
       const localExists = localEntry?.exists ?? false;
       const remoteExists = remoteEntry != null;
 
       if (localExists && remoteExists) {
+        const remoteHash = await this.driveAdapter.resolveRemoteHash(remoteEntry);
         if (localHash === remoteHash) {
           summary.identical.push({ path: filePath, status: 'identical', localHash, remoteHash });
         } else {
@@ -1296,7 +1302,12 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       } else if (localExists && !remoteExists) {
         summary.localOnly.push({ path: filePath, status: 'local_only', localHash, remoteHash: null });
       } else if (!localExists && remoteExists) {
-        summary.remoteOnly.push({ path: filePath, status: 'remote_only', localHash: null, remoteHash });
+        summary.remoteOnly.push({
+          path: filePath,
+          status: 'remote_only',
+          localHash: null,
+          remoteHash: remoteEntry.quartzoHash || null,
+        });
       }
     }
 
@@ -1312,10 +1323,76 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       return result;
     }
 
+    const remoteCandidates = await this.buildRemoteCandidates(driveFolderId);
+    const remoteMap = new Map<string, DriveFileMetadata>();
+    for (const [remotePath, candidates] of remoteCandidates) {
+      const uniqueIds = new Set(candidates.map(candidate => candidate.id));
+      if (uniqueIds.size > 1) {
+        result.errors.push(`Pairing changed: ambiguous remote identity for ${remotePath}. Rescan before pairing.`);
+        continue;
+      }
+      remoteMap.set(remotePath, candidates[0]);
+    }
+    if (result.errors.length > 0) return result;
+
+    for (const item of summary.identical) {
+      const remoteEntry = remoteMap.get(item.path);
+      const localFilePath = pathModule.join(this.vaultPath, item.path);
+      if (!remoteEntry || !fs.existsSync(localFilePath)) {
+        result.errors.push(`Pairing changed for ${item.path}. Rescan before pairing.`);
+        continue;
+      }
+      const localContent = new Uint8Array(fs.readFileSync(localFilePath));
+      const localHash = this.calculateHash(localContent);
+      const remoteHash = await this.driveAdapter.resolveRemoteHash(remoteEntry);
+      if (localHash !== item.localHash || remoteHash !== item.remoteHash || localHash !== remoteHash) {
+        result.errors.push(`Pairing changed for ${item.path}. Rescan before pairing.`);
+        continue;
+      }
+      const syncFile = this.createSyncFile(item.path, { hash: localHash, exists: true });
+      syncFile.baseHash = localHash;
+      syncFile.localHash = localHash;
+      syncFile.remoteHash = remoteHash;
+      syncFile.remoteFileId = remoteEntry.id;
+      syncFile.remoteExists = true;
+      syncFile.remoteModifiedAt = remoteEntry.modifiedTime || null;
+      this.syncState.files.set(item.path, syncFile);
+    }
+    if (result.errors.length > 0) return result;
+
     if (decisions.autoAdopt) {
       for (const item of summary.localOnly) {
+        if (remoteMap.has(item.path)) {
+          result.errors.push(`Pairing changed for ${item.path}: a remote file now exists. Rescan before pairing.`);
+          continue;
+        }
+        const normalized = normalizeVaultPath(item.path);
+        const localFilePath = pathModule.join(this.vaultPath, normalized);
+        if (!fs.existsSync(localFilePath)) {
+          result.errors.push(`Failed to adopt ${item.path}: local file no longer exists.`);
+          continue;
+        }
+        const content = new Uint8Array(fs.readFileSync(localFilePath));
+        const quartzoHash = this.calculateHash(content);
+        if (item.localHash && item.localHash !== quartzoHash) {
+          result.errors.push(`Pairing changed for ${item.path}: local content changed. Rescan before pairing.`);
+          continue;
+        }
         try {
-          await this.explicitAdopt(item.path);
+          const metadata = await this.driveAdapter.uploadFile({
+            folderId: driveFolderId,
+            name: normalized,
+            content,
+            quartzoHash,
+          });
+          const syncFile = this.createSyncFile(normalized, { hash: quartzoHash, exists: true });
+          syncFile.baseHash = quartzoHash;
+          syncFile.localHash = quartzoHash;
+          syncFile.remoteHash = quartzoHash;
+          syncFile.remoteFileId = metadata.id;
+          syncFile.remoteExists = true;
+          syncFile.remoteModifiedAt = metadata.modifiedTime || null;
+          this.syncState.files.set(normalized, syncFile);
           result.synced++;
         } catch (error) {
           result.errors.push(`Failed to adopt ${item.path}: ${error}`);
@@ -1325,21 +1402,11 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
     if (decisions.autoPull) {
       for (const item of summary.remoteOnly) {
-        const remoteFiles = await this.driveAdapter.listAllFiles(driveFolderId);
-        let remoteEntry: DriveFileMetadata | undefined;
-        let matchedCount = 0;
-        for (const f of remoteFiles) {
-          const remotePath = await this.resolveRemotePath(f, driveFolderId);
-          if (remotePath === item.path) {
-            remoteEntry = f;
-            matchedCount++;
-          }
-        }
-        if (matchedCount > 1) {
-          result.errors.push(`Failed to pull ${item.path}: Ambiguous duplicate remote files found.`);
+        const remoteEntry = remoteMap.get(item.path);
+        if (!remoteEntry) {
+          result.errors.push(`Pairing changed for ${item.path}: remote file no longer exists. Rescan before pairing.`);
           continue;
         }
-        if (!remoteEntry) continue;
         const syncFile = this.createSyncFile(item.path, { hash: '', exists: false });
         syncFile.remoteFileId = remoteEntry.id;
         try {
@@ -1351,6 +1418,9 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       }
     }
 
+    if (result.errors.length === 0) {
+      this.syncState.driveChangeToken = await this.driveAdapter.getStartPageToken();
+    }
     await this.saveSyncState();
     return result;
   }
