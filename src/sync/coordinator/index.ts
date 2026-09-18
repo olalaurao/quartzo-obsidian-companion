@@ -86,7 +86,7 @@ export interface PairingRemoteCandidate {
   quartzoHash: string | null;
   resolvedSha256: string;
   matchesLocal: boolean | null;
-  canTrash: boolean | null;
+  canTrash?: boolean | null;
 }
 
 export interface PairingItem {
