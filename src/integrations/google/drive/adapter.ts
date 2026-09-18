@@ -220,7 +220,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
       const drive = this.getDriveClient();
       const response = await drive.files.list({
         q: `'${folderId}' in parents and trashed = false`,
-        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties, trashed)',
+        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties, trashed, capabilities(canTrash))',
         pageSize: 100,
         pageToken: pageToken
       });
@@ -233,7 +233,8 @@ export class GoogleDriveAdapter implements DriveAdapter {
         md5Checksum: file.md5Checksum || undefined,
         parents: file.parents || undefined,
         quartzoHash: this.extractQuartzoHash(file),
-        trashed: file.trashed ?? false
+        trashed: file.trashed ?? false,
+        canTrash: file.capabilities?.canTrash ?? null
       }));
 
       return {
@@ -258,7 +259,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
     do {
       const response = await this.withRetry(() => this.getDriveClient().files.list({
         q: `'${folderId}' in parents and trashed = false`,
-        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties, trashed)',
+        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties, trashed, capabilities(canTrash))',
         pageSize: 1000,
         pageToken
       }));
@@ -271,7 +272,8 @@ export class GoogleDriveAdapter implements DriveAdapter {
         md5Checksum: file.md5Checksum || undefined,
         parents: file.parents || undefined,
         quartzoHash: this.extractQuartzoHash(file),
-        trashed: file.trashed ?? false
+        trashed: file.trashed ?? false,
+        canTrash: file.capabilities?.canTrash ?? null
       }));
 
       for (const file of files) {
@@ -410,7 +412,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
     do {
       const response = await this.withRetry(() => driveClient.files.list({
         q: `'${parent}' in parents and name = '${name}' and ${mimeClause} and trashed = false`,
-        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties, trashed)',
+        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties, trashed, capabilities(canTrash))',
         pageSize: 100,
         pageToken
       }));
@@ -423,7 +425,8 @@ export class GoogleDriveAdapter implements DriveAdapter {
           md5Checksum: file.md5Checksum || undefined,
           parents: file.parents || undefined,
           quartzoHash: this.extractQuartzoHash(file),
-          trashed: file.trashed ?? false
+          trashed: file.trashed ?? false,
+        canTrash: file.capabilities?.canTrash ?? null
         });
       }
       pageToken = response.data.nextPageToken || undefined;
@@ -506,7 +509,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
             mimeType: 'application/octet-stream',
             body: Buffer.from(content)
           },
-          fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties, trashed'
+          fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties, trashed, capabilities(canTrash)'
         });
         const data = response.data;
         return {
@@ -670,7 +673,8 @@ export class GoogleDriveAdapter implements DriveAdapter {
         md5Checksum: data.md5Checksum || undefined,
         parents: data.parents || undefined,
         quartzoHash: this.extractQuartzoHash(data),
-        trashed: data.trashed ?? false
+        trashed: data.trashed ?? false,
+        canTrash: data.capabilities?.canTrash ?? null
       };
     });
   }
@@ -700,7 +704,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
       const drive = this.getDriveClient();
       const response = await drive.files.get({
         fileId,
-        fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties, trashed'
+        fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties, trashed, capabilities(canTrash)'
       });
 
       const data = response.data;
@@ -712,7 +716,8 @@ export class GoogleDriveAdapter implements DriveAdapter {
         md5Checksum: data.md5Checksum || undefined,
         parents: data.parents || undefined,
         quartzoHash: this.extractQuartzoHash(data),
-        trashed: data.trashed ?? false
+        trashed: data.trashed ?? false,
+        canTrash: data.capabilities?.canTrash ?? null
       };
     });
   }
