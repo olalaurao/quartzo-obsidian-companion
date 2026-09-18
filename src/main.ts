@@ -1033,53 +1033,35 @@ class QuartzoSettingTab extends PluginSettingTab {
     this.addHeading(containerEl, 'Sync');
 
     new Setting(containerEl)
-      .setName('Auto sync')
-      .setDesc('Poll Google Drive while Obsidian is open and reconcile local edits through the canonical sync coordinator.')
-      .addToggle(toggle => toggle
-        .setValue(this.plugin.settings.syncAuto)
-        .onChange(async value => {
-          this.plugin.settings.syncAuto = value;
-          await this.plugin.saveSettings();
-          if (value && this.plugin.settings.isPaired) this.plugin.startAutoSync();
-          else this.plugin.stopAutoSync();
-        }));
-
-    new Setting(containerEl)
-      .setName('Remote polling interval')
-      .setDesc('How often Auto sync checks Drive while Obsidian is open. Default: 60 seconds.')
+      .setName('Sync mode')
+      .setDesc('Manual is the default: the Companion never reconciles with Drive unless you choose Sync now or Run full reconciliation. Automatic enables startup, focus, polling, and eligible local-change sync.')
       .addDropdown(dropdown => dropdown
-        .addOption('15', '15 seconds')
-        .addOption('30', '30 seconds')
-        .addOption('60', '60 seconds')
-        .addOption('120', '2 minutes')
-        .addOption('300', '5 minutes')
-        .addOption('900', '15 minutes')
-        .setValue(String(this.plugin.settings.syncPollingIntervalSeconds))
+        .addOption('manual', 'Manual')
+        .addOption('automatic', 'Automatic')
+        .setValue(this.plugin.settings.syncMode)
         .onChange(async value => {
-          this.plugin.settings.syncPollingIntervalSeconds = Number(value);
-          await this.plugin.saveSettings();
-          this.plugin.restartAutoSync();
+          await this.plugin.setSyncMode(value === 'automatic' ? 'automatic' : 'manual');
+          this.display();
         }));
 
-    new Setting(containerEl)
-      .setName('Sync on Obsidian startup')
-      .setDesc('After restoring Google authorization, run one reconciliation when the plugin starts.')
-      .addToggle(toggle => toggle
-        .setValue(this.plugin.settings.syncOnStartup)
-        .onChange(async value => {
-          this.plugin.settings.syncOnStartup = value;
-          await this.plugin.saveSettings();
-        }));
-
-    new Setting(containerEl)
-      .setName('Sync on window focus')
-      .setDesc('Run one reconciliation when the Obsidian window regains focus.')
-      .addToggle(toggle => toggle
-        .setValue(this.plugin.settings.syncOnFocus)
-        .onChange(async value => {
-          this.plugin.settings.syncOnFocus = value;
-          await this.plugin.saveSettings();
-        }));
+    if (this.plugin.settings.syncMode === 'automatic') {
+      new Setting(containerEl)
+        .setName('Remote polling interval')
+        .setDesc('How often Automatic mode checks Drive while Obsidian is open. Default: 60 seconds.')
+        .addDropdown(dropdown => dropdown
+          .addOption('15', '15 seconds')
+          .addOption('30', '30 seconds')
+          .addOption('60', '60 seconds')
+          .addOption('120', '2 minutes')
+          .addOption('300', '5 minutes')
+          .addOption('900', '15 minutes')
+          .setValue(String(this.plugin.settings.syncPollingIntervalSeconds))
+          .onChange(async value => {
+            this.plugin.settings.syncPollingIntervalSeconds = Number(value);
+            await this.plugin.saveSettings();
+            this.plugin.restartAutoSync();
+          }));
+    }
 
     new Setting(containerEl)
       .setName('Manual full reconciliation')
