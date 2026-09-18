@@ -84,6 +84,7 @@ export interface PairingRemoteCandidate {
   id: string;
   modifiedTime: string | null;
   quartzoHash: string | null;
+  canTrash: boolean | null;
   resolvedSha256: string;
   matchesLocal: boolean | null;
 }
@@ -1437,6 +1438,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
               id: candidate.id,
               modifiedTime: candidate.modifiedTime || null,
               quartzoHash: candidate.quartzoHash || null,
+              canTrash: candidate.canTrash ?? null,
               resolvedSha256,
               matchesLocal: group.localHash == null ? null : resolvedSha256 === group.localHash,
             };
@@ -1529,11 +1531,24 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       const matchingLocal = candidates.filter(candidate => candidate.matchesLocal === true);
 
       if (distinctHashes.size === 1 && matchingLocal.length === candidates.length) {
-        const keep = candidates[0];
+        const cannotTrash = candidates.filter(candidate => candidate.canTrash !== true);
+        if (cannotTrash.length > 1) {
+          unresolvedPaths.push(item.path);
+          continue;
+        }
+        // When every candidate is byte-identical, preserve the one Drive says we
+        // cannot trash and remove only candidates the current account may trash.
+        // This avoids choosing an arbitrary file ID that later fails with 403.
+        const keep = cannotTrash[0] ?? candidates[0];
+        const trashCandidates = candidates.filter(candidate => candidate.id !== keep.id);
+        if (trashCandidates.some(candidate => candidate.canTrash !== true)) {
+          unresolvedPaths.push(item.path);
+          continue;
+        }
         resolutions.push({
           path: item.path,
           keepFileId: keep.id,
-          trashFileIds: candidates.slice(1).map(candidate => candidate.id),
+          trashFileIds: trashCandidates.map(candidate => candidate.id),
           reason: 'byte_identical',
         });
         continue;
@@ -1541,10 +1556,15 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
       if (matchingLocal.length === 1) {
         const keep = matchingLocal[0];
+        const trashCandidates = candidates.filter(candidate => candidate.id !== keep.id);
+        if (trashCandidates.some(candidate => candidate.canTrash !== true)) {
+          unresolvedPaths.push(item.path);
+          continue;
+        }
         resolutions.push({
           path: item.path,
           keepFileId: keep.id,
-          trashFileIds: candidates.filter(candidate => candidate.id !== keep.id).map(candidate => candidate.id),
+          trashFileIds: trashCandidates.map(candidate => candidate.id),
           reason: 'single_local_match',
         });
         continue;
@@ -1610,7 +1630,8 @@ export class DriveSyncCoordinator implements ConflictRegistry {
         const fresh = freshById.get(candidate.id);
         if (!fresh) return true;
         return (fresh.modifiedTime || null) !== candidate.modifiedTime ||
-          (fresh.quartzoHash || null) !== candidate.quartzoHash;
+          (fresh.quartzoHash || null) !== candidate.quartzoHash ||
+          (fresh.canTrash ?? null) !== candidate.canTrash;
       });
       if (snapshotChanged) {
         result.skippedPaths.push(resolution.path);
