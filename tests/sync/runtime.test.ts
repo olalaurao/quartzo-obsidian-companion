@@ -859,7 +859,77 @@ describe('Runtime Sync Tests', () => {
     const result = await coordinator.reconcile();
 
     expect(result.errors.join(' ')).toContain('Ambiguous incremental remote identity');
+    expect(coordinator.getRemoteIdentityAmbiguityPaths()).toEqual([relativePath]);
     expect(coordinator.getSyncState().files.get(relativePath)?.remoteFileId).toBe(oldRemote.id);
+  });
+
+  it('8e14: paired duplicate cleanup can resolve full-inventory ambiguity and recover reconciliation', async () => {
+    const relativePath = 'habits/omeprazol (1) (1).md';
+    const content = Buffer.from('same paired bytes');
+    const hash = crypto.createHash('sha256').update(content).digest('hex');
+    fs.mkdirSync(path.join(tmpDir, 'habits'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, relativePath), content);
+
+    adapter.addRemoteFileWithId(relativePath, 'a-keep', content);
+    await coordinator.setDriveFolderId('root-folder-id');
+    const initial = await coordinator.reconcile();
+    expect(initial.errors).toEqual([]);
+    expect(coordinator.getSyncState().files.get(relativePath)?.remoteFileId).toBe('a-keep');
+
+    const trashed = new Set<string>();
+    adapter.listAllFiles = async () => [
+      {
+        id: 'a-keep',
+        name: 'omeprazol (1) (1).md',
+        relativePath,
+        mimeType: 'application/octet-stream',
+        modifiedTime: '2026-09-18T23:10:00.000Z',
+        quartzoHash: hash,
+        canTrash: true,
+        parents: ['root-folder-id'],
+      },
+      ...(!trashed.has('z-duplicate') ? [{
+        id: 'z-duplicate',
+        name: 'omeprazol (1) (1).md',
+        relativePath,
+        mimeType: 'application/octet-stream',
+        modifiedTime: '2026-09-18T23:11:00.000Z',
+        quartzoHash: hash,
+        canTrash: true,
+        parents: ['root-folder-id'],
+      }] : []),
+    ];
+    adapter.trashFile = async fileId => {
+      trashed.add(fileId);
+      adapter.trashCalls++;
+      adapter.trashedFileIds.push(fileId);
+    };
+
+    const blocked = await coordinator.reconcile(true);
+    expect(blocked.errors.join(' ')).toContain('Ambiguous remote path identity detected');
+    expect(coordinator.getRemoteIdentityAmbiguityPaths()).toEqual([relativePath]);
+
+    const summary = await coordinator.generatePairingSummary();
+    expect(summary.ambiguous).toHaveLength(1);
+    const plan = coordinator.buildSafeDuplicateTrashPlan(summary);
+    expect(plan.unresolvedPaths).toEqual([]);
+    expect(plan.resolutions).toEqual([{
+      path: relativePath,
+      keepFileId: 'a-keep',
+      trashFileIds: ['z-duplicate'],
+      reason: 'byte_identical',
+    }]);
+
+    const cleanup = await coordinator.trashSafePairingDuplicates(summary);
+    expect(cleanup.errors).toEqual([]);
+    expect(cleanup.trashed).toBe(1);
+    expect(trashed.has('z-duplicate')).toBe(true);
+
+    const recovered = await coordinator.reconcile(true);
+    expect(recovered.errors).toEqual([]);
+    expect(coordinator.getRemoteIdentityAmbiguityPaths()).toEqual([]);
+    expect(coordinator.getSyncState().files.get(relativePath)?.remoteFileId).toBe('a-keep');
+    expect(fs.readFileSync(path.join(tmpDir, relativePath), 'utf8')).toBe('same paired bytes');
   });
 
   it('8f: pairing ambiguity retains every distinct Drive candidate for diagnosis', async () => {
