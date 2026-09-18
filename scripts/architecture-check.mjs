@@ -531,14 +531,19 @@ function checkFirstPairingApplyProgress() {
       requiredPhases.some(phase => !coordinator.includes(phase)) ||
       !coordinator.includes('onProgress?: (progress: PairingApplyProgress) => void') ||
       !coordinator.includes('private pairingApplyInProgress = false') ||
+      !coordinator.includes('private pairingLastError: string | null = null') ||
       !coordinator.includes('isPairingApplyInProgress()') ||
-      !coordinator.includes('getPairingApplyProgress()')) {
+      !coordinator.includes('getPairingApplyProgress()') ||
+      !coordinator.includes('getPairingLastError()')) {
     console.error('FAIL: First-pairing mutation stage does not expose canonical apply progress');
     return false;
   }
   if (!main.includes("question.textContent = 'Pairing is in progress.'") ||
       !main.includes('confirmButton.disabled = true') ||
       !main.includes('Keep Obsidian open') ||
+      !main.includes('showPersistentPairingFailure') ||
+      !main.includes("'Pairing did not finish'") ||
+      !main.includes("'Copy error'") ||
       !main.includes('await this.refreshQuartzoView()')) {
     console.error('FAIL: Pairing UI can become visually idle/stale while first-pairing mutations are running');
     return false;
@@ -547,7 +552,9 @@ function checkFirstPairingApplyProgress() {
   const view = fs.readFileSync(viewPath, 'utf8');
   if (!view.includes('coordinator?.isPairingApplyInProgress()') ||
       !view.includes('Pairing is in progress. Keep Obsidian open.') ||
-      !view.includes('Pairing in progress…')) {
+      !view.includes('Pairing in progress…') ||
+      !view.includes('Last pairing attempt failed:') ||
+      !view.includes('Companion version:')) {
     console.error('FAIL: Sync view can offer a second pairing while the coordinator still owns an active pairing');
     return false;
   }
@@ -561,7 +568,7 @@ function checkFirstPairingApplyProgress() {
     console.error('FAIL: Persistent temporary Drive quota does not abort pairing through a canonical typed error');
     return false;
   }
-  console.log('PASS: First-pairing progress is globally visible, single-owner, and aborts persistent quota safely');
+  console.log('PASS: First-pairing progress/failure is globally visible, single-owner, and aborts persistent quota safely');
   return true;
 }
 
