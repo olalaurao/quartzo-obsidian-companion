@@ -740,15 +740,20 @@ export default class QuartzoCompanionPlugin extends Plugin {
           li.style.cssText = 'margin: 8px 0;';
 
           const meta = document.createElement('div');
+          meta.style.cssText = 'word-break: break-all;';
           meta.textContent = `ID ${candidate.id} · modified ${candidate.modifiedTime ?? 'unknown'} · Quartzo_hash ${candidate.quartzoHash ? 'present' : 'missing'}`;
           li.appendChild(meta);
 
-          const link = document.createElement('a');
-          link.href = `https://drive.google.com/open?id=${encodeURIComponent(candidate.id)}`;
-          link.textContent = 'Open this candidate in Google Drive';
-          link.target = '_blank';
-          link.rel = 'noreferrer';
-          li.appendChild(link);
+          const openButton = document.createElement('button');
+          openButton.textContent = 'Open this candidate in Google Drive';
+          openButton.addEventListener('click', async () => {
+            try {
+              await this.browserOpener.open(`https://drive.google.com/open?id=${encodeURIComponent(candidate.id)}`);
+            } catch (error) {
+              new Notice(`Could not open Drive candidate: ${error}`);
+            }
+          });
+          li.appendChild(openButton);
 
           candidates.appendChild(li);
         }
