@@ -6,6 +6,8 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as pathModule from 'path';
 
+const PAIRING_HASH_CONCURRENCY = 8;
+
 const KNOWN_TEXT_EXTENSIONS = new Set([
   '.md', '.base', '.txt', '.json', '.yaml', '.yml', '.toml',
   '.csv', '.xml', '.html', '.css', '.js', '.ts', '.jsx', '.tsx',
@@ -74,6 +76,14 @@ export interface PairingItem {
   status: 'identical' | 'remote_only' | 'local_only' | 'divergent' | 'ambiguous';
   localHash: string | null;
   remoteHash: string | null;
+  remoteFileId?: string | null;
+  remoteModifiedAt?: string | null;
+}
+
+export interface PairingScanProgress {
+  phase: 'local_inventory' | 'remote_inventory' | 'comparing';
+  completed: number;
+  total: number;
 }
 
 export interface PairingSummary {
@@ -1258,12 +1268,15 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     return remoteCandidates;
   }
 
-  async generatePairingSummary(): Promise<PairingSummary> {
+  async generatePairingSummary(onProgress?: (progress: PairingScanProgress) => void): Promise<PairingSummary> {
     const summary: PairingSummary = { identical: [], remoteOnly: [], localOnly: [], divergent: [], ambiguous: [] };
     const driveFolderId = this.syncState.driveFolderId || '';
     if (!driveFolderId) return summary;
 
+    onProgress?.({ phase: 'local_inventory', completed: 0, total: 0 });
     const localInventory = await this.buildLocalInventory();
+
+    onProgress?.({ phase: 'remote_inventory', completed: 0, total: 0 });
     const remoteCandidates = await this.buildRemoteCandidates(driveFolderId);
     const remoteMap = new Map<string, DriveFileMetadata>();
 
@@ -1283,6 +1296,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
     const ambiguousPaths = new Set(summary.ambiguous.map(item => item.path));
     const allPaths = new Set([...localInventory.keys(), ...remoteMap.keys()]);
+    const sharedPaths: string[] = [];
 
     for (const filePath of allPaths) {
       if (ambiguousPaths.has(filePath)) continue;
@@ -1293,12 +1307,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       const remoteExists = remoteEntry != null;
 
       if (localExists && remoteExists) {
-        const remoteHash = await this.driveAdapter.resolveRemoteHash(remoteEntry);
-        if (localHash === remoteHash) {
-          summary.identical.push({ path: filePath, status: 'identical', localHash, remoteHash });
-        } else {
-          summary.divergent.push({ path: filePath, status: 'divergent', localHash, remoteHash });
-        }
+        sharedPaths.push(filePath);
       } else if (localExists && !remoteExists) {
         summary.localOnly.push({ path: filePath, status: 'local_only', localHash, remoteHash: null });
       } else if (!localExists && remoteExists) {
@@ -1307,10 +1316,49 @@ export class DriveSyncCoordinator implements ConflictRegistry {
           status: 'remote_only',
           localHash: null,
           remoteHash: remoteEntry.quartzoHash || null,
+          remoteFileId: remoteEntry.id,
+          remoteModifiedAt: remoteEntry.modifiedTime || null,
         });
       }
     }
 
+    let completed = 0;
+    onProgress?.({ phase: 'comparing', completed, total: sharedPaths.length });
+    let nextIndex = 0;
+    const workerCount = Math.min(PAIRING_HASH_CONCURRENCY, sharedPaths.length);
+    const workers = Array.from({ length: workerCount }, async () => {
+      while (true) {
+        const index = nextIndex++;
+        if (index >= sharedPaths.length) return;
+        const filePath = sharedPaths[index];
+        const localEntry = localInventory.get(filePath);
+        const remoteEntry = remoteMap.get(filePath);
+        if (!localEntry || !remoteEntry) continue;
+
+        const remoteHash = await this.driveAdapter.resolveRemoteHash(remoteEntry);
+        const item: PairingItem = {
+          path: filePath,
+          status: localEntry.hash === remoteHash ? 'identical' : 'divergent',
+          localHash: localEntry.hash,
+          remoteHash,
+          remoteFileId: remoteEntry.id,
+          remoteModifiedAt: remoteEntry.modifiedTime || null,
+        };
+        if (item.status === 'identical') summary.identical.push(item);
+        else summary.divergent.push(item);
+
+        completed++;
+        onProgress?.({ phase: 'comparing', completed, total: sharedPaths.length });
+      }
+    });
+    await Promise.all(workers);
+
+    const byPath = (a: PairingItem, b: PairingItem) => a.path.localeCompare(b.path);
+    summary.identical.sort(byPath);
+    summary.remoteOnly.sort(byPath);
+    summary.localOnly.sort(byPath);
+    summary.divergent.sort(byPath);
+    summary.ambiguous.sort(byPath);
     return summary;
   }
 
@@ -1344,8 +1392,18 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       }
       const localContent = new Uint8Array(fs.readFileSync(localFilePath));
       const localHash = this.calculateHash(localContent);
-      const remoteHash = await this.driveAdapter.resolveRemoteHash(remoteEntry);
-      if (localHash !== item.localHash || remoteHash !== item.remoteHash || localHash !== remoteHash) {
+      const sameRemoteSnapshot =
+        remoteEntry.id === item.remoteFileId &&
+        (remoteEntry.modifiedTime || null) === (item.remoteModifiedAt || null);
+      const remoteHash = sameRemoteSnapshot && item.remoteHash
+        ? item.remoteHash
+        : await this.driveAdapter.resolveRemoteHash(remoteEntry);
+      if (
+        localHash !== item.localHash ||
+        remoteHash !== item.remoteHash ||
+        localHash !== remoteHash ||
+        (remoteEntry.quartzoHash != null && remoteEntry.quartzoHash !== remoteHash)
+      ) {
         result.errors.push(`Pairing changed for ${item.path}. Rescan before pairing.`);
         continue;
       }
