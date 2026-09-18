@@ -6,19 +6,32 @@ import {
   type OAuthConfig,
   type TokenResponse,
 } from '../../src/integrations/google/auth/loopback';
+import {
+  GOOGLE_OAUTH_CLIENT_SECRET_ID,
+  GOOGLE_REFRESH_TOKEN_SECRET_ID,
+} from '../../src/platform/secret-ids';
 
 class MemorySecretStorage {
   private readonly values = new Map<string, string>();
 
+  private assertValidId(key: string): void {
+    if (!/^[a-z0-9-]{1,64}$/.test(key)) {
+      throw new Error('Secret ID is invalid');
+    }
+  }
+
   async get(key: string): Promise<string | null> {
+    this.assertValidId(key);
     return this.values.get(key) ?? null;
   }
 
   async set(key: string, value: string): Promise<void> {
+    this.assertValidId(key);
     this.values.set(key, value);
   }
 
   async delete(key: string): Promise<void> {
+    this.assertValidId(key);
     this.values.delete(key);
   }
 }
@@ -54,6 +67,12 @@ const config: OAuthConfig = {
 };
 
 describe('Google OAuth desktop loopback', () => {
+  it('uses Obsidian-compatible SecretStorage IDs', () => {
+    for (const id of [GOOGLE_REFRESH_TOKEN_SECRET_ID, GOOGLE_OAUTH_CLIENT_SECRET_ID]) {
+      expect(id).toMatch(/^[a-z0-9-]{1,64}$/);
+    }
+  });
+
   it('ignores browser auxiliary requests while the valid callback exchanges its code', async () => {
     let callbackStatus = 0;
     let faviconStatus = 0;
@@ -125,7 +144,7 @@ describe('Google OAuth desktop loopback', () => {
       if (!address || typeof address === 'string') throw new Error('Token test server did not expose a TCP port');
 
       const storage = new MemorySecretStorage();
-      await storage.set('quartzo_companion/refresh_token', 'stored_refresh_token');
+      await storage.set(GOOGLE_REFRESH_TOKEN_SECRET_ID, 'stored_refresh_token');
       const client = new GoogleOAuthDesktop({
         ...config,
         clientSecret: 'desktop_client_credential',

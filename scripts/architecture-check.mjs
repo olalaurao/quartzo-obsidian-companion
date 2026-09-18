@@ -340,6 +340,34 @@ function checkDeviceLocalSettingsBoundaries() {
   console.log('PASS: Device-local Settings and First Run preserve canonical ownership boundaries');
   return true;
 }
+function checkObsidianSecretStorageIds() {
+  const idsPath = path.join(rootDir, 'src/platform/secret-ids.ts');
+  const mainPath = path.join(rootDir, 'src/main.ts');
+  const loopbackPath = path.join(rootDir, 'src/integrations/google/auth/loopback.ts');
+  if (!fs.existsSync(idsPath)) {
+    console.error('FAIL: Canonical Obsidian SecretStorage ID owner is missing');
+    return false;
+  }
+  const idsSource = fs.readFileSync(idsPath, 'utf8');
+  const main = fs.readFileSync(mainPath, 'utf8');
+  const loopback = fs.readFileSync(loopbackPath, 'utf8');
+  const ids = Array.from(idsSource.matchAll(/export const [A-Z0-9_]+_SECRET_ID = '([^']+)'/g), match => match[1]);
+  if (ids.length < 2 || ids.some(id => !/^[a-z0-9-]{1,64}$/.test(id))) {
+    console.error(`FAIL: Obsidian SecretStorage IDs must match ^[a-z0-9-]{1,64}$; found: ${ids.join(', ') || '(none)'}`);
+    return false;
+  }
+  if (main.includes('quartzo_companion/') || loopback.includes('quartzo_companion/')) {
+    console.error('FAIL: Legacy invalid Obsidian SecretStorage IDs remain in runtime OAuth paths');
+    return false;
+  }
+  if (!main.includes('GOOGLE_OAUTH_CLIENT_SECRET_ID') || !loopback.includes('GOOGLE_REFRESH_TOKEN_SECRET_ID')) {
+    console.error('FAIL: Runtime OAuth paths bypass the canonical SecretStorage ID owner');
+    return false;
+  }
+  console.log('PASS: Obsidian SecretStorage IDs are canonical and API-compatible');
+  return true;
+}
+
 function checkOAuthDesktopPlatformBoundary() {
   const loopbackPath = path.join(rootDir, 'src/integrations/google/auth/loopback.ts');
   const openerPath = path.join(rootDir, 'src/platform/browser-opener.ts');
@@ -438,6 +466,7 @@ function main() {
   if (!checkReminderRuntimeBoundaries()) allPassed = false;
   if (!checkConflictResolutionIsExplicit()) allPassed = false;
   if (!checkDeviceLocalSettingsBoundaries()) allPassed = false;
+  if (!checkObsidianSecretStorageIds()) allPassed = false;
   if (!checkOAuthDesktopPlatformBoundary()) allPassed = false;
   if (!checkReleasePipelineHardening()) allPassed = false;
 
