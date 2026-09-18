@@ -478,6 +478,15 @@ function checkPairingDuplicateCleanupIsReversible() {
     console.error('FAIL: Pairing remote inventory can re-admit resources already confirmed in Drive trash');
     return false;
   }
+  if (!adapter.includes('capabilities(canTrash)') ||
+      !adapter.includes('canTrash: file.capabilities?.canTrash ?? null') ||
+      !coordinator.includes('candidate.canTrash !== true') ||
+      !coordinator.includes('Drive trash permission changed since scan') ||
+      !main.includes('trash permission: yes') ||
+      !main.includes('trash permission: no')) {
+    console.error('FAIL: Safe duplicate cleanup is not planned/revalidated from Drive capabilities.canTrash');
+    return false;
+  }
   if (!main.includes('Safe duplicate cleanup did not fully finish') ||
       !main.includes('Drive has not confirmed duplicate cleanup yet')) {
     console.error('FAIL: Pairing cleanup can collapse back to Pairing blocked without preserving cleanup failure details');
@@ -487,7 +496,7 @@ function checkPairingDuplicateCleanupIsReversible() {
     console.error('FAIL: Pairing duplicate cleanup lacks explicit reversible user confirmation');
     return false;
   }
-  console.log('PASS: Pairing duplicate cleanup is explicit, content-proven and reversible through Drive trash');
+  console.log('PASS: Pairing duplicate cleanup is explicit, content-proven, capability-aware and reversible through Drive trash');
   return true;
 }
 
