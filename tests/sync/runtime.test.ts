@@ -393,6 +393,41 @@ describe('Runtime Sync Tests', () => {
     expect(coordinator.getSyncState().files.get('legacy-same.md')?.baseHash).toBe(summary.identical[0].remoteHash);
   });
 
+  it('8f: pairing ambiguity retains every distinct Drive candidate for diagnosis', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+    const h1 = crypto.createHash('sha256').update(Buffer.from('one')).digest('hex');
+    const h2 = crypto.createHash('sha256').update(Buffer.from('two')).digest('hex');
+    adapter.listAllFiles = async () => [
+      {
+        id: 'candidate-a',
+        name: 'dup.md',
+        relativePath: 'folder/dup.md',
+        mimeType: 'application/octet-stream',
+        modifiedTime: '2026-09-17T10:00:00.000Z',
+        quartzoHash: h1,
+        parents: ['folder-a'],
+      },
+      {
+        id: 'candidate-b',
+        name: 'dup.md',
+        relativePath: 'folder/dup.md',
+        mimeType: 'application/octet-stream',
+        modifiedTime: '2026-09-18T10:00:00.000Z',
+        quartzoHash: h2,
+        parents: ['folder-a'],
+      },
+    ];
+
+    const summary = await coordinator.generatePairingSummary();
+
+    expect(summary.ambiguous).toHaveLength(1);
+    expect(summary.ambiguous[0].path).toBe('folder/dup.md');
+    expect(summary.ambiguous[0].remoteCandidates).toEqual([
+      { id: 'candidate-a', modifiedTime: '2026-09-17T10:00:00.000Z', quartzoHash: h1 },
+      { id: 'candidate-b', modifiedTime: '2026-09-18T10:00:00.000Z', quartzoHash: h2 },
+    ]);
+  });
+
   it('9: coordinator calls listChanges after initial inventory', async () => {
     await coordinator.reconcile();
     expect(adapter.listFilesCalls).toBeGreaterThanOrEqual(1);
