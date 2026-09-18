@@ -103,6 +103,28 @@ export interface PairingSummary {
   ambiguous: PairingItem[];
 }
 
+export type SafeDuplicateResolutionReason = 'byte_identical' | 'single_local_match';
+
+export interface SafeDuplicateResolution {
+  path: string;
+  keepFileId: string;
+  trashFileIds: string[];
+  reason: SafeDuplicateResolutionReason;
+}
+
+export interface SafeDuplicateTrashPlan {
+  resolutions: SafeDuplicateResolution[];
+  unresolvedPaths: string[];
+  totalTrashFiles: number;
+}
+
+export interface SafeDuplicateTrashResult {
+  trashed: number;
+  resolvedPaths: number;
+  skippedPaths: string[];
+  errors: string[];
+}
+
 export class DriveSyncCoordinator implements ConflictRegistry {
   private syncState: SyncState;
   private driveAdapter: DriveAdapter;
@@ -1431,6 +1453,145 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     summary.divergent.sort(byPath);
     summary.ambiguous.sort(byPath);
     return summary;
+  }
+
+  buildSafeDuplicateTrashPlan(summary: PairingSummary): SafeDuplicateTrashPlan {
+    const resolutions: SafeDuplicateResolution[] = [];
+    const unresolvedPaths: string[] = [];
+
+    for (const item of summary.ambiguous) {
+      const byId = new Map((item.remoteCandidates ?? []).map(candidate => [candidate.id, candidate]));
+      const candidates = Array.from(byId.values()).sort((a, b) => a.id.localeCompare(b.id));
+      if (!item.localHash || candidates.length < 2) {
+        unresolvedPaths.push(item.path);
+        continue;
+      }
+
+      const distinctHashes = new Set(candidates.map(candidate => candidate.resolvedSha256));
+      const matchingLocal = candidates.filter(candidate => candidate.matchesLocal === true);
+
+      if (distinctHashes.size === 1 && matchingLocal.length === candidates.length) {
+        const keep = candidates[0];
+        resolutions.push({
+          path: item.path,
+          keepFileId: keep.id,
+          trashFileIds: candidates.slice(1).map(candidate => candidate.id),
+          reason: 'byte_identical',
+        });
+        continue;
+      }
+
+      if (matchingLocal.length === 1) {
+        const keep = matchingLocal[0];
+        resolutions.push({
+          path: item.path,
+          keepFileId: keep.id,
+          trashFileIds: candidates.filter(candidate => candidate.id !== keep.id).map(candidate => candidate.id),
+          reason: 'single_local_match',
+        });
+        continue;
+      }
+
+      unresolvedPaths.push(item.path);
+    }
+
+    return {
+      resolutions,
+      unresolvedPaths,
+      totalTrashFiles: resolutions.reduce((total, resolution) => total + resolution.trashFileIds.length, 0),
+    };
+  }
+
+  async trashSafePairingDuplicates(summary: PairingSummary): Promise<SafeDuplicateTrashResult> {
+    const plan = this.buildSafeDuplicateTrashPlan(summary);
+    const result: SafeDuplicateTrashResult = {
+      trashed: 0,
+      resolvedPaths: 0,
+      skippedPaths: [],
+      errors: [],
+    };
+    const driveFolderId = this.syncState.driveFolderId || '';
+    if (!driveFolderId) {
+      result.errors.push('No selected Drive vault.');
+      return result;
+    }
+
+    const localInventory = await this.buildLocalInventory();
+    const freshRemoteCandidates = await this.buildRemoteCandidates(driveFolderId);
+    const summaryByPath = new Map(summary.ambiguous.map(item => [item.path, item]));
+
+    for (const resolution of plan.resolutions) {
+      const summaryItem = summaryByPath.get(resolution.path);
+      if (!summaryItem) {
+        result.skippedPaths.push(resolution.path);
+        continue;
+      }
+
+      const currentLocalHash = localInventory.get(resolution.path)?.hash || null;
+      if (currentLocalHash !== summaryItem.localHash) {
+        result.skippedPaths.push(resolution.path);
+        result.errors.push(`Local file changed since scan: ${resolution.path}. Rescan before cleanup.`);
+        continue;
+      }
+
+      const freshById = new Map<string, DriveFileMetadata>();
+      for (const candidate of freshRemoteCandidates.get(resolution.path) ?? []) {
+        if (!freshById.has(candidate.id)) freshById.set(candidate.id, candidate);
+      }
+      const scannedCandidates = summaryItem.remoteCandidates ?? [];
+      if (
+        freshById.size !== scannedCandidates.length ||
+        scannedCandidates.some(candidate => !freshById.has(candidate.id))
+      ) {
+        result.skippedPaths.push(resolution.path);
+        result.errors.push(`Drive candidates changed since scan: ${resolution.path}. Rescan before cleanup.`);
+        continue;
+      }
+
+      const snapshotChanged = scannedCandidates.some(candidate => {
+        const fresh = freshById.get(candidate.id);
+        if (!fresh) return true;
+        return (fresh.modifiedTime || null) !== candidate.modifiedTime ||
+          (fresh.quartzoHash || null) !== candidate.quartzoHash;
+      });
+      if (snapshotChanged) {
+        result.skippedPaths.push(resolution.path);
+        result.errors.push(`Drive content changed since scan: ${resolution.path}. Rescan before cleanup.`);
+        continue;
+      }
+
+      const currentPlan = this.buildSafeDuplicateTrashPlan({
+        identical: [],
+        remoteOnly: [],
+        localOnly: [],
+        divergent: [],
+        ambiguous: [summaryItem],
+      });
+      const currentResolution = currentPlan.resolutions[0];
+      if (
+        !currentResolution ||
+        currentResolution.keepFileId !== resolution.keepFileId ||
+        currentResolution.trashFileIds.join('\0') !== resolution.trashFileIds.join('\0')
+      ) {
+        result.skippedPaths.push(resolution.path);
+        result.errors.push(`Safe duplicate plan changed: ${resolution.path}. Rescan before cleanup.`);
+        continue;
+      }
+
+      let pathComplete = true;
+      for (const fileId of resolution.trashFileIds) {
+        try {
+          await this.driveAdapter.trashFile(fileId);
+          result.trashed++;
+        } catch (error) {
+          pathComplete = false;
+          result.errors.push(`Failed to move duplicate ${fileId} for ${resolution.path} to Drive trash: ${error}`);
+        }
+      }
+      if (pathComplete) result.resolvedPaths++;
+    }
+
+    return result;
   }
 
   async applyPairingDecisions(summary: PairingSummary, decisions: { autoAdopt: boolean; autoPull: boolean }): Promise<SyncResult> {
