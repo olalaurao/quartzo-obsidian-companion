@@ -6,7 +6,7 @@ This runbook covers the first installable beta of the Quartzo Obsidian Companion
 
 - Desktop only.
 - OAuth uses a Google **Desktop app** client with loopback `127.0.0.1` and PKCE.
-- The build embeds only the OAuth **Client ID**. A client secret is never required or bundled.
+- The release build embeds the Google Desktop OAuth **Client ID** and its generated **client credential** because Google's token endpoint requires that value for this client. Desktop/native apps are public clients and cannot keep this credential confidential; PKCE remains mandatory and user tokens remain device-secret.
 - User refresh tokens remain in Obsidian `SecretStorage`.
 - Release tags must point to commits contained in `main`.
 - `package.json`, `manifest.json`, `versions.json`, and the Git tag must describe the same release version.
@@ -24,17 +24,20 @@ This runbook covers the first installable beta of the Quartzo Obsidian Companion
    - `https://www.googleapis.com/auth/drive`
    - `https://www.googleapis.com/auth/calendar.readonly`
 6. In **Clients**, create a client with application type **Desktop app**.
-7. Copy the generated **Client ID** ending in `.apps.googleusercontent.com`.
-   - Do not add a client secret to the repository or the plugin.
+7. Copy the generated **Client ID** ending in `.apps.googleusercontent.com` and the **Client secret** generated for that same Desktop app client.
+   - Do not commit either credential to the repository source tree.
+   - Store both values only as GitHub Actions repository secrets for release builds.
+   - The Desktop client credential is bundled into the distributed desktop artifact and therefore is not a confidentiality boundary; authorization-code PKCE and per-user tokens remain the security boundary.
    - Do not create a Web application client for the desktop loopback flow.
 
 ## GitHub repository setup
 
-Create the repository secret:
+Create these repository secrets:
 
-`QUARTZO_GOOGLE_DESKTOP_CLIENT_ID`
+- `QUARTZO_GOOGLE_DESKTOP_CLIENT_ID` — the Desktop OAuth Client ID from Google Cloud.
+- `QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET` — the Client secret generated for that same Desktop OAuth client.
 
-Its value is the Desktop OAuth Client ID from Google Cloud.
+Never paste either value into committed source files or release notes.
 
 The existing `QUARTZO_UPSTREAM_TOKEN` remains responsible only for reading the private canonical upstream contracts during CI/release.
 
