@@ -1103,15 +1103,15 @@ function checkSharedSettingsReloadReindexesVault() {
     return false;
   }
 
-  const createHook = "normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { void this.reloadSharedSettingsAndIndex(); return; }";
+  const directHook = "normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { void this.reloadSharedSettingsAndIndex(); return; }";
   const renameHook = "normalizeVaultPath(oldPath) === SHARED_SETTINGS_PATH || normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH";
-  const createModifyCount = main.split(createHook).length - 1;
-  if (createModifyCount < 2 || !main.includes(renameHook)) {
-    console.error('FAIL: Shared settings create/modify/rename events must route through canonical reindex');
+  const createModifyDeleteCount = main.split(directHook).length - 1;
+  if (createModifyDeleteCount < 3 || !main.includes(renameHook)) {
+    console.error('FAIL: Shared settings create/modify/delete/rename events must route through canonical reindex');
     return false;
   }
 
-  console.log('PASS: Shared settings changes reload the canonical settings projection and vault index');
+  console.log('PASS: Shared settings create/modify/delete/rename reload the canonical settings projection and vault index');
   return true;
 }
 
