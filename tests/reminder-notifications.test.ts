@@ -22,29 +22,32 @@ function occurrence(): ReminderDeliveryOccurrence {
 
 describe('ObsidianReminderDeliveryGateway', () => {
   it('opens the delivered occurrence target when a desktop notification is clicked', async () => {
-    let click: (() => void) | null = null;
-    let opened: ReminderDeliveryOccurrence | null = null;
+    const state: {
+      click?: () => void;
+      opened?: ReminderDeliveryOccurrence;
+    } = {};
     const api: DesktopNotificationApi = {
       permission: 'granted',
       requestPermission: async () => 'granted',
       create: () => ({
         setOnClick(handler) {
-          click = handler;
+          state.click = handler;
         },
       }),
     };
     const gateway = new ObsidianReminderDeliveryGateway(
       () => false,
-      value => { opened = value; },
+      value => { state.opened = value; },
       api,
     );
     const value = occurrence();
 
     await gateway.deliver(value, 'desktop_notifications');
-    expect(click).not.toBeNull();
-    click?.();
-    expect(opened?.sourceId).toBe('task-1');
-    expect(opened?.reminderId).toBe('reminder-1');
+    expect(state.click).toBeTypeOf('function');
+    if (!state.click) throw new Error('Desktop notification click handler was not registered.');
+    state.click();
+    expect(state.opened?.sourceId).toBe('task-1');
+    expect(state.opened?.reminderId).toBe('reminder-1');
   });
 
   it('does not expose sensitive title/body when privacy mode is enabled', async () => {
