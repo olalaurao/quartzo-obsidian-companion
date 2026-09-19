@@ -1840,4 +1840,33 @@ describe('Runtime Sync Tests', () => {
     expect((await coordinator.getSyncStatusSnapshot()).status).not.toBe('syncing');
   });
 
+  it('46: manual-mode startup hydrates persisted sync history without starting network reconciliation', async () => {
+    const statePath = path.join(tmpDir, 'manual-startup-state.json');
+    const localPath = path.join(tmpDir, 'hydrated.md');
+    const content = Buffer.from('persisted baseline');
+    fs.writeFileSync(localPath, content);
+
+    const firstAdapter = new FakeDriveAdapter();
+    firstAdapter.addRemoteFile('hydrated.md', content);
+    const firstCoordinator = new DriveSyncCoordinator(firstAdapter, tmpDir, statePath);
+    const firstResult = await firstCoordinator.reconcile();
+    expect(firstResult.errors).toEqual([]);
+    expect(firstCoordinator.getSyncState().lastSyncTime).toBeGreaterThan(0);
+    expect(fs.existsSync(statePath)).toBe(true);
+
+    const restoredAdapter = new FakeDriveAdapter();
+    const restoredCoordinator = new DriveSyncCoordinator(restoredAdapter, tmpDir, statePath);
+
+    await restoredCoordinator.hydratePersistedState();
+    const snapshot = await restoredCoordinator.getSyncStatusSnapshot();
+
+    expect(snapshot.lastSuccessfulSyncAt).toBeTruthy();
+    expect(snapshot.pendingLocalChanges).toBe(0);
+    expect(snapshot.status).toBe('synced');
+    expect(restoredAdapter.listFilesCalls).toBe(0);
+    expect(restoredAdapter.listChangesCalls).toBe(0);
+    expect(restoredAdapter.downloadCalls).toBe(0);
+    expect(restoredAdapter.uploadCalls).toBe(0);
+  });
+
 });
