@@ -1,10 +1,17 @@
 import type { NormalizedItem, NormalizedSchedule } from '../../core/daily_schedule/types';
 import { localIsoDate } from '../../core/local-date';
 
+export interface HomeProgress {
+  completed: number;
+  total: number;
+}
+
 export interface HomeScheduleProjection {
   now: NormalizedItem[];
   upNext: NormalizedItem[];
   today: NormalizedItem[];
+  taskProgress: HomeProgress;
+  habitProgress: HomeProgress;
 }
 
 function minutesFromClock(value: string | undefined): number | null {
@@ -19,6 +26,14 @@ function minutesFromClock(value: string | undefined): number | null {
   return hour * 60 + minute;
 }
 
+function progressFor(items: NormalizedItem[], sourceType: string): HomeProgress {
+  const relevant = items.filter(item => item.sourceType === sourceType && item.isCompletable);
+  return {
+    completed: relevant.filter(item => item.isCompleted).length,
+    total: relevant.length,
+  };
+}
+
 /**
  * Pure presentation projection over the canonical Daily Schedule result.
  * It never decides recurrence, overdue membership, completion, or capabilities.
@@ -29,8 +44,11 @@ export function projectHomeSchedule(
   now: Date,
 ): HomeScheduleProjection {
   const today = [...schedule.items];
+  const taskProgress = progressFor(today, 'task');
+  const habitProgress = progressFor(today, 'habit');
+
   if (selectedDate !== localIsoDate(now)) {
-    return { now: [], upNext: [], today };
+    return { now: [], upNext: [], today, taskProgress, habitProgress };
   }
 
   const currentMinute = now.getHours() * 60 + now.getMinutes();
@@ -54,5 +72,5 @@ export function projectHomeSchedule(
     ? []
     : future.filter(candidate => candidate.start === nextStart).map(candidate => candidate.item);
 
-  return { now: active, upNext, today };
+  return { now: active, upNext, today, taskProgress, habitProgress };
 }
