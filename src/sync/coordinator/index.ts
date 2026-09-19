@@ -548,7 +548,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
       if (!forceFull && this.syncState.driveChangeToken) {
         this.reportSyncProgress({ phase: 'processing_changes', completed: 0, total: 0 }, onProgress);
-        await this.processChanges(localInventory, result);
+        await this.processChanges(localInventory, result, onProgress);
 
         this.reportSyncProgress({ phase: 'processing_local_changes', completed: 0, total: 0 }, onProgress);
         const freshLocalInventory = await this.buildLocalInventory();
@@ -557,7 +557,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
           completed: 0,
           total: freshLocalInventory.size,
         }, onProgress);
-        await this.processLocalDirty(freshLocalInventory, result);
+        await this.processLocalDirty(freshLocalInventory, result, onProgress);
         this.reportSyncProgress({
           phase: 'processing_local_changes',
           completed: freshLocalInventory.size,
@@ -806,9 +806,11 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
   private async processChanges(
     localInventory: Map<string, { hash: string; exists: boolean }>,
-    result: SyncResult
+    result: SyncResult,
+    onProgress?: (progress: SyncProgress) => void
   ): Promise<void> {
     let pageToken = this.syncState.driveChangeToken;
+    let processedChanges = 0;
     let newStartPageToken: string | null = null;
     const driveFolderId = this.syncState.driveFolderId || '';
 
@@ -817,6 +819,13 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       newStartPageToken = response.newStartPageToken;
 
       for (const change of response.changes) {
+        processedChanges++;
+        this.reportSyncProgress({
+          phase: 'processing_changes',
+          completed: processedChanges,
+          total: 0,
+          currentPath: change.file?.relativePath || change.file?.name || change.fileId,
+        }, onProgress);
         // Drive Changes may report a trashed resource as an ordinary file
         // change (removed=false). Trashed resources are remote absence, never
         // live path candidates, otherwise a recently cleaned duplicate can
@@ -1034,14 +1043,26 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
   private async processLocalDirty(
     localInventory: Map<string, { hash: string; exists: boolean }>,
-    result: SyncResult
+    result: SyncResult,
+    onProgress?: (progress: SyncProgress) => void
   ): Promise<void> {
     const processedPaths = new Set<string>();
+    let localProgressCompleted = 0;
+    const reportLocalProgress = (currentPath?: string) => {
+      localProgressCompleted++;
+      this.reportSyncProgress({
+        phase: 'processing_local_changes',
+        completed: localProgressCompleted,
+        total: 0,
+        ...(currentPath ? { currentPath } : {}),
+      }, onProgress);
+    };
     const driveFolderId = this.syncState.driveFolderId || '';
 
     const remainingRenames: PendingRename[] = [];
     let renameRemoteInventory: DriveFileMetadata[] | null = null;
     for (const rename of this.pendingRenames) {
+      reportLocalProgress(rename.newPath);
       const oldSyncFile = this.syncState.files.get(rename.oldPath);
       if (!oldSyncFile || !oldSyncFile.remoteFileId) {
         continue; // Discard invalid intents
@@ -1089,6 +1110,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     this.pendingRenames = remainingRenames;
 
     for (const deletedPath of this.pendingDeletes) {
+      reportLocalProgress(deletedPath);
       if (this.conflicts.has(deletedPath)) {
         processedPaths.add(deletedPath);
         continue;
@@ -1111,6 +1133,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     this.pendingDeletes.clear();
 
     for (const [syncedPath, syncFile] of this.syncState.files) {
+      reportLocalProgress(syncedPath);
       if (processedPaths.has(syncedPath) || this.conflicts.has(syncedPath)) {
         processedPaths.add(syncedPath);
         continue;
@@ -1132,6 +1155,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
     for (const [localPath, localFile] of localInventory) {
       const normalizedLocal = normalizeVaultPath(localPath);
+      reportLocalProgress(normalizedLocal);
       if (!VaultSyncFilePolicy.shouldSyncFile(normalizedLocal)) continue;
       if (processedPaths.has(normalizedLocal) || this.conflicts.has(normalizedLocal)) {
         processedPaths.add(normalizedLocal);
