@@ -62,6 +62,7 @@ export interface ViewContext {
     reauthorizeGoogleCalendar(): Promise<void>;
     setReminderDelivery(mode: ReminderMode): Promise<void>;
     getOccurrenceResponses(): Record<string, OccurrenceResponseState>;
+    getSharedSettingsState(): 'loading' | 'ready' | 'missing';
     performOccurrenceAction(
       item: NormalizedItem,
       action: CanonicalOccurrenceAction,
