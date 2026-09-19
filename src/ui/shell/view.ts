@@ -2,11 +2,12 @@ import { ItemView, Notice, WorkspaceLeaf } from 'obsidian';
 import { DailyScheduleEngine } from '../../core/daily_schedule';
 import type { NormalizedItem } from '../../core/daily_schedule/types';
 import type { GoogleCalendarProjection } from '../../integrations/google/calendar';
-import { addLocalDays, daysInLocalMonth, localIsoDate, parseLocalIsoDate, shiftLocalMonth } from '../../core/local-date';
+import { addLocalDays, localIsoDate, parseLocalIsoDate, shiftLocalMonth } from '../../core/local-date';
 import { chooseNewestConflictResolution, type SyncProgress } from '../../sync/coordinator';
 import { VaultIndexEngine } from '../../vault/index';
 import { renderObjectDetail } from '../detail/object-detail';
 import { renderHomeView } from '../home/view';
+import { renderPlannerSurface, type PlannerDayLens } from '../planner/view';
 import { renderScheduleList as renderDailyScheduleList } from '../daily/schedule-list';
 import { projectJournalDay } from '../journal/journal-projection';
 import {
@@ -86,6 +87,7 @@ export class QuartzoView extends ItemView {
   private selectedObjectId: string | null = null;
   private selectedDate = isoDate(new Date());
   private plannerMode: 'day' | 'week' | 'month' = 'day';
+  private plannerDayLens: PlannerDayLens = 'timeline';
   private sharedSettingsRepository: SharedSettingsRepository;
   private syncProgressTickerId: number | null = null;
 
@@ -269,20 +271,6 @@ export class QuartzoView extends ItemView {
     });
   }
 
-  private renderScheduleItems(container: HTMLElement, date: string, googleEvents: GoogleCalendarProjection[] = []): void {
-    const schedule = this.buildSchedule(date, googleEvents);
-    const heading = document.createElement('h3');
-    heading.textContent = date;
-    container.appendChild(heading);
-    if (schedule.items.length === 0) {
-      const empty = document.createElement('p');
-      empty.textContent = 'Nothing scheduled.';
-      container.appendChild(empty);
-      return;
-    }
-    this.renderScheduleList(container, schedule.items, googleEvents);
-  }
-
   private async renderHome(container: HTMLElement): Promise<void> {
     const googleEvents = await this.context.plugin.listGoogleCalendarEvents(this.selectedDate, 1);
     const schedule = this.buildSchedule(this.selectedDate, googleEvents);
@@ -313,6 +301,7 @@ export class QuartzoView extends ItemView {
     container.appendChild(title);
 
     const controls = document.createElement('div');
+    controls.className = 'quartzo-planner-controls';
     const previous = document.createElement('button');
     previous.textContent = '‹';
     previous.addEventListener('click', () => {
@@ -352,37 +341,73 @@ export class QuartzoView extends ItemView {
       const button = document.createElement('button');
       button.textContent = labelForType(mode);
       if (mode === this.plannerMode) button.classList.add('is-active');
-      button.addEventListener('click', () => { this.plannerMode = mode; void this.render(); });
+      button.addEventListener('click', () => {
+        this.plannerMode = mode;
+        void this.render();
+      });
       controls.appendChild(button);
     }
     container.appendChild(controls);
 
+    const settings = await this.sharedSettingsRepository.load();
     const selected = parseIsoDate(this.selectedDate);
+    let googleEvents: GoogleCalendarProjection[] = [];
+    let schedule = this.buildSchedule(this.selectedDate);
+    const schedulesByDate = new Map<string, ReturnType<QuartzoView['buildSchedule']>>();
+
     if (this.plannerMode === 'day') {
-      const googleEvents = await this.context.plugin.listGoogleCalendarEvents(this.selectedDate, 1);
-      this.renderScheduleItems(container, this.selectedDate, googleEvents);
-      return;
-    }
-
-    if (this.plannerMode === 'week') {
-      const settings = await this.sharedSettingsRepository.load();
+      googleEvents = await this.context.plugin.listGoogleCalendarEvents(this.selectedDate, 1);
+      schedule = this.buildSchedule(this.selectedDate, googleEvents);
+    } else if (this.plannerMode === 'week') {
       const startOfWeek = settings?.startOfWeek ?? 1;
-      const weekday = selected.getDay();
-      const delta = (weekday - startOfWeek + 7) % 7;
-      const start = addDays(selected, -delta);
-      const googleEvents = await this.context.plugin.listGoogleCalendarEvents(isoDate(start), 7);
-      for (let i = 0; i < 7; i++) this.renderScheduleItems(container, isoDate(addDays(start, i)), googleEvents);
-      return;
+      const delta = (selected.getDay() - startOfWeek + 7) % 7;
+      const startDate = addDays(selected, -delta);
+      const start = isoDate(startDate);
+      googleEvents = await this.context.plugin.listGoogleCalendarEvents(start, 7);
+      for (let index = 0; index < 7; index++) {
+        const date = isoDate(addDays(startDate, index));
+        schedulesByDate.set(date, this.buildSchedule(date, googleEvents));
+      }
+    } else {
+      const first = new Date(selected.getFullYear(), selected.getMonth(), 1);
+      const startOfWeek = settings?.startOfWeek ?? 1;
+      const leading = (first.getDay() - startOfWeek + 7) % 7;
+      const gridStart = addDays(first, -leading);
+      const start = isoDate(gridStart);
+      googleEvents = await this.context.plugin.listGoogleCalendarEvents(start, 42);
+      for (let index = 0; index < 42; index++) {
+        const date = isoDate(addDays(gridStart, index));
+        schedulesByDate.set(date, this.buildSchedule(date, googleEvents));
+      }
     }
 
-    const year = selected.getFullYear();
-    const month = selected.getMonth();
-    const days = daysInLocalMonth(selected);
-    const monthStart = isoDate(new Date(year, month, 1));
-    const googleEvents = await this.context.plugin.listGoogleCalendarEvents(monthStart, days);
-    for (let day = 1; day <= days; day++) {
-      this.renderScheduleItems(container, isoDate(new Date(year, month, day)), googleEvents);
-    }
+    renderPlannerSurface(container, {
+      app: this.context.app,
+      mode: this.plannerMode,
+      dayLens: this.plannerDayLens,
+      selectedDate: this.selectedDate,
+      now: new Date(),
+      schedule,
+      schedulesByDate,
+      sharedSettings: settings,
+      titleForItem: item => this.titleForScheduleItem(item, googleEvents),
+      canOpenItem: item => this.getIndex()?.objects.has(item.sourceId) === true,
+      onOpenItem: item => {
+        const object = this.getIndex()?.objects.get(item.sourceId);
+        if (object) this.openObjectDetail(object);
+      },
+      performOccurrenceAction: (item, action, options) =>
+        this.context.plugin.performOccurrenceAction(item, action, options),
+      onDayLensChange: lens => {
+        this.plannerDayLens = lens;
+        void this.render();
+      },
+      onSelectDate: date => {
+        this.selectedDate = date;
+        this.plannerMode = 'day';
+        void this.render();
+      },
+    });
   }
 
   private async renderJournal(container: HTMLElement): Promise<void> {
