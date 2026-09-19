@@ -76,4 +76,39 @@ describe('Daily Schedule presentation capability projection', () => {
       origin: 'externalEvent',
     });
   });
+
+  it('projects shared occurrence response state using the app canonical dated id', () => {
+    const result = DailyScheduleEngine.normalize({
+      date: '2026-09-19',
+      objects: [{
+        id: 'task-1',
+        type: 'task',
+        title: 'Ship beta',
+        stage: 'todo',
+        start_date: '2026-09-19',
+        time: '09:00',
+        __path: 'tasks/task-1.md',
+      }],
+      occurrenceResponses: {
+        'task:task-1@2026-09-19': {
+          occurrenceId: 'task:task-1@2026-09-19',
+          sourceId: 'task-1',
+          dueAt: '2026-09-19T09:00:00.000',
+          completedAt: '2026-09-19T10:00:00.000',
+          ignoredCount: 0,
+          processedActionIds: ['work-pc:done'],
+        },
+      },
+    });
+
+    expect(result.items[0]).toMatchObject({
+      id: 'task:task-1',
+      occurrenceId: 'task-1',
+      actionOccurrenceId: 'task:task-1@2026-09-19',
+      isCompleted: true,
+      isSkipped: false,
+      outcome: 'done',
+    });
+  });
+
 });
