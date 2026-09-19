@@ -1,6 +1,5 @@
 import { ItemView, Notice, WorkspaceLeaf } from 'obsidian';
 import { DailyScheduleEngine } from '../../core/daily_schedule';
-import { OccurrenceActionPolicy, companionOccurrenceDomainMode } from '../../core/occurrence_actions';
 import type { NormalizedItem } from '../../core/daily_schedule/types';
 import type { GoogleCalendarProjection } from '../../integrations/google/calendar';
 import { addLocalDays, daysInLocalMonth, localIsoDate, parseLocalIsoDate, shiftLocalMonth } from '../../core/local-date';
@@ -14,8 +13,8 @@ import {
 } from '../../vault/shared-settings';
 import type { IndexedObject, VaultIndex } from '../../vault/index/types';
 import { QuickAddModal } from '../quick-add/modal';
-import { promptAlreadyDid, promptSnoozeMinutes } from '../occurrence/action-input-modal';
 import type { ViewContext } from '../types';
+import { renderOccurrenceActionControls } from '../occurrence/action-controls';
 import { buildConflictDiff, formatConflictDiff } from '../sync/conflict-diff';
 
 export const QUARTZO_VIEW_TYPE = 'quartzo-view';
@@ -271,81 +270,12 @@ export class QuartzoView extends ItemView {
         label.addEventListener('click', () => this.openObjectDetail(object));
       }
 
-      const capabilities = OccurrenceActionPolicy.resolve({
-        sourceType: item.sourceType,
-        outcome: item.outcome,
-        completable: item.isCompletable,
-        playable: item.isPlayable,
-        reminderId: item.reminderId,
-        restrictionMetadata: item.restrictionMetadata,
-        completed: item.isCompleted,
+      renderOccurrenceActionControls(row, {
+        app: this.context.app,
+        item,
+        perform: (action, options) =>
+          this.context.plugin.performOccurrenceAction(item, action, options),
       });
-
-      const actionRow = document.createElement('span');
-      actionRow.className = 'quartzo-occurrence-actions';
-      const runAction = async (
-        action: 'done' | 'already_did' | 'skip' | 'clear' | 'snooze',
-        options: { completedAt?: Date; snoozeMinutes?: number } = {},
-      ) => {
-        const buttons = Array.from(actionRow.querySelectorAll('button'));
-        for (const button of buttons) button.disabled = true;
-        try {
-          await this.context.plugin.performOccurrenceAction(item, action, options);
-        } catch (error) {
-          for (const button of buttons) button.disabled = false;
-          new Notice(`Occurrence action blocked: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      };
-      const addAction = (labelText: string, onClick: () => void) => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.textContent = labelText;
-        button.addEventListener('click', event => {
-          event.preventDefault();
-          event.stopPropagation();
-          onClick();
-        });
-        actionRow.appendChild(button);
-      };
-
-      const domainMode = companionOccurrenceDomainMode(item.sourceType);
-      if (item.outcome !== 'pending') {
-        const status = document.createElement('small');
-        status.className = 'quartzo-occurrence-status';
-        status.textContent = capabilities.statusLabel ?? (item.outcome === 'done' ? 'Done' : 'Skipped');
-        actionRow.appendChild(status);
-        if (
-          capabilities.clearOutcomeLabel &&
-          (domainMode !== 'unsupported' || item.outcome === 'skipped')
-        ) {
-          addAction(capabilities.clearOutcomeLabel, () => { void runAction('clear'); });
-        }
-      } else {
-        if (capabilities.canReportDone && domainMode !== 'unsupported') {
-          addAction(capabilities.doneLabel ?? 'Done', () => { void runAction('done'); });
-        }
-        if (capabilities.canAlreadyDid && domainMode !== 'unsupported') {
-          addAction('Already did', () => {
-            void (async () => {
-              const completedAt = await promptAlreadyDid(this.context.app);
-              if (completedAt) await runAction('already_did', { completedAt });
-            })();
-          });
-        }
-        if (capabilities.canSkip) {
-          addAction(capabilities.skipLabel ?? 'Skip', () => { void runAction('skip'); });
-        }
-        if (capabilities.canSnooze) {
-          addAction('Snooze', () => {
-            void (async () => {
-              const snoozeMinutes = await promptSnoozeMinutes(this.context.app);
-              if (snoozeMinutes != null) await runAction('snooze', { snoozeMinutes });
-            })();
-          });
-        }
-      }
-
-      if (actionRow.childElementCount > 0) row.appendChild(actionRow);
       list.appendChild(row);
     }
     container.appendChild(list);
