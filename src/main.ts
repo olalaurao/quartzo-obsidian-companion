@@ -342,6 +342,13 @@ export default class QuartzoCompanionPlugin extends Plugin {
     }
   }
 
+  async openGoogleCalendarEvent(event: GoogleCalendarProjection): Promise<void> {
+    if (!event.htmlLink) {
+      throw new Error('Google Calendar event does not provide an external link.');
+    }
+    await this.browserOpener.open(event.htmlLink);
+  }
+
   async reauthorizeGoogleCalendar(): Promise<void> {
     const config = await this.getResolvedOAuthConfig();
     if (!config) {
