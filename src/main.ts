@@ -435,7 +435,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     if (domainMode === 'unsupported' && action === 'clear' && item.outcome === 'done') {
       throw new Error(`${item.sourceType} completed evidence cannot be undone safely yet.`);
     }
-    if (item.origin === 'externalEvent' && action !== 'skip' && action !== 'already_did') {
+    if (item.origin === 'externalEvent' && !['skip', 'clear', 'already_did'].includes(action)) {
       throw new Error('This external event action is not supported by the Companion.');
     }
 
