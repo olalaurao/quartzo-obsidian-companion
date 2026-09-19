@@ -149,3 +149,196 @@
   font-weight: 600;
 }
 
+/* Home / canonical daily surfaces */
+.quartzo-home-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.quartzo-home-date {
+  color: var(--text-muted);
+  text-transform: capitalize;
+}
+
+.quartzo-home-section {
+  margin-block: 18px;
+}
+
+.quartzo-home-progress {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  margin-block: 8px 12px;
+}
+
+.quartzo-home-progress-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+}
+
+.quartzo-home-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.quartzo-empty-state {
+  color: var(--text-muted);
+}
+
+/* Canonical 24-hour Day Dial */
+.quartzo-day-dial {
+  min-width: 0;
+}
+
+.quartzo-day-dial-viewport {
+  width: min(100%, 430px);
+  margin-inline: auto;
+}
+
+.quartzo-day-dial-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  color: var(--interactive-accent);
+}
+
+.quartzo-day-dial-ring {
+  fill: none;
+  stroke: var(--background-modifier-border);
+  stroke-width: 2;
+}
+
+.quartzo-day-dial-tick,
+.quartzo-day-dial-tick-major {
+  stroke: var(--text-faint);
+  stroke-width: 1;
+}
+
+.quartzo-day-dial-tick-major {
+  stroke: var(--text-muted);
+  stroke-width: 2;
+}
+
+.quartzo-day-dial-hour-label {
+  fill: var(--text-muted);
+  font-size: 11px;
+  user-select: none;
+}
+
+.quartzo-day-dial-arc {
+  fill: none;
+  stroke: var(--interactive-accent);
+  stroke-width: 8;
+  stroke-linecap: round;
+  transition: opacity 120ms ease, stroke-width 120ms ease;
+}
+
+.quartzo-day-dial-marker {
+  stroke: var(--interactive-accent);
+  stroke-width: 6;
+  stroke-linecap: round;
+  transition: opacity 120ms ease, stroke-width 120ms ease;
+}
+
+.quartzo-day-dial-now {
+  stroke: var(--text-accent);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
+.quartzo-day-dial-interactive {
+  cursor: pointer;
+}
+
+.quartzo-day-dial-interactive:hover,
+.quartzo-day-dial-interactive:focus {
+  opacity: 0.78;
+  outline: none;
+}
+
+.quartzo-day-dial-interactive:focus {
+  stroke-width: 11;
+}
+
+.quartzo-day-dial-all-day {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-block: 6px;
+}
+
+.quartzo-day-dial-chip {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quartzo-day-dial-legend {
+  display: grid;
+  gap: 4px;
+  padding-inline-start: 0;
+  margin-block: 8px 0;
+  list-style: none;
+}
+
+.quartzo-day-dial-legend-row {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px;
+  border-radius: var(--radius-s);
+}
+
+.quartzo-day-dial-legend-row.quartzo-clickable:hover,
+.quartzo-day-dial-legend-row.quartzo-clickable:focus {
+  background: var(--background-modifier-hover);
+  outline: none;
+}
+
+.quartzo-day-dial-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--interactive-accent);
+}
+
+.quartzo-schedule-row.is-completed,
+.quartzo-day-dial-legend-row.is-completed,
+.quartzo-day-dial-chip.is-completed,
+.quartzo-day-dial-arc.is-completed,
+.quartzo-day-dial-marker.is-completed {
+  opacity: 0.58;
+}
+
+.quartzo-schedule-row.is-skipped,
+.quartzo-day-dial-legend-row.is-skipped,
+.quartzo-day-dial-chip.is-skipped,
+.quartzo-day-dial-arc.is-skipped,
+.quartzo-day-dial-marker.is-skipped {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+@media (max-width: 520px) {
+  .quartzo-day-dial-viewport {
+    width: 100%;
+  }
+
+  .quartzo-home-progress {
+    grid-template-columns: 1fr;
+  }
+}
+
