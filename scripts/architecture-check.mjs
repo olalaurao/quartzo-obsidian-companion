@@ -1119,8 +1119,9 @@ function checkProductionAuditGateResilience() {
   const workflow = fs.readFileSync(path.join(rootDir, '.github/workflows/ci.yml'), 'utf8');
   const script = fs.readFileSync(path.join(rootDir, 'scripts/audit-prod.mjs'), 'utf8');
   const workflowUses = workflow.split('node scripts/audit-prod.mjs').length - 1;
-  if (workflowUses < 2) {
-    console.error('FAIL: Linux and Windows CI must both use the canonical production audit gate');
+  const pinnedAuditClientUses = workflow.split('npm install --global npm@11.19.1').length - 1;
+  if (workflowUses < 2 || pinnedAuditClientUses < 2) {
+    console.error('FAIL: Linux and Windows CI must both use the canonical production audit gate with the pinned modern npm audit client');
     return false;
   }
   if (!script.includes('MAX_ATTEMPTS = 3') ||
