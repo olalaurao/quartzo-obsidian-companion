@@ -547,13 +547,68 @@ function checkDriveQuotaResilience() {
     console.error('FAIL: Recursive Drive inventory retries the whole traversal instead of only the failed page');
     return false;
   }
-  if (!coordinator.includes('pairingRemoteHashCache') ||
+  if (!coordinator.includes('remoteHashCache') ||
       !coordinator.includes('cached.modifiedTime === modifiedTime') ||
-      !coordinator.includes('resolvePairingRemoteHash')) {
-    console.error('FAIL: Pairing rescans do not reuse proven legacy hashes by remote ID + modifiedTime');
+      !coordinator.includes('resolveRemoteHashCached')) {
+    console.error('FAIL: Pairing/full reconciliation do not reuse proven legacy hashes by remote ID + modifiedTime');
     return false;
   }
-  console.log('PASS: Drive quota handling backs off per request and pairing rescans reuse proven hashes');
+  console.log('PASS: Drive quota handling backs off per request and sync rescans reuse proven hashes');
+  return true;
+}
+
+function checkDriveTimeoutsAndSyncProgress() {
+  const adapterPath = path.join(rootDir, 'src/integrations/google/drive/adapter.ts');
+  const coordinatorPath = path.join(rootDir, 'src/sync/coordinator/index.ts');
+  const viewPath = path.join(rootDir, 'src/ui/shell/view.ts');
+  const typesPath = path.join(rootDir, 'src/sync/coordinator/types.ts');
+  const adapter = fs.readFileSync(adapterPath, 'utf8');
+  const coordinator = fs.readFileSync(coordinatorPath, 'utf8');
+  const view = fs.readFileSync(viewPath, 'utf8');
+  const types = fs.readFileSync(typesPath, 'utf8');
+
+  if (!adapter.includes('const DRIVE_REQUEST_TIMEOUT_MS') ||
+      !adapter.includes('const DRIVE_MEDIA_REQUEST_TIMEOUT_MS') ||
+      !adapter.includes('{ timeout: DRIVE_REQUEST_TIMEOUT_MS }') ||
+      !adapter.includes('timeout: DRIVE_MEDIA_REQUEST_TIMEOUT_MS') ||
+      !adapter.includes('private isTimeoutError(error: unknown)') ||
+      !types.includes('export class DriveRequestTimeoutError') ||
+      !adapter.includes('throw new DriveRequestTimeoutError')) {
+    console.error('FAIL: Google Drive requests can remain unbounded or timeout errors are not typed canonically');
+    return false;
+  }
+
+  const requiredPhases = [
+    "'local_inventory'",
+    "'remote_inventory'",
+    "'resolving_paths'",
+    "'hashing_remote'",
+    "'processing_changes'",
+    "'processing_local_changes'",
+    "'reconciling'",
+    "'finalizing'",
+  ];
+  if (!coordinator.includes('export interface SyncProgress') ||
+      requiredPhases.some(phase => !coordinator.includes(phase)) ||
+      !coordinator.includes('getSyncProgress()') ||
+      !coordinator.includes('beginSyncProgress(') ||
+      !coordinator.includes('reportSyncProgress(') ||
+      !coordinator.includes('this.syncProgress = null') ||
+      !coordinator.includes('REMOTE_HASH_CONCURRENCY = 8')) {
+    console.error('FAIL: Sync/full reconciliation does not expose canonical bounded live progress');
+    return false;
+  }
+
+  if (!view.includes('formatSyncProgress(') ||
+      !view.includes('startSyncProgressTicker(') ||
+      !view.includes('last progress update') ||
+      !view.includes('triggerFullReconciliation(onProgress)') ||
+      !view.includes('triggerManualSync(onProgress)')) {
+    console.error('FAIL: Sync Center does not project coordinator-owned phase/progress/heartbeat state');
+    return false;
+  }
+
+  console.log('PASS: Drive requests are deadline-bounded and sync progress remains coordinator-owned and observable');
   return true;
 }
 
@@ -650,6 +705,7 @@ function main() {
   if (!checkPairingDuplicateCleanupIsReversible()) allPassed = false;
   if (!checkPostPairingDuplicateRecovery()) allPassed = false;
   if (!checkDriveQuotaResilience()) allPassed = false;
+  if (!checkDriveTimeoutsAndSyncProgress()) allPassed = false;
   if (!checkFirstPairingApplyProgress()) allPassed = false;
 
   console.log('\n' + (allPassed ? 'All architecture checks passed' : 'Some architecture checks failed'));
