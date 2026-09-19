@@ -941,6 +941,38 @@ function checkCanonicalUniversalDetailMutation() {
   return true;
 }
 
+
+function checkCanonicalObjectQueryOwner() {
+  const queryPath = path.join(rootDir, 'src/core/object-query/index.ts');
+  const enginePath = path.join(rootDir, 'src/vault/index/engine.ts');
+  const shellPath = path.join(rootDir, 'src/ui/shell/view.ts');
+  const quickAddPath = path.join(rootDir, 'src/ui/quick-add/modal.ts');
+
+  const query = fs.readFileSync(queryPath, 'utf8');
+  const engine = fs.readFileSync(enginePath, 'utf8');
+  const shell = fs.readFileSync(shellPath, 'utf8');
+  const quickAdd = fs.readFileSync(quickAddPath, 'utf8');
+
+  if (!query.includes('index.objects.values()') ||
+      query.includes('new Map(') ||
+      !query.includes('queryVaultObjects(')) {
+    console.error('FAIL: Object query owner is missing or creates a parallel index/cache');
+    return false;
+  }
+
+  if (!engine.includes('return searchVaultObjects(index, query);') ||
+      shell.includes('VaultIndexEngine.searchObjects(') ||
+      !shell.includes('queryVaultObjects(this.getIndex()') ||
+      !quickAdd.includes("queryVaultObjects(index, { types: ['resource'] })") ||
+      !quickAdd.includes("queryVaultObjects(index, { types: ['tracker_definition'] })")) {
+    console.error('FAIL: Search/Browse/pickers can diverge from the canonical VaultIndex query owner');
+    return false;
+  }
+
+  console.log('PASS: Search, Browse and object pickers share one read-only VaultIndex query owner');
+  return true;
+}
+
 function main() {
   console.log('Running architecture/completeness checks...\n');
   let allPassed = true;
@@ -972,6 +1004,7 @@ function main() {
   if (!checkCanonicalHomeAndDayDial()) allPassed = false;
   if (!checkCanonicalPlannerProjection()) allPassed = false;
   if (!checkCanonicalUniversalDetailMutation()) allPassed = false;
+  if (!checkCanonicalObjectQueryOwner()) allPassed = false;
   if (!checkFirstPairingApplyProgress()) allPassed = false;
 
   console.log('\n' + (allPassed ? 'All architecture checks passed' : 'Some architecture checks failed'));
