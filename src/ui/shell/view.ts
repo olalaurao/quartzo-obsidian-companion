@@ -162,6 +162,16 @@ export class QuartzoView extends ItemView {
     await this.render();
   }
 
+  async openObjectById(objectId: string): Promise<boolean> {
+    if (this.getIndex()?.objects.has(objectId) !== true) return false;
+    this.action = null;
+    this.selectedObjectId = objectId;
+    this.editingSelectedObject = false;
+    await this.render();
+    return true;
+  }
+
+
   private getIndex(): VaultIndex | null {
     return this.context.vaultIndexEngine?.getIndex() ?? this.context.plugin.vaultIndexEngine?.getIndex() ?? null;
   }
