@@ -254,8 +254,12 @@ function checkReminderRuntimeBoundaries() {
     console.error('FAIL: Reminder runtime is not lifecycle-managed with device-local default delivery');
     return false;
   }
-  if (!platform.includes("from 'obsidian'") || !platform.includes('requestDesktopPermission()')) {
-    console.error('FAIL: Reminder platform delivery owner is incomplete');
+  if (platform.includes("from 'obsidian'") ||
+      !platform.includes('requestDesktopPermission()') ||
+      !platform.includes('showInObsidianNotice: (message: string) => void') ||
+      !platform.includes('this.showInObsidianNotice(') ||
+      !main.includes('message => { new Notice(message); }')) {
+    console.error('FAIL: Reminder delivery must keep Obsidian Notice side effects at the composition boundary');
     return false;
   }
   if (!registry.includes("node:fs") || registry.includes('app/quartzo_shared_settings.md')) {
