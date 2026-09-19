@@ -58,6 +58,7 @@ export interface ViewContext {
     disconnectDrive(): Promise<void>;
     useWithoutSync(): Promise<void>;
     listGoogleCalendarEvents(startDate: string, days: number): Promise<GoogleCalendarProjection[]>;
+    openGoogleCalendarEvent(event: GoogleCalendarProjection): Promise<void>;
     reauthorizeGoogleCalendar(): Promise<void>;
     setReminderDelivery(mode: ReminderMode): Promise<void>;
     getOccurrenceResponses(): Record<string, OccurrenceResponseState>;
