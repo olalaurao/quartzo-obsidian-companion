@@ -74,7 +74,7 @@ const KNOWN_FIELDS: Record<ObjectType, Set<string>> = {
   project: new Set(['id', 'type', 'title', 'organizer_type', 'rotation_groups', 'rotation_group_count', 'rotation_start_date', 'rotation_time', 'rotation_duration_minutes', 'task_links', 'body']),
   activity: new Set(['id', 'type', 'title', 'organizer_type', 'body']),
   label: new Set(['id', 'type', 'title', 'organizer_type', 'body']),
-  person: new Set(['id', 'type', 'title', 'organizer_type', 'last_contact', 'frequency_days', 'body']),
+  person: new Set(['id', 'type', 'title', 'organizer_type', 'last_contact_date', 'contact_frequency_days', 'contact_priority', 'last_contact', 'frequency_days', 'body']),
   day_theme: new Set(['id', 'type', 'title', 'organizer_type', 'body']),
   time_block: new Set(['id', 'type', 'title', 'organizer_type', 'time_ranges', 'ranges', 'body']),
   value: new Set(['id', 'type', 'title', 'organizer_type', 'body']),
@@ -533,6 +533,9 @@ export class ObjectParser {
           ...baseObject,
           type: 'person',
           organizer_type: 'person',
+          last_contact_date: String(frontmatter.last_contact_date ?? frontmatter.last_contact ?? '') || undefined,
+          contact_frequency_days: Number(frontmatter.contact_frequency_days ?? frontmatter.frequency_days) || undefined,
+          contact_priority: frontmatter.contact_priority as string,
           last_contact: frontmatter.last_contact as string,
           frequency_days: frontmatter.frequency_days as number,
         } as Person;
