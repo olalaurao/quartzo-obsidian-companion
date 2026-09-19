@@ -9,7 +9,7 @@ import { ResourceMetadataService, type ResourceMetadataDraft } from '../../integ
 import type { GoogleCalendarProjection } from '../../integrations/google/calendar';
 import { addLocalDays, daysInLocalMonth, localIsoDate, parseLocalIsoDate, shiftLocalMonth } from '../../core/local-date';
 import { createCanonicalObjectId } from '../../platform/object-id';
-import { chooseNewestConflictResolution } from '../../sync/coordinator';
+import { chooseNewestConflictResolution, type SyncProgress } from '../../sync/coordinator';
 import { VaultIndexEngine } from '../../vault/index';
 import { renderObjectDetail } from '../detail/object-detail';
 import { projectHomeSchedule } from '../home/home-projection';
@@ -40,6 +40,38 @@ function parseIsoDate(value: string): Date {
 function labelForType(type: string): string {
   if (type === 'tracker_record') return 'Record';
   return type.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+}
+
+function formatDurationSeconds(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return minutes > 0 ? `${minutes}m ${remainder}s` : `${remainder}s`;
+}
+
+function formatSyncProgress(progress: SyncProgress | null): string {
+  if (!progress) return 'Sync is active. Waiting for the coordinator to report its current phase…';
+
+  const phaseLabels: Record<SyncProgress['phase'], string> = {
+    local_inventory: 'Scanning local vault',
+    remote_inventory: 'Listing Google Drive vault',
+    resolving_paths: 'Resolving Drive paths',
+    hashing_remote: 'Hashing remote files',
+    processing_changes: 'Processing Drive changes',
+    processing_local_changes: 'Processing local changes',
+    reconciling: 'Reconciling files',
+    finalizing: 'Finalizing sync',
+  };
+  const now = Date.now();
+  const elapsed = formatDurationSeconds((now - progress.startedAt) / 1000);
+  const lastActivity = formatDurationSeconds((now - progress.lastActivityAt) / 1000);
+  const amount = progress.total > 0
+    ? ` · ${progress.completed}/${progress.total} (${Math.min(100, Math.round((progress.completed / progress.total) * 100))}%)`
+    : progress.completed > 0
+      ? ` · ${progress.completed} processed`
+      : '';
+  const current = progress.currentPath ? ` · ${progress.currentPath}` : '';
+  return `${phaseLabels[progress.phase]}${amount}${current} · elapsed ${elapsed} · last progress update ${lastActivity} ago`;
 }
 
 function scheduleObjects(index: VaultIndex | null): Array<Record<string, unknown>> {
