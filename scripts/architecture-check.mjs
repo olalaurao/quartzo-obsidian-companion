@@ -839,6 +839,52 @@ function checkCanonicalHomeAndDayDial() {
   return true;
 }
 
+
+function checkCanonicalPlannerProjection() {
+  const shellPath = path.join(rootDir, 'src/ui/shell/view.ts');
+  const plannerPath = path.join(rootDir, 'src/ui/planner/view.ts');
+  const adaptivePath = path.join(rootDir, 'src/ui/planner/adaptive-projection.ts');
+  const policyPath = path.join(rootDir, 'src/core/occurrence_actions/policy.ts');
+
+  const shell = fs.readFileSync(shellPath, 'utf8');
+  const planner = fs.readFileSync(plannerPath, 'utf8');
+  const adaptive = fs.readFileSync(adaptivePath, 'utf8');
+  const policy = fs.readFileSync(policyPath, 'utf8');
+
+  if (!shell.includes('renderPlannerSurface(container, {') ||
+      !shell.includes('this.buildSchedule(date, googleEvents)') ||
+      !planner.includes('projectAdaptivePlanner(schedule') ||
+      !planner.includes('schedulesByDate') ||
+      !adaptive.includes('OccurrenceActionPolicy.isRecoveryEligible') ||
+      !policy.includes('static isRecoveryEligible(')) {
+    console.error('FAIL: Planner does not project canonical Daily Schedule/Occurrence policy owners');
+    return false;
+  }
+
+  const forbiddenOwners = ['DailyScheduleEngine', 'Scheduler', 'ObjectParser', 'GoogleCalendarAdapter'];
+  if (forbiddenOwners.some(owner => planner.includes(owner) || adaptive.includes(owner))) {
+    console.error('FAIL: Planner UI reintroduces canonical scheduler/parser/integration owners');
+    return false;
+  }
+
+  if (!adaptive.includes('essentials: []') ||
+      !adaptive.includes('capacity: null') ||
+      !adaptive.includes('DailyPlanningState')) {
+    console.error('FAIL: Planner Adaptive can invent Essentials/Capacity without canonical DailyPlanningState input');
+    return false;
+  }
+
+  if (!planner.includes('quartzo-planner-week-grid') ||
+      !planner.includes('quartzo-planner-month-grid') ||
+      !planner.includes('startOfWeek')) {
+    console.error('FAIL: Planner Week/Month are not real shared-settings-aware grid surfaces');
+    return false;
+  }
+
+  console.log('PASS: Planner is a presentation-only projection of canonical Daily Schedule and occurrence policy');
+  return true;
+}
+
 function main() {
   console.log('Running architecture/completeness checks...\n');
   let allPassed = true;
@@ -868,6 +914,7 @@ function main() {
   if (!checkManualStartupStateHydration()) allPassed = false;
   if (!checkCanonicalOccurrenceActions()) allPassed = false;
   if (!checkCanonicalHomeAndDayDial()) allPassed = false;
+  if (!checkCanonicalPlannerProjection()) allPassed = false;
   if (!checkFirstPairingApplyProgress()) allPassed = false;
 
   console.log('\n' + (allPassed ? 'All architecture checks passed' : 'Some architecture checks failed'));
