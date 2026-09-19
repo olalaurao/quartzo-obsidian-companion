@@ -1,5 +1,8 @@
 import { App, Modal, Plugin, PluginSettingTab, Setting, Notice, TFile, TAbstractFile, FileSystemAdapter } from 'obsidian';
 import { VaultIndexEngine } from './vault/index';
+import type { IndexedObject } from './vault/index/types';
+import { SafeObjectMutationRepository } from './vault/object-mutation';
+import type { SafeObjectMutation } from './core/object-mutation';
 import {
   DriveSyncCoordinator,
   type PairingScanProgress,
@@ -15,7 +18,7 @@ import { QuartzoView, QUARTZO_VIEW_TYPE, type QuartzoSection, type QuartzoAction
 import { buildPairingDiagnosticsText } from './ui/sync/pairing-diagnostics';
 import { ViewContext } from './ui/types';
 import { addLocalDays, localIsoDate, parseLocalIsoDate } from './core/local-date';
-import { ReminderService, type ReminderMode, type ReminderSourceObject } from './core/reminders';
+import { ReminderService, type ReminderMode, type ReminderSourceObject, type ReminderDeliveryOccurrence } from './core/reminders';
 import {
   OccurrenceActionService,
   companionOccurrenceDomainMode,
@@ -108,6 +111,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
   private sharedSettings: QuartzoSharedSettings | null = null;
   private occurrenceStateRepository: SharedOccurrenceStateRepository | null = null;
   private occurrenceDomainMutationRepository: OccurrenceDomainMutationRepository | null = null;
+  private safeObjectMutationRepository: SafeObjectMutationRepository | null = null;
   private occurrenceResponses: Record<string, OccurrenceResponseState> = {};
   private googleAccessRefreshInFlight: Promise<string | null> | null = null;
   private pairingWorkflowModal: HTMLDivElement | null = null;
@@ -138,6 +142,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
 
     this.occurrenceStateRepository = new SharedOccurrenceStateRepository(this.app.vault);
     this.occurrenceDomainMutationRepository = new OccurrenceDomainMutationRepository(this.app.vault);
+    this.safeObjectMutationRepository = new SafeObjectMutationRepository(this.app.vault);
     try {
       this.occurrenceResponses = await this.occurrenceStateRepository.loadResponses();
     } catch (error) {
@@ -207,7 +212,8 @@ export default class QuartzoCompanionPlugin extends Plugin {
     });
     this.reminderDeliveryGateway = new ObsidianReminderDeliveryGateway(
       () => this.settings.hideNotificationBody,
-      () => { void this.activateQuartzo('home'); },
+      occurrence => { void this.openReminderOccurrence(occurrence); },
+      message => { new Notice(message); },
     );
     this.reminderService = new ReminderService({
       getObjects: () => this.getReminderSourceObjects(),
@@ -337,6 +343,13 @@ export default class QuartzoCompanionPlugin extends Plugin {
     }
   }
 
+  async openGoogleCalendarEvent(event: GoogleCalendarProjection): Promise<void> {
+    if (!event.htmlLink) {
+      throw new Error('Google Calendar event does not provide an external link.');
+    }
+    await this.browserOpener.open(event.htmlLink);
+  }
+
   async reauthorizeGoogleCalendar(): Promise<void> {
     const config = await this.getResolvedOAuthConfig();
     if (!config) {
@@ -359,6 +372,14 @@ export default class QuartzoCompanionPlugin extends Plugin {
       new Notice(`Google Calendar authorization failed: ${error}`);
     }
   }
+  private async openReminderOccurrence(occurrence: ReminderDeliveryOccurrence): Promise<void> {
+    await this.activateQuartzo('home');
+    const leaf = this.app.workspace.getLeavesOfType(QUARTZO_VIEW_TYPE)[0];
+    if (leaf?.view instanceof QuartzoView) {
+      await leaf.view.openObjectById(occurrence.sourceId);
+    }
+  }
+
   private getReminderSourceObjects(): ReminderSourceObject[] {
     const index = this.vaultIndexEngine?.getIndex();
     if (!index) return [];
@@ -493,6 +514,33 @@ export default class QuartzoCompanionPlugin extends Plugin {
     };
     await this.refreshQuartzoView();
     return result;
+  }
+
+  async mutateObject(object: IndexedObject, patch: SafeObjectMutation): Promise<void> {
+    const repository = this.safeObjectMutationRepository;
+    const engine = this.vaultIndexEngine;
+    const index = engine?.getIndex();
+    if (!repository || !engine || !index) {
+      throw new Error('Object mutation is not initialized.');
+    }
+
+    const markdown = await repository.mutate(object, patch);
+    const parsed = parseObjectWithSharedSettings(markdown, object.path, this.sharedSettings);
+    if (parsed.object.id !== object.id || parsed.object.type !== object.type) {
+      throw new Error('Object mutation changed identity or type unexpectedly.');
+    }
+
+    engine.setIndex(VaultIndexEngine.updateIndex(index, [{
+      type: 'modified',
+      path: normalizeVaultPath(object.path),
+      object: {
+        id: parsed.object.id,
+        type: parsed.object.type,
+        path: object.path,
+        frontmatter: parsed.object as Record<string, unknown>,
+        body: parsed.object.body || '',
+      },
+    }]));
   }
 
   async setReminderDelivery(mode: ReminderMode): Promise<void> {
@@ -1902,9 +1950,10 @@ class QuartzoSettingTab extends PluginSettingTab {
 
     this.addHeading(containerEl, 'Notifications');
 
+    const desktopPermission = this.plugin.reminderDeliveryGateway?.desktopPermission() ?? 'unsupported';
     new Setting(containerEl)
       .setName('Reminder delivery')
-      .setDesc('V1 reminders are delivered only while Obsidian is running. In-Obsidian only is the work-computer default.')
+      .setDesc(`V1 reminders are delivered only while Obsidian is running. Desktop permission: ${desktopPermission}. In-Obsidian only is the work-computer default.`)
       .addDropdown(dropdown => dropdown
         .addOption('off', 'Off')
         .addOption('in_obsidian_only', 'In-Obsidian only')

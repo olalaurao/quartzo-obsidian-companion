@@ -254,8 +254,12 @@ function checkReminderRuntimeBoundaries() {
     console.error('FAIL: Reminder runtime is not lifecycle-managed with device-local default delivery');
     return false;
   }
-  if (!platform.includes("from 'obsidian'") || !platform.includes('requestDesktopPermission()')) {
-    console.error('FAIL: Reminder platform delivery owner is incomplete');
+  if (platform.includes("from 'obsidian'") ||
+      !platform.includes('requestDesktopPermission()') ||
+      !platform.includes('showInObsidianNotice: (message: string) => void') ||
+      !platform.includes('this.showInObsidianNotice(') ||
+      !main.includes('message => { new Notice(message); }')) {
+    console.error('FAIL: Reminder delivery must keep Obsidian Notice side effects at the composition boundary');
     return false;
   }
   if (!registry.includes("node:fs") || registry.includes('app/quartzo_shared_settings.md')) {
@@ -733,6 +737,7 @@ function checkCanonicalOccurrenceActions() {
   const domainPath = path.join(rootDir, 'src/vault/occurrence-domain-mutations.ts');
   const schedulePath = path.join(rootDir, 'src/core/daily_schedule/engine.ts');
   const viewPath = path.join(rootDir, 'src/ui/shell/view.ts');
+  const scheduleListPath = path.join(rootDir, 'src/ui/daily/schedule-list.ts');
   const controlsPath = path.join(rootDir, 'src/ui/occurrence/action-controls.ts');
   const mainPath = path.join(rootDir, 'src/main.ts');
 
@@ -743,6 +748,7 @@ function checkCanonicalOccurrenceActions() {
   const domain = fs.readFileSync(domainPath, 'utf8');
   const schedule = fs.readFileSync(schedulePath, 'utf8');
   const view = fs.readFileSync(viewPath, 'utf8');
+  const scheduleList = fs.readFileSync(scheduleListPath, 'utf8');
   const controls = fs.readFileSync(controlsPath, 'utf8');
   const main = fs.readFileSync(mainPath, 'utf8');
 
@@ -769,8 +775,10 @@ function checkCanonicalOccurrenceActions() {
   if (!policy.includes('export class OccurrenceActionPolicy') ||
       !controls.includes('OccurrenceActionPolicy.resolve({') ||
       !controls.includes('options.perform(action, actionOptions)') ||
-      !view.includes('renderOccurrenceActionControls(row, {') ||
+      !scheduleList.includes('renderOccurrenceActionControls(row, {') ||
+      !view.includes('renderDailyScheduleList(container, items, {') ||
       view.includes('occurrence_responses') ||
+      scheduleList.includes('occurrence_responses') ||
       controls.includes('occurrence_responses')) {
     console.error('FAIL: Daily UI owns occurrence business state instead of projecting the canonical policy/coordinator');
     return false;
@@ -786,6 +794,251 @@ function checkCanonicalOccurrenceActions() {
   console.log('PASS: Occurrence actions are canonical, idempotent, dated, Vault-safe and fail closed on unsupported domain parity');
   return true;
 }
+function checkCanonicalHomeAndDayDial() {
+  const shellPath = path.join(rootDir, 'src/ui/shell/view.ts');
+  const homePath = path.join(rootDir, 'src/ui/home/view.ts');
+  const homeProjectionPath = path.join(rootDir, 'src/ui/home/home-projection.ts');
+  const dialProjectionPath = path.join(rootDir, 'src/ui/day-dial/projection.ts');
+  const dialViewPath = path.join(rootDir, 'src/ui/day-dial/view.ts');
+
+  const shell = fs.readFileSync(shellPath, 'utf8');
+  const home = fs.readFileSync(homePath, 'utf8');
+  const homeProjection = fs.readFileSync(homeProjectionPath, 'utf8');
+  const dialProjection = fs.readFileSync(dialProjectionPath, 'utf8');
+  const dialView = fs.readFileSync(dialViewPath, 'utf8');
+
+  if (!shell.includes('renderHomeView(container, {') ||
+      !shell.includes('schedule,') ||
+      !home.includes('projectHomeSchedule(options.schedule') ||
+      !home.includes('renderDayDial(container, {') ||
+      !home.includes('schedule: options.schedule')) {
+    console.error('FAIL: Home and Day Dial are not projections of the same canonical Daily Schedule snapshot');
+    return false;
+  }
+
+  const forbiddenOwners = ['DailyScheduleEngine', 'Scheduler', 'ObjectParser', 'GoogleCalendarAdapter'];
+  if (forbiddenOwners.some(owner => home.includes(owner) || dialProjection.includes(owner) || dialView.includes(owner))) {
+    console.error('FAIL: Home/Day Dial reintroduces canonical scheduling/parser/integration business owners in UI');
+    return false;
+  }
+
+  if (!dialProjection.includes('DAY_DIAL_SHORT_OCCURRENCE_MINUTES = 24') ||
+      !dialProjection.includes("duration <= DAY_DIAL_SHORT_OCCURRENCE_MINUTES") ||
+      !dialProjection.includes("visual: rawEnd == null") ||
+      !dialProjection.includes('item.isAllDay || !item.isTimed') ||
+      !dialProjection.includes('resolveTypeSignature') ||
+      !dialProjection.includes('object?.frontmatter.color')) {
+    console.error('FAIL: Day Dial geometry/color contract is not the canonical 24h marker/arc projection');
+    return false;
+  }
+
+  if (!homeProjection.includes('Pure presentation projection over the canonical Daily Schedule result') ||
+      homeProjection.includes('overdue_policy') ||
+      homeProjection.includes('scheduler')) {
+    console.error('FAIL: Home projection can independently decide recurrence/overdue/scheduler business semantics');
+    return false;
+  }
+
+  console.log('PASS: Home and Day Dial share the canonical Daily Schedule and keep Dial work presentation-only');
+  return true;
+}
+
+
+function checkCanonicalPlannerProjection() {
+  const shellPath = path.join(rootDir, 'src/ui/shell/view.ts');
+  const plannerPath = path.join(rootDir, 'src/ui/planner/view.ts');
+  const adaptivePath = path.join(rootDir, 'src/ui/planner/adaptive-projection.ts');
+  const policyPath = path.join(rootDir, 'src/core/occurrence_actions/policy.ts');
+
+  const shell = fs.readFileSync(shellPath, 'utf8');
+  const planner = fs.readFileSync(plannerPath, 'utf8');
+  const adaptive = fs.readFileSync(adaptivePath, 'utf8');
+  const policy = fs.readFileSync(policyPath, 'utf8');
+
+  if (!shell.includes('renderPlannerSurface(container, {') ||
+      !shell.includes('this.buildSchedule(date, googleEvents)') ||
+      !planner.includes('projectAdaptivePlanner(schedule') ||
+      !planner.includes('schedulesByDate') ||
+      !adaptive.includes('OccurrenceActionPolicy.isRecoveryEligible') ||
+      !policy.includes('static isRecoveryEligible(')) {
+    console.error('FAIL: Planner does not project canonical Daily Schedule/Occurrence policy owners');
+    return false;
+  }
+
+  const forbiddenOwners = ['DailyScheduleEngine', 'Scheduler', 'ObjectParser', 'GoogleCalendarAdapter'];
+  if (forbiddenOwners.some(owner => planner.includes(owner) || adaptive.includes(owner))) {
+    console.error('FAIL: Planner UI reintroduces canonical scheduler/parser/integration owners');
+    return false;
+  }
+
+  if (!adaptive.includes('essentials: []') ||
+      !adaptive.includes('capacity: null') ||
+      !adaptive.includes('DailyPlanningState')) {
+    console.error('FAIL: Planner Adaptive can invent Essentials/Capacity without canonical DailyPlanningState input');
+    return false;
+  }
+
+  if (!planner.includes('quartzo-planner-week-grid') ||
+      !planner.includes('quartzo-planner-month-grid') ||
+      !planner.includes('startOfWeek')) {
+    console.error('FAIL: Planner Week/Month are not real shared-settings-aware grid surfaces');
+    return false;
+  }
+
+  console.log('PASS: Planner is a presentation-only projection of canonical Daily Schedule and occurrence policy');
+  return true;
+}
+
+
+function checkCanonicalUniversalDetailMutation() {
+  const capabilityPath = path.join(rootDir, 'src/core/object-mutation/capabilities.ts');
+  const mutationPath = path.join(rootDir, 'src/core/object-mutation/mutation.ts');
+  const repositoryPath = path.join(rootDir, 'src/vault/object-mutation.ts');
+  const detailPath = path.join(rootDir, 'src/ui/detail/object-detail.ts');
+  const editorPath = path.join(rootDir, 'src/ui/detail/object-editor.ts');
+  const shellPath = path.join(rootDir, 'src/ui/shell/view.ts');
+
+  const capability = fs.readFileSync(capabilityPath, 'utf8');
+  const mutation = fs.readFileSync(mutationPath, 'utf8');
+  const repository = fs.readFileSync(repositoryPath, 'utf8');
+  const detail = fs.readFileSync(detailPath, 'utf8');
+  const editor = fs.readFileSync(editorPath, 'utf8');
+  const shell = fs.readFileSync(shellPath, 'utf8');
+
+  if (!capability.includes("object_fixtures/coverage.json") ||
+      !capability.includes("mutationSupport === 'full'") ||
+      !capability.includes("fixtureCoverage === 'concrete_mutation'")) {
+    console.error('FAIL: Universal Detail edit capability is not derived from vendored contract coverage');
+    return false;
+  }
+
+  if (!mutation.includes('ObjectParser.parseMarkdown(currentMarkdown)') ||
+      !mutation.includes("PROTECTED_KEYS = new Set(['id', 'type'])") ||
+      !mutation.includes('hasFullObjectMutationSupport(expected.type)')) {
+    console.error('FAIL: Universal Detail mutation can reconstruct objects or change protected identity');
+    return false;
+  }
+
+  if (!repository.includes('await this.vault.process(file, current =>') ||
+      repository.includes('vault.modify(')) {
+    console.error('FAIL: Universal Detail edits bypass the canonical Vault.process repository');
+    return false;
+  }
+
+  if (!detail.includes('hasFullObjectMutationSupport(object.type)') ||
+      !editor.includes('const dirty = new Set<string>()') ||
+      !editor.includes('actions.onSave(patch)') ||
+      !shell.includes('this.context.plugin.mutateObject(object, patch)')) {
+    console.error('FAIL: Universal Detail UI can expose/save edits outside the canonical capability/mutation path');
+    return false;
+  }
+
+  if (shell.includes('ObjectParser.serializeMarkdown') ||
+      shell.includes('vault.process(') ||
+      editor.includes('ObjectParser.serializeMarkdown') ||
+      editor.includes('vault.process(')) {
+    console.error('FAIL: Universal Detail UI owns persistence instead of delegating to the canonical mutation owner');
+    return false;
+  }
+
+  console.log('PASS: Universal Detail editing is coverage-gated, dirty-tracked and Vault.process-safe');
+  return true;
+}
+
+
+function checkCanonicalObjectQueryOwner() {
+  const queryPath = path.join(rootDir, 'src/core/object-query/index.ts');
+  const enginePath = path.join(rootDir, 'src/vault/index/engine.ts');
+  const shellPath = path.join(rootDir, 'src/ui/shell/view.ts');
+  const quickAddPath = path.join(rootDir, 'src/ui/quick-add/modal.ts');
+
+  const query = fs.readFileSync(queryPath, 'utf8');
+  const engine = fs.readFileSync(enginePath, 'utf8');
+  const shell = fs.readFileSync(shellPath, 'utf8');
+  const quickAdd = fs.readFileSync(quickAddPath, 'utf8');
+
+  if (!query.includes('index.objects.values()') ||
+      query.includes('new Map(') ||
+      !query.includes('queryVaultObjects(')) {
+    console.error('FAIL: Object query owner is missing or creates a parallel index/cache');
+    return false;
+  }
+
+  if (!engine.includes('return searchVaultObjects(index, query);') ||
+      shell.includes('VaultIndexEngine.searchObjects(') ||
+      !shell.includes('queryVaultObjects(this.getIndex()') ||
+      !quickAdd.includes("queryVaultObjects(index, { types: ['resource'] })") ||
+      !quickAdd.includes("queryVaultObjects(index, { types: ['tracker_definition'] })")) {
+    console.error('FAIL: Search/Browse/pickers can diverge from the canonical VaultIndex query owner');
+    return false;
+  }
+
+  console.log('PASS: Search, Browse and object pickers share one read-only VaultIndex query owner');
+  return true;
+}
+
+
+function checkReminderTargetNavigation() {
+  const notificationsPath = path.join(rootDir, 'src/platform/notifications.ts');
+  const mainPath = path.join(rootDir, 'src/main.ts');
+  const shellPath = path.join(rootDir, 'src/ui/shell/view.ts');
+  const notifications = fs.readFileSync(notificationsPath, 'utf8');
+  const main = fs.readFileSync(mainPath, 'utf8');
+  const shell = fs.readFileSync(shellPath, 'utf8');
+
+  if (!notifications.includes('openQuartzo: (occurrence: ReminderDeliveryOccurrence) => void') ||
+      !notifications.includes('this.openQuartzo(occurrence)') ||
+      !main.includes('openReminderOccurrence(occurrence)') ||
+      !main.includes('leaf.view.openObjectById(occurrence.sourceId)') ||
+      !shell.includes('async openObjectById(objectId: string)')) {
+    console.error('FAIL: Reminder desktop click can lose its canonical source target');
+    return false;
+  }
+
+  if (!main.includes('desktopPermission()') ||
+      !main.includes('Desktop permission:')) {
+    console.error('FAIL: Reminder desktop permission state is not projected in Settings');
+    return false;
+  }
+
+  console.log('PASS: Reminder delivery click preserves source identity and permission state is visible');
+  return true;
+}
+
+function checkCalendarExternalNavigation() {
+  const adapterPath = path.join(rootDir, 'src/integrations/google/calendar/adapter.ts');
+  const mainPath = path.join(rootDir, 'src/main.ts');
+  const shellPath = path.join(rootDir, 'src/ui/shell/view.ts');
+  const browserPath = path.join(rootDir, 'src/platform/browser-opener.ts');
+  const adapter = fs.readFileSync(adapterPath, 'utf8');
+  const main = fs.readFileSync(mainPath, 'utf8');
+  const shell = fs.readFileSync(shellPath, 'utf8');
+  const browser = fs.readFileSync(browserPath, 'utf8');
+
+  if (!adapter.includes('htmlLink?: string') ||
+      !main.includes('openGoogleCalendarEvent(event: GoogleCalendarProjection)') ||
+      !main.includes('await this.browserOpener.open(event.htmlLink)') ||
+      !shell.includes("item.origin !== 'externalEvent'") ||
+      !shell.includes('openGoogleCalendarEvent(external)')) {
+    console.error('FAIL: Google Calendar external events are not opened through the shared read-only projection path');
+    return false;
+  }
+
+  if (!browser.includes("parsed.protocol !== 'https:'")) {
+    console.error('FAIL: External Calendar links can bypass the HTTPS-only platform opener');
+    return false;
+  }
+
+  const externalCallbacks = shell.match(/canOpenItem: item => this\.canOpenScheduleItem\(item, googleEvents\)/g) || [];
+  if (externalCallbacks.length < 3) {
+    console.error('FAIL: Home/Planner/daily schedule surfaces do not share external Calendar opening semantics');
+    return false;
+  }
+
+  console.log('PASS: Calendar external navigation is HTTPS-only, shared and read-only');
+  return true;
+}
+
 function main() {
   console.log('Running architecture/completeness checks...\n');
   let allPassed = true;
@@ -814,6 +1067,12 @@ function main() {
   if (!checkDriveTimeoutsAndSyncProgress()) allPassed = false;
   if (!checkManualStartupStateHydration()) allPassed = false;
   if (!checkCanonicalOccurrenceActions()) allPassed = false;
+  if (!checkCanonicalHomeAndDayDial()) allPassed = false;
+  if (!checkCanonicalPlannerProjection()) allPassed = false;
+  if (!checkCanonicalUniversalDetailMutation()) allPassed = false;
+  if (!checkCanonicalObjectQueryOwner()) allPassed = false;
+  if (!checkReminderTargetNavigation()) allPassed = false;
+  if (!checkCalendarExternalNavigation()) allPassed = false;
   if (!checkFirstPairingApplyProgress()) allPassed = false;
 
   console.log('\n' + (allPassed ? 'All architecture checks passed' : 'Some architecture checks failed'));

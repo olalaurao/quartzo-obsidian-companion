@@ -1,12 +1,11 @@
-import { Notice } from 'obsidian';
 import type { ReminderDeliveryGateway, ReminderMode } from '../core/reminders';
 import type { ReminderDeliveryOccurrence } from '../core/reminders/types';
 
-interface DesktopNotificationLike {
+export interface DesktopNotificationLike {
   setOnClick(handler: () => void): void;
 }
 
-interface DesktopNotificationApi {
+export interface DesktopNotificationApi {
   permission: NotificationPermission;
   requestPermission(): Promise<NotificationPermission>;
   create(title: string, options: NotificationOptions): DesktopNotificationLike;
@@ -28,7 +27,8 @@ function browserNotificationApi(): DesktopNotificationApi | null {
 export class ObsidianReminderDeliveryGateway implements ReminderDeliveryGateway {
   constructor(
     private readonly isPrivacyMode: () => boolean,
-    private readonly openQuartzo: () => void,
+    private readonly openQuartzo: (occurrence: ReminderDeliveryOccurrence) => void,
+    private readonly showInObsidianNotice: (message: string) => void,
     private readonly desktopApi: DesktopNotificationApi | null = browserNotificationApi(),
   ) {}
 
@@ -50,10 +50,10 @@ export class ObsidianReminderDeliveryGateway implements ReminderDeliveryGateway 
 
     if (mode === 'desktop_notifications' && this.desktopApi?.permission === 'granted') {
       const notification = this.desktopApi.create(title, body ? { body } : {});
-      notification.setOnClick(() => this.openQuartzo());
+      notification.setOnClick(() => this.openQuartzo(occurrence));
       return;
     }
 
-    new Notice(body ? `${title}: ${body}` : title);
+    this.showInObsidianNotice(body ? `${title}: ${body}` : title);
   }
 }

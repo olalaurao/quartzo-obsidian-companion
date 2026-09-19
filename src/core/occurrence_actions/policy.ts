@@ -97,12 +97,15 @@ function roleFor(input: OccurrencePolicyInput): OccurrenceSemanticRole {
     case 'google_calendar': return 'externalEventAttendance';
     case 'reminder': return 'reminderPrompt';
     case 'pomodoro':
+    case 'pomodoro_session':
     case 'focus_session': return input.completed ? 'historicalFocus' : 'focusSession';
     case 'trackerRecord':
+    case 'tracker_record':
     case 'tracking_record': return 'historicalRecord';
     case 'trackerPrompt':
     case 'tracker_prompt': return 'trackerPrompt';
     case 'journalEntry':
+    case 'entry':
     case 'journal_entry': return 'historicalJournal';
     case 'journalPrompt':
     case 'journal_prompt': return 'journalPrompt';
@@ -288,6 +291,26 @@ function clearOutcomeLabel(role: OccurrenceSemanticRole, outcome: OccurrenceOutc
 }
 
 export class OccurrenceActionPolicy {
+  static isRecoveryEligible(input: OccurrencePolicyInput): boolean {
+    const role = roleFor(input);
+    if (isEvidence(role)) return false;
+    if ([
+      'eventAttendance',
+      'externalEventAttendance',
+      'referencePrompt',
+      'historicalFocus',
+      'historicalRecord',
+      'historicalJournal',
+    ].includes(role)) {
+      return false;
+    }
+    const capabilities = this.resolve(input);
+    return capabilities.canReportDone ||
+      capabilities.canStart ||
+      capabilities.canReplan ||
+      capabilities.canNextOpportunity;
+  }
+
   static resolve(input: OccurrencePolicyInput): OccurrenceActionCapabilities {
     const role = roleFor(input);
     if (isEvidence(role)) {

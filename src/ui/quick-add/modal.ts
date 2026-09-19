@@ -4,6 +4,7 @@ import { ObjectParser } from '../../core/objects';
 import type { TrackerDefinition } from '../../core/objects/types';
 import { findResourceDuplicates, type ResourceIdentity } from '../../core/resource-capture/policy';
 import { localIsoDate } from '../../core/local-date';
+import { queryVaultObjects } from '../../core/object-query';
 import { ResourceMetadataService, type ResourceMetadataDraft } from '../../integrations/resource-metadata/service';
 import { createCanonicalObjectId } from '../../platform/object-id';
 import { VaultIndexEngine } from '../../vault/index';
@@ -263,8 +264,7 @@ export class QuickAddModal extends Modal {
     const index = this.getIndex();
     if (!index) return [];
     const trackers: TrackerDefinition[] = [];
-    for (const indexed of index.objects.values()) {
-      if (indexed.type !== 'tracker_definition' || indexed.frontmatter.archived === true) continue;
+    for (const indexed of queryVaultObjects(index, { types: ['tracker_definition'] })) {
       try {
         const parsed = ObjectParser.parse(ObjectParser.serializeMarkdown(indexed.frontmatter, indexed.body)).object;
         if (parsed.type === 'tracker_definition') trackers.push(parsed);
@@ -278,9 +278,7 @@ export class QuickAddModal extends Modal {
   private resourceObjects(): IndexedObject[] {
     const index = this.getIndex();
     if (!index) return [];
-    return Array.from(index.objects.values())
-      .filter(object => object.type === 'resource' && object.frontmatter.archived !== true)
-      .sort((left, right) => String(left.frontmatter.title ?? left.id).localeCompare(String(right.frontmatter.title ?? right.id)));
+    return queryVaultObjects(index, { types: ['resource'] });
   }
 
   private resourceIdentities(): ResourceIdentity[] {

@@ -1,3 +1,4 @@
+import { hasFullObjectMutationSupport } from '../../core/object-mutation';
 import type { IndexedObject } from '../../vault/index/types';
 
 export interface ObjectDetailProperty {
@@ -17,7 +18,7 @@ export interface ObjectDetailModel {
   body: string;
 }
 
-const BASE_KEYS = new Set(['id', 'type', 'title']);
+const BASE_KEYS = new Set(['id', 'type', 'title', 'body']);
 const RELATIONSHIP_KEYS = new Set(['links', 'organizers', 'categories', 'tags']);
 const SCHEDULE_KEYS = new Set(['scheduler', 'schedulers']);
 
@@ -78,6 +79,7 @@ export function buildObjectDetailModel(object: IndexedObject): ObjectDetailModel
 export interface ObjectDetailActions {
   onBack(): void;
   onOpenMarkdown(): void;
+  onEdit?(): void;
 }
 
 function appendPropertySection(
@@ -130,7 +132,15 @@ export function renderObjectDetail(
   const openMarkdown = document.createElement('button');
   openMarkdown.textContent = 'Open Markdown';
   openMarkdown.addEventListener('click', actions.onOpenMarkdown);
-  toolbar.append(back, openMarkdown);
+  toolbar.appendChild(back);
+  if (actions.onEdit && hasFullObjectMutationSupport(object.type)) {
+    const edit = document.createElement('button');
+    edit.textContent = 'Edit';
+    edit.className = 'mod-cta';
+    edit.addEventListener('click', actions.onEdit);
+    toolbar.appendChild(edit);
+  }
+  toolbar.appendChild(openMarkdown);
   container.appendChild(toolbar);
 
   const title = document.createElement('h2');

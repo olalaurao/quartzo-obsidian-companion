@@ -1,12 +1,16 @@
 import { ItemView, Notice, WorkspaceLeaf } from 'obsidian';
 import { DailyScheduleEngine } from '../../core/daily_schedule';
-import type { NormalizedItem } from '../../core/daily_schedule/types';
+import type { NormalizedItem, NormalizedSchedule } from '../../core/daily_schedule/types';
 import type { GoogleCalendarProjection } from '../../integrations/google/calendar';
-import { addLocalDays, daysInLocalMonth, localIsoDate, parseLocalIsoDate, shiftLocalMonth } from '../../core/local-date';
+import { addLocalDays, localIsoDate, parseLocalIsoDate, shiftLocalMonth } from '../../core/local-date';
 import { chooseNewestConflictResolution, type SyncProgress } from '../../sync/coordinator';
-import { VaultIndexEngine } from '../../vault/index';
+import { queryVaultObjects } from '../../core/object-query';
 import { renderObjectDetail } from '../detail/object-detail';
-import { projectHomeSchedule } from '../home/home-projection';
+import { renderObjectEditor } from '../detail/object-editor';
+import { renderHomeView } from '../home/view';
+import { renderPlannerSurface, type PlannerDayLens } from '../planner/view';
+import { monthGridDates, weekDates } from '../planner/calendar-projection';
+import { renderScheduleList as renderDailyScheduleList } from '../daily/schedule-list';
 import { projectJournalDay } from '../journal/journal-projection';
 import {
   SharedSettingsRepository,
@@ -14,7 +18,6 @@ import {
 import type { IndexedObject, VaultIndex } from '../../vault/index/types';
 import { QuickAddModal } from '../quick-add/modal';
 import type { ViewContext } from '../types';
-import { renderOccurrenceActionControls } from '../occurrence/action-controls';
 import { buildConflictDiff, formatConflictDiff } from '../sync/conflict-diff';
 
 export const QUARTZO_VIEW_TYPE = 'quartzo-view';
@@ -84,8 +87,10 @@ export class QuartzoView extends ItemView {
   private section: QuartzoSection = 'home';
   private action: QuartzoAction | null = null;
   private selectedObjectId: string | null = null;
+  private editingSelectedObject = false;
   private selectedDate = isoDate(new Date());
   private plannerMode: 'day' | 'week' | 'month' = 'day';
+  private plannerDayLens: PlannerDayLens = 'timeline';
   private sharedSettingsRepository: SharedSettingsRepository;
   private syncProgressTickerId: number | null = null;
 
@@ -133,11 +138,14 @@ export class QuartzoView extends ItemView {
     this.section = section;
     this.action = null;
     this.selectedObjectId = null;
+    this.editingSelectedObject = false;
+    if (section === 'home') this.selectedDate = isoDate(new Date());
     await this.render();
   }
 
   async handleAction(action: QuartzoAction): Promise<void> {
     this.selectedObjectId = null;
+    this.editingSelectedObject = false;
     if (action === 'add') {
       new QuickAddModal(this.context).open();
       return;
@@ -153,6 +161,16 @@ export class QuartzoView extends ItemView {
   async refresh(): Promise<void> {
     await this.render();
   }
+
+  async openObjectById(objectId: string): Promise<boolean> {
+    if (this.getIndex()?.objects.has(objectId) !== true) return false;
+    this.action = null;
+    this.selectedObjectId = objectId;
+    this.editingSelectedObject = false;
+    await this.render();
+    return true;
+  }
+
 
   private getIndex(): VaultIndex | null {
     return this.context.vaultIndexEngine?.getIndex() ?? this.context.plugin.vaultIndexEngine?.getIndex() ?? null;
@@ -199,13 +217,36 @@ export class QuartzoView extends ItemView {
     if (this.selectedObjectId) {
       const object = this.getIndex()?.objects.get(this.selectedObjectId);
       if (object) {
-        renderObjectDetail(content, object, {
-          onBack: () => { this.selectedObjectId = null; void this.render(); },
-          onOpenMarkdown: () => this.openMarkdown(object),
-        });
+        if (this.editingSelectedObject) {
+          renderObjectEditor(content, object, {
+            onCancel: () => {
+              this.editingSelectedObject = false;
+              void this.render();
+            },
+            onSave: async patch => {
+              await this.context.plugin.mutateObject(object, patch);
+              this.editingSelectedObject = false;
+              await this.render();
+            },
+          });
+        } else {
+          renderObjectDetail(content, object, {
+            onBack: () => {
+              this.selectedObjectId = null;
+              this.editingSelectedObject = false;
+              void this.render();
+            },
+            onOpenMarkdown: () => this.openMarkdown(object),
+            onEdit: () => {
+              this.editingSelectedObject = true;
+              void this.render();
+            },
+          });
+        }
         return;
       }
       this.selectedObjectId = null;
+      this.editingSelectedObject = false;
     }
 
     if (this.action === 'search') {
@@ -247,97 +288,70 @@ export class QuartzoView extends ItemView {
     return String(object?.frontmatter.title ?? object?.type ?? sourceId);
   }
 
-  private renderScheduleList(container: HTMLElement, items: NormalizedItem[], googleEvents: GoogleCalendarProjection[] = []): void {
-    const googleTitles = new Map(googleEvents.map(event => [event.id, event.summary] as const));
-    const list = document.createElement('ul');
-    list.className = 'quartzo-schedule-list';
-    for (const item of items) {
-      const row = document.createElement('li');
-      row.className = 'quartzo-schedule-row';
-
-      const label = document.createElement('span');
-      label.className = 'quartzo-schedule-label';
-      const time = item.start ? `${item.start} · ` : '';
-      const title = item.origin === 'externalEvent'
-        ? (googleTitles.get(item.sourceId) ?? item.sourceLabel)
-        : this.titleForSource(item.sourceId);
-      label.textContent = `${time}${title}`;
-      row.appendChild(label);
-
-      const object = this.getIndex()?.objects.get(item.sourceId);
-      if (object) {
-        label.classList.add('quartzo-clickable');
-        label.addEventListener('click', () => this.openObjectDetail(object));
-      }
-
-      renderOccurrenceActionControls(row, {
-        app: this.context.app,
-        item,
-        perform: (action, options) =>
-          this.context.plugin.performOccurrenceAction(item, action, options),
-      });
-      list.appendChild(row);
+  private titleForScheduleItem(item: NormalizedItem, googleEvents: GoogleCalendarProjection[] = []): string {
+    if (item.origin === 'externalEvent') {
+      return googleEvents.find(event => event.id === item.sourceId)?.summary ?? item.sourceLabel;
     }
-    container.appendChild(list);
+    return this.titleForSource(item.sourceId);
   }
 
-  private renderScheduleItems(container: HTMLElement, date: string, googleEvents: GoogleCalendarProjection[] = []): void {
-    const schedule = this.buildSchedule(date, googleEvents);
-    const heading = document.createElement('h3');
-    heading.textContent = date;
-    container.appendChild(heading);
-    if (schedule.items.length === 0) {
-      const empty = document.createElement('p');
-      empty.textContent = 'Nothing scheduled.';
-      container.appendChild(empty);
+  private googleEventForScheduleItem(
+    item: NormalizedItem,
+    googleEvents: GoogleCalendarProjection[],
+  ): GoogleCalendarProjection | null {
+    if (item.origin !== 'externalEvent') return null;
+    return googleEvents.find(event => event.id === item.sourceId) ?? null;
+  }
+
+  private canOpenScheduleItem(item: NormalizedItem, googleEvents: GoogleCalendarProjection[]): boolean {
+    const external = this.googleEventForScheduleItem(item, googleEvents);
+    if (external) return Boolean(external.htmlLink);
+    return this.getIndex()?.objects.has(item.sourceId) === true;
+  }
+
+  private openScheduleItem(item: NormalizedItem, googleEvents: GoogleCalendarProjection[]): void {
+    const external = this.googleEventForScheduleItem(item, googleEvents);
+    if (external) {
+      void this.context.plugin.openGoogleCalendarEvent(external).catch(error => {
+        new Notice(error instanceof Error ? error.message : String(error));
+      });
       return;
     }
-    this.renderScheduleList(container, schedule.items, googleEvents);
+    const object = this.getIndex()?.objects.get(item.sourceId);
+    if (object) this.openObjectDetail(object);
   }
 
-  private renderHomeBucket(container: HTMLElement, titleText: string, items: NormalizedItem[], emptyText: string, googleEvents: GoogleCalendarProjection[] = []): void {
-    const section = document.createElement('section');
-    section.className = 'quartzo-home-section';
-    const heading = document.createElement('h3');
-    heading.textContent = titleText;
-    section.appendChild(heading);
-    if (items.length === 0) {
-      const empty = document.createElement('p');
-      empty.textContent = emptyText;
-      section.appendChild(empty);
-    } else {
-      this.renderScheduleList(section, items, googleEvents);
-    }
-    container.appendChild(section);
+
+  private renderScheduleList(container: HTMLElement, items: NormalizedItem[], googleEvents: GoogleCalendarProjection[] = []): void {
+    renderDailyScheduleList(container, items, {
+      app: this.context.app,
+      titleForItem: item => this.titleForScheduleItem(item, googleEvents),
+      canOpenItem: item => this.canOpenScheduleItem(item, googleEvents),
+      onOpenItem: item => this.openScheduleItem(item, googleEvents),
+      performOccurrenceAction: (item, action, options) =>
+        this.context.plugin.performOccurrenceAction(item, action, options),
+    });
   }
 
   private async renderHome(container: HTMLElement): Promise<void> {
-    const title = document.createElement('h2');
-    title.textContent = 'Home';
-    container.appendChild(title);
-
-    const date = document.createElement('p');
-    date.className = 'quartzo-home-date';
-    date.textContent = this.selectedDate;
-    container.appendChild(date);
-
     const googleEvents = await this.context.plugin.listGoogleCalendarEvents(this.selectedDate, 1);
     const schedule = this.buildSchedule(this.selectedDate, googleEvents);
-    const projection = projectHomeSchedule(schedule, this.selectedDate, new Date());
+    const sharedSettings = await this.sharedSettingsRepository.load();
 
-    const dial = document.createElement('section');
-    dial.className = 'quartzo-home-section quartzo-day-dial-summary';
-    const dialTitle = document.createElement('h3');
-    dialTitle.textContent = 'Day Dial';
-    dial.appendChild(dialTitle);
-    const summary = document.createElement('p');
-    summary.textContent = `${schedule.count} item${schedule.count === 1 ? '' : 's'} on the canonical Daily Schedule.`;
-    dial.appendChild(summary);
-    container.appendChild(dial);
-
-    this.renderHomeBucket(container, 'Now', projection.now, 'Nothing active right now.', googleEvents);
-    this.renderHomeBucket(container, 'Up Next', projection.upNext, 'Nothing timed is coming up.', googleEvents);
-    this.renderHomeBucket(container, 'Today', projection.today, 'Nothing scheduled today.', googleEvents);
+    renderHomeView(container, {
+      app: this.context.app,
+      selectedDate: this.selectedDate,
+      schedule,
+      index: this.getIndex(),
+      googleEvents,
+      sharedSettings,
+      titleForItem: item => this.titleForScheduleItem(item, googleEvents),
+      canOpenItem: item => this.canOpenScheduleItem(item, googleEvents),
+      onOpenItem: item => this.openScheduleItem(item, googleEvents),
+      performOccurrenceAction: (item, action, options) =>
+        this.context.plugin.performOccurrenceAction(item, action, options),
+      onQuickAdd: type => new QuickAddModal(this.context, type).open(),
+    });
   }
 
   private async renderPlanner(container: HTMLElement): Promise<void> {
@@ -346,6 +360,7 @@ export class QuartzoView extends ItemView {
     container.appendChild(title);
 
     const controls = document.createElement('div');
+    controls.className = 'quartzo-planner-controls';
     const previous = document.createElement('button');
     previous.textContent = '‹';
     previous.addEventListener('click', () => {
@@ -385,37 +400,62 @@ export class QuartzoView extends ItemView {
       const button = document.createElement('button');
       button.textContent = labelForType(mode);
       if (mode === this.plannerMode) button.classList.add('is-active');
-      button.addEventListener('click', () => { this.plannerMode = mode; void this.render(); });
+      button.addEventListener('click', () => {
+        this.plannerMode = mode;
+        void this.render();
+      });
       controls.appendChild(button);
     }
     container.appendChild(controls);
 
-    const selected = parseIsoDate(this.selectedDate);
+    const settings = await this.sharedSettingsRepository.load();
+    let googleEvents: GoogleCalendarProjection[] = [];
+    let schedule = this.buildSchedule(this.selectedDate);
+    const schedulesByDate = new Map<string, NormalizedSchedule>();
+
     if (this.plannerMode === 'day') {
-      const googleEvents = await this.context.plugin.listGoogleCalendarEvents(this.selectedDate, 1);
-      this.renderScheduleItems(container, this.selectedDate, googleEvents);
-      return;
+      googleEvents = await this.context.plugin.listGoogleCalendarEvents(this.selectedDate, 1);
+      schedule = this.buildSchedule(this.selectedDate, googleEvents);
+    } else if (this.plannerMode === 'week') {
+      const dates = weekDates(this.selectedDate, settings?.startOfWeek ?? 1);
+      const start = dates[0] ?? this.selectedDate;
+      googleEvents = await this.context.plugin.listGoogleCalendarEvents(start, dates.length);
+      for (const date of dates) {
+        schedulesByDate.set(date, this.buildSchedule(date, googleEvents));
+      }
+    } else {
+      const dates = monthGridDates(this.selectedDate, settings?.startOfWeek ?? 1);
+      const start = dates[0] ?? this.selectedDate;
+      googleEvents = await this.context.plugin.listGoogleCalendarEvents(start, dates.length);
+      for (const date of dates) {
+        schedulesByDate.set(date, this.buildSchedule(date, googleEvents));
+      }
     }
 
-    if (this.plannerMode === 'week') {
-      const settings = await this.sharedSettingsRepository.load();
-      const startOfWeek = settings?.startOfWeek ?? 1;
-      const weekday = selected.getDay();
-      const delta = (weekday - startOfWeek + 7) % 7;
-      const start = addDays(selected, -delta);
-      const googleEvents = await this.context.plugin.listGoogleCalendarEvents(isoDate(start), 7);
-      for (let i = 0; i < 7; i++) this.renderScheduleItems(container, isoDate(addDays(start, i)), googleEvents);
-      return;
-    }
-
-    const year = selected.getFullYear();
-    const month = selected.getMonth();
-    const days = daysInLocalMonth(selected);
-    const monthStart = isoDate(new Date(year, month, 1));
-    const googleEvents = await this.context.plugin.listGoogleCalendarEvents(monthStart, days);
-    for (let day = 1; day <= days; day++) {
-      this.renderScheduleItems(container, isoDate(new Date(year, month, day)), googleEvents);
-    }
+    renderPlannerSurface(container, {
+      app: this.context.app,
+      mode: this.plannerMode,
+      dayLens: this.plannerDayLens,
+      selectedDate: this.selectedDate,
+      now: new Date(),
+      schedule,
+      schedulesByDate,
+      sharedSettings: settings,
+      titleForItem: item => this.titleForScheduleItem(item, googleEvents),
+      canOpenItem: item => this.canOpenScheduleItem(item, googleEvents),
+      onOpenItem: item => this.openScheduleItem(item, googleEvents),
+      performOccurrenceAction: (item, action, options) =>
+        this.context.plugin.performOccurrenceAction(item, action, options),
+      onDayLensChange: lens => {
+        this.plannerDayLens = lens;
+        void this.render();
+      },
+      onSelectDate: date => {
+        this.selectedDate = date;
+        this.plannerMode = 'day';
+        void this.render();
+      },
+    });
   }
 
   private async renderJournal(container: HTMLElement): Promise<void> {
@@ -570,30 +610,55 @@ export class QuartzoView extends ItemView {
     const title = document.createElement('h2');
     title.textContent = 'Browse';
     container.appendChild(title);
-    const index = this.getIndex();
-    const objects = index ? Array.from(index.objects.values()) : [];
+
+    const controls = document.createElement('div');
+    controls.className = 'quartzo-browse-controls';
+
+    const input = document.createElement('input');
+    input.type = 'search';
+    input.placeholder = 'Filter Quartzo objects';
+    input.className = 'quartzo-input';
+    controls.appendChild(input);
 
     const filter = document.createElement('select');
+    filter.className = 'quartzo-input';
     const all = document.createElement('option');
     all.value = '';
     all.textContent = 'All types';
     filter.appendChild(all);
-    for (const type of [...new Set(objects.map(object => object.type))].sort()) {
+    const available = queryVaultObjects(this.getIndex());
+    for (const type of [...new Set(available.map(object => object.type))].sort()) {
       const option = document.createElement('option');
       option.value = type;
       option.textContent = labelForType(type);
       filter.appendChild(option);
     }
-    container.appendChild(filter);
+    controls.appendChild(filter);
+    container.appendChild(controls);
 
     const list = document.createElement('div');
+    list.className = 'quartzo-object-results';
     container.appendChild(list);
+
     const render = () => {
       list.replaceChildren();
-      const visible = filter.value ? objects.filter(object => object.type === filter.value) : objects;
+      const visible = queryVaultObjects(this.getIndex(), {
+        query: input.value,
+        types: filter.value ? [filter.value] : undefined,
+      });
+      if (visible.length === 0) {
+        const empty = document.createElement('p');
+        empty.className = 'quartzo-empty-state';
+        empty.textContent = input.value.trim() || filter.value
+          ? 'No matching Quartzo objects.'
+          : 'No Quartzo objects yet.';
+        list.appendChild(empty);
+        return;
+      }
       for (const object of visible) this.renderObjectRow(list, object);
     };
     filter.addEventListener('change', render);
+    input.addEventListener('input', render);
     render();
   }
 
@@ -604,18 +669,33 @@ export class QuartzoView extends ItemView {
     const input = document.createElement('input');
     input.type = 'search';
     input.placeholder = 'Search Quartzo objects';
+    input.className = 'quartzo-input';
     container.appendChild(input);
     const results = document.createElement('div');
+    results.className = 'quartzo-object-results';
     container.appendChild(results);
     const renderResults = () => {
       results.replaceChildren();
-      const index = this.getIndex();
-      if (!index || !input.value.trim()) return;
-      for (const object of VaultIndexEngine.searchObjects(index, input.value)) {
-        this.renderObjectRow(results, object);
+      const query = input.value.trim();
+      if (!query) {
+        const hint = document.createElement('p');
+        hint.className = 'quartzo-empty-state';
+        hint.textContent = 'Search by title, ID, type, body or object metadata.';
+        results.appendChild(hint);
+        return;
       }
+      const matches = queryVaultObjects(this.getIndex(), { query });
+      if (matches.length === 0) {
+        const empty = document.createElement('p');
+        empty.className = 'quartzo-empty-state';
+        empty.textContent = 'No matching Quartzo objects.';
+        results.appendChild(empty);
+        return;
+      }
+      for (const object of matches) this.renderObjectRow(results, object);
     };
     input.addEventListener('input', renderResults);
+    renderResults();
     input.focus();
   }
 
@@ -1003,6 +1083,7 @@ export class QuartzoView extends ItemView {
 
   private openObjectDetail(object: IndexedObject): void {
     this.selectedObjectId = object.id;
+    this.editingSelectedObject = false;
     void this.render();
   }
 
