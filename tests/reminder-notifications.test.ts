@@ -38,6 +38,7 @@ describe('ObsidianReminderDeliveryGateway', () => {
     const gateway = new ObsidianReminderDeliveryGateway(
       () => false,
       value => { state.opened = value; },
+      () => {},
       api,
     );
     const value = occurrence();
@@ -62,7 +63,7 @@ describe('ObsidianReminderDeliveryGateway', () => {
         return { setOnClick: () => {} };
       },
     };
-    const gateway = new ObsidianReminderDeliveryGateway(() => true, () => {}, api);
+    const gateway = new ObsidianReminderDeliveryGateway(() => true, () => {}, () => {}, api);
 
     await gateway.deliver(occurrence(), 'desktop_notifications');
     expect(deliveredTitle).toBe('Quartzo reminder');
