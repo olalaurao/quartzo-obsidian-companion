@@ -1,3 +1,5 @@
+import type { OccurrenceResponseState, OccurrenceOutcome } from '../occurrence_actions';
+
 export type DailyScheduleOrigin = 'schedule' | 'reminder' | 'legacyTime' | 'externalEvent';
 
 export interface NormalizedItem {
@@ -12,10 +14,16 @@ export interface NormalizedItem {
   isAllDay?: boolean;
   isCompletable: boolean;
   isCompleted: boolean;
+  isSkipped: boolean;
+  outcome: OccurrenceOutcome;
+  isPlayable: boolean;
+  restrictionMetadata?: Record<string, unknown>;
+  responseState?: OccurrenceResponseState;
   origin: DailyScheduleOrigin;
   slotIndex?: number;
   reminderId?: string;
   occurrenceId?: string;
+  actionOccurrenceId?: string;
 }
 
 export interface NormalizedSchedule {
@@ -29,4 +37,5 @@ export interface DailyScheduleInput {
   today?: string;
   objects?: Array<Record<string, unknown>>;
   googleEvents?: Array<Record<string, unknown>>;
+  occurrenceResponses?: Record<string, OccurrenceResponseState>;
 }

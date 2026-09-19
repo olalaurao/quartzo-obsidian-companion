@@ -114,3 +114,38 @@
   color: var(--quartzo-text);
   border: 1px solid var(--quartzo-text);
 }
+
+/* Canonical daily occurrence rows */
+.quartzo-schedule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-inline-start: 0;
+  list-style: none;
+}
+
+.quartzo-schedule-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.quartzo-schedule-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.quartzo-occurrence-actions,
+.quartzo-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.quartzo-occurrence-status {
+  font-weight: 600;
+}
+

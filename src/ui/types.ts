@@ -4,6 +4,12 @@ import type { DriveSyncCoordinator, PairingScanProgress } from '../sync/coordina
 import type { GoogleDriveAdapter } from '../integrations/google/drive';
 import type { GoogleCalendarProjection } from '../integrations/google/calendar';
 import type { ReminderMode } from '../core/reminders';
+import type { NormalizedItem } from '../core/daily_schedule/types';
+import type {
+  CanonicalOccurrenceAction,
+  CanonicalOccurrenceActionResult,
+  OccurrenceResponseState,
+} from '../core/occurrence_actions';
 
 export interface UIState {
   currentView: string;
@@ -52,6 +58,12 @@ export interface ViewContext {
     listGoogleCalendarEvents(startDate: string, days: number): Promise<GoogleCalendarProjection[]>;
     reauthorizeGoogleCalendar(): Promise<void>;
     setReminderDelivery(mode: ReminderMode): Promise<void>;
+    getOccurrenceResponses(): Record<string, OccurrenceResponseState>;
+    performOccurrenceAction(
+      item: NormalizedItem,
+      action: CanonicalOccurrenceAction,
+      options?: { completedAt?: Date; snoozeMinutes?: number },
+    ): Promise<CanonicalOccurrenceActionResult>;
     adoptFile(filePath: string): Promise<void>;
     openSettings(): void;
   };

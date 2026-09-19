@@ -16,13 +16,25 @@ import { buildPairingDiagnosticsText } from './ui/sync/pairing-diagnostics';
 import { ViewContext } from './ui/types';
 import { addLocalDays, localIsoDate, parseLocalIsoDate } from './core/local-date';
 import { ReminderService, type ReminderMode, type ReminderSourceObject } from './core/reminders';
+import {
+  OccurrenceActionService,
+  companionOccurrenceDomainMode,
+  type CanonicalOccurrenceAction,
+  type CanonicalOccurrenceActionResult,
+  type OccurrenceActionTarget,
+  type OccurrenceResponseState,
+} from './core/occurrence_actions';
+import type { NormalizedItem } from './core/daily_schedule/types';
 import { FileNotificationDeliveryRegistry } from './local-state/notification-delivery-registry';
 import { ObsidianReminderDeliveryGateway } from './platform/notifications';
 import { ElectronBrowserOpener } from './platform/browser-opener';
+import { createCanonicalObjectId } from './platform/object-id';
 import { GOOGLE_OAUTH_CLIENT_SECRET_ID, GOOGLE_REFRESH_TOKEN_SECRET_ID } from './platform/secret-ids';
 import { normalizeVaultPath } from './sync/coordinator/path-utils';
 import { VaultSyncFilePolicy } from './sync/coordinator/file-policy';
 import { SHARED_SETTINGS_PATH, SharedSettingsRepository, parseObjectWithSharedSettings, type QuartzoSharedSettings } from './vault/shared-settings';
+import { SHARED_OCCURRENCE_STATE_PATH, SharedOccurrenceStateRepository } from './vault/occurrence-state';
+import { OccurrenceDomainMutationRepository } from './vault/occurrence-domain-mutations';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -88,11 +100,15 @@ export default class QuartzoCompanionPlugin extends Plugin {
   oauthClient: GoogleOAuthDesktop | null = null;
   reminderService: ReminderService | null = null;
   reminderDeliveryGateway: ObsidianReminderDeliveryGateway | null = null;
+  occurrenceActionService: OccurrenceActionService | null = null;
   viewContext: ViewContext | null = null;
   private syncIntervalId: ReturnType<typeof setInterval> | null = null;
   private eventRefs: ReturnType<typeof this.app.vault.on>[] = [];
   private sharedSettingsRepository: SharedSettingsRepository | null = null;
   private sharedSettings: QuartzoSharedSettings | null = null;
+  private occurrenceStateRepository: SharedOccurrenceStateRepository | null = null;
+  private occurrenceDomainMutationRepository: OccurrenceDomainMutationRepository | null = null;
+  private occurrenceResponses: Record<string, OccurrenceResponseState> = {};
   private googleAccessRefreshInFlight: Promise<string | null> | null = null;
   private pairingWorkflowModal: HTMLDivElement | null = null;
   private readonly calendarCache = new Map<string, CalendarCacheEntry>();
@@ -119,6 +135,21 @@ export default class QuartzoCompanionPlugin extends Plugin {
     } catch (error) {
       console.error('Failed to hydrate persisted sync state:', error);
     }
+
+    this.occurrenceStateRepository = new SharedOccurrenceStateRepository(this.app.vault);
+    this.occurrenceDomainMutationRepository = new OccurrenceDomainMutationRepository(this.app.vault);
+    try {
+      this.occurrenceResponses = await this.occurrenceStateRepository.loadResponses();
+    } catch (error) {
+      console.error('Failed to load shared occurrence state:', error);
+      this.occurrenceResponses = {};
+    }
+    this.occurrenceActionService = new OccurrenceActionService({
+      store: this.occurrenceStateRepository,
+      completeDomainOccurrence: (target, completedAt, recordedAt, actionId) =>
+        this.completeOccurrenceDomain(target, completedAt, recordedAt, actionId),
+      clearDomainOccurrence: target => this.clearOccurrenceDomain(target),
+    });
 
     this.viewContext = {
       app: this.app,
@@ -341,6 +372,129 @@ export default class QuartzoCompanionPlugin extends Plugin {
     } as ReminderSourceObject));
   }
 
+  private async completeOccurrenceDomain(
+    target: OccurrenceActionTarget,
+    completedAt: Date,
+    recordedAt: Date,
+    actionId: string,
+  ): Promise<void> {
+    const mode = companionOccurrenceDomainMode(target.sourceType);
+    if (mode === 'response_only') return;
+    if (mode === 'unsupported') {
+      throw new Error(`Companion does not yet support ${target.sourceType} completion safely.`);
+    }
+    const object = this.vaultIndexEngine?.getIndex()?.objects.get(target.sourceId);
+    if (!object) {
+      throw new Error(`Occurrence source ${target.sourceId} is not available in the vault index.`);
+    }
+    const repository = this.occurrenceDomainMutationRepository;
+    if (!repository) throw new Error('Occurrence domain mutations are not initialized.');
+    await repository.complete(object.path, target, completedAt, recordedAt, actionId);
+  }
+
+  private async clearOccurrenceDomain(
+    target: OccurrenceActionTarget,
+  ): Promise<void> {
+    const mode = companionOccurrenceDomainMode(target.sourceType);
+    if (mode === 'response_only') return;
+    if (mode === 'unsupported') return;
+    const object = this.vaultIndexEngine?.getIndex()?.objects.get(target.sourceId);
+    if (!object) {
+      throw new Error(`Occurrence source ${target.sourceId} is not available in the vault index.`);
+    }
+    const repository = this.occurrenceDomainMutationRepository;
+    if (!repository) throw new Error('Occurrence domain mutations are not initialized.');
+    await repository.clear(object.path, target);
+  }
+
+  getOccurrenceResponses(): Record<string, OccurrenceResponseState> {
+    return this.occurrenceResponses;
+  }
+
+  private async reloadOccurrenceResponses(refreshView = true): Promise<void> {
+    if (!this.occurrenceStateRepository) return;
+    try {
+      this.occurrenceResponses = await this.occurrenceStateRepository.loadResponses();
+      if (refreshView) await this.refreshQuartzoView();
+    } catch (error) {
+      console.error('Shared occurrence state reload failed:', error);
+    }
+  }
+
+  async performOccurrenceAction(
+    item: NormalizedItem,
+    action: CanonicalOccurrenceAction,
+    options: { completedAt?: Date; snoozeMinutes?: number } = {},
+  ): Promise<CanonicalOccurrenceActionResult> {
+    const service = this.occurrenceActionService;
+    if (!service) throw new Error('Occurrence actions are not initialized.');
+    const domainMode = companionOccurrenceDomainMode(item.sourceType);
+    if (domainMode === 'unsupported' && (action === 'done' || action === 'already_did')) {
+      throw new Error(`${item.sourceType} completion requires a domain adapter that is not available yet.`);
+    }
+    if (domainMode === 'unsupported' && action === 'clear' && item.outcome === 'done') {
+      throw new Error(`${item.sourceType} completed evidence cannot be undone safely yet.`);
+    }
+    if (item.origin === 'externalEvent' && !['skip', 'clear', 'already_did'].includes(action)) {
+      throw new Error('This external event action is not supported by the Companion.');
+    }
+
+    const dueAt = parseLocalIsoDate(item.date);
+    if (item.start) {
+      const match = /^(\d{2}):(\d{2})$/.exec(item.start);
+      if (match) dueAt.setHours(Number(match[1]), Number(match[2]), 0, 0);
+    }
+    const target = {
+      occurrenceId: item.actionOccurrenceId ?? item.occurrenceId ?? item.id,
+      sourceId: item.sourceId,
+      sourceType: item.sourceType,
+      reminderId: item.reminderId,
+      slotIndex: item.slotIndex,
+      dueAt: dueAt.toISOString(),
+    };
+    const actionId = `client:obsidian:${createCanonicalObjectId()}:${action}`;
+    const now = new Date();
+
+    let result: CanonicalOccurrenceActionResult;
+    switch (action) {
+      case 'done':
+        result = await service.completeNow(target, actionId, now);
+        break;
+      case 'already_did': {
+        const completedAt = options.completedAt;
+        if (!completedAt || Number.isNaN(completedAt.getTime())) {
+          throw new Error('Choose when this occurrence was completed.');
+        }
+        result = await service.completeAt(target, actionId, completedAt, now);
+        break;
+      }
+      case 'skip':
+        result = await service.skip(target, actionId, now);
+        break;
+      case 'clear':
+        result = await service.clearOutcome(target, actionId);
+        break;
+      case 'snooze': {
+        const minutes = options.snoozeMinutes;
+        if (minutes == null || !Number.isFinite(minutes) || minutes <= 0) {
+          throw new Error('Choose a positive snooze duration.');
+        }
+        result = await service.snooze(target, actionId, now, Math.round(minutes * 60_000));
+        break;
+      }
+      case 'dismiss':
+        result = await service.dismissDelivery(target, actionId, now);
+        break;
+    }
+
+    this.occurrenceResponses = {
+      ...this.occurrenceResponses,
+      [result.occurrenceId]: result.responseState,
+    };
+    await this.refreshQuartzoView();
+    return result;
+  }
+
   async setReminderDelivery(mode: ReminderMode): Promise<void> {
     let nextMode = mode;
     if (mode === 'desktop_notifications') {
@@ -379,6 +533,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
   private registerVaultEvents() {
     const oncreate = this.app.vault.on('create', (file: TAbstractFile) => {
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { void this.reloadSharedSettingsAndIndex(); return; }
+      if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_OCCURRENCE_STATE_PATH) { void this.reloadOccurrenceResponses(); return; }
       if (file instanceof TFile && this.vaultIndexEngine && this.shouldIndexPath(file.path)) {
         const idx = this.vaultIndexEngine.getIndex();
         if (idx) {
@@ -408,6 +563,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
 
     const onmodify = this.app.vault.on('modify', (file: TAbstractFile) => {
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { void this.reloadSharedSettingsAndIndex(); return; }
+      if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_OCCURRENCE_STATE_PATH) { void this.reloadOccurrenceResponses(); return; }
       if (file instanceof TFile && this.vaultIndexEngine && this.shouldIndexPath(file.path)) {
         const idx = this.vaultIndexEngine.getIndex();
         if (idx) {
@@ -436,6 +592,11 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.eventRefs.push(onmodify);
 
     const ondelete = this.app.vault.on('delete', (file: TAbstractFile) => {
+      if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_OCCURRENCE_STATE_PATH) {
+        this.occurrenceResponses = {};
+        void this.refreshQuartzoView();
+        return;
+      }
       if (file instanceof TFile && this.vaultIndexEngine && this.shouldIndexPath(file.path)) {
         const idx = this.vaultIndexEngine.getIndex();
         if (idx) {
@@ -452,6 +613,10 @@ export default class QuartzoCompanionPlugin extends Plugin {
 
     const onrename = this.app.vault.on('rename', (file: TAbstractFile, oldPath: string) => {
       if (normalizeVaultPath(oldPath) === SHARED_SETTINGS_PATH || normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { void this.reloadSharedSettingsAndIndex(); return; }
+      if (normalizeVaultPath(oldPath) === SHARED_OCCURRENCE_STATE_PATH || normalizeVaultPath(file.path) === SHARED_OCCURRENCE_STATE_PATH) {
+        void this.reloadOccurrenceResponses();
+        return;
+      }
       if (!(file instanceof TFile) || !this.vaultIndexEngine) return;
       const idx = this.vaultIndexEngine.getIndex();
       if (!idx) return;

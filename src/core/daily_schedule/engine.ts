@@ -1,7 +1,8 @@
 import { DailyScheduleInput, NormalizedSchedule, NormalizedItem } from './types';
 import { localIsoDate } from '../local-date';
+import { occurrenceResponseIdForDailyItem } from '../occurrence_actions';
 
-type PresentationField = 'sourceType' | 'sourceLabel' | 'isCompletable' | 'isCompleted' | 'origin';
+type PresentationField = 'sourceType' | 'sourceLabel' | 'isCompletable' | 'isCompleted' | 'isSkipped' | 'outcome' | 'isPlayable' | 'restrictionMetadata' | 'responseState' | 'origin';
 type RawNormalizedItem = Omit<NormalizedItem, PresentationField>;
 
 export class DailyScheduleEngine {
@@ -71,7 +72,7 @@ export class DailyScheduleEngine {
 
     // Enrich the canonical occurrence projection with presentation capabilities.
     // UI surfaces consume these values and must never infer them independently.
-    const normalizedItems = this.enrichPresentationContract(items, objects);
+    const normalizedItems = this.enrichPresentationContract(items, objects, input.occurrenceResponses ?? {});
 
     // Determine kind based on what was processed
     const kind = this.determineKind(items, objects, googleEvents);
@@ -358,8 +359,8 @@ export class DailyScheduleEngine {
 
   private static processPersonContact(obj: Record<string, unknown>, date: string, items: RawNormalizedItem[]): void {
     const id = obj.id as string;
-    const lastContact = obj.last_contact as string;
-    const frequencyDays = obj.frequency_days as number;
+    const lastContact = String(obj.last_contact_date ?? obj.last_contact ?? '');
+    const frequencyDays = Number(obj.contact_frequency_days ?? obj.frequency_days);
 
     if (!lastContact || !frequencyDays) {
       return;
@@ -440,6 +441,7 @@ export class DailyScheduleEngine {
   private static enrichPresentationContract(
     items: RawNormalizedItem[],
     objects: Array<Record<string, unknown>>,
+    occurrenceResponses: DailyScheduleInput['occurrenceResponses'],
   ): NormalizedItem[] {
     const byId = new Map<string, Record<string, unknown>>();
     for (const object of objects) {
@@ -463,7 +465,20 @@ export class DailyScheduleEngine {
         'routine', 'project', 'goal', 'person',
       ]);
       const isCompletable = source != null && completableTypes.has(sourceType);
-      const isCompleted = source == null ? false : this.isSourceCompleted(sourceType, source);
+      const occurrenceId = item.occurrenceId ?? item.id;
+      const actionOccurrenceId = occurrenceResponseIdForDailyItem(item.id, item.date);
+      const responseState = occurrenceResponses?.[actionOccurrenceId]
+        ?? occurrenceResponses?.[occurrenceId]
+        ?? occurrenceResponses?.[item.id];
+      const domainCompleted = source == null ? false : this.isSourceCompleted(sourceType, source);
+      const isCompleted = responseState?.completedAt != null || domainCompleted;
+      const isSkipped = responseState?.skippedAt != null;
+      const outcome = isCompleted ? 'done' as const : isSkipped ? 'skipped' as const : 'pending' as const;
+      const restrictionRaw = source?.restriction_metadata ?? source?.restrictionMetadata;
+      const restrictionMetadata = restrictionRaw && typeof restrictionRaw === 'object' && !Array.isArray(restrictionRaw)
+        ? { ...(restrictionRaw as Record<string, unknown>) }
+        : undefined;
+      const isPlayable = source?.playable === true;
       const origin = item.id.startsWith('google_calendar:')
         ? 'externalEvent' as const
         : item.id.startsWith('legacyTime:')
@@ -472,10 +487,17 @@ export class DailyScheduleEngine {
 
       return {
         ...item,
+        occurrenceId,
+        actionOccurrenceId,
         sourceType,
         sourceLabel,
         isCompletable,
         isCompleted,
+        isSkipped,
+        outcome,
+        isPlayable,
+        restrictionMetadata,
+        ...(responseState ? { responseState } : {}),
         origin,
       };
     });
@@ -485,7 +507,7 @@ export class DailyScheduleEngine {
     if (source.is_completed === true || source.completed === true) return true;
     switch (sourceType) {
       case 'task':
-        return source.stage === 'done' || source.stage === 'completed';
+        return source.stage === 'done' || source.stage === 'completed' || source.stage === 'finalized';
       case 'event':
       case 'pomodoro':
       case 'pomodoro_session':
