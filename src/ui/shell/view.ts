@@ -444,6 +444,7 @@ export class QuartzoView extends ItemView {
   private selectedDate = isoDate(new Date());
   private plannerMode: 'day' | 'week' | 'month' = 'day';
   private sharedSettingsRepository: SharedSettingsRepository;
+  private syncProgressTickerId: number | null = null;
 
   constructor(leaf: WorkspaceLeaf, private readonly context: ViewContext) {
     super(leaf);
@@ -456,6 +457,33 @@ export class QuartzoView extends ItemView {
 
   async onOpen(): Promise<void> {
     await this.render();
+  }
+
+  async onClose(): Promise<void> {
+    this.stopSyncProgressTicker();
+  }
+
+  private stopSyncProgressTicker(): void {
+    if (this.syncProgressTickerId !== null) {
+      window.clearInterval(this.syncProgressTickerId);
+      this.syncProgressTickerId = null;
+    }
+  }
+
+  private startSyncProgressTicker(
+    line: HTMLParagraphElement,
+    getProgress: () => SyncProgress | null
+  ): void {
+    this.stopSyncProgressTicker();
+    const refresh = () => {
+      if (!line.isConnected) {
+        this.stopSyncProgressTicker();
+        return;
+      }
+      line.textContent = formatSyncProgress(getProgress());
+    };
+    refresh();
+    this.syncProgressTickerId = window.setInterval(refresh, 1000);
   }
 
   async setSection(section: QuartzoSection): Promise<void> {
@@ -488,6 +516,7 @@ export class QuartzoView extends ItemView {
   }
 
   private async render(): Promise<void> {
+    this.stopSyncProgressTicker();
     this.contentEl.empty();
     const shell = document.createElement('div');
     shell.className = 'quartzo-shell';
@@ -989,8 +1018,9 @@ export class QuartzoView extends ItemView {
       }
       return syncProgressLine;
     };
-    if (snapshot?.status === 'syncing') {
-      ensureSyncProgressLine().textContent = formatSyncProgress(coordinator?.getSyncProgress() ?? null);
+    if (snapshot?.status === 'syncing' && coordinator) {
+      const progressLine = ensureSyncProgressLine();
+      this.startSyncProgressTicker(progressLine, () => coordinator.getSyncProgress());
     }
     container.appendChild(summary);
 
@@ -1145,9 +1175,7 @@ export class QuartzoView extends ItemView {
           ? 'Starting full reconciliation…'
           : 'Starting sync…';
 
-        const timerId = window.setInterval(() => {
-          progressLine.textContent = formatSyncProgress(coordinator.getSyncProgress());
-        }, 1000);
+        this.startSyncProgressTicker(progressLine, () => coordinator.getSyncProgress());
 
         try {
           const onProgress = (progress: SyncProgress) => {
@@ -1164,7 +1192,7 @@ export class QuartzoView extends ItemView {
             new Notice(`Sync complete: ${result.synced} synced, ${result.conflicts} conflicts`);
           }
         } finally {
-          window.clearInterval(timerId);
+          this.stopSyncProgressTicker();
           await this.render();
         }
       };
