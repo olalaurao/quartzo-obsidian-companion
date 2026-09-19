@@ -17,7 +17,7 @@ jobs:
         node-version: '20'
         cache: 'npm'
     - run: npm ci
-    - run: npm audit --omit=dev --audit-level=high
+    - run: node scripts/audit-prod.mjs
     - name: Verify canonical contracts
       run: npm run contracts:verify
       env:
@@ -43,7 +43,7 @@ jobs:
         node-version: '20'
         cache: 'npm'
     - run: npm ci
-    - run: npm audit --omit=dev --audit-level=high
+    - run: node scripts/audit-prod.mjs
     - run: npm run typecheck
     - run: npm run test:sync
     - run: npm run build
