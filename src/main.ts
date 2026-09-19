@@ -18,7 +18,7 @@ import { QuartzoView, QUARTZO_VIEW_TYPE, type QuartzoSection, type QuartzoAction
 import { buildPairingDiagnosticsText } from './ui/sync/pairing-diagnostics';
 import { ViewContext } from './ui/types';
 import { addLocalDays, localIsoDate, parseLocalIsoDate } from './core/local-date';
-import { ReminderService, type ReminderMode, type ReminderSourceObject } from './core/reminders';
+import { ReminderService, type ReminderMode, type ReminderSourceObject, type ReminderDeliveryOccurrence } from './core/reminders';
 import {
   OccurrenceActionService,
   companionOccurrenceDomainMode,
@@ -212,7 +212,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     });
     this.reminderDeliveryGateway = new ObsidianReminderDeliveryGateway(
       () => this.settings.hideNotificationBody,
-      () => { void this.activateQuartzo('home'); },
+      occurrence => { void this.openReminderOccurrence(occurrence); },
     );
     this.reminderService = new ReminderService({
       getObjects: () => this.getReminderSourceObjects(),
@@ -364,6 +364,14 @@ export default class QuartzoCompanionPlugin extends Plugin {
       new Notice(`Google Calendar authorization failed: ${error}`);
     }
   }
+  private async openReminderOccurrence(occurrence: ReminderDeliveryOccurrence): Promise<void> {
+    await this.activateQuartzo('home');
+    const leaf = this.app.workspace.getLeavesOfType(QUARTZO_VIEW_TYPE)[0];
+    if (leaf?.view instanceof QuartzoView) {
+      await leaf.view.openObjectById(occurrence.sourceId);
+    }
+  }
+
   private getReminderSourceObjects(): ReminderSourceObject[] {
     const index = this.vaultIndexEngine?.getIndex();
     if (!index) return [];
@@ -1934,9 +1942,10 @@ class QuartzoSettingTab extends PluginSettingTab {
 
     this.addHeading(containerEl, 'Notifications');
 
+    const desktopPermission = this.plugin.reminderDeliveryGateway?.desktopPermission() ?? 'unsupported';
     new Setting(containerEl)
       .setName('Reminder delivery')
-      .setDesc('V1 reminders are delivered only while Obsidian is running. In-Obsidian only is the work-computer default.')
+      .setDesc(`V1 reminders are delivered only while Obsidian is running. Desktop permission: ${desktopPermission}. In-Obsidian only is the work-computer default.`)
       .addDropdown(dropdown => dropdown
         .addOption('off', 'Off')
         .addOption('in_obsidian_only', 'In-Obsidian only')
