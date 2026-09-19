@@ -1085,6 +1085,36 @@ function checkVaultIndexWaitsForWorkspaceReady() {
   return true;
 }
 
+function checkSharedSettingsReloadReindexesVault() {
+  const mainPath = path.join(rootDir, 'src/main.ts');
+  const main = fs.readFileSync(mainPath, 'utf8');
+  const methodStart = main.indexOf('private async reloadSharedSettingsAndIndex(): Promise<void>');
+  if (methodStart < 0) {
+    console.error('FAIL: Shared settings reload owner is missing');
+    return false;
+  }
+  const methodEnd = main.indexOf('\n  showFirstRunDialog()', methodStart);
+  const method = main.slice(methodStart, methodEnd > methodStart ? methodEnd : methodStart + 1600);
+  const loadPos = method.indexOf('this.sharedSettings = await this.sharedSettingsRepository?.load() ?? null');
+  const indexPos = method.indexOf('await this.initializeVaultIndex()');
+  const refreshPos = method.indexOf('await leaf.view.refresh()');
+  if (loadPos < 0 || indexPos < loadPos || refreshPos < indexPos) {
+    console.error('FAIL: Shared settings change must reload settings, rebuild canonical index, then refresh UI');
+    return false;
+  }
+
+  const createHook = "normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { void this.reloadSharedSettingsAndIndex(); return; }";
+  const renameHook = "normalizeVaultPath(oldPath) === SHARED_SETTINGS_PATH || normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH";
+  const createModifyCount = main.split(createHook).length - 1;
+  if (createModifyCount < 2 || !main.includes(renameHook)) {
+    console.error('FAIL: Shared settings create/modify/rename events must route through canonical reindex');
+    return false;
+  }
+
+  console.log('PASS: Shared settings changes reload the canonical settings projection and vault index');
+  return true;
+}
+
 function main() {
   console.log('Running architecture/completeness checks...\n');
   let allPassed = true;
@@ -1113,6 +1143,7 @@ function main() {
   if (!checkDriveTimeoutsAndSyncProgress()) allPassed = false;
   if (!checkManualStartupStateHydration()) allPassed = false;
   if (!checkVaultIndexWaitsForWorkspaceReady()) allPassed = false;
+  if (!checkSharedSettingsReloadReindexesVault()) allPassed = false;
   if (!checkCanonicalOccurrenceActions()) allPassed = false;
   if (!checkCanonicalHomeAndDayDial()) allPassed = false;
   if (!checkCanonicalPlannerProjection()) allPassed = false;
