@@ -1,5 +1,8 @@
 import { App, Modal, Plugin, PluginSettingTab, Setting, Notice, TFile, TAbstractFile, FileSystemAdapter } from 'obsidian';
 import { VaultIndexEngine } from './vault/index';
+import type { IndexedObject } from './vault/index/types';
+import { SafeObjectMutationRepository } from './vault/object-mutation';
+import type { SafeObjectMutation } from './core/object-mutation';
 import {
   DriveSyncCoordinator,
   type PairingScanProgress,
@@ -108,6 +111,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
   private sharedSettings: QuartzoSharedSettings | null = null;
   private occurrenceStateRepository: SharedOccurrenceStateRepository | null = null;
   private occurrenceDomainMutationRepository: OccurrenceDomainMutationRepository | null = null;
+  private safeObjectMutationRepository: SafeObjectMutationRepository | null = null;
   private occurrenceResponses: Record<string, OccurrenceResponseState> = {};
   private googleAccessRefreshInFlight: Promise<string | null> | null = null;
   private pairingWorkflowModal: HTMLDivElement | null = null;
@@ -138,6 +142,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
 
     this.occurrenceStateRepository = new SharedOccurrenceStateRepository(this.app.vault);
     this.occurrenceDomainMutationRepository = new OccurrenceDomainMutationRepository(this.app.vault);
+    this.safeObjectMutationRepository = new SafeObjectMutationRepository(this.app.vault);
     try {
       this.occurrenceResponses = await this.occurrenceStateRepository.loadResponses();
     } catch (error) {
@@ -493,6 +498,33 @@ export default class QuartzoCompanionPlugin extends Plugin {
     };
     await this.refreshQuartzoView();
     return result;
+  }
+
+  async mutateObject(object: IndexedObject, patch: SafeObjectMutation): Promise<void> {
+    const repository = this.safeObjectMutationRepository;
+    const engine = this.vaultIndexEngine;
+    const index = engine?.getIndex();
+    if (!repository || !engine || !index) {
+      throw new Error('Object mutation is not initialized.');
+    }
+
+    const markdown = await repository.mutate(object, patch);
+    const parsed = parseObjectWithSharedSettings(markdown, object.path, this.sharedSettings);
+    if (parsed.object.id !== object.id || parsed.object.type !== object.type) {
+      throw new Error('Object mutation changed identity or type unexpectedly.');
+    }
+
+    engine.setIndex(VaultIndexEngine.updateIndex(index, [{
+      type: 'modified',
+      path: normalizeVaultPath(object.path),
+      object: {
+        id: parsed.object.id,
+        type: parsed.object.type,
+        path: object.path,
+        frontmatter: parsed.object as Record<string, unknown>,
+        body: parsed.object.body || '',
+      },
+    }]));
   }
 
   async setReminderDelivery(mode: ReminderMode): Promise<void> {
