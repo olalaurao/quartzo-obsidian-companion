@@ -2,7 +2,8 @@ import { spawnSync } from 'child_process';
 
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 1500;
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const isWindows = process.platform === 'win32';
+const npmCommand = isWindows ? 'npm.cmd' : 'npm';
 
 function sleep(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -12,7 +13,7 @@ function runAudit() {
   return spawnSync(
     npmCommand,
     ['audit', '--omit=dev', '--audit-level=high', '--json'],
-    { encoding: 'utf8' },
+    { encoding: 'utf8', shell: isWindows },
   );
 }
 
@@ -45,6 +46,8 @@ function isInfrastructureFailure(payload, stderr) {
 for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
   const result = runAudit();
   const payload = parseJson(result.stdout);
+  const executionError = result.error instanceof Error ? result.error.message : '';
+  const diagnostic = [result.stderr, executionError].filter(Boolean).join('\n');
 
   if (result.status === 0) {
     process.stdout.write(result.stdout || '');
@@ -59,9 +62,10 @@ for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     process.exit(result.status || 1);
   }
 
-  if (!isInfrastructureFailure(payload, result.stderr)) {
+  if (!isInfrastructureFailure(payload, diagnostic)) {
     process.stdout.write(result.stdout || '');
     process.stderr.write(result.stderr || '');
+    if (executionError) console.error(`Audit command execution error: ${executionError}`);
     console.error('Production dependency audit failed for a non-retryable reason.');
     process.exit(result.status || 1);
   }
