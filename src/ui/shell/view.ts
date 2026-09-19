@@ -295,15 +295,39 @@ export class QuartzoView extends ItemView {
     return this.titleForSource(item.sourceId);
   }
 
+  private googleEventForScheduleItem(
+    item: NormalizedItem,
+    googleEvents: GoogleCalendarProjection[],
+  ): GoogleCalendarProjection | null {
+    if (item.origin !== 'externalEvent') return null;
+    return googleEvents.find(event => event.id === item.sourceId) ?? null;
+  }
+
+  private canOpenScheduleItem(item: NormalizedItem, googleEvents: GoogleCalendarProjection[]): boolean {
+    const external = this.googleEventForScheduleItem(item, googleEvents);
+    if (external) return Boolean(external.htmlLink);
+    return this.getIndex()?.objects.has(item.sourceId) === true;
+  }
+
+  private openScheduleItem(item: NormalizedItem, googleEvents: GoogleCalendarProjection[]): void {
+    const external = this.googleEventForScheduleItem(item, googleEvents);
+    if (external) {
+      void this.context.plugin.openGoogleCalendarEvent(external).catch(error => {
+        new Notice(error instanceof Error ? error.message : String(error));
+      });
+      return;
+    }
+    const object = this.getIndex()?.objects.get(item.sourceId);
+    if (object) this.openObjectDetail(object);
+  }
+
+
   private renderScheduleList(container: HTMLElement, items: NormalizedItem[], googleEvents: GoogleCalendarProjection[] = []): void {
     renderDailyScheduleList(container, items, {
       app: this.context.app,
       titleForItem: item => this.titleForScheduleItem(item, googleEvents),
-      canOpenItem: item => this.getIndex()?.objects.has(item.sourceId) === true,
-      onOpenItem: item => {
-        const object = this.getIndex()?.objects.get(item.sourceId);
-        if (object) this.openObjectDetail(object);
-      },
+      canOpenItem: item => this.canOpenScheduleItem(item, googleEvents),
+      onOpenItem: item => this.openScheduleItem(item, googleEvents),
       performOccurrenceAction: (item, action, options) =>
         this.context.plugin.performOccurrenceAction(item, action, options),
     });
@@ -322,11 +346,8 @@ export class QuartzoView extends ItemView {
       googleEvents,
       sharedSettings,
       titleForItem: item => this.titleForScheduleItem(item, googleEvents),
-      canOpenItem: item => this.getIndex()?.objects.has(item.sourceId) === true,
-      onOpenItem: item => {
-        const object = this.getIndex()?.objects.get(item.sourceId);
-        if (object) this.openObjectDetail(object);
-      },
+      canOpenItem: item => this.canOpenScheduleItem(item, googleEvents),
+      onOpenItem: item => this.openScheduleItem(item, googleEvents),
       performOccurrenceAction: (item, action, options) =>
         this.context.plugin.performOccurrenceAction(item, action, options),
       onQuickAdd: type => new QuickAddModal(this.context, type).open(),
