@@ -39,7 +39,7 @@ export class OccurrenceActionService {
 
   constructor(private readonly options: OccurrenceActionServiceOptions) {}
 
-  completeNow(
+  async completeNow(
     target: OccurrenceActionTarget,
     actionId: string,
     now: Date,
@@ -47,7 +47,7 @@ export class OccurrenceActionService {
     return this.completeAt(target, actionId, now, now, 'done');
   }
 
-  completeAt(
+  async completeAt(
     target: OccurrenceActionTarget,
     actionId: string,
     completedAt: Date,
@@ -80,7 +80,7 @@ export class OccurrenceActionService {
     );
   }
 
-  skip(
+  async skip(
     target: OccurrenceActionTarget,
     actionId: string,
     skippedAt: Date,
@@ -95,7 +95,7 @@ export class OccurrenceActionService {
     }));
   }
 
-  clearOutcome(
+  async clearOutcome(
     target: OccurrenceActionTarget,
     actionId: string,
   ): Promise<CanonicalOccurrenceActionResult> {
@@ -115,7 +115,7 @@ export class OccurrenceActionService {
     );
   }
 
-  snooze(
+  async snooze(
     target: OccurrenceActionTarget,
     actionId: string,
     now: Date,
@@ -131,7 +131,7 @@ export class OccurrenceActionService {
     );
   }
 
-  snoozeUntil(
+  async snoozeUntil(
     target: OccurrenceActionTarget,
     actionId: string,
     snoozedUntil: Date,
@@ -143,7 +143,7 @@ export class OccurrenceActionService {
     }));
   }
 
-  dismissDelivery(
+  async dismissDelivery(
     target: OccurrenceActionTarget,
     actionId: string,
     dismissedAt: Date,
