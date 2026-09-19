@@ -21,12 +21,14 @@ import {
   companionOccurrenceDomainMode,
   type CanonicalOccurrenceAction,
   type CanonicalOccurrenceActionResult,
+  type OccurrenceActionTarget,
   type OccurrenceResponseState,
 } from './core/occurrence_actions';
 import type { NormalizedItem } from './core/daily_schedule/types';
 import { FileNotificationDeliveryRegistry } from './local-state/notification-delivery-registry';
 import { ObsidianReminderDeliveryGateway } from './platform/notifications';
 import { ElectronBrowserOpener } from './platform/browser-opener';
+import { createCanonicalObjectId } from './platform/object-id';
 import { GOOGLE_OAUTH_CLIENT_SECRET_ID, GOOGLE_REFRESH_TOKEN_SECRET_ID } from './platform/secret-ids';
 import { normalizeVaultPath } from './sync/coordinator/path-utils';
 import { VaultSyncFilePolicy } from './sync/coordinator/file-policy';
@@ -35,7 +37,6 @@ import { SHARED_OCCURRENCE_STATE_PATH, SharedOccurrenceStateRepository } from '.
 import { OccurrenceDomainMutationRepository } from './vault/occurrence-domain-mutations';
 import * as path from 'path';
 import * as fs from 'fs';
-import * as crypto from 'crypto';
 
 type GoogleCalendarStatus = 'disconnected' | 'ready' | 'authorization_required' | 'error';
 type SyncMode = 'manual' | 'automatic';
@@ -372,7 +373,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
   }
 
   private async completeOccurrenceDomain(
-    target: import('./core/occurrence_actions').OccurrenceActionTarget,
+    target: OccurrenceActionTarget,
     completedAt: Date,
     recordedAt: Date,
     actionId: string,
@@ -392,7 +393,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
   }
 
   private async clearOccurrenceDomain(
-    target: import('./core/occurrence_actions').OccurrenceActionTarget,
+    target: OccurrenceActionTarget,
   ): Promise<void> {
     const mode = companionOccurrenceDomainMode(target.sourceType);
     if (mode === 'response_only') return;
@@ -451,7 +452,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
       slotIndex: item.slotIndex,
       dueAt: dueAt.toISOString(),
     };
-    const actionId = `companion:${crypto.randomUUID()}:${action}`;
+    const actionId = `client:obsidian:${createCanonicalObjectId()}:${action}`;
     const now = new Date();
 
     let result: CanonicalOccurrenceActionResult;
