@@ -1,5 +1,6 @@
 import { ItemView, Notice, WorkspaceLeaf } from 'obsidian';
 import { DailyScheduleEngine } from '../../core/daily_schedule';
+import { OccurrenceActionPolicy } from '../../core/occurrence_actions';
 import type { NormalizedItem } from '../../core/daily_schedule/types';
 import type { GoogleCalendarProjection } from '../../integrations/google/calendar';
 import { addLocalDays, daysInLocalMonth, localIsoDate, parseLocalIsoDate, shiftLocalMonth } from '../../core/local-date';
@@ -14,6 +15,7 @@ import {
 } from '../../vault/shared-settings';
 import type { IndexedObject, VaultIndex } from '../../vault/index/types';
 import { QuickAddModal } from '../quick-add/modal';
+import { promptAlreadyDid, promptSnoozeMinutes } from '../occurrence/action-input-modal';
 import type { ViewContext } from '../types';
 import { buildConflictDiff, formatConflictDiff } from '../sync/conflict-diff';
 
@@ -238,6 +240,7 @@ export class QuartzoView extends ItemView {
         colorHex: event.colorHex,
         htmlLink: event.htmlLink,
       })),
+      occurrenceResponses: this.context.plugin.getOccurrenceResponses(),
     });
   }
 
@@ -249,18 +252,94 @@ export class QuartzoView extends ItemView {
   private renderScheduleList(container: HTMLElement, items: NormalizedItem[], googleEvents: GoogleCalendarProjection[] = []): void {
     const googleTitles = new Map(googleEvents.map(event => [event.id, event.summary] as const));
     const list = document.createElement('ul');
+    list.className = 'quartzo-schedule-list';
     for (const item of items) {
       const row = document.createElement('li');
+      row.className = 'quartzo-schedule-row';
+
+      const label = document.createElement('span');
+      label.className = 'quartzo-schedule-label';
       const time = item.start ? `${item.start} · ` : '';
       const title = item.origin === 'externalEvent'
         ? (googleTitles.get(item.sourceId) ?? item.sourceLabel)
         : this.titleForSource(item.sourceId);
-      row.textContent = `${time}${title}`;
+      label.textContent = `${time}${title}`;
+      row.appendChild(label);
+
       const object = this.getIndex()?.objects.get(item.sourceId);
       if (object) {
-        row.className = 'quartzo-clickable';
-        row.addEventListener('click', () => this.openObjectDetail(object));
+        label.classList.add('quartzo-clickable');
+        label.addEventListener('click', () => this.openObjectDetail(object));
       }
+
+      const capabilities = OccurrenceActionPolicy.resolve({
+        sourceType: item.sourceType,
+        outcome: item.outcome,
+        completable: item.isCompletable,
+        playable: item.isPlayable,
+        reminderId: item.reminderId,
+        restrictionMetadata: item.restrictionMetadata,
+        completed: item.isCompleted,
+      });
+
+      const actionRow = document.createElement('span');
+      actionRow.className = 'quartzo-occurrence-actions';
+      const runAction = async (
+        action: 'done' | 'already_did' | 'skip' | 'clear' | 'snooze',
+        options: { completedAt?: Date; snoozeMinutes?: number } = {},
+      ) => {
+        try {
+          await this.context.plugin.performOccurrenceAction(item, action, options);
+        } catch (error) {
+          new Notice(`Occurrence action blocked: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      };
+      const addAction = (labelText: string, onClick: () => void) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = labelText;
+        button.addEventListener('click', event => {
+          event.preventDefault();
+          event.stopPropagation();
+          onClick();
+        });
+        actionRow.appendChild(button);
+      };
+
+      if (item.outcome !== 'pending') {
+        const status = document.createElement('small');
+        status.className = 'quartzo-occurrence-status';
+        status.textContent = capabilities.statusLabel ?? (item.outcome === 'done' ? 'Done' : 'Skipped');
+        actionRow.appendChild(status);
+        if (capabilities.clearOutcomeLabel) {
+          addAction(capabilities.clearOutcomeLabel, () => { void runAction('clear'); });
+        }
+      } else {
+        if (capabilities.canReportDone) {
+          addAction(capabilities.doneLabel ?? 'Done', () => { void runAction('done'); });
+        }
+        if (capabilities.canAlreadyDid) {
+          addAction('Already did', () => {
+            void (async () => {
+              const completedAt = await promptAlreadyDid(this.context.app);
+              if (completedAt) await runAction('already_did', { completedAt });
+            })();
+          });
+        }
+        if (capabilities.canSkip) {
+          addAction(capabilities.skipLabel ?? 'Skip', () => { void runAction('skip'); });
+        }
+        if (capabilities.canSnooze) {
+          addAction('Snooze', () => {
+            void (async () => {
+              const snoozeMinutes = await promptSnoozeMinutes(this.context.app);
+              if (snoozeMinutes != null) await runAction('snooze', { snoozeMinutes });
+            })();
+          });
+        }
+      }
+
+      if (actionRow.childElementCount > 0) row.appendChild(actionRow);
       list.appendChild(row);
     }
     container.appendChild(list);
