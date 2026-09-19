@@ -4,10 +4,11 @@ import type {
   CanonicalOccurrenceAction,
   CanonicalOccurrenceActionResult,
 } from '../../core/occurrence_actions';
-import { addLocalDays, localIsoDate, parseLocalIsoDate } from '../../core/local-date';
+import { localIsoDate, parseLocalIsoDate } from '../../core/local-date';
 import type { QuartzoSharedSettings } from '../../core/shared-settings';
 import { renderScheduleList, type ScheduleListOptions } from '../daily/schedule-list';
 import { projectAdaptivePlanner } from './adaptive-projection';
+import { monthGridDates, positionWeekItems, weekDates } from './calendar-projection';
 
 export type PlannerMode = 'day' | 'week' | 'month';
 export type PlannerDayLens = 'timeline' | 'adaptive';
@@ -97,63 +98,14 @@ function renderDay(container: HTMLElement, options: PlannerViewOptions): void {
   container.appendChild(unavailable);
 }
 
-function clockMinutes(value: string | undefined): number | null {
-  if (!value) return null;
-  const match = /^(\d{2}):(\d{2})$/.exec(value);
-  if (!match) return null;
-  const hour = Number(match[1]);
-  const minute = Number(match[2]);
-  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
-  return hour * 60 + minute;
-}
-
-interface WeekPosition {
-  item: NormalizedItem;
-  start: number;
-  end: number;
-  lane: number;
-  laneCount: number;
-}
-
-function positionWeekItems(items: NormalizedItem[]): WeekPosition[] {
-  const candidates = items
-    .filter(item => item.isTimed && !item.isAllDay)
-    .map(item => {
-      const start = clockMinutes(item.start);
-      const endRaw = clockMinutes(item.end);
-      if (start == null) return null;
-      const end = endRaw != null && endRaw > start ? endRaw : Math.min(1440, start + 15);
-      return { item, start, end };
-    })
-    .filter((value): value is { item: NormalizedItem; start: number; end: number } => value != null)
-    .sort((a, b) => a.start - b.start || a.end - b.end || a.item.id.localeCompare(b.item.id));
-
-  const laneEnds: number[] = [];
-  const assigned = candidates.map(candidate => {
-    let lane = laneEnds.findIndex(end => end <= candidate.start);
-    if (lane < 0) {
-      lane = laneEnds.length;
-      laneEnds.push(candidate.end);
-    } else {
-      laneEnds[lane] = candidate.end;
-    }
-    return { ...candidate, lane };
-  });
-  const laneCount = Math.max(1, laneEnds.length);
-  return assigned.map(entry => ({ ...entry, laneCount }));
-}
-
 function weekdayLabel(date: string): string {
   return new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric' })
     .format(parseLocalIsoDate(date));
 }
 
 function renderWeek(container: HTMLElement, options: PlannerViewOptions): void {
-  const selected = parseLocalIsoDate(options.selectedDate);
   const startOfWeek = options.sharedSettings?.startOfWeek ?? 1;
-  const delta = (selected.getDay() - startOfWeek + 7) % 7;
-  const start = addLocalDays(selected, -delta);
-  const dates = Array.from({ length: 7 }, (_, index) => localIsoDate(addLocalDays(start, index)));
+  const dates = weekDates(options.selectedDate, startOfWeek);
   const schedules = options.schedulesByDate ?? new Map<string, NormalizedSchedule>();
 
   const allDay = document.createElement('div');
@@ -225,27 +177,24 @@ function renderMonth(container: HTMLElement, options: PlannerViewOptions): void 
   const selected = parseLocalIsoDate(options.selectedDate);
   const year = selected.getFullYear();
   const month = selected.getMonth();
-  const first = new Date(year, month, 1);
   const startOfWeek = options.sharedSettings?.startOfWeek ?? 1;
-  const leading = (first.getDay() - startOfWeek + 7) % 7;
-  const gridStart = addLocalDays(first, -leading);
+  const dates = monthGridDates(options.selectedDate, startOfWeek);
   const schedules = options.schedulesByDate ?? new Map<string, NormalizedSchedule>();
 
   const weekdayHeader = document.createElement('div');
   weekdayHeader.className = 'quartzo-planner-month-weekdays';
-  for (let i = 0; i < 7; i++) {
-    const date = addLocalDays(gridStart, i);
+  for (const date of dates.slice(0, 7)) {
     const label = document.createElement('strong');
-    label.textContent = new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(date);
+    label.textContent = new Intl.DateTimeFormat(undefined, { weekday: 'short' })
+      .format(parseLocalIsoDate(date));
     weekdayHeader.appendChild(label);
   }
   container.appendChild(weekdayHeader);
 
   const grid = document.createElement('div');
   grid.className = 'quartzo-planner-month-grid';
-  for (let index = 0; index < 42; index++) {
-    const dateValue = addLocalDays(gridStart, index);
-    const date = localIsoDate(dateValue);
+  for (const date of dates) {
+    const dateValue = parseLocalIsoDate(date);
     const schedule = schedules.get(date);
     const cell = document.createElement('button');
     cell.className = 'quartzo-planner-month-cell';
