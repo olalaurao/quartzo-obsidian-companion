@@ -14,7 +14,8 @@ const rows = coverage as CoverageRow[];
 
 function coverageTypeForObjectType(objectType: string): string {
   switch (objectType) {
-    case 'tracker_definition': return 'tracker';
+    case 'tracker_definition':
+    case 'tracker_record': return 'tracker';
     case 'pomodoro_session': return 'pomodoro';
     case 'combined_analysis': return 'analysis';
     default: return objectType;
