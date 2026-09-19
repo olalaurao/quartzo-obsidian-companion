@@ -715,6 +715,63 @@ function checkFirstPairingApplyProgress() {
   return true;
 }
 
+function checkCanonicalOccurrenceActions() {
+  const servicePath = path.join(rootDir, 'src/core/occurrence_actions/service.ts');
+  const policyPath = path.join(rootDir, 'src/core/occurrence_actions/policy.ts');
+  const identityPath = path.join(rootDir, 'src/core/occurrence_actions/identity.ts');
+  const statePath = path.join(rootDir, 'src/vault/occurrence-state.ts');
+  const domainPath = path.join(rootDir, 'src/vault/occurrence-domain-mutations.ts');
+  const schedulePath = path.join(rootDir, 'src/core/daily_schedule/engine.ts');
+  const viewPath = path.join(rootDir, 'src/ui/shell/view.ts');
+  const mainPath = path.join(rootDir, 'src/main.ts');
+
+  const service = fs.readFileSync(servicePath, 'utf8');
+  const policy = fs.readFileSync(policyPath, 'utf8');
+  const identity = fs.readFileSync(identityPath, 'utf8');
+  const state = fs.readFileSync(statePath, 'utf8');
+  const domain = fs.readFileSync(domainPath, 'utf8');
+  const schedule = fs.readFileSync(schedulePath, 'utf8');
+  const view = fs.readFileSync(viewPath, 'utf8');
+  const main = fs.readFileSync(mainPath, 'utf8');
+
+  if (!service.includes('export class OccurrenceActionService') ||
+      !service.includes('processedActionIds.includes(normalizedActionId)') ||
+      !service.includes('await this.options.store.replaceResponses(previousResponses)') ||
+      service.includes('findObjectPath(') ||
+      service.includes('syncQueue')) {
+    console.error('FAIL: Occurrence actions are not owned by the canonical idempotent coordinator');
+    return false;
+  }
+  if (!state.includes("SHARED_OCCURRENCE_STATE_PATH = 'sessions/shared_occurrence_state_v1.md'") ||
+      !state.includes('await this.vault.process(') ||
+      !domain.includes('await this.vault.process(')) {
+    console.error('FAIL: Shared occurrence/domain writes bypass the canonical Vault.process repositories');
+    return false;
+  }
+  if (!identity.includes('normalizedId.endsWith') ||
+      !schedule.includes('occurrenceResponseIdForDailyItem(item.id, item.date)') ||
+      !schedule.includes('actionOccurrenceId')) {
+    console.error('FAIL: Companion occurrence actions do not use the app canonical dated identity');
+    return false;
+  }
+  if (!policy.includes('export class OccurrenceActionPolicy') ||
+      !view.includes('OccurrenceActionPolicy.resolve({') ||
+      !view.includes('performOccurrenceAction(item, action, options)') ||
+      view.includes('occurrence_responses')) {
+    console.error('FAIL: Daily UI owns occurrence business state instead of projecting the canonical policy/coordinator');
+    return false;
+  }
+  if (!main.includes('companionOccurrenceDomainMode(item.sourceType)') ||
+      !main.includes("domainMode === 'unsupported'") ||
+      !service.includes('completeDomainOccurrence') ||
+      !service.includes('clearDomainOccurrence')) {
+    console.error('FAIL: Required source-domain side effects can be partially applied instead of failing closed');
+    return false;
+  }
+
+  console.log('PASS: Occurrence actions are canonical, idempotent, dated, Vault-safe and fail closed on unsupported domain parity');
+  return true;
+}
 function main() {
   console.log('Running architecture/completeness checks...\n');
   let allPassed = true;
@@ -742,6 +799,7 @@ function main() {
   if (!checkDriveQuotaResilience()) allPassed = false;
   if (!checkDriveTimeoutsAndSyncProgress()) allPassed = false;
   if (!checkManualStartupStateHydration()) allPassed = false;
+  if (!checkCanonicalOccurrenceActions()) allPassed = false;
   if (!checkFirstPairingApplyProgress()) allPassed = false;
 
   console.log('\n' + (allPassed ? 'All architecture checks passed' : 'Some architecture checks failed'));
