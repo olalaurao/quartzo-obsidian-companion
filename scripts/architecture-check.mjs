@@ -973,6 +973,68 @@ function checkCanonicalObjectQueryOwner() {
   return true;
 }
 
+
+function checkReminderTargetNavigation() {
+  const notificationsPath = path.join(rootDir, 'src/platform/notifications.ts');
+  const mainPath = path.join(rootDir, 'src/main.ts');
+  const shellPath = path.join(rootDir, 'src/ui/shell/view.ts');
+  const notifications = fs.readFileSync(notificationsPath, 'utf8');
+  const main = fs.readFileSync(mainPath, 'utf8');
+  const shell = fs.readFileSync(shellPath, 'utf8');
+
+  if (!notifications.includes('openQuartzo: (occurrence: ReminderDeliveryOccurrence) => void') ||
+      !notifications.includes('this.openQuartzo(occurrence)') ||
+      !main.includes('openReminderOccurrence(occurrence)') ||
+      !main.includes('leaf.view.openObjectById(occurrence.sourceId)') ||
+      !shell.includes('async openObjectById(objectId: string)')) {
+    console.error('FAIL: Reminder desktop click can lose its canonical source target');
+    return false;
+  }
+
+  if (!main.includes('desktopPermission()') ||
+      !main.includes('Desktop permission:')) {
+    console.error('FAIL: Reminder desktop permission state is not projected in Settings');
+    return false;
+  }
+
+  console.log('PASS: Reminder delivery click preserves source identity and permission state is visible');
+  return true;
+}
+
+function checkCalendarExternalNavigation() {
+  const adapterPath = path.join(rootDir, 'src/integrations/google/calendar/adapter.ts');
+  const mainPath = path.join(rootDir, 'src/main.ts');
+  const shellPath = path.join(rootDir, 'src/ui/shell/view.ts');
+  const browserPath = path.join(rootDir, 'src/platform/browser-opener.ts');
+  const adapter = fs.readFileSync(adapterPath, 'utf8');
+  const main = fs.readFileSync(mainPath, 'utf8');
+  const shell = fs.readFileSync(shellPath, 'utf8');
+  const browser = fs.readFileSync(browserPath, 'utf8');
+
+  if (!adapter.includes('htmlLink?: string') ||
+      !main.includes('openGoogleCalendarEvent(event: GoogleCalendarProjection)') ||
+      !main.includes('await this.browserOpener.open(event.htmlLink)') ||
+      !shell.includes("item.origin !== 'externalEvent'") ||
+      !shell.includes('openGoogleCalendarEvent(external)')) {
+    console.error('FAIL: Google Calendar external events are not opened through the shared read-only projection path');
+    return false;
+  }
+
+  if (!browser.includes("parsed.protocol !== 'https:'")) {
+    console.error('FAIL: External Calendar links can bypass the HTTPS-only platform opener');
+    return false;
+  }
+
+  const externalCallbacks = shell.match(/canOpenItem: item => this\.canOpenScheduleItem\(item, googleEvents\)/g) || [];
+  if (externalCallbacks.length < 3) {
+    console.error('FAIL: Home/Planner/daily schedule surfaces do not share external Calendar opening semantics');
+    return false;
+  }
+
+  console.log('PASS: Calendar external navigation is HTTPS-only, shared and read-only');
+  return true;
+}
+
 function main() {
   console.log('Running architecture/completeness checks...\n');
   let allPassed = true;
@@ -1005,6 +1067,8 @@ function main() {
   if (!checkCanonicalPlannerProjection()) allPassed = false;
   if (!checkCanonicalUniversalDetailMutation()) allPassed = false;
   if (!checkCanonicalObjectQueryOwner()) allPassed = false;
+  if (!checkReminderTargetNavigation()) allPassed = false;
+  if (!checkCalendarExternalNavigation()) allPassed = false;
   if (!checkFirstPairingApplyProgress()) allPassed = false;
 
   console.log('\n' + (allPassed ? 'All architecture checks passed' : 'Some architecture checks failed'));
