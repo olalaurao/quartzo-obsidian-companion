@@ -93,7 +93,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
             continue;
           }
           throw new DriveRequestTimeoutError(
-            `Google Drive request timed out after ${Math.round(DRIVE_REQUEST_TIMEOUT_MS / 1000)}s. The sync operation was stopped instead of remaining stuck.`
+            'Google Drive request timed out. The current operation was stopped instead of remaining stuck.'
           );
         }
 
@@ -492,6 +492,15 @@ export class GoogleDriveAdapter implements DriveAdapter {
       } catch (error) {
         const after = await this.findFolderByName(parentId, folderName);
         if (after) return after;
+        if (this.isTimeoutError(error)) {
+          if (attempt < 1) {
+            await this.createBackoff(attempt);
+            continue;
+          }
+          throw new DriveRequestTimeoutError(
+            `Google Drive folder creation timed out for ${folderName}. The operation was stopped safely.`
+          );
+        }
         if (!this.isTransientCreateError(error) || attempt === 2) throw error;
         await this.createBackoff(attempt);
       }
@@ -555,6 +564,15 @@ export class GoogleDriveAdapter implements DriveAdapter {
       } catch (error) {
         const after = await findExpected();
         if (after) return after;
+        if (this.isTimeoutError(error)) {
+          if (attempt < 1) {
+            await this.createBackoff(attempt);
+            continue;
+          }
+          throw new DriveRequestTimeoutError(
+            `Google Drive file creation timed out for ${fullPath}. The operation was stopped safely.`
+          );
+        }
         if (!this.isTransientCreateError(error) || attempt === 2) throw error;
         await this.createBackoff(attempt);
       }
