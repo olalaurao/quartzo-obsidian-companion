@@ -5,6 +5,8 @@ import type { GoogleDriveAdapter } from '../integrations/google/drive';
 import type { GoogleCalendarProjection } from '../integrations/google/calendar';
 import type { ReminderMode } from '../core/reminders';
 import type { NormalizedItem } from '../core/daily_schedule/types';
+import type { SafeObjectMutation } from '../core/object-mutation';
+import type { IndexedObject } from '../vault/index/types';
 import type {
   CanonicalOccurrenceAction,
   CanonicalOccurrenceActionResult,
@@ -64,6 +66,7 @@ export interface ViewContext {
       action: CanonicalOccurrenceAction,
       options?: { completedAt?: Date; snoozeMinutes?: number },
     ): Promise<CanonicalOccurrenceActionResult>;
+    mutateObject(object: IndexedObject, patch: SafeObjectMutation): Promise<void>;
     adoptFile(filePath: string): Promise<void>;
     openSettings(): void;
   };
