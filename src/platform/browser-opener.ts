@@ -10,7 +10,7 @@ export class ElectronBrowserOpener implements BrowserOpener {
   async open(url: string): Promise<void> {
     const parsed = new URL(url);
     if (parsed.protocol !== 'https:') {
-      throw new Error('OAuth authorization URL must use HTTPS');
+      throw new Error('External URL must use HTTPS');
     }
     await electron.shell.openExternal(parsed.toString());
   }
