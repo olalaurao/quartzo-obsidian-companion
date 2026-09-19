@@ -203,6 +203,18 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     return Array.from(this.conflicts.values());
   }
 
+  async hydratePersistedState(): Promise<void> {
+    try {
+      await this.loadSyncState();
+      this.rehydrateConflicts();
+      this.lastError = null;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.lastError = message;
+      throw error;
+    }
+  }
+
   isPairingApplyInProgress(): boolean {
     return this.pairingApplyInProgress;
   }
