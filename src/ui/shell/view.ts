@@ -1,6 +1,6 @@
 import { ItemView, Notice, WorkspaceLeaf } from 'obsidian';
 import { DailyScheduleEngine } from '../../core/daily_schedule';
-import { OccurrenceActionPolicy } from '../../core/occurrence_actions';
+import { OccurrenceActionPolicy, companionOccurrenceDomainMode } from '../../core/occurrence_actions';
 import type { NormalizedItem } from '../../core/daily_schedule/types';
 import type { GoogleCalendarProjection } from '../../integrations/google/calendar';
 import { addLocalDays, daysInLocalMonth, localIsoDate, parseLocalIsoDate, shiftLocalMonth } from '../../core/local-date';
@@ -306,19 +306,23 @@ export class QuartzoView extends ItemView {
         actionRow.appendChild(button);
       };
 
+      const domainMode = companionOccurrenceDomainMode(item.sourceType);
       if (item.outcome !== 'pending') {
         const status = document.createElement('small');
         status.className = 'quartzo-occurrence-status';
         status.textContent = capabilities.statusLabel ?? (item.outcome === 'done' ? 'Done' : 'Skipped');
         actionRow.appendChild(status);
-        if (capabilities.clearOutcomeLabel) {
+        if (
+          capabilities.clearOutcomeLabel &&
+          (domainMode !== 'unsupported' || item.outcome === 'skipped')
+        ) {
           addAction(capabilities.clearOutcomeLabel, () => { void runAction('clear'); });
         }
       } else {
-        if (capabilities.canReportDone) {
+        if (capabilities.canReportDone && domainMode !== 'unsupported') {
           addAction(capabilities.doneLabel ?? 'Done', () => { void runAction('done'); });
         }
-        if (capabilities.canAlreadyDid) {
+        if (capabilities.canAlreadyDid && domainMode !== 'unsupported') {
           addAction('Already did', () => {
             void (async () => {
               const completedAt = await promptAlreadyDid(this.context.app);
