@@ -67,10 +67,7 @@ export function projectHomeSchedule(
   }
 
   future.sort((a, b) => a.start - b.start || a.item.id.localeCompare(b.item.id));
-  const nextStart = future[0]?.start;
-  const upNext = nextStart == null
-    ? []
-    : future.filter(candidate => candidate.start === nextStart).map(candidate => candidate.item);
+  const upNext = future.slice(0, 3).map(candidate => candidate.item);
 
   return { now: active, upNext, today, taskProgress, habitProgress };
 }
