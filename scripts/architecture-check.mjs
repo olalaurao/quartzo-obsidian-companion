@@ -1151,10 +1151,13 @@ function checkProductionAuditGateResilience() {
   }
 
   if (!script.includes('MAX_ATTEMPTS = 3') ||
+      !script.includes("const isWindows = process.platform === 'win32'") ||
+      !script.includes('shell: isWindows') ||
+      !script.includes('Audit command execution error:') ||
       !script.includes('high/critical vulnerabilities') ||
       !script.includes('audit infrastructure remained unavailable after bounded retries') ||
       !script.includes('isInfrastructureFailure')) {
-    console.error('FAIL: Production audit gate must retry only bounded infrastructure failures and still fail closed');
+    console.error('FAIL: Production audit gate must be cross-platform, retry only bounded infrastructure failures and still fail closed');
     return false;
   }
 
