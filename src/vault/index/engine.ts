@@ -1,6 +1,7 @@
 import { ObjectParser } from '../../core/objects';
 import { VaultFile, IndexedObject, VaultIndex, IndexChange } from './types';
 import type { ParseResult } from '../../core/objects/types';
+import { searchVaultObjects } from '../../core/object-query';
 
 export class VaultIndexEngine {
   private index: VaultIndex | null = null;
@@ -99,12 +100,7 @@ export class VaultIndexEngine {
   }
 
   static searchObjects(index: VaultIndex, query: string): IndexedObject[] {
-    const lowerQuery = query.toLowerCase();
-    return Array.from(index.objects.values()).filter(obj => {
-      const title = (obj.frontmatter.title as string) || '';
-      const body = obj.body || '';
-      return title.toLowerCase().includes(lowerQuery) || body.toLowerCase().includes(lowerQuery);
-    });
+    return searchVaultObjects(index, query);
   }
 
   static invalidateCache(index: VaultIndex, paths: string[]): VaultIndex {
