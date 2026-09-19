@@ -885,6 +885,62 @@ function checkCanonicalPlannerProjection() {
   return true;
 }
 
+
+function checkCanonicalUniversalDetailMutation() {
+  const capabilityPath = path.join(rootDir, 'src/core/object-mutation/capabilities.ts');
+  const mutationPath = path.join(rootDir, 'src/core/object-mutation/mutation.ts');
+  const repositoryPath = path.join(rootDir, 'src/vault/object-mutation.ts');
+  const detailPath = path.join(rootDir, 'src/ui/detail/object-detail.ts');
+  const editorPath = path.join(rootDir, 'src/ui/detail/object-editor.ts');
+  const shellPath = path.join(rootDir, 'src/ui/shell/view.ts');
+
+  const capability = fs.readFileSync(capabilityPath, 'utf8');
+  const mutation = fs.readFileSync(mutationPath, 'utf8');
+  const repository = fs.readFileSync(repositoryPath, 'utf8');
+  const detail = fs.readFileSync(detailPath, 'utf8');
+  const editor = fs.readFileSync(editorPath, 'utf8');
+  const shell = fs.readFileSync(shellPath, 'utf8');
+
+  if (!capability.includes("object_fixtures/coverage.json") ||
+      !capability.includes("mutationSupport === 'full'") ||
+      !capability.includes("fixtureCoverage === 'concrete_mutation'")) {
+    console.error('FAIL: Universal Detail edit capability is not derived from vendored contract coverage');
+    return false;
+  }
+
+  if (!mutation.includes('ObjectParser.parseMarkdown(currentMarkdown)') ||
+      !mutation.includes("PROTECTED_KEYS = new Set(['id', 'type'])") ||
+      !mutation.includes('hasFullObjectMutationSupport(expected.type)')) {
+    console.error('FAIL: Universal Detail mutation can reconstruct objects or change protected identity');
+    return false;
+  }
+
+  if (!repository.includes('await this.vault.process(file, current =>') ||
+      repository.includes('vault.modify(')) {
+    console.error('FAIL: Universal Detail edits bypass the canonical Vault.process repository');
+    return false;
+  }
+
+  if (!detail.includes('hasFullObjectMutationSupport(object.type)') ||
+      !editor.includes('const dirty = new Set<string>()') ||
+      !editor.includes('actions.onSave(patch)') ||
+      !shell.includes('this.context.plugin.mutateObject(object, patch)')) {
+    console.error('FAIL: Universal Detail UI can expose/save edits outside the canonical capability/mutation path');
+    return false;
+  }
+
+  if (shell.includes('ObjectParser.serializeMarkdown') ||
+      shell.includes('vault.process(') ||
+      editor.includes('ObjectParser.serializeMarkdown') ||
+      editor.includes('vault.process(')) {
+    console.error('FAIL: Universal Detail UI owns persistence instead of delegating to the canonical mutation owner');
+    return false;
+  }
+
+  console.log('PASS: Universal Detail editing is coverage-gated, dirty-tracked and Vault.process-safe');
+  return true;
+}
+
 function main() {
   console.log('Running architecture/completeness checks...\n');
   let allPassed = true;
@@ -915,6 +971,7 @@ function main() {
   if (!checkCanonicalOccurrenceActions()) allPassed = false;
   if (!checkCanonicalHomeAndDayDial()) allPassed = false;
   if (!checkCanonicalPlannerProjection()) allPassed = false;
+  if (!checkCanonicalUniversalDetailMutation()) allPassed = false;
   if (!checkFirstPairingApplyProgress()) allPassed = false;
 
   console.log('\n' + (allPassed ? 'All architecture checks passed' : 'Some architecture checks failed'));
