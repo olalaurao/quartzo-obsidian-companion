@@ -4,11 +4,15 @@ import {
   DriveChange,
   UploadFileParams,
   TemporaryDriveQuotaError,
+  DriveRequestTimeoutError,
 } from '../../../sync/coordinator/types';
 import { drive_v3, drive } from '@googleapis/drive';
 import { OAuth2Client } from 'google-auth-library';
 import { normalizeVaultPath } from '../../../sync/coordinator/path-utils';
 import * as crypto from 'crypto';
+
+const DRIVE_REQUEST_TIMEOUT_MS = 60_000;
+const DRIVE_MEDIA_REQUEST_TIMEOUT_MS = 120_000;
 
 function driveErrorText(error: unknown): string {
   const err = error as {
@@ -79,8 +83,19 @@ export class GoogleDriveAdapter implements DriveAdapter {
         return await operation();
       } catch (error: unknown) {
         lastError = error;
-        const err = error as { code?: number; status?: number; response?: { status?: number } };
-        const statusCode = err.code || err.status || err.response?.status;
+        const timedOut = this.isTimeoutError(error);
+        const err = error as { code?: number | string; status?: number; response?: { status?: number } };
+        const statusCode = typeof err.code === 'number' ? err.code : (err.status || err.response?.status);
+
+        if (timedOut) {
+          if (attempt < Math.min(maxRetries, 1)) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            continue;
+          }
+          throw new DriveRequestTimeoutError(
+            'Google Drive request timed out. The current operation was stopped instead of remaining stuck.'
+          );
+        }
 
         if ((statusCode === 401 || (statusCode === 403 && this.isCredentialError(error))) && !authRefreshAttempted) {
           authRefreshAttempted = true;
@@ -124,6 +139,17 @@ export class GoogleDriveAdapter implements DriveAdapter {
       }
     }
     throw lastError;
+  }
+
+  private isTimeoutError(error: unknown): boolean {
+    const err = error as { code?: number | string; message?: string };
+    const code = String(err.code ?? '').toUpperCase();
+    const message = (err.message ?? '').toLowerCase();
+    return code === 'ETIMEDOUT' ||
+      code === 'ECONNABORTED' ||
+      code === 'UND_ERR_CONNECT_TIMEOUT' ||
+      message.includes('timed out') ||
+      message.includes('timeout');
   }
 
   private isRateLimitError(error: unknown): boolean {
@@ -223,7 +249,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
         fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties, trashed, capabilities(canTrash))',
         pageSize: 100,
         pageToken: pageToken
-      });
+      }, { timeout: DRIVE_REQUEST_TIMEOUT_MS });
 
       const files: DriveFileMetadata[] = (response.data.files || []).map(file => ({
         id: file.id || '',
@@ -262,7 +288,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
         fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties, trashed, capabilities(canTrash))',
         pageSize: 1000,
         pageToken
-      }));
+      }, { timeout: DRIVE_REQUEST_TIMEOUT_MS }));
 
       const files: DriveFileMetadata[] = (response.data.files || []).map(file => ({
         id: file.id || '',
@@ -302,7 +328,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
         fields: 'nextPageToken, files(id, name)',
         pageSize: 100,
         pageToken
-      }));
+      }, { timeout: DRIVE_REQUEST_TIMEOUT_MS }));
       for (const f of (response.data.files || [])) {
         if (f.id && f.name) folders.push({ id: f.id, name: f.name });
       }
@@ -314,7 +340,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
   async getStartPageToken(): Promise<string> {
     return this.withRetry(async () => {
       const drive = this.getDriveClient();
-      const response = await drive.changes.getStartPageToken();
+      const response = await drive.changes.getStartPageToken({}, { timeout: DRIVE_REQUEST_TIMEOUT_MS });
       return response.data.startPageToken || '';
     });
   }
@@ -326,7 +352,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
         pageToken,
         fields: 'nextPageToken, newStartPageToken, changes(fileId, removed, file(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties, trashed, capabilities(canTrash)))',
         pageSize: 1000
-      });
+      }, { timeout: DRIVE_REQUEST_TIMEOUT_MS });
 
       const changes: DriveChange[] = (response.data.changes || []).map(change => ({
         fileId: change.fileId || '',
@@ -364,7 +390,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
       const response = await drive.files.get({
         fileId,
         alt: 'media'
-      }, { responseType: 'arraybuffer' });
+      }, { responseType: 'arraybuffer', timeout: DRIVE_MEDIA_REQUEST_TIMEOUT_MS });
       return new Uint8Array(response.data as ArrayBuffer);
     });
   }
@@ -378,7 +404,10 @@ export class GoogleDriveAdapter implements DriveAdapter {
       if (currentId === this.folderId) return;
       if (checked.has(currentId)) throw new Error('Cyclic structure detected');
       checked.add(currentId);
-      const res = await this.withRetry(() => drive.files.get({ fileId: currentId, fields: 'parents' }));
+      const res = await this.withRetry(() => drive.files.get(
+        { fileId: currentId, fields: 'parents' },
+        { timeout: DRIVE_REQUEST_TIMEOUT_MS }
+      ));
       const parents = res.data.parents;
       if (!parents || parents.length === 0) {
         throw new Error(`Boundary guard failed: file ${remoteFileId} is not inside selected vault ${this.folderId}`);
@@ -417,7 +446,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
         fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties, trashed, capabilities(canTrash))',
         pageSize: 100,
         pageToken
-      }));
+      }, { timeout: DRIVE_REQUEST_TIMEOUT_MS }));
       for (const file of response.data.files || []) {
         results.push({
           id: file.id || '',
@@ -457,12 +486,21 @@ export class GoogleDriveAdapter implements DriveAdapter {
             mimeType: 'application/vnd.google-apps.folder'
           },
           fields: 'id'
-        });
+        }, { timeout: DRIVE_REQUEST_TIMEOUT_MS });
         if (!created.data.id) throw new Error(`Drive create folder returned no ID for ${folderName}`);
         return created.data.id;
       } catch (error) {
         const after = await this.findFolderByName(parentId, folderName);
         if (after) return after;
+        if (this.isTimeoutError(error)) {
+          if (attempt < 1) {
+            await this.createBackoff(attempt);
+            continue;
+          }
+          throw new DriveRequestTimeoutError(
+            `Google Drive folder creation timed out for ${folderName}. The operation was stopped safely.`
+          );
+        }
         if (!this.isTransientCreateError(error) || attempt === 2) throw error;
         await this.createBackoff(attempt);
       }
@@ -512,7 +550,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
             body: Buffer.from(content)
           },
           fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties, trashed, capabilities(canTrash)'
-        });
+        }, { timeout: DRIVE_MEDIA_REQUEST_TIMEOUT_MS });
         const data = response.data;
         return {
           id: data.id || '',
@@ -526,6 +564,15 @@ export class GoogleDriveAdapter implements DriveAdapter {
       } catch (error) {
         const after = await findExpected();
         if (after) return after;
+        if (this.isTimeoutError(error)) {
+          if (attempt < 1) {
+            await this.createBackoff(attempt);
+            continue;
+          }
+          throw new DriveRequestTimeoutError(
+            `Google Drive file creation timed out for ${fullPath}. The operation was stopped safely.`
+          );
+        }
         if (!this.isTransientCreateError(error) || attempt === 2) throw error;
         await this.createBackoff(attempt);
       }
@@ -550,7 +597,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
         requestBody: { properties: { Quartzo_hash: quartzoHash } },
         media: { mimeType: 'application/octet-stream', body: Buffer.from(content) },
         fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties'
-      });
+      }, { timeout: DRIVE_MEDIA_REQUEST_TIMEOUT_MS });
       const data = response.data;
       return {
         id: data.id || fileId,
@@ -580,7 +627,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
           requestBody: { trashed: true },
           supportsAllDrives: true,
           fields: 'id, trashed',
-        });
+        }, { timeout: DRIVE_REQUEST_TIMEOUT_MS });
         if (response.data.trashed !== true) {
           throw new Error(`Drive did not confirm trashed=true for file ${fileId}`);
         }
@@ -601,7 +648,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
     try {
       await this.withRetry(async () => {
         const driveClient = this.getDriveClient();
-        await driveClient.files.delete({ fileId });
+        await driveClient.files.delete({ fileId }, { timeout: DRIVE_REQUEST_TIMEOUT_MS });
       });
     } catch (error) {
       if (this.errorStatus(error) === 404) return;
@@ -618,7 +665,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
       const currentResponse = await driveClient.files.get({
         fileId,
         fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties'
-      });
+      }, { timeout: DRIVE_REQUEST_TIMEOUT_MS });
       const current = currentResponse.data;
       const currentParents = current.parents || [];
 
@@ -633,7 +680,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
             fields: 'nextPageToken, files(id)',
             pageSize: 100,
             pageToken
-          });
+          }, { timeout: DRIVE_REQUEST_TIMEOUT_MS });
           for (const candidate of response.data.files || []) {
             if (candidate.id && candidate.id !== fileId) collisions.push(candidate.id);
           }
@@ -665,7 +712,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
         addParents: movingParent ? newParentId : undefined,
         removeParents: movingParent && currentParents.length > 0 ? currentParents.join(',') : undefined,
         fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties'
-      });
+      }, { timeout: DRIVE_REQUEST_TIMEOUT_MS });
       const data = response.data;
       return {
         id: data.id || fileId,
@@ -690,7 +737,10 @@ export class GoogleDriveAdapter implements DriveAdapter {
     while (currentId && currentId !== this.folderId) {
       if (checked.has(currentId)) throw new Error('Cyclic structure detected in path resolution');
       checked.add(currentId);
-      const res = await this.withRetry(() => drive.files.get({ fileId: currentId, fields: 'name, parents' }));
+      const res = await this.withRetry(() => drive.files.get(
+        { fileId: currentId, fields: 'name, parents' },
+        { timeout: DRIVE_REQUEST_TIMEOUT_MS }
+      ));
       parts.unshift(res.data.name || '');
       const parents = res.data.parents;
       if (!parents || parents.length === 0) {
@@ -707,7 +757,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
       const response = await drive.files.get({
         fileId,
         fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties, trashed, capabilities(canTrash)'
-      });
+      }, { timeout: DRIVE_REQUEST_TIMEOUT_MS });
 
       const data = response.data;
       return {

@@ -9,7 +9,7 @@ import { ResourceMetadataService, type ResourceMetadataDraft } from '../../integ
 import type { GoogleCalendarProjection } from '../../integrations/google/calendar';
 import { addLocalDays, daysInLocalMonth, localIsoDate, parseLocalIsoDate, shiftLocalMonth } from '../../core/local-date';
 import { createCanonicalObjectId } from '../../platform/object-id';
-import { chooseNewestConflictResolution } from '../../sync/coordinator';
+import { chooseNewestConflictResolution, type SyncProgress } from '../../sync/coordinator';
 import { VaultIndexEngine } from '../../vault/index';
 import { renderObjectDetail } from '../detail/object-detail';
 import { projectHomeSchedule } from '../home/home-projection';
@@ -40,6 +40,38 @@ function parseIsoDate(value: string): Date {
 function labelForType(type: string): string {
   if (type === 'tracker_record') return 'Record';
   return type.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+}
+
+function formatDurationSeconds(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return minutes > 0 ? `${minutes}m ${remainder}s` : `${remainder}s`;
+}
+
+function formatSyncProgress(progress: SyncProgress | null): string {
+  if (!progress) return 'Sync is active. Waiting for the coordinator to report its current phase…';
+
+  const phaseLabels: Record<SyncProgress['phase'], string> = {
+    local_inventory: 'Scanning local vault',
+    remote_inventory: 'Listing Google Drive vault',
+    resolving_paths: 'Resolving Drive paths',
+    hashing_remote: 'Hashing remote files',
+    processing_changes: 'Processing Drive changes',
+    processing_local_changes: 'Processing local changes',
+    reconciling: 'Reconciling files',
+    finalizing: 'Finalizing sync',
+  };
+  const now = Date.now();
+  const elapsed = formatDurationSeconds((now - progress.startedAt) / 1000);
+  const lastActivity = formatDurationSeconds((now - progress.lastActivityAt) / 1000);
+  const amount = progress.total > 0
+    ? ` · ${progress.completed}/${progress.total} (${Math.min(100, Math.round((progress.completed / progress.total) * 100))}%)`
+    : progress.completed > 0
+      ? ` · ${progress.completed} processed`
+      : '';
+  const current = progress.currentPath ? ` · ${progress.currentPath}` : '';
+  return `${phaseLabels[progress.phase]}${amount}${current} · elapsed ${elapsed} · last progress update ${lastActivity} ago`;
 }
 
 function scheduleObjects(index: VaultIndex | null): Array<Record<string, unknown>> {
@@ -412,6 +444,7 @@ export class QuartzoView extends ItemView {
   private selectedDate = isoDate(new Date());
   private plannerMode: 'day' | 'week' | 'month' = 'day';
   private sharedSettingsRepository: SharedSettingsRepository;
+  private syncProgressTickerId: number | null = null;
 
   constructor(leaf: WorkspaceLeaf, private readonly context: ViewContext) {
     super(leaf);
@@ -424,6 +457,33 @@ export class QuartzoView extends ItemView {
 
   async onOpen(): Promise<void> {
     await this.render();
+  }
+
+  async onClose(): Promise<void> {
+    this.stopSyncProgressTicker();
+  }
+
+  private stopSyncProgressTicker(): void {
+    if (this.syncProgressTickerId !== null) {
+      window.clearInterval(this.syncProgressTickerId);
+      this.syncProgressTickerId = null;
+    }
+  }
+
+  private startSyncProgressTicker(
+    line: HTMLParagraphElement,
+    getProgress: () => SyncProgress | null
+  ): void {
+    this.stopSyncProgressTicker();
+    const refresh = () => {
+      if (!line.isConnected) {
+        this.stopSyncProgressTicker();
+        return;
+      }
+      line.textContent = formatSyncProgress(getProgress());
+    };
+    refresh();
+    this.syncProgressTickerId = window.setInterval(refresh, 1000);
   }
 
   async setSection(section: QuartzoSection): Promise<void> {
@@ -456,6 +516,7 @@ export class QuartzoView extends ItemView {
   }
 
   private async render(): Promise<void> {
+    this.stopSyncProgressTicker();
     this.contentEl.empty();
     const shell = document.createElement('div');
     shell.className = 'quartzo-shell';
@@ -946,6 +1007,21 @@ export class QuartzoView extends ItemView {
       lastError.textContent = `Last error: ${snapshot.lastError}`;
       summary.appendChild(lastError);
     }
+
+    let syncProgressLine: HTMLParagraphElement | null = null;
+    const ensureSyncProgressLine = (): HTMLParagraphElement => {
+      if (!syncProgressLine) {
+        syncProgressLine = document.createElement('p');
+        syncProgressLine.className = 'quartzo-sync-progress';
+        syncProgressLine.style.cssText = 'font-weight: 600; word-break: break-word;';
+        summary.appendChild(syncProgressLine);
+      }
+      return syncProgressLine;
+    };
+    if (snapshot?.status === 'syncing' && coordinator) {
+      const progressLine = ensureSyncProgressLine();
+      this.startSyncProgressTicker(progressLine, () => coordinator.getSyncProgress());
+    }
     container.appendChild(summary);
 
     if (requiresAuth) {
@@ -1084,22 +1160,50 @@ export class QuartzoView extends ItemView {
       const sync = document.createElement('button');
       sync.textContent = 'Sync now';
       sync.disabled = offline || snapshot?.status === 'syncing';
-      sync.addEventListener('click', async () => {
-        const result = await coordinator.triggerManualSync();
-        if (result.errors.length > 0) new Notice(result.errors[result.errors.length - 1]);
-        else new Notice(`Sync complete: ${result.synced} synced, ${result.conflicts} conflicts`);
-        await this.render();
-      });
-      actions.appendChild(sync);
 
       const full = document.createElement('button');
       full.textContent = 'Run full reconciliation';
       full.disabled = offline || snapshot?.status === 'syncing';
-      full.addEventListener('click', async () => {
-        const result = await coordinator.triggerFullReconciliation();
-        if (result.errors.length > 0) new Notice(result.errors[result.errors.length - 1]);
-        else new Notice(`Full reconciliation complete: ${result.synced} synced, ${result.conflicts} conflicts`);
-        await this.render();
+
+      const runWithVisibleProgress = async (
+        operation: 'incremental' | 'full'
+      ): Promise<void> => {
+        sync.disabled = true;
+        full.disabled = true;
+        const progressLine = ensureSyncProgressLine();
+        progressLine.textContent = operation === 'full'
+          ? 'Starting full reconciliation…'
+          : 'Starting sync…';
+
+        this.startSyncProgressTicker(progressLine, () => coordinator.getSyncProgress());
+
+        try {
+          const onProgress = (progress: SyncProgress) => {
+            progressLine.textContent = formatSyncProgress(progress);
+          };
+          const result = operation === 'full'
+            ? await coordinator.triggerFullReconciliation(onProgress)
+            : await coordinator.triggerManualSync(onProgress);
+          if (result.errors.length > 0) {
+            new Notice(result.errors[result.errors.length - 1]);
+          } else if (operation === 'full') {
+            new Notice(`Full reconciliation complete: ${result.synced} synced, ${result.conflicts} conflicts`);
+          } else {
+            new Notice(`Sync complete: ${result.synced} synced, ${result.conflicts} conflicts`);
+          }
+        } finally {
+          this.stopSyncProgressTicker();
+          await this.render();
+        }
+      };
+
+      sync.addEventListener('click', () => {
+        void runWithVisibleProgress('incremental');
+      });
+      actions.appendChild(sync);
+
+      full.addEventListener('click', () => {
+        void runWithVisibleProgress('full');
       });
       actions.appendChild(full);
 
