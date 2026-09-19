@@ -396,9 +396,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
   ): Promise<void> {
     const mode = companionOccurrenceDomainMode(target.sourceType);
     if (mode === 'response_only') return;
-    if (mode === 'unsupported') {
-      throw new Error(`Companion does not yet support undo for ${target.sourceType} safely.`);
-    }
+    if (mode === 'unsupported') return;
     const object = this.vaultIndexEngine?.getIndex()?.objects.get(target.sourceId);
     if (!object) {
       throw new Error(`Occurrence source ${target.sourceId} is not available in the vault index.`);
@@ -429,6 +427,13 @@ export default class QuartzoCompanionPlugin extends Plugin {
   ): Promise<CanonicalOccurrenceActionResult> {
     const service = this.occurrenceActionService;
     if (!service) throw new Error('Occurrence actions are not initialized.');
+    const domainMode = companionOccurrenceDomainMode(item.sourceType);
+    if (domainMode === 'unsupported' && (action === 'done' || action === 'already_did')) {
+      throw new Error(`${item.sourceType} completion requires a domain adapter that is not available yet.`);
+    }
+    if (domainMode === 'unsupported' && action === 'clear' && item.outcome === 'done') {
+      throw new Error(`${item.sourceType} completed evidence cannot be undone safely yet.`);
+    }
     if (item.origin === 'externalEvent' && action !== 'skip' && action !== 'already_did') {
       throw new Error('This external event action is not supported by the Companion.');
     }
