@@ -15,7 +15,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as pathModule from 'path';
 
-const PAIRING_HASH_CONCURRENCY = 8;
+const REMOTE_HASH_CONCURRENCY = 8;
 
 const KNOWN_TEXT_EXTENSIONS = new Set([
   '.md', '.base', '.txt', '.json', '.yaml', '.yml', '.toml',
@@ -64,6 +64,26 @@ export interface SyncStatusSnapshot {
   pendingLocalChanges: number;
   conflictCount: number;
   lastError: string | null;
+}
+
+export type SyncProgressPhase =
+  | 'local_inventory'
+  | 'remote_inventory'
+  | 'resolving_paths'
+  | 'hashing_remote'
+  | 'processing_changes'
+  | 'processing_local_changes'
+  | 'reconciling'
+  | 'finalizing';
+
+export interface SyncProgress {
+  operation: 'incremental' | 'full';
+  phase: SyncProgressPhase;
+  completed: number;
+  total: number;
+  currentPath?: string;
+  startedAt: number;
+  lastActivityAt: number;
 }
 
 export function chooseNewestConflictResolution(artifact: ConflictArtifact): 'keep_local' | 'keep_drive' | null {
@@ -160,7 +180,8 @@ export class DriveSyncCoordinator implements ConflictRegistry {
   private pendingRenames: PendingRename[] = [];
   private pendingDeletes: Set<string> = new Set();
   private lastError: string | null = null;
-  private pairingRemoteHashCache = new Map<string, { modifiedTime: string | null; hash: string }>();
+  private remoteHashCache = new Map<string, { modifiedTime: string | null; hash: string }>();
+  private syncProgress: SyncProgress | null = null;
   private pairingApplyInProgress = false;
   private pairingApplyProgress: PairingApplyProgress | null = null;
   private pairingLastError: string | null = null;
@@ -192,6 +213,45 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
   getPairingLastError(): string | null {
     return this.pairingLastError;
+  }
+
+  getSyncProgress(): SyncProgress | null {
+    return this.syncProgress ? { ...this.syncProgress } : null;
+  }
+
+  private beginSyncProgress(
+    operation: 'incremental' | 'full',
+    onProgress?: (progress: SyncProgress) => void
+  ): void {
+    const now = Date.now();
+    this.syncProgress = {
+      operation,
+      phase: 'local_inventory',
+      completed: 0,
+      total: 0,
+      startedAt: now,
+      lastActivityAt: now,
+    };
+    onProgress?.({ ...this.syncProgress });
+  }
+
+  private reportSyncProgress(
+    progress: Pick<SyncProgress, 'phase' | 'completed' | 'total'> & { currentPath?: string },
+    onProgress?: (progress: SyncProgress) => void
+  ): void {
+    const now = Date.now();
+    const current = this.syncProgress;
+    const next: SyncProgress = {
+      operation: current?.operation ?? 'incremental',
+      phase: progress.phase,
+      completed: progress.completed,
+      total: progress.total,
+      startedAt: current?.startedAt ?? now,
+      lastActivityAt: now,
+      ...(progress.currentPath ? { currentPath: progress.currentPath } : {}),
+    };
+    this.syncProgress = next;
+    onProgress?.({ ...next });
   }
 
   private reportPairingApplyProgress(
@@ -1383,23 +1443,23 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
   async setDriveFolderId(folderId: string): Promise<void> {
     if (this.syncState.driveFolderId && this.syncState.driveFolderId !== folderId) {
-      this.pairingRemoteHashCache.clear();
+      this.remoteHashCache.clear();
     }
     await this.driveAdapter.setFolderId(folderId);
     this.syncState.driveFolderId = folderId;
   }
 
-  private async resolvePairingRemoteHash(metadata: DriveFileMetadata): Promise<string> {
+  private async resolveRemoteHashCached(metadata: DriveFileMetadata): Promise<string> {
     if (metadata.quartzoHash) return metadata.quartzoHash;
 
     const modifiedTime = metadata.modifiedTime || null;
-    const cached = this.pairingRemoteHashCache.get(metadata.id);
+    const cached = this.remoteHashCache.get(metadata.id);
     if (cached && cached.modifiedTime === modifiedTime) {
       return cached.hash;
     }
 
     const hash = await this.driveAdapter.resolveRemoteHash(metadata);
-    this.pairingRemoteHashCache.set(metadata.id, { modifiedTime, hash });
+    this.remoteHashCache.set(metadata.id, { modifiedTime, hash });
     return hash;
   }
 
@@ -1465,13 +1525,13 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     });
 
     let ambiguityIndex = 0;
-    const ambiguityWorkerCount = Math.min(PAIRING_HASH_CONCURRENCY, ambiguousJobs.length);
+    const ambiguityWorkerCount = Math.min(REMOTE_HASH_CONCURRENCY, ambiguousJobs.length);
     const ambiguityWorkers = Array.from({ length: ambiguityWorkerCount }, async () => {
       while (true) {
         const index = ambiguityIndex++;
         if (index >= ambiguousJobs.length) return;
         const { group, candidate } = ambiguousJobs[index];
-        const resolvedSha256 = await this.resolvePairingRemoteHash(candidate);
+        const resolvedSha256 = await this.resolveRemoteHashCached(candidate);
         resolvedAmbiguousHashes.set(`${group.path}\0${candidate.id}`, resolvedSha256);
         ambiguityCompleted++;
         onProgress?.({
@@ -1539,7 +1599,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     let completed = 0;
     onProgress?.({ phase: 'comparing', completed, total: sharedPaths.length });
     let nextIndex = 0;
-    const workerCount = Math.min(PAIRING_HASH_CONCURRENCY, sharedPaths.length);
+    const workerCount = Math.min(REMOTE_HASH_CONCURRENCY, sharedPaths.length);
     const workers = Array.from({ length: workerCount }, async () => {
       while (true) {
         const index = nextIndex++;
@@ -1549,7 +1609,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
         const remoteEntry = remoteMap.get(filePath);
         if (!localEntry || !remoteEntry) continue;
 
-        const remoteHash = await this.resolvePairingRemoteHash(remoteEntry);
+        const remoteHash = await this.resolveRemoteHashCached(remoteEntry);
         const item: PairingItem = {
           path: filePath,
           status: localEntry.hash === remoteHash ? 'identical' : 'divergent',
@@ -1819,7 +1879,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
         (remoteEntry.modifiedTime || null) === (item.remoteModifiedAt || null);
       const remoteHash = sameRemoteSnapshot && item.remoteHash
         ? item.remoteHash
-        : await this.resolvePairingRemoteHash(remoteEntry);
+        : await this.resolveRemoteHashCached(remoteEntry);
       if (localHash !== remoteHash) {
         const drift: string[] = [];
         if (localHash !== item.localHash) drift.push('local content changed since scan');
@@ -1872,7 +1932,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
         const quartzoHash = this.calculateHash(content);
         const appearedRemote = remoteMap.get(item.path);
         if (appearedRemote) {
-          const remoteHash = await this.resolvePairingRemoteHash(appearedRemote);
+          const remoteHash = await this.resolveRemoteHashCached(appearedRemote);
           if (remoteHash === quartzoHash) {
             this.establishPairingBaseline(normalized, quartzoHash, remoteHash, appearedRemote);
             adoptCompleted++;
@@ -1951,7 +2011,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
             (remoteEntry.modifiedTime || null) === (item.remoteModifiedAt || null);
           const remoteHash = sameRemoteSnapshot && item.remoteHash
             ? item.remoteHash
-            : await this.resolvePairingRemoteHash(remoteEntry);
+            : await this.resolveRemoteHashCached(remoteEntry);
           if (localHash === remoteHash) {
             this.establishPairingBaseline(normalized, localHash, remoteHash, remoteEntry);
             pullCompleted++;
