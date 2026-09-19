@@ -114,6 +114,11 @@ export default class QuartzoCompanionPlugin extends Plugin {
       vaultPath,
       stateStorePath
     );
+    try {
+      await this.driveSyncCoordinator.hydratePersistedState();
+    } catch (error) {
+      console.error('Failed to hydrate persisted sync state:', error);
+    }
 
     this.viewContext = {
       app: this.app,
