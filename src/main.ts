@@ -395,7 +395,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
       if (match) dueAt.setHours(Number(match[1]), Number(match[2]), 0, 0);
     }
     const target = {
-      occurrenceId: item.occurrenceId ?? item.id,
+      occurrenceId: item.actionOccurrenceId ?? item.occurrenceId ?? item.id,
       sourceId: item.sourceId,
       sourceType: item.sourceType,
       reminderId: item.reminderId,
