@@ -214,6 +214,21 @@ export class QuartzoView extends ItemView {
     content.className = 'quartzo-shell-content';
     shell.appendChild(content);
 
+    const sharedSettingsState = this.context.plugin.getSharedSettingsState();
+    if (sharedSettingsState === 'loading') {
+      const loading = document.createElement('p');
+      loading.className = 'quartzo-empty-state';
+      loading.textContent = 'Loading Quartzo vault index…';
+      content.appendChild(loading);
+      return;
+    }
+    if (sharedSettingsState === 'missing') {
+      const warning = document.createElement('p');
+      warning.className = 'quartzo-warning-state';
+      warning.textContent = 'Shared Quartzo settings are missing (app/quartzo_shared_settings.md). Objects with explicit canonical type metadata remain available, but Object Identification-dependent files may be unavailable until Quartzo materializes the shared settings file.';
+      content.appendChild(warning);
+    }
+
     if (this.selectedObjectId) {
       const object = this.getIndex()?.objects.get(this.selectedObjectId);
       if (object) {
