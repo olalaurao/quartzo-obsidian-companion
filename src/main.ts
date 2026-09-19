@@ -18,6 +18,7 @@ import { addLocalDays, localIsoDate, parseLocalIsoDate } from './core/local-date
 import { ReminderService, type ReminderMode, type ReminderSourceObject } from './core/reminders';
 import {
   OccurrenceActionService,
+  companionOccurrenceDomainMode,
   type CanonicalOccurrenceAction,
   type CanonicalOccurrenceActionResult,
   type OccurrenceResponseState,
@@ -31,6 +32,7 @@ import { normalizeVaultPath } from './sync/coordinator/path-utils';
 import { VaultSyncFilePolicy } from './sync/coordinator/file-policy';
 import { SHARED_SETTINGS_PATH, SharedSettingsRepository, parseObjectWithSharedSettings, type QuartzoSharedSettings } from './vault/shared-settings';
 import { SHARED_OCCURRENCE_STATE_PATH, SharedOccurrenceStateRepository } from './vault/occurrence-state';
+import { OccurrenceDomainMutationRepository } from './vault/occurrence-domain-mutations';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
@@ -104,6 +106,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
   private sharedSettingsRepository: SharedSettingsRepository | null = null;
   private sharedSettings: QuartzoSharedSettings | null = null;
   private occurrenceStateRepository: SharedOccurrenceStateRepository | null = null;
+  private occurrenceDomainMutationRepository: OccurrenceDomainMutationRepository | null = null;
   private occurrenceResponses: Record<string, OccurrenceResponseState> = {};
   private googleAccessRefreshInFlight: Promise<string | null> | null = null;
   private pairingWorkflowModal: HTMLDivElement | null = null;
@@ -133,6 +136,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     }
 
     this.occurrenceStateRepository = new SharedOccurrenceStateRepository(this.app.vault);
+    this.occurrenceDomainMutationRepository = new OccurrenceDomainMutationRepository(this.app.vault);
     try {
       this.occurrenceResponses = await this.occurrenceStateRepository.loadResponses();
     } catch (error) {
@@ -141,6 +145,9 @@ export default class QuartzoCompanionPlugin extends Plugin {
     }
     this.occurrenceActionService = new OccurrenceActionService({
       store: this.occurrenceStateRepository,
+      completeDomainOccurrence: (target, completedAt, recordedAt, actionId) =>
+        this.completeOccurrenceDomain(target, completedAt, recordedAt, actionId),
+      clearDomainOccurrence: target => this.clearOccurrenceDomain(target),
     });
 
     this.viewContext = {
@@ -362,6 +369,43 @@ export default class QuartzoCompanionPlugin extends Plugin {
       body: object.body,
       __path: object.path,
     } as ReminderSourceObject));
+  }
+
+  private async completeOccurrenceDomain(
+    target: import('./core/occurrence_actions').OccurrenceActionTarget,
+    completedAt: Date,
+    recordedAt: Date,
+    actionId: string,
+  ): Promise<void> {
+    const mode = companionOccurrenceDomainMode(target.sourceType);
+    if (mode === 'response_only') return;
+    if (mode === 'unsupported') {
+      throw new Error(`Companion does not yet support ${target.sourceType} completion safely.`);
+    }
+    const object = this.vaultIndexEngine?.getIndex()?.objects.get(target.sourceId);
+    if (!object) {
+      throw new Error(`Occurrence source ${target.sourceId} is not available in the vault index.`);
+    }
+    const repository = this.occurrenceDomainMutationRepository;
+    if (!repository) throw new Error('Occurrence domain mutations are not initialized.');
+    await repository.complete(object.path, target, completedAt, recordedAt, actionId);
+  }
+
+  private async clearOccurrenceDomain(
+    target: import('./core/occurrence_actions').OccurrenceActionTarget,
+  ): Promise<void> {
+    const mode = companionOccurrenceDomainMode(target.sourceType);
+    if (mode === 'response_only') return;
+    if (mode === 'unsupported') {
+      throw new Error(`Companion does not yet support undo for ${target.sourceType} safely.`);
+    }
+    const object = this.vaultIndexEngine?.getIndex()?.objects.get(target.sourceId);
+    if (!object) {
+      throw new Error(`Occurrence source ${target.sourceId} is not available in the vault index.`);
+    }
+    const repository = this.occurrenceDomainMutationRepository;
+    if (!repository) throw new Error('Occurrence domain mutations are not initialized.');
+    await repository.clear(object.path, target);
   }
 
   getOccurrenceResponses(): Record<string, OccurrenceResponseState> {
