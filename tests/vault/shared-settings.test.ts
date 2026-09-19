@@ -1,4 +1,7 @@
+import fs from 'fs';
+import path from 'path';
 import { describe, expect, it } from 'vitest';
+import { VaultIndexEngine } from '../../src/vault/index/engine';
 import {
   applyTypeSignature,
   identifyTypeFromSignatures,
@@ -69,4 +72,59 @@ calendar:
     };
     expect(identifyTypeFromSignatures(ambiguous, 'same/file.md', { id: 'x' }, '')).toBeNull();
   });
+
+  it('consumes the canonical upstream shared-settings fixture byte-for-byte', () => {
+    const fixturePath = path.join(process.cwd(), 'contracts', 'quartzo', 'shared_settings', 'v1.md');
+    const fixture = fs.readFileSync(fixturePath, 'utf8');
+    const canonical = parseSharedSettings(fixture);
+
+    expect(canonical).not.toBeNull();
+    expect(canonical!.schemaVersion).toBe(1);
+    expect(canonical!.accentColor).toBe('#123456');
+    expect(canonical!.plannerColorMode).toBe('type');
+    expect(canonical!.plannerVisibleKinds).toEqual(['task', 'reminder', 'journalEntry']);
+    expect(canonical!.plannerShowAdaptiveTimeBlocks).toBe(false);
+    expect(canonical!.startOfWeek).toBe(0);
+    expect(canonical!.dayStartHour).toBe(6);
+    expect(canonical!.showDayDialLegend).toBe(false);
+    expect(canonical!.folderPaths.note).toBe('knowledge/notes');
+    expect(canonical!.categoryColors.home).toBe('#22C55E');
+    expect(canonical!.typeSignatures.note).toMatchObject({
+      objectType: 'note',
+      markerType: 'folder',
+      markerValue: 'knowledge/notes',
+      iconName: 'note',
+      colorHex: '#A855F7',
+    });
+  });
+
+  it('shared-settings reindex makes an untyped signature-matched file queryable', () => {
+    const file = {
+      path: 'knowledge/notes/tarot.md',
+      content: '---\nid: n-tarot\ntitle: Tarot\n---\nBody',
+      modified: 1,
+      size: 42,
+    };
+
+    const withoutSettings = VaultIndexEngine.createInitialIndex(
+      [file],
+      (content, filePath) => parseObjectWithSharedSettings(content, filePath, null),
+    );
+    expect(withoutSettings.objects.size).toBe(0);
+
+    const fixturePath = path.join(process.cwd(), 'contracts', 'quartzo', 'shared_settings', 'v1.md');
+    const canonical = parseSharedSettings(fs.readFileSync(fixturePath, 'utf8'));
+    const withSettings = VaultIndexEngine.createInitialIndex(
+      [file],
+      (content, filePath) => parseObjectWithSharedSettings(content, filePath, canonical),
+    );
+
+    expect(withSettings.objects.size).toBe(1);
+    expect(withSettings.objects.get('n-tarot')).toMatchObject({
+      id: 'n-tarot',
+      type: 'note',
+      path: 'knowledge/notes/tarot.md',
+    });
+  });
+
 });
