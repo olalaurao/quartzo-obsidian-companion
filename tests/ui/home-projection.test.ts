@@ -35,6 +35,22 @@ describe('projectHomeSchedule', () => {
     expect(result.today).toHaveLength(4);
   });
 
+  it('orders and caps Up Next to the next three canonical timed items', () => {
+    const upcomingSchedule: NormalizedSchedule = {
+      kind: 'mixed',
+      count: 4,
+      items: [
+        item({ id: 'third', sourceId: 'third', date: '2026-09-17', start: '13:00', end: '13:30', isTimed: true }),
+        item({ id: 'first', sourceId: 'first', date: '2026-09-17', start: '11:00', end: '11:30', isTimed: true }),
+        item({ id: 'fourth', sourceId: 'fourth', date: '2026-09-17', start: '14:00', end: '14:30', isTimed: true }),
+        item({ id: 'second', sourceId: 'second', date: '2026-09-17', start: '12:00', end: '12:30', isTimed: true }),
+      ],
+    };
+
+    const result = projectHomeSchedule(upcomingSchedule, '2026-09-17', new Date(2026, 8, 17, 10, 30));
+    expect(result.upNext.map(entry => entry.id)).toEqual(['first', 'second', 'third']);
+  });
+
   it('does not invent Now or Up Next for a non-today date', () => {
     const result = projectHomeSchedule(schedule, '2026-09-16', new Date(2026, 8, 17, 10, 30));
     expect(result.now).toEqual([]);
