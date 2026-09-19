@@ -35,6 +35,8 @@ function initialResponse(target: OccurrenceActionTarget): OccurrenceResponseStat
 }
 
 export class OccurrenceActionService {
+  private mutationChain: Promise<void> = Promise.resolve();
+
   constructor(private readonly options: OccurrenceActionServiceOptions) {}
 
   completeNow(
@@ -153,7 +155,22 @@ export class OccurrenceActionService {
     }));
   }
 
-  private async mutate(
+  private mutate(
+    target: OccurrenceActionTarget,
+    actionId: string,
+    action: CanonicalOccurrenceAction,
+    apply: (response: OccurrenceResponseState) => OccurrenceResponseState,
+    afterSave?: () => Promise<void>,
+  ): Promise<CanonicalOccurrenceActionResult> {
+    const run = this.mutationChain.then(
+      () => this.applyMutation(target, actionId, action, apply, afterSave),
+      () => this.applyMutation(target, actionId, action, apply, afterSave),
+    );
+    this.mutationChain = run.then(() => undefined, () => undefined);
+    return run;
+  }
+
+  private async applyMutation(
     target: OccurrenceActionTarget,
     actionId: string,
     action: CanonicalOccurrenceAction,
