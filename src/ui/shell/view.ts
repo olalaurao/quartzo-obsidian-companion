@@ -978,6 +978,20 @@ export class QuartzoView extends ItemView {
       lastError.textContent = `Last error: ${snapshot.lastError}`;
       summary.appendChild(lastError);
     }
+
+    let syncProgressLine: HTMLParagraphElement | null = null;
+    const ensureSyncProgressLine = (): HTMLParagraphElement => {
+      if (!syncProgressLine) {
+        syncProgressLine = document.createElement('p');
+        syncProgressLine.className = 'quartzo-sync-progress';
+        syncProgressLine.style.cssText = 'font-weight: 600; word-break: break-word;';
+        summary.appendChild(syncProgressLine);
+      }
+      return syncProgressLine;
+    };
+    if (snapshot?.status === 'syncing') {
+      ensureSyncProgressLine().textContent = formatSyncProgress(coordinator?.getSyncProgress() ?? null);
+    }
     container.appendChild(summary);
 
     if (requiresAuth) {
@@ -1116,22 +1130,52 @@ export class QuartzoView extends ItemView {
       const sync = document.createElement('button');
       sync.textContent = 'Sync now';
       sync.disabled = offline || snapshot?.status === 'syncing';
-      sync.addEventListener('click', async () => {
-        const result = await coordinator.triggerManualSync();
-        if (result.errors.length > 0) new Notice(result.errors[result.errors.length - 1]);
-        else new Notice(`Sync complete: ${result.synced} synced, ${result.conflicts} conflicts`);
-        await this.render();
-      });
-      actions.appendChild(sync);
 
       const full = document.createElement('button');
       full.textContent = 'Run full reconciliation';
       full.disabled = offline || snapshot?.status === 'syncing';
-      full.addEventListener('click', async () => {
-        const result = await coordinator.triggerFullReconciliation();
-        if (result.errors.length > 0) new Notice(result.errors[result.errors.length - 1]);
-        else new Notice(`Full reconciliation complete: ${result.synced} synced, ${result.conflicts} conflicts`);
-        await this.render();
+
+      const runWithVisibleProgress = async (
+        operation: 'incremental' | 'full'
+      ): Promise<void> => {
+        sync.disabled = true;
+        full.disabled = true;
+        const progressLine = ensureSyncProgressLine();
+        progressLine.textContent = operation === 'full'
+          ? 'Starting full reconciliation…'
+          : 'Starting sync…';
+
+        const timerId = window.setInterval(() => {
+          progressLine.textContent = formatSyncProgress(coordinator.getSyncProgress());
+        }, 1000);
+
+        try {
+          const onProgress = (progress: SyncProgress) => {
+            progressLine.textContent = formatSyncProgress(progress);
+          };
+          const result = operation === 'full'
+            ? await coordinator.triggerFullReconciliation(onProgress)
+            : await coordinator.triggerManualSync(onProgress);
+          if (result.errors.length > 0) {
+            new Notice(result.errors[result.errors.length - 1]);
+          } else if (operation === 'full') {
+            new Notice(`Full reconciliation complete: ${result.synced} synced, ${result.conflicts} conflicts`);
+          } else {
+            new Notice(`Sync complete: ${result.synced} synced, ${result.conflicts} conflicts`);
+          }
+        } finally {
+          window.clearInterval(timerId);
+          await this.render();
+        }
+      };
+
+      sync.addEventListener('click', () => {
+        void runWithVisibleProgress('incremental');
+      });
+      actions.appendChild(sync);
+
+      full.addEventListener('click', () => {
+        void runWithVisibleProgress('full');
       });
       actions.appendChild(full);
 
