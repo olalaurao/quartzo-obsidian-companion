@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { DriveSyncCoordinator, chooseNewestConflictResolution, type ConflictArtifact } from '../../src/sync/coordinator/index';
 import { VaultSyncFilePolicy } from '../../src/sync/coordinator/file-policy';
 import { normalizeVaultPath, isSameVaultPath } from '../../src/sync/coordinator/path-utils';
-import { TemporaryDriveQuotaError, type DriveAdapter, type DriveFileMetadata, type DriveChange } from '../../src/sync/coordinator/types';
+import { DriveRequestTimeoutError, TemporaryDriveQuotaError, type DriveAdapter, type DriveFileMetadata, type DriveChange } from '../../src/sync/coordinator/types';
+import { GoogleDriveAdapter } from '../../src/integrations/google/drive/adapter';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -1771,6 +1772,72 @@ describe('Runtime Sync Tests', () => {
     await coordinator.triggerFullReconciliation();
     expect(adapter.listChangesCalls).toBe(changesBeforeFull);
     expect(adapter.listFilesCalls).toBeGreaterThan(listAfterInitial);
+  });
+
+  it('43: full reconciliation reports real phases and bounds legacy remote hashing concurrency', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+    adapter.hashResolutionDelayMs = 10;
+
+    for (let i = 0; i < 16; i++) {
+      const content = Buffer.from(`full-legacy-${i}`);
+      fs.writeFileSync(path.join(tmpDir, `full-legacy-${i}.md`), content);
+      adapter.addLegacyRemoteFile(`full-legacy-${i}.md`, content);
+    }
+
+    const progress: Array<{ phase: string; completed: number; total: number; currentPath?: string }> = [];
+    const result = await coordinator.triggerFullReconciliation(update => {
+      progress.push({
+        phase: update.phase,
+        completed: update.completed,
+        total: update.total,
+        currentPath: update.currentPath,
+      });
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(adapter.maxConcurrentRemoteHashCalls).toBeGreaterThan(1);
+    expect(adapter.maxConcurrentRemoteHashCalls).toBeLessThanOrEqual(8);
+    expect(progress.some(update => update.phase === 'local_inventory')).toBe(true);
+    expect(progress.some(update => update.phase === 'remote_inventory')).toBe(true);
+    expect(progress.some(update => update.phase === 'resolving_paths')).toBe(true);
+    expect(progress.some(update => update.phase === 'hashing_remote' && update.total === 16)).toBe(true);
+    expect(progress.some(update => update.phase === 'reconciling')).toBe(true);
+    expect(progress[progress.length - 1]).toMatchObject({
+      phase: 'finalizing',
+      completed: 1,
+      total: 1,
+    });
+    expect(coordinator.getSyncProgress()).toBeNull();
+  });
+
+  it('44: Drive timeout classification becomes a typed finite failure instead of an endless pending request', async () => {
+    const drive = new GoogleDriveAdapter('test-token');
+
+    await expect(drive.withRetry(async () => {
+      const error = new Error('request timeout');
+      (error as Error & { code: string }).code = 'ETIMEDOUT';
+      throw error;
+    }, 0)).rejects.toBeInstanceOf(DriveRequestTimeoutError);
+  });
+
+  it('45: a timed-out full reconciliation releases the canonical sync lock and leaves an observable error', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+    adapter.listAllFiles = async () => {
+      throw new DriveRequestTimeoutError('synthetic Drive timeout');
+    };
+
+    const result = await coordinator.triggerFullReconciliation();
+    expect(result.errors.join(' ')).toContain('synthetic Drive timeout');
+    expect(coordinator.getSyncProgress()).toBeNull();
+
+    const snapshot = await coordinator.getSyncStatusSnapshot();
+    expect(snapshot.status).toBe('error');
+    expect(snapshot.lastError).toContain('synthetic Drive timeout');
+
+    adapter.listAllFiles = async () => [];
+    const retry = await coordinator.triggerFullReconciliation();
+    expect(retry.errors).toEqual([]);
+    expect((await coordinator.getSyncStatusSnapshot()).status).not.toBe('syncing');
   });
 
 });
