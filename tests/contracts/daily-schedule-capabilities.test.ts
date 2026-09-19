@@ -111,4 +111,47 @@ describe('Daily Schedule presentation capability projection', () => {
     });
   });
 
+  it('treats the app canonical finalized Task stage as completed', () => {
+    const result = DailyScheduleEngine.normalize({
+      date: '2026-09-19',
+      objects: [{
+        id: 'task-finalized',
+        type: 'task',
+        title: 'Finished in Quartzo',
+        stage: 'finalized',
+        start_date: '2026-09-19',
+        time: '11:00',
+        __path: 'tasks/task-finalized.md',
+      }],
+    });
+
+    expect(result.items[0]).toMatchObject({
+      sourceId: 'task-finalized',
+      isCompleted: true,
+      outcome: 'done',
+    });
+  });
+
+  it('accepts current Person contact fields while preserving legacy fixture compatibility', () => {
+    const result = DailyScheduleEngine.normalize({
+      date: '2026-09-19',
+      objects: [{
+        id: 'person-current',
+        type: 'person',
+        title: 'Ana',
+        last_contact_date: '2026-09-05',
+        contact_frequency_days: 14,
+        __path: 'people/ana.md',
+      }],
+    });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({
+      id: 'person_contact:person-current',
+      sourceId: 'person-current',
+      sourceType: 'person',
+      date: '2026-09-19',
+    });
+  });
+
 });
