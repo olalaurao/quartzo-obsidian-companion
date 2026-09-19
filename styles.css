@@ -579,3 +579,29 @@
 .quartzo-detail-editor-body {
   min-height: 180px !important;
 }
+
+/* Shared object query surfaces */
+.quartzo-browse-controls {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(130px, auto);
+  gap: 8px;
+  margin-block: 10px 14px;
+}
+
+.quartzo-object-results {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.quartzo-object-row {
+  width: 100%;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 520px) {
+  .quartzo-browse-controls {
+    grid-template-columns: 1fr;
+  }
+}
