@@ -129,14 +129,16 @@ function checkSingleQuartzoWorkspaceView() {
 
 function checkNoHardcodedQuickAddFolders() {
   const shellPath = path.join(rootDir, 'src/ui/shell/view.ts');
+  const quickAddPath = path.join(rootDir, 'src/ui/quick-add/modal.ts');
   const creationPath = path.join(rootDir, 'src/core/object-creation.ts');
-  if (!fs.existsSync(shellPath) || !fs.existsSync(creationPath)) {
-    console.error('FAIL: Quartzo shell or canonical object-creation owner missing');
+  if (!fs.existsSync(shellPath) || !fs.existsSync(quickAddPath) || !fs.existsSync(creationPath)) {
+    console.error('FAIL: Quartzo shell, Quick Add UI owner, or canonical object-creation owner missing');
     return false;
   }
   const shell = fs.readFileSync(shellPath, 'utf8');
+  const quickAdd = fs.readFileSync(quickAddPath, 'utf8');
   const creation = fs.readFileSync(creationPath, 'utf8');
-  const content = `${shell}
+  const content = `${quickAdd}
 ${creation}`;
   const forbidden = ['tasks/', 'notes/', 'journal/', 'reminders/'];
   const violations = forbidden.filter(value => content.includes(`'${value}`) || content.includes(`"${value}`));
@@ -144,11 +146,14 @@ ${creation}`;
     console.error(`FAIL: Quick Add contains hardcoded canonical folders: ${violations.join(', ')}`);
     return false;
   }
-  if (!creation.includes('resolveCreationFolder') || !shell.includes('buildQuickAddDocument')) {
-    console.error('FAIL: Quick Add does not route through canonical shared Object Identification creation owner');
+  if (!creation.includes('resolveCreationFolder') ||
+      !quickAdd.includes('buildQuickAddDocument') ||
+      !shell.includes("from '../quick-add/modal'") ||
+      shell.includes('class QuickAddModal extends Modal')) {
+    console.error('FAIL: Quick Add is not routed through its UI owner and canonical Object Identification creation owner');
     return false;
   }
-  console.log('PASS: Quick Add paths come from shared Object Identification');
+  console.log('PASS: Quick Add is extracted from the shell and paths come from shared Object Identification');
   return true;
 }
 function checkNoUnsafeInnerHtml() {
@@ -175,15 +180,20 @@ function checkNoUnsafeInnerHtml() {
 
 function checkCanonicalUiDateAndIdentityOwners() {
   const shell = fs.readFileSync(path.join(rootDir, 'src/ui/shell/view.ts'), 'utf8');
+  const quickAdd = fs.readFileSync(path.join(rootDir, 'src/ui/quick-add/modal.ts'), 'utf8');
   const main = fs.readFileSync(path.join(rootDir, 'src/main.ts'), 'utf8');
   const dailySchedule = fs.readFileSync(path.join(rootDir, 'src/core/daily_schedule/engine.ts'), 'utf8');
   const forbidden = ['toISOString().slice(0, 10)', "toISOString().split('T')[0]", 'setUTCDate(', 'getUTCDay(', 'Date.UTC(', 'Math.random().toString(36)'];
-  const violations = forbidden.filter(pattern => shell.includes(pattern) || main.includes(pattern) || dailySchedule.includes(pattern));
+  const violations = forbidden.filter(pattern =>
+    shell.includes(pattern) || quickAdd.includes(pattern) || main.includes(pattern) || dailySchedule.includes(pattern)
+  );
   if (violations.length > 0) {
     console.error(`FAIL: Quartzo UI bypasses canonical local-date/identity owners: ${violations.join(', ')}`);
     return false;
   }
-  if (!shell.includes('createCanonicalObjectId()') || !shell.includes('shiftLocalMonth(') || !main.includes('localIsoDate(new Date())')) {
+  if (!quickAdd.includes('createCanonicalObjectId()') ||
+      !shell.includes('shiftLocalMonth(') ||
+      !main.includes('localIsoDate(new Date())')) {
     console.error('FAIL: Quartzo UI is not wired to canonical local-date and object identity owners');
     return false;
   }
@@ -723,6 +733,7 @@ function checkCanonicalOccurrenceActions() {
   const domainPath = path.join(rootDir, 'src/vault/occurrence-domain-mutations.ts');
   const schedulePath = path.join(rootDir, 'src/core/daily_schedule/engine.ts');
   const viewPath = path.join(rootDir, 'src/ui/shell/view.ts');
+  const controlsPath = path.join(rootDir, 'src/ui/occurrence/action-controls.ts');
   const mainPath = path.join(rootDir, 'src/main.ts');
 
   const service = fs.readFileSync(servicePath, 'utf8');
@@ -732,6 +743,7 @@ function checkCanonicalOccurrenceActions() {
   const domain = fs.readFileSync(domainPath, 'utf8');
   const schedule = fs.readFileSync(schedulePath, 'utf8');
   const view = fs.readFileSync(viewPath, 'utf8');
+  const controls = fs.readFileSync(controlsPath, 'utf8');
   const main = fs.readFileSync(mainPath, 'utf8');
 
   if (!service.includes('export class OccurrenceActionService') ||
@@ -755,9 +767,11 @@ function checkCanonicalOccurrenceActions() {
     return false;
   }
   if (!policy.includes('export class OccurrenceActionPolicy') ||
-      !view.includes('OccurrenceActionPolicy.resolve({') ||
-      !view.includes('performOccurrenceAction(item, action, options)') ||
-      view.includes('occurrence_responses')) {
+      !controls.includes('OccurrenceActionPolicy.resolve({') ||
+      !controls.includes('options.perform(action, actionOptions)') ||
+      !view.includes('renderOccurrenceActionControls(row, {') ||
+      view.includes('occurrence_responses') ||
+      controls.includes('occurrence_responses')) {
     console.error('FAIL: Daily UI owns occurrence business state instead of projecting the canonical policy/coordinator');
     return false;
   }
