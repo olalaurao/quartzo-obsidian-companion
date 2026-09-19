@@ -442,11 +442,8 @@ export class QuartzoView extends ItemView {
       schedulesByDate,
       sharedSettings: settings,
       titleForItem: item => this.titleForScheduleItem(item, googleEvents),
-      canOpenItem: item => this.getIndex()?.objects.has(item.sourceId) === true,
-      onOpenItem: item => {
-        const object = this.getIndex()?.objects.get(item.sourceId);
-        if (object) this.openObjectDetail(object);
-      },
+      canOpenItem: item => this.canOpenScheduleItem(item, googleEvents),
+      onOpenItem: item => this.openScheduleItem(item, googleEvents),
       performOccurrenceAction: (item, action, options) =>
         this.context.plugin.performOccurrenceAction(item, action, options),
       onDayLensChange: lens => {
