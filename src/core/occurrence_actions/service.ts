@@ -1,141 +1,211 @@
-import { OccurrenceActionsEngine } from './engine';
-import { OccurrenceActionInput, OccurrenceActionResult } from './types';
-import { ObjectParser } from '../objects';
-import { QuartzoObject } from '../objects/types';
+import type {
+  CanonicalOccurrenceAction,
+  CanonicalOccurrenceActionResult,
+  OccurrenceActionTarget,
+  OccurrenceDomainClear,
+  OccurrenceDomainCompletion,
+  OccurrenceResponseState,
+  OccurrenceResponseStore,
+} from './types';
+
+export interface OccurrenceActionServiceOptions {
+  store: OccurrenceResponseStore;
+  completeDomainOccurrence?: OccurrenceDomainCompletion;
+  clearDomainOccurrence?: OccurrenceDomainClear;
+}
+
+function cloneResponse(response: OccurrenceResponseState): OccurrenceResponseState {
+  return {
+    ...response,
+    processedActionIds: [...response.processedActionIds],
+    unknownFields: response.unknownFields ? { ...response.unknownFields } : undefined,
+  };
+}
+
+function initialResponse(target: OccurrenceActionTarget): OccurrenceResponseState {
+  return {
+    occurrenceId: target.occurrenceId,
+    sourceId: target.sourceId,
+    reminderId: target.reminderId,
+    slotIndex: target.slotIndex,
+    dueAt: target.dueAt,
+    ignoredCount: 0,
+    processedActionIds: [],
+  };
+}
 
 export class OccurrenceActionService {
-  private processedActionIds: Set<string> = new Set();
-  private vaultAdapter: { read: (path: string) => Promise<string>; write: (path: string, content: string) => Promise<void>; list: (path: string) => Promise<string[]> };
-  private syncQueue: Array<{ path: string; action: string }> = [];
+  constructor(private readonly options: OccurrenceActionServiceOptions) {}
 
-  constructor(vaultAdapter: { read: (path: string) => Promise<string>; write: (path: string, content: string) => Promise<void>; list: (path: string) => Promise<string[]> }) {
-    this.vaultAdapter = vaultAdapter;
+  completeNow(
+    target: OccurrenceActionTarget,
+    actionId: string,
+    now: Date,
+  ): Promise<CanonicalOccurrenceActionResult> {
+    return this.completeAt(target, actionId, now, now, 'done');
   }
 
-  async executeAction(input: OccurrenceActionInput): Promise<OccurrenceActionResult> {
-    // Check for duplicate action replay (idempotent)
-    const actionKey = `${input.action}:${input.occurrenceId}`;
-    if (input.duplicateActionId && this.processedActionIds.has(actionKey)) {
-      return { 
-        outcome: 'idempotent_noop', 
-        processedActionIds: Array.from(this.processedActionIds) 
+  completeAt(
+    target: OccurrenceActionTarget,
+    actionId: string,
+    completedAt: Date,
+    recordedAt: Date,
+    action: CanonicalOccurrenceAction = 'already_did',
+  ): Promise<CanonicalOccurrenceActionResult> {
+    if (completedAt.getTime() > recordedAt.getTime()) {
+      throw new Error('Already did cannot record a future completion.');
+    }
+    return this.mutate(
+      target,
+      actionId,
+      action,
+      response => ({
+        ...response,
+        completedAt: completedAt.toISOString(),
+        recordedAt: recordedAt.toISOString(),
+        skippedAt: undefined,
+        snoozedUntil: undefined,
+        dismissedAt: undefined,
+      }),
+      async () => {
+        await this.options.completeDomainOccurrence?.(
+          target,
+          completedAt,
+          recordedAt,
+          actionId,
+        );
+      },
+    );
+  }
+
+  skip(
+    target: OccurrenceActionTarget,
+    actionId: string,
+    skippedAt: Date,
+  ): Promise<CanonicalOccurrenceActionResult> {
+    return this.mutate(target, actionId, 'skip', response => ({
+      ...response,
+      skippedAt: skippedAt.toISOString(),
+      completedAt: undefined,
+      recordedAt: undefined,
+      snoozedUntil: undefined,
+      dismissedAt: undefined,
+    }));
+  }
+
+  clearOutcome(
+    target: OccurrenceActionTarget,
+    actionId: string,
+  ): Promise<CanonicalOccurrenceActionResult> {
+    return this.mutate(
+      target,
+      actionId,
+      'clear',
+      response => ({
+        ...response,
+        completedAt: undefined,
+        skippedAt: undefined,
+        recordedAt: undefined,
+      }),
+      async () => {
+        await this.options.clearDomainOccurrence?.(target);
+      },
+    );
+  }
+
+  snooze(
+    target: OccurrenceActionTarget,
+    actionId: string,
+    now: Date,
+    durationMs: number,
+  ): Promise<CanonicalOccurrenceActionResult> {
+    if (!Number.isFinite(durationMs) || durationMs <= 0) {
+      throw new Error('Snooze must be positive.');
+    }
+    return this.snoozeUntil(
+      target,
+      actionId,
+      new Date(now.getTime() + durationMs),
+    );
+  }
+
+  snoozeUntil(
+    target: OccurrenceActionTarget,
+    actionId: string,
+    snoozedUntil: Date,
+  ): Promise<CanonicalOccurrenceActionResult> {
+    return this.mutate(target, actionId, 'snooze', response => ({
+      ...response,
+      snoozedUntil: snoozedUntil.toISOString(),
+      dismissedAt: undefined,
+    }));
+  }
+
+  dismissDelivery(
+    target: OccurrenceActionTarget,
+    actionId: string,
+    dismissedAt: Date,
+  ): Promise<CanonicalOccurrenceActionResult> {
+    return this.mutate(target, actionId, 'dismiss', response => ({
+      ...response,
+      dismissedAt: dismissedAt.toISOString(),
+      ignoredCount: response.ignoredCount + 1,
+    }));
+  }
+
+  private async mutate(
+    target: OccurrenceActionTarget,
+    actionId: string,
+    action: CanonicalOccurrenceAction,
+    apply: (response: OccurrenceResponseState) => OccurrenceResponseState,
+    afterSave?: () => Promise<void>,
+  ): Promise<CanonicalOccurrenceActionResult> {
+    const normalizedActionId = actionId.trim();
+    if (!normalizedActionId) throw new Error('actionId is required.');
+
+    const previousResponses = await this.options.store.loadResponses();
+    const existing = cloneResponse(
+      previousResponses[target.occurrenceId] ?? initialResponse(target),
+    );
+
+    if (existing.processedActionIds.includes(normalizedActionId)) {
+      return {
+        action,
+        occurrenceId: target.occurrenceId,
+        applied: false,
+        idempotentReplay: true,
+        responseState: existing,
       };
     }
 
-    // Process the action through the engine
-    const result = OccurrenceActionsEngine.process(input);
-    
-    if (result.processedActionIds) {
-      result.processedActionIds.forEach(id => this.processedActionIds.add(id));
-    }
+    const nextResponse = apply(existing);
+    nextResponse.sourceId = target.sourceId;
+    nextResponse.reminderId = target.reminderId;
+    nextResponse.slotIndex = target.slotIndex;
+    nextResponse.dueAt = target.dueAt;
+    nextResponse.processedActionIds = [
+      ...new Set([...existing.processedActionIds, normalizedActionId]),
+    ];
 
-    // If action was successful, persist the change to the vault
-    if (result.outcome !== 'idempotent_noop' && result.outcome !== 'unknown') {
-      await this.persistAction(input, result);
-      
-      // Add to sync queue
-      if (input.objectPath) {
-        this.syncQueue.push({
-          path: input.objectPath,
-          action: input.action
-        });
-      }
-    }
+    const nextResponses = {
+      ...previousResponses,
+      [target.occurrenceId]: nextResponse,
+    };
 
-    return result;
-  }
-
-  private async persistAction(input: OccurrenceActionInput, result: OccurrenceActionResult): Promise<void> {
-    // In production, this would read the object file, apply the action, and write it back
-    // For now, we'll use the ObjectParser to demonstrate the pattern
-    
+    await this.options.store.replaceResponses(nextResponses);
     try {
-      // Find the object file by occurrenceId
-      const objectPath = await this.findObjectPath(input.occurrenceId);
-      if (!objectPath) {
-        console.warn(`Object not found for occurrence: ${input.occurrenceId}`);
-        return;
-      }
-
-      // Read the current content
-      const content = await this.vaultAdapter.read(objectPath);
-      
-      // Parse the object
-      const parseResult = ObjectParser.parse(content);
-      
-      // Apply the action to the object
-      const updatedObject = this.applyActionToObject(parseResult.object, input, result);
-      
-      // Build unknown fields map
-      const unknownFieldsMap: Record<string, unknown> = {};
-      for (const field of parseResult.unknownFields) {
-        unknownFieldsMap[field] = (parseResult.object as Record<string, unknown>)[field];
-      }
-      
-      // Serialize back to markdown
-      const updatedContent = ObjectParser.serialize(updatedObject as QuartzoObject, unknownFieldsMap);
-      
-      // Write back to vault
-      await this.vaultAdapter.write(objectPath, updatedContent);
-      
-      console.log(`Persisted action ${input.action} for ${input.occurrenceId}`);
+      await afterSave?.();
     } catch (error) {
-      console.error(`Failed to persist action: ${error}`);
-    }
-  }
-
-  private async findObjectPath(occurrenceId: string): Promise<string | null> {
-    // In production, this would search the vault index
-    // For now, return a mock path
-    const files = await this.vaultAdapter.list('/');
-    const targetFile = files.find((f: string) => f.includes(occurrenceId));
-    return targetFile || null;
-  }
-
-  private applyActionToObject(object: Record<string, unknown>, input: OccurrenceActionInput, result: OccurrenceActionResult): Record<string, unknown> {
-    // Apply the action result to the object
-    const updated = { ...object };
-
-    switch (input.action) {
-      case 'done':
-      case 'already_did':
-        updated.completed_at = result.recordedAt || new Date().toISOString();
-        updated.status = 'completed';
-        break;
-      case 'skip':
-        updated.status = 'skipped';
-        updated.skipped_at = new Date().toISOString();
-        break;
-      case 'clear':
-        delete updated.completed_at;
-        delete updated.status;
-        delete updated.skipped_at;
-        break;
-      case 'snooze':
-        updated.snoozed_until = result.snoozedUntil;
-        break;
-      case 'dismiss':
-        updated.dismissed_at = result.dismissedAt;
-        updated.status = 'dismissed';
-        break;
+      await this.options.store.replaceResponses(previousResponses);
+      throw error;
     }
 
-    return updated;
-  }
-
-  getProcessedActionIds(): string[] {
-    return Array.from(this.processedActionIds);
-  }
-
-  clearProcessedActionIds(): void {
-    this.processedActionIds.clear();
-  }
-
-  getSyncQueue(): Array<{ path: string; action: string }> {
-    return [...this.syncQueue];
-  }
-
-  clearSyncQueue(): void {
-    this.syncQueue = [];
+    return {
+      action,
+      occurrenceId: target.occurrenceId,
+      applied: true,
+      idempotentReplay: false,
+      responseState: nextResponse,
+    };
   }
 }
