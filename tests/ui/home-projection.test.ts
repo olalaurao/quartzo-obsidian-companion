@@ -8,6 +8,9 @@ function item(value: Pick<NormalizedItem, 'id' | 'sourceId' | 'date' | 'isTimed'
     sourceLabel: `task:${value.sourceId}:tasks/${value.sourceId}.md`,
     isCompletable: true,
     isCompleted: false,
+    isSkipped: false,
+    outcome: 'pending',
+    isPlayable: false,
     origin: 'schedule',
     ...value,
   };
