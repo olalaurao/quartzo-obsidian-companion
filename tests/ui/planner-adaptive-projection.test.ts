@@ -54,6 +54,17 @@ describe('projectAdaptivePlanner', () => {
     expect(result.fellBehind.map(entry => entry.item.id)).toEqual(['task']);
   });
 
+  it('excludes canonical Journal/Tracker evidence aliases from adaptive work', () => {
+    const result = projectAdaptivePlanner(schedule([
+      item({ id: 'entry', sourceId: 'entry', date: '2026-09-19', start: '09:00', end: '09:15', isTimed: true, sourceType: 'entry', isCompletable: false }),
+      item({ id: 'record', sourceId: 'record', date: '2026-09-19', isTimed: false, sourceType: 'tracker_record', isCompletable: false }),
+    ]), '2026-09-19', now);
+    expect(result.now).toEqual([]);
+    expect(result.next).toEqual([]);
+    expect(result.later).toEqual([]);
+    expect(result.fellBehind).toEqual([]);
+  });
+
   it('excludes completed/skipped items and does not invent Essentials or Capacity', () => {
     const result = projectAdaptivePlanner(schedule([
       item({ id: 'done', sourceId: 'done', date: '2026-09-19', isTimed: false, isCompleted: true, outcome: 'done' }),
