@@ -1,5 +1,6 @@
 import { DailyScheduleInput, NormalizedSchedule, NormalizedItem } from './types';
 import { localIsoDate } from '../local-date';
+import { occurrenceResponseIdForDailyItem } from '../occurrence_actions';
 
 type PresentationField = 'sourceType' | 'sourceLabel' | 'isCompletable' | 'isCompleted' | 'isSkipped' | 'outcome' | 'isPlayable' | 'restrictionMetadata' | 'responseState' | 'origin';
 type RawNormalizedItem = Omit<NormalizedItem, PresentationField>;
@@ -465,7 +466,10 @@ export class DailyScheduleEngine {
       ]);
       const isCompletable = source != null && completableTypes.has(sourceType);
       const occurrenceId = item.occurrenceId ?? item.id;
-      const responseState = occurrenceResponses?.[occurrenceId];
+      const actionOccurrenceId = occurrenceResponseIdForDailyItem(item.id, item.date);
+      const responseState = occurrenceResponses?.[actionOccurrenceId]
+        ?? occurrenceResponses?.[occurrenceId]
+        ?? occurrenceResponses?.[item.id];
       const domainCompleted = source == null ? false : this.isSourceCompleted(sourceType, source);
       const isCompleted = responseState?.completedAt != null || domainCompleted;
       const isSkipped = responseState?.skippedAt != null;
@@ -484,6 +488,7 @@ export class DailyScheduleEngine {
       return {
         ...item,
         occurrenceId,
+        actionOccurrenceId,
         sourceType,
         sourceLabel,
         isCompletable,
