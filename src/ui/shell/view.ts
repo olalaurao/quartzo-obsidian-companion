@@ -6,7 +6,8 @@ import { addLocalDays, daysInLocalMonth, localIsoDate, parseLocalIsoDate, shiftL
 import { chooseNewestConflictResolution, type SyncProgress } from '../../sync/coordinator';
 import { VaultIndexEngine } from '../../vault/index';
 import { renderObjectDetail } from '../detail/object-detail';
-import { projectHomeSchedule } from '../home/home-projection';
+import { renderHomeView } from '../home/view';
+import { renderScheduleList as renderDailyScheduleList } from '../daily/schedule-list';
 import { projectJournalDay } from '../journal/journal-projection';
 import {
   SharedSettingsRepository,
@@ -14,7 +15,6 @@ import {
 import type { IndexedObject, VaultIndex } from '../../vault/index/types';
 import { QuickAddModal } from '../quick-add/modal';
 import type { ViewContext } from '../types';
-import { renderOccurrenceActionControls } from '../occurrence/action-controls';
 import { buildConflictDiff, formatConflictDiff } from '../sync/conflict-diff';
 
 export const QUARTZO_VIEW_TYPE = 'quartzo-view';
@@ -247,38 +247,25 @@ export class QuartzoView extends ItemView {
     return String(object?.frontmatter.title ?? object?.type ?? sourceId);
   }
 
-  private renderScheduleList(container: HTMLElement, items: NormalizedItem[], googleEvents: GoogleCalendarProjection[] = []): void {
-    const googleTitles = new Map(googleEvents.map(event => [event.id, event.summary] as const));
-    const list = document.createElement('ul');
-    list.className = 'quartzo-schedule-list';
-    for (const item of items) {
-      const row = document.createElement('li');
-      row.className = 'quartzo-schedule-row';
-
-      const label = document.createElement('span');
-      label.className = 'quartzo-schedule-label';
-      const time = item.start ? `${item.start} · ` : '';
-      const title = item.origin === 'externalEvent'
-        ? (googleTitles.get(item.sourceId) ?? item.sourceLabel)
-        : this.titleForSource(item.sourceId);
-      label.textContent = `${time}${title}`;
-      row.appendChild(label);
-
-      const object = this.getIndex()?.objects.get(item.sourceId);
-      if (object) {
-        label.classList.add('quartzo-clickable');
-        label.addEventListener('click', () => this.openObjectDetail(object));
-      }
-
-      renderOccurrenceActionControls(row, {
-        app: this.context.app,
-        item,
-        perform: (action, options) =>
-          this.context.plugin.performOccurrenceAction(item, action, options),
-      });
-      list.appendChild(row);
+  private titleForScheduleItem(item: NormalizedItem, googleEvents: GoogleCalendarProjection[] = []): string {
+    if (item.origin === 'externalEvent') {
+      return googleEvents.find(event => event.id === item.sourceId)?.summary ?? item.sourceLabel;
     }
-    container.appendChild(list);
+    return this.titleForSource(item.sourceId);
+  }
+
+  private renderScheduleList(container: HTMLElement, items: NormalizedItem[], googleEvents: GoogleCalendarProjection[] = []): void {
+    renderDailyScheduleList(container, items, {
+      app: this.context.app,
+      titleForItem: item => this.titleForScheduleItem(item, googleEvents),
+      canOpenItem: item => this.getIndex()?.objects.has(item.sourceId) === true,
+      onOpenItem: item => {
+        const object = this.getIndex()?.objects.get(item.sourceId);
+        if (object) this.openObjectDetail(object);
+      },
+      performOccurrenceAction: (item, action, options) =>
+        this.context.plugin.performOccurrenceAction(item, action, options),
+    });
   }
 
   private renderScheduleItems(container: HTMLElement, date: string, googleEvents: GoogleCalendarProjection[] = []): void {
@@ -295,49 +282,28 @@ export class QuartzoView extends ItemView {
     this.renderScheduleList(container, schedule.items, googleEvents);
   }
 
-  private renderHomeBucket(container: HTMLElement, titleText: string, items: NormalizedItem[], emptyText: string, googleEvents: GoogleCalendarProjection[] = []): void {
-    const section = document.createElement('section');
-    section.className = 'quartzo-home-section';
-    const heading = document.createElement('h3');
-    heading.textContent = titleText;
-    section.appendChild(heading);
-    if (items.length === 0) {
-      const empty = document.createElement('p');
-      empty.textContent = emptyText;
-      section.appendChild(empty);
-    } else {
-      this.renderScheduleList(section, items, googleEvents);
-    }
-    container.appendChild(section);
-  }
-
   private async renderHome(container: HTMLElement): Promise<void> {
-    const title = document.createElement('h2');
-    title.textContent = 'Home';
-    container.appendChild(title);
-
-    const date = document.createElement('p');
-    date.className = 'quartzo-home-date';
-    date.textContent = this.selectedDate;
-    container.appendChild(date);
-
     const googleEvents = await this.context.plugin.listGoogleCalendarEvents(this.selectedDate, 1);
     const schedule = this.buildSchedule(this.selectedDate, googleEvents);
-    const projection = projectHomeSchedule(schedule, this.selectedDate, new Date());
+    const sharedSettings = await this.sharedSettingsRepository.load();
 
-    const dial = document.createElement('section');
-    dial.className = 'quartzo-home-section quartzo-day-dial-summary';
-    const dialTitle = document.createElement('h3');
-    dialTitle.textContent = 'Day Dial';
-    dial.appendChild(dialTitle);
-    const summary = document.createElement('p');
-    summary.textContent = `${schedule.count} item${schedule.count === 1 ? '' : 's'} on the canonical Daily Schedule.`;
-    dial.appendChild(summary);
-    container.appendChild(dial);
-
-    this.renderHomeBucket(container, 'Now', projection.now, 'Nothing active right now.', googleEvents);
-    this.renderHomeBucket(container, 'Up Next', projection.upNext, 'Nothing timed is coming up.', googleEvents);
-    this.renderHomeBucket(container, 'Today', projection.today, 'Nothing scheduled today.', googleEvents);
+    renderHomeView(container, {
+      app: this.context.app,
+      selectedDate: this.selectedDate,
+      schedule,
+      index: this.getIndex(),
+      googleEvents,
+      sharedSettings,
+      titleForItem: item => this.titleForScheduleItem(item, googleEvents),
+      canOpenItem: item => this.getIndex()?.objects.has(item.sourceId) === true,
+      onOpenItem: item => {
+        const object = this.getIndex()?.objects.get(item.sourceId);
+        if (object) this.openObjectDetail(object);
+      },
+      performOccurrenceAction: (item, action, options) =>
+        this.context.plugin.performOccurrenceAction(item, action, options),
+      onQuickAdd: type => new QuickAddModal(this.context, type).open(),
+    });
   }
 
   private async renderPlanner(container: HTMLElement): Promise<void> {
