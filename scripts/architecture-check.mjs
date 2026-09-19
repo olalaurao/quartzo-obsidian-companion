@@ -1115,6 +1115,25 @@ function checkSharedSettingsReloadReindexesVault() {
   return true;
 }
 
+function checkProductionAuditGateResilience() {
+  const workflow = fs.readFileSync(path.join(rootDir, '.github/workflows/ci.yml'), 'utf8');
+  const script = fs.readFileSync(path.join(rootDir, 'scripts/audit-prod.mjs'), 'utf8');
+  const workflowUses = workflow.split('node scripts/audit-prod.mjs').length - 1;
+  if (workflowUses < 2) {
+    console.error('FAIL: Linux and Windows CI must both use the canonical production audit gate');
+    return false;
+  }
+  if (!script.includes('MAX_ATTEMPTS = 3') ||
+      !script.includes('high/critical vulnerabilities') ||
+      !script.includes('audit infrastructure remained unavailable after bounded retries') ||
+      !script.includes('isInfrastructureFailure')) {
+    console.error('FAIL: Production audit gate must retry only bounded infrastructure failures and still fail closed');
+    return false;
+  }
+  console.log('PASS: Production dependency audit retries bounded infrastructure failures without weakening severity enforcement');
+  return true;
+}
+
 function main() {
   console.log('Running architecture/completeness checks...\n');
   let allPassed = true;
@@ -1137,6 +1156,7 @@ function main() {
   if (!checkObsidianSecretStorageIds()) allPassed = false;
   if (!checkOAuthDesktopPlatformBoundary()) allPassed = false;
   if (!checkReleasePipelineHardening()) allPassed = false;
+  if (!checkProductionAuditGateResilience()) allPassed = false;
   if (!checkPairingDuplicateCleanupIsReversible()) allPassed = false;
   if (!checkPostPairingDuplicateRecovery()) allPassed = false;
   if (!checkDriveQuotaResilience()) allPassed = false;
