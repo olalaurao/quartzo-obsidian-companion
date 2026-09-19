@@ -518,3 +518,64 @@
     overflow-x: auto;
   }
 }
+
+/* Universal Detail safe editor */
+.quartzo-detail-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.quartzo-detail-section {
+  margin-block: 16px;
+}
+
+.quartzo-detail-section dl {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.35fr) minmax(0, 1fr);
+  gap: 6px 12px;
+}
+
+.quartzo-detail-section dt {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.quartzo-detail-section dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.quartzo-detail-edit-safety {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.quartzo-detail-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.quartzo-detail-editor-field {
+  display: grid;
+  gap: 5px;
+}
+
+.quartzo-detail-editor-field > span {
+  font-weight: 600;
+}
+
+.quartzo-detail-editor .quartzo-input {
+  width: 100%;
+}
+
+.quartzo-detail-editor textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+
+.quartzo-detail-editor-body {
+  min-height: 180px !important;
+}
