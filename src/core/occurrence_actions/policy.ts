@@ -226,21 +226,65 @@ function startLabel(role: OccurrenceSemanticRole): string | undefined {
     case 'habitSlot': return 'Start';
     case 'timeAllocation': return 'Start block';
     case 'routineRun': return 'Run routine';
-    case 'systemRun': return 'Run system';
-    case 'focusSession': return 'Start focus';
+    case 'systemRun': return 'Run';
+    case 'focusSession': return 'Start';
     case 'rotationBlock': return 'Start block';
     default: return undefined;
   }
 }
 
 function statusLabel(role: OccurrenceSemanticRole, outcome: OccurrenceOutcome): string | undefined {
-  if (outcome === 'done') return doneLabel(role);
-  if (outcome === 'skipped') return skipLabel(role);
+  if (outcome === 'done') {
+    switch (role) {
+      case 'taskWork': return 'Completed';
+      case 'habitSlot': return 'Done today';
+      case 'eventAttendance':
+      case 'externalEventAttendance': return 'Attended';
+      case 'timeAllocation': return 'Block done';
+      case 'routineRun': return 'Done today';
+      default: return doneLabel(role);
+    }
+  }
+  if (outcome === 'skipped') {
+    switch (role) {
+      case 'taskWork':
+      case 'habitSlot': return 'Skipped today';
+      case 'eventAttendance':
+      case 'externalEventAttendance': return 'Did not attend';
+      case 'timeAllocation': return 'Block skipped';
+      case 'routineRun': return 'Skipped today';
+      default: return skipLabel(role);
+    }
+  }
   if (role === 'historicalFocus') return 'Completed';
   if (role === 'historicalRecord') return 'Logged';
   if (role === 'historicalJournal') return 'Written';
   if (role === 'sleepEvidence') return 'Logged';
   return undefined;
+}
+
+function clearOutcomeLabel(role: OccurrenceSemanticRole, outcome: OccurrenceOutcome): string | undefined {
+  if (outcome === 'pending') return undefined;
+  if (outcome === 'done') {
+    switch (role) {
+      case 'taskWork': return 'Reopen';
+      case 'habitSlot': return 'Undo done';
+      case 'eventAttendance':
+      case 'externalEventAttendance': return 'Clear confirmation';
+      case 'timeAllocation': return 'Undo';
+      case 'routineRun': return 'Undo done';
+      default: return 'Clear outcome';
+    }
+  }
+  switch (role) {
+    case 'taskWork':
+    case 'habitSlot': return 'Undo skip';
+    case 'eventAttendance':
+    case 'externalEventAttendance': return 'Clear confirmation';
+    case 'timeAllocation': return 'Undo skip';
+    case 'routineRun': return 'Undo skip';
+    default: return 'Clear outcome';
+  }
 }
 
 export class OccurrenceActionPolicy {
@@ -296,7 +340,7 @@ export class OccurrenceActionPolicy {
       skipLabel: skipLabel(role),
       startLabel: startLabel(role),
       statusLabel: statusLabel(role, input.outcome),
-      clearOutcomeLabel: terminal ? 'Undo' : undefined,
+      clearOutcomeLabel: clearOutcomeLabel(role, input.outcome),
       logLinkedTrackerLabel: canLogLinkedTracker ? 'Log details' : undefined,
     };
   }
