@@ -15,7 +15,7 @@
     "architecture:check": "node scripts/architecture-check.mjs",
     "release:validate": "node scripts/release-validate.mjs",
     "smoke:clean-artifact": "node scripts/smoke-clean-artifact.mjs",
-    "audit:prod": "npm audit --omit=dev --audit-level=high",
+    "audit:prod": "node scripts/audit-prod.mjs",
     "release:package": "node scripts/package-release.mjs"
   },
   "keywords": [],

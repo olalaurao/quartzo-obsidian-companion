@@ -16,8 +16,10 @@ jobs:
       with:
         node-version: '20'
         cache: 'npm'
-    - run: npm ci
-    - run: npm audit --omit=dev --audit-level=high
+    - run: npm ci --audit=false
+    - name: Pin modern npm audit client
+      run: npm install --global npm@11.19.1
+    - run: npm run audit:prod
     - name: Verify canonical contracts
       run: npm run contracts:verify
       env:
@@ -42,8 +44,10 @@ jobs:
       with:
         node-version: '20'
         cache: 'npm'
-    - run: npm ci
-    - run: npm audit --omit=dev --audit-level=high
+    - run: npm ci --audit=false
+    - name: Pin modern npm audit client
+      run: npm install --global npm@11.19.1
+    - run: npm run audit:prod
     - run: npm run typecheck
     - run: npm run test:sync
     - run: npm run build

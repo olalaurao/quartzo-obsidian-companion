@@ -1085,6 +1085,86 @@ function checkVaultIndexWaitsForWorkspaceReady() {
   return true;
 }
 
+function checkSharedSettingsReloadReindexesVault() {
+  const mainPath = path.join(rootDir, 'src/main.ts');
+  const main = fs.readFileSync(mainPath, 'utf8');
+  const methodStart = main.indexOf('private async reloadSharedSettingsAndIndex(): Promise<void>');
+  if (methodStart < 0) {
+    console.error('FAIL: Shared settings reload owner is missing');
+    return false;
+  }
+  const methodEnd = main.indexOf('\n  showFirstRunDialog()', methodStart);
+  const method = main.slice(methodStart, methodEnd > methodStart ? methodEnd : methodStart + 1600);
+  const loadPos = method.indexOf('this.sharedSettings = await this.sharedSettingsRepository?.load() ?? null');
+  const indexPos = method.indexOf('await this.initializeVaultIndex()');
+  const refreshPos = method.indexOf('await leaf.view.refresh()');
+  if (loadPos < 0 || indexPos < loadPos || refreshPos < indexPos) {
+    console.error('FAIL: Shared settings change must reload settings, rebuild canonical index, then refresh UI');
+    return false;
+  }
+
+  const directHook = "normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { void this.reloadSharedSettingsAndIndex(); return; }";
+  const renameHook = "normalizeVaultPath(oldPath) === SHARED_SETTINGS_PATH || normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH";
+  const createModifyDeleteCount = main.split(directHook).length - 1;
+  if (createModifyDeleteCount < 3 || !main.includes(renameHook)) {
+    console.error('FAIL: Shared settings create/modify/delete/rename events must route through canonical reindex');
+    return false;
+  }
+
+  console.log('PASS: Shared settings create/modify/delete/rename reload the canonical settings projection and vault index');
+  return true;
+}
+
+function checkProductionAuditGateResilience() {
+  const workflowPaths = [
+    '.github/workflows/ci.yml',
+    '.github/workflows/release-preflight.yml',
+    '.github/workflows/release.yml',
+  ];
+  const workflows = workflowPaths.map(file =>
+    fs.readFileSync(path.join(rootDir, file), 'utf8')
+  );
+  const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
+  const script = fs.readFileSync(path.join(rootDir, 'scripts/audit-prod.mjs'), 'utf8');
+
+  if (pkg.scripts?.['audit:prod'] !== 'node scripts/audit-prod.mjs') {
+    console.error('FAIL: package audit:prod must route through the canonical production audit script');
+    return false;
+  }
+
+  for (const [index, workflow] of workflows.entries()) {
+    if (!workflow.includes('npm ci --audit=false') ||
+        !workflow.includes('npm install --global npm@11.19.1') ||
+        !workflow.includes('npm run audit:prod') ||
+        workflow.includes('npm audit --omit=dev --audit-level=high')) {
+      console.error(`FAIL: ${workflowPaths[index]} must install reproducibly, pin the modern audit client, and use the canonical fail-closed audit gate`);
+      return false;
+    }
+  }
+
+  const ci = workflows[0];
+  const ciAuditUses = ci.split('npm run audit:prod').length - 1;
+  const ciPinnedClientUses = ci.split('npm install --global npm@11.19.1').length - 1;
+  if (ciAuditUses < 2 || ciPinnedClientUses < 2) {
+    console.error('FAIL: Linux and Windows CI must both use the canonical production audit gate');
+    return false;
+  }
+
+  if (!script.includes('MAX_ATTEMPTS = 3') ||
+      !script.includes("const isWindows = process.platform === 'win32'") ||
+      !script.includes('shell: isWindows') ||
+      !script.includes('Audit command execution error:') ||
+      !script.includes('high/critical vulnerabilities') ||
+      !script.includes('audit infrastructure remained unavailable after bounded retries') ||
+      !script.includes('isInfrastructureFailure')) {
+    console.error('FAIL: Production audit gate must be cross-platform, retry only bounded infrastructure failures and still fail closed');
+    return false;
+  }
+
+  console.log('PASS: CI, preflight and release share one fail-closed modern production dependency audit gate');
+  return true;
+}
+
 function main() {
   console.log('Running architecture/completeness checks...\n');
   let allPassed = true;
@@ -1107,12 +1187,14 @@ function main() {
   if (!checkObsidianSecretStorageIds()) allPassed = false;
   if (!checkOAuthDesktopPlatformBoundary()) allPassed = false;
   if (!checkReleasePipelineHardening()) allPassed = false;
+  if (!checkProductionAuditGateResilience()) allPassed = false;
   if (!checkPairingDuplicateCleanupIsReversible()) allPassed = false;
   if (!checkPostPairingDuplicateRecovery()) allPassed = false;
   if (!checkDriveQuotaResilience()) allPassed = false;
   if (!checkDriveTimeoutsAndSyncProgress()) allPassed = false;
   if (!checkManualStartupStateHydration()) allPassed = false;
   if (!checkVaultIndexWaitsForWorkspaceReady()) allPassed = false;
+  if (!checkSharedSettingsReloadReindexesVault()) allPassed = false;
   if (!checkCanonicalOccurrenceActions()) allPassed = false;
   if (!checkCanonicalHomeAndDayDial()) allPassed = false;
   if (!checkCanonicalPlannerProjection()) allPassed = false;

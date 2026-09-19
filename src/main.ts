@@ -668,6 +668,10 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.eventRefs.push(onmodify);
 
     const ondelete = this.app.vault.on('delete', (file: TAbstractFile) => {
+      if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) {
+        void this.reloadSharedSettingsAndIndex();
+        return;
+      }
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_OCCURRENCE_STATE_PATH) {
         this.occurrenceResponses = {};
         void this.refreshQuartzoView();
