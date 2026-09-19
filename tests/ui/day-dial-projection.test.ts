@@ -10,9 +10,10 @@ import {
 import type { VaultIndex } from '../../src/vault/index/types';
 
 function item(overrides: Partial<NormalizedItem> & Pick<NormalizedItem, 'id' | 'sourceId'>): NormalizedItem {
+  const { id, sourceId, ...rest } = overrides;
   return {
-    id: overrides.id,
-    sourceId: overrides.sourceId,
+    id,
+    sourceId,
     sourceType: 'task',
     sourceLabel: `task:${overrides.sourceId}`,
     date: '2026-09-19',
@@ -26,7 +27,7 @@ function item(overrides: Partial<NormalizedItem> & Pick<NormalizedItem, 'id' | '
     outcome: 'pending',
     isPlayable: false,
     origin: 'schedule',
-    ...overrides,
+    ...rest,
   };
 }
 
