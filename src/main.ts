@@ -213,6 +213,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.reminderDeliveryGateway = new ObsidianReminderDeliveryGateway(
       () => this.settings.hideNotificationBody,
       occurrence => { void this.openReminderOccurrence(occurrence); },
+      message => { new Notice(message); },
     );
     this.reminderService = new ReminderService({
       getObjects: () => this.getReminderSourceObjects(),
