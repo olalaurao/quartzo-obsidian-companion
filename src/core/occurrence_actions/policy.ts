@@ -288,6 +288,26 @@ function clearOutcomeLabel(role: OccurrenceSemanticRole, outcome: OccurrenceOutc
 }
 
 export class OccurrenceActionPolicy {
+  static isRecoveryEligible(input: OccurrencePolicyInput): boolean {
+    const role = roleFor(input);
+    if (isEvidence(role)) return false;
+    if ([
+      'eventAttendance',
+      'externalEventAttendance',
+      'referencePrompt',
+      'historicalFocus',
+      'historicalRecord',
+      'historicalJournal',
+    ].includes(role)) {
+      return false;
+    }
+    const capabilities = this.resolve(input);
+    return capabilities.canReportDone ||
+      capabilities.canStart ||
+      capabilities.canReplan ||
+      capabilities.canNextOpportunity;
+  }
+
   static resolve(input: OccurrencePolicyInput): OccurrenceActionCapabilities {
     const role = roleFor(input);
     if (isEvidence(role)) {
