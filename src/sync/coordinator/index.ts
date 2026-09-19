@@ -2391,12 +2391,12 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     return true;
   }
 
-  async triggerManualSync(): Promise<SyncResult> {
-    return this.reconcile();
+  async triggerManualSync(onProgress?: (progress: SyncProgress) => void): Promise<SyncResult> {
+    return this.reconcile(false, onProgress);
   }
 
-  async triggerFullReconciliation(): Promise<SyncResult> {
-    return this.reconcile(true);
+  async triggerFullReconciliation(onProgress?: (progress: SyncProgress) => void): Promise<SyncResult> {
+    return this.reconcile(true, onProgress);
   }
 
   async triggerStartupSync(): Promise<SyncResult> {
