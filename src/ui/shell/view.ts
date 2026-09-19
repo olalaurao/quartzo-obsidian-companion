@@ -133,6 +133,7 @@ export class QuartzoView extends ItemView {
     this.section = section;
     this.action = null;
     this.selectedObjectId = null;
+    if (section === 'home') this.selectedDate = isoDate(new Date());
     await this.render();
   }
 
