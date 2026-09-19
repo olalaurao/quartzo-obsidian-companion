@@ -11,6 +11,7 @@ import {
   SharedSettingsRepository,
 } from '../../vault/shared-settings';
 import type { IndexedObject, VaultIndex } from '../../vault/index/types';
+import { renderTrackerRecordQuickAdd, type TrackerRecordFormController } from './record-form';
 import type { ViewContext } from '../types';
 
 function isoDate(date: Date): string {
