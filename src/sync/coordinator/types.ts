@@ -42,6 +42,13 @@ export interface DriveFileMetadata {
   relativePath?: string | null;
 }
 
+export class DriveRequestTimeoutError extends Error {
+  constructor(message = 'Google Drive request timed out after the configured request deadline.') {
+    super(message);
+    this.name = 'DriveRequestTimeoutError';
+  }
+}
+
 export class TemporaryDriveQuotaError extends Error {
   constructor(message = 'Google Drive temporary quota limit remained exhausted after retries.') {
     super(message);
