@@ -1116,14 +1116,40 @@ function checkSharedSettingsReloadReindexesVault() {
 }
 
 function checkProductionAuditGateResilience() {
-  const workflow = fs.readFileSync(path.join(rootDir, '.github/workflows/ci.yml'), 'utf8');
+  const workflowPaths = [
+    '.github/workflows/ci.yml',
+    '.github/workflows/release-preflight.yml',
+    '.github/workflows/release.yml',
+  ];
+  const workflows = workflowPaths.map(file =>
+    fs.readFileSync(path.join(rootDir, file), 'utf8')
+  );
+  const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
   const script = fs.readFileSync(path.join(rootDir, 'scripts/audit-prod.mjs'), 'utf8');
-  const workflowUses = workflow.split('node scripts/audit-prod.mjs').length - 1;
-  const pinnedAuditClientUses = workflow.split('npm install --global npm@11.19.1').length - 1;
-  if (workflowUses < 2 || pinnedAuditClientUses < 2) {
-    console.error('FAIL: Linux and Windows CI must both use the canonical production audit gate with the pinned modern npm audit client');
+
+  if (pkg.scripts?.['audit:prod'] !== 'node scripts/audit-prod.mjs') {
+    console.error('FAIL: package audit:prod must route through the canonical production audit script');
     return false;
   }
+
+  for (const [index, workflow] of workflows.entries()) {
+    if (!workflow.includes('npm ci --audit=false') ||
+        !workflow.includes('npm install --global npm@11.19.1') ||
+        !workflow.includes('npm run audit:prod') ||
+        workflow.includes('npm audit --omit=dev --audit-level=high')) {
+      console.error(`FAIL: ${workflowPaths[index]} must install reproducibly, pin the modern audit client, and use the canonical fail-closed audit gate`);
+      return false;
+    }
+  }
+
+  const ci = workflows[0];
+  const ciAuditUses = ci.split('npm run audit:prod').length - 1;
+  const ciPinnedClientUses = ci.split('npm install --global npm@11.19.1').length - 1;
+  if (ciAuditUses < 2 || ciPinnedClientUses < 2) {
+    console.error('FAIL: Linux and Windows CI must both use the canonical production audit gate');
+    return false;
+  }
+
   if (!script.includes('MAX_ATTEMPTS = 3') ||
       !script.includes('high/critical vulnerabilities') ||
       !script.includes('audit infrastructure remained unavailable after bounded retries') ||
@@ -1131,7 +1157,8 @@ function checkProductionAuditGateResilience() {
     console.error('FAIL: Production audit gate must retry only bounded infrastructure failures and still fail closed');
     return false;
   }
-  console.log('PASS: Production dependency audit retries bounded infrastructure failures without weakening severity enforcement');
+
+  console.log('PASS: CI, preflight and release share one fail-closed modern production dependency audit gate');
   return true;
 }
 
