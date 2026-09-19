@@ -175,7 +175,6 @@ function renderWeek(container: HTMLElement, options: PlannerViewOptions): void {
 
 function renderMonth(container: HTMLElement, options: PlannerViewOptions): void {
   const selected = parseLocalIsoDate(options.selectedDate);
-  const year = selected.getFullYear();
   const month = selected.getMonth();
   const startOfWeek = options.sharedSettings?.startOfWeek ?? 1;
   const dates = monthGridDates(options.selectedDate, startOfWeek);
