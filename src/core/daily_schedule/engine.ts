@@ -359,8 +359,8 @@ export class DailyScheduleEngine {
 
   private static processPersonContact(obj: Record<string, unknown>, date: string, items: RawNormalizedItem[]): void {
     const id = obj.id as string;
-    const lastContact = obj.last_contact as string;
-    const frequencyDays = obj.frequency_days as number;
+    const lastContact = String(obj.last_contact_date ?? obj.last_contact ?? '');
+    const frequencyDays = Number(obj.contact_frequency_days ?? obj.frequency_days);
 
     if (!lastContact || !frequencyDays) {
       return;
@@ -507,7 +507,7 @@ export class DailyScheduleEngine {
     if (source.is_completed === true || source.completed === true) return true;
     switch (sourceType) {
       case 'task':
-        return source.stage === 'done' || source.stage === 'completed';
+        return source.stage === 'done' || source.stage === 'completed' || source.stage === 'finalized';
       case 'event':
       case 'pomodoro':
       case 'pomodoro_session':
