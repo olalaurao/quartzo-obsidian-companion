@@ -4,7 +4,7 @@ import type { NormalizedItem, NormalizedSchedule } from '../../core/daily_schedu
 import type { GoogleCalendarProjection } from '../../integrations/google/calendar';
 import { addLocalDays, localIsoDate, parseLocalIsoDate, shiftLocalMonth } from '../../core/local-date';
 import { chooseNewestConflictResolution, type SyncProgress } from '../../sync/coordinator';
-import { VaultIndexEngine } from '../../vault/index';
+import { queryVaultObjects } from '../../core/object-query';
 import { renderObjectDetail } from '../detail/object-detail';
 import { renderObjectEditor } from '../detail/object-editor';
 import { renderHomeView } from '../home/view';
@@ -582,30 +582,55 @@ export class QuartzoView extends ItemView {
     const title = document.createElement('h2');
     title.textContent = 'Browse';
     container.appendChild(title);
-    const index = this.getIndex();
-    const objects = index ? Array.from(index.objects.values()) : [];
+
+    const controls = document.createElement('div');
+    controls.className = 'quartzo-browse-controls';
+
+    const input = document.createElement('input');
+    input.type = 'search';
+    input.placeholder = 'Filter Quartzo objects';
+    input.className = 'quartzo-input';
+    controls.appendChild(input);
 
     const filter = document.createElement('select');
+    filter.className = 'quartzo-input';
     const all = document.createElement('option');
     all.value = '';
     all.textContent = 'All types';
     filter.appendChild(all);
-    for (const type of [...new Set(objects.map(object => object.type))].sort()) {
+    const available = queryVaultObjects(this.getIndex());
+    for (const type of [...new Set(available.map(object => object.type))].sort()) {
       const option = document.createElement('option');
       option.value = type;
       option.textContent = labelForType(type);
       filter.appendChild(option);
     }
-    container.appendChild(filter);
+    controls.appendChild(filter);
+    container.appendChild(controls);
 
     const list = document.createElement('div');
+    list.className = 'quartzo-object-results';
     container.appendChild(list);
+
     const render = () => {
       list.replaceChildren();
-      const visible = filter.value ? objects.filter(object => object.type === filter.value) : objects;
+      const visible = queryVaultObjects(this.getIndex(), {
+        query: input.value,
+        types: filter.value ? [filter.value] : undefined,
+      });
+      if (visible.length === 0) {
+        const empty = document.createElement('p');
+        empty.className = 'quartzo-empty-state';
+        empty.textContent = input.value.trim() || filter.value
+          ? 'No matching Quartzo objects.'
+          : 'No Quartzo objects yet.';
+        list.appendChild(empty);
+        return;
+      }
       for (const object of visible) this.renderObjectRow(list, object);
     };
     filter.addEventListener('change', render);
+    input.addEventListener('input', render);
     render();
   }
 
@@ -616,18 +641,33 @@ export class QuartzoView extends ItemView {
     const input = document.createElement('input');
     input.type = 'search';
     input.placeholder = 'Search Quartzo objects';
+    input.className = 'quartzo-input';
     container.appendChild(input);
     const results = document.createElement('div');
+    results.className = 'quartzo-object-results';
     container.appendChild(results);
     const renderResults = () => {
       results.replaceChildren();
-      const index = this.getIndex();
-      if (!index || !input.value.trim()) return;
-      for (const object of VaultIndexEngine.searchObjects(index, input.value)) {
-        this.renderObjectRow(results, object);
+      const query = input.value.trim();
+      if (!query) {
+        const hint = document.createElement('p');
+        hint.className = 'quartzo-empty-state';
+        hint.textContent = 'Search by title, ID, type, body or object metadata.';
+        results.appendChild(hint);
+        return;
       }
+      const matches = queryVaultObjects(this.getIndex(), { query });
+      if (matches.length === 0) {
+        const empty = document.createElement('p');
+        empty.className = 'quartzo-empty-state';
+        empty.textContent = 'No matching Quartzo objects.';
+        results.appendChild(empty);
+        return;
+      }
+      for (const object of matches) this.renderObjectRow(results, object);
     };
     input.addEventListener('input', renderResults);
+    renderResults();
     input.focus();
   }
 
