@@ -612,6 +612,41 @@ function checkDriveTimeoutsAndSyncProgress() {
   return true;
 }
 
+function checkManualStartupStateHydration() {
+  const coordinatorPath = path.join(rootDir, 'src/sync/coordinator/index.ts');
+  const mainPath = path.join(rootDir, 'src/main.ts');
+  const coordinator = fs.readFileSync(coordinatorPath, 'utf8');
+  const main = fs.readFileSync(mainPath, 'utf8');
+
+  if (!coordinator.includes('async hydratePersistedState(): Promise<void>') ||
+      !coordinator.includes('await this.loadSyncState()') ||
+      !coordinator.includes('this.rehydrateConflicts()')) {
+    console.error('FAIL: Coordinator does not own local persisted-state hydration');
+    return false;
+  }
+
+  const constructionIndex = main.indexOf('this.driveSyncCoordinator = new DriveSyncCoordinator(');
+  const hydrateIndex = main.indexOf('await this.driveSyncCoordinator.hydratePersistedState()', constructionIndex);
+  const viewContextIndex = main.indexOf('this.viewContext = {', constructionIndex);
+  if (constructionIndex < 0 || hydrateIndex < 0 || viewContextIndex < 0 || hydrateIndex > viewContextIndex) {
+    console.error('FAIL: Sync UI can be exposed before device-local sync state is hydrated');
+    return false;
+  }
+
+  const hydrateBodyStart = coordinator.indexOf('async hydratePersistedState(): Promise<void>');
+  const hydrateBodyEnd = coordinator.indexOf('\n  }', hydrateBodyStart);
+  const hydrateBody = hydrateBodyStart >= 0 && hydrateBodyEnd > hydrateBodyStart
+    ? coordinator.slice(hydrateBodyStart, hydrateBodyEnd)
+    : '';
+  if (hydrateBody.includes('driveAdapter.') || hydrateBody.includes('reconcile(')) {
+    console.error('FAIL: Manual startup hydration performs Drive/network reconciliation');
+    return false;
+  }
+
+  console.log('PASS: Manual startup hydrates device-local sync state before UI without network reconciliation');
+  return true;
+}
+
 function checkFirstPairingApplyProgress() {
   const coordinatorPath = path.join(rootDir, 'src/sync/coordinator/index.ts');
   const mainPath = path.join(rootDir, 'src/main.ts');
@@ -706,6 +741,7 @@ function main() {
   if (!checkPostPairingDuplicateRecovery()) allPassed = false;
   if (!checkDriveQuotaResilience()) allPassed = false;
   if (!checkDriveTimeoutsAndSyncProgress()) allPassed = false;
+  if (!checkManualStartupStateHydration()) allPassed = false;
   if (!checkFirstPairingApplyProgress()) allPassed = false;
 
   console.log('\n' + (allPassed ? 'All architecture checks passed' : 'Some architecture checks failed'));
