@@ -6,6 +6,7 @@ import { addLocalDays, localIsoDate, parseLocalIsoDate, shiftLocalMonth } from '
 import { chooseNewestConflictResolution, type SyncProgress } from '../../sync/coordinator';
 import { VaultIndexEngine } from '../../vault/index';
 import { renderObjectDetail } from '../detail/object-detail';
+import { renderObjectEditor } from '../detail/object-editor';
 import { renderHomeView } from '../home/view';
 import { renderPlannerSurface, type PlannerDayLens } from '../planner/view';
 import { monthGridDates, weekDates } from '../planner/calendar-projection';
@@ -86,6 +87,7 @@ export class QuartzoView extends ItemView {
   private section: QuartzoSection = 'home';
   private action: QuartzoAction | null = null;
   private selectedObjectId: string | null = null;
+  private editingSelectedObject = false;
   private selectedDate = isoDate(new Date());
   private plannerMode: 'day' | 'week' | 'month' = 'day';
   private plannerDayLens: PlannerDayLens = 'timeline';
@@ -136,12 +138,14 @@ export class QuartzoView extends ItemView {
     this.section = section;
     this.action = null;
     this.selectedObjectId = null;
+    this.editingSelectedObject = false;
     if (section === 'home') this.selectedDate = isoDate(new Date());
     await this.render();
   }
 
   async handleAction(action: QuartzoAction): Promise<void> {
     this.selectedObjectId = null;
+    this.editingSelectedObject = false;
     if (action === 'add') {
       new QuickAddModal(this.context).open();
       return;
@@ -203,13 +207,36 @@ export class QuartzoView extends ItemView {
     if (this.selectedObjectId) {
       const object = this.getIndex()?.objects.get(this.selectedObjectId);
       if (object) {
-        renderObjectDetail(content, object, {
-          onBack: () => { this.selectedObjectId = null; void this.render(); },
-          onOpenMarkdown: () => this.openMarkdown(object),
-        });
+        if (this.editingSelectedObject) {
+          renderObjectEditor(content, object, {
+            onCancel: () => {
+              this.editingSelectedObject = false;
+              void this.render();
+            },
+            onSave: async patch => {
+              await this.context.plugin.mutateObject(object, patch);
+              this.editingSelectedObject = false;
+              await this.render();
+            },
+          });
+        } else {
+          renderObjectDetail(content, object, {
+            onBack: () => {
+              this.selectedObjectId = null;
+              this.editingSelectedObject = false;
+              void this.render();
+            },
+            onOpenMarkdown: () => this.openMarkdown(object),
+            onEdit: () => {
+              this.editingSelectedObject = true;
+              void this.render();
+            },
+          });
+        }
         return;
       }
       this.selectedObjectId = null;
+      this.editingSelectedObject = false;
     }
 
     if (this.action === 'search') {
@@ -988,6 +1015,7 @@ export class QuartzoView extends ItemView {
 
   private openObjectDetail(object: IndexedObject): void {
     this.selectedObjectId = object.id;
+    this.editingSelectedObject = false;
     void this.render();
   }
 
