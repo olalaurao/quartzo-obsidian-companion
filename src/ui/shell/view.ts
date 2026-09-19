@@ -9,7 +9,6 @@ import { VaultIndexEngine } from '../../vault/index';
 import { renderObjectDetail } from '../detail/object-detail';
 import { projectHomeSchedule } from '../home/home-projection';
 import { projectJournalDay } from '../journal/journal-projection';
-import { renderTrackerRecordQuickAdd, type TrackerRecordFormController } from '../quick-add/record-form';
 import {
   SharedSettingsRepository,
 } from '../../vault/shared-settings';
