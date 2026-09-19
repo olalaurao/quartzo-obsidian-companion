@@ -288,9 +288,12 @@ export class QuartzoView extends ItemView {
         action: 'done' | 'already_did' | 'skip' | 'clear' | 'snooze',
         options: { completedAt?: Date; snoozeMinutes?: number } = {},
       ) => {
+        const buttons = Array.from(actionRow.querySelectorAll('button'));
+        for (const button of buttons) button.disabled = true;
         try {
           await this.context.plugin.performOccurrenceAction(item, action, options);
         } catch (error) {
+          for (const button of buttons) button.disabled = false;
           new Notice(`Occurrence action blocked: ${error instanceof Error ? error.message : String(error)}`);
         }
       };
