@@ -733,6 +733,7 @@ function checkCanonicalOccurrenceActions() {
   const domainPath = path.join(rootDir, 'src/vault/occurrence-domain-mutations.ts');
   const schedulePath = path.join(rootDir, 'src/core/daily_schedule/engine.ts');
   const viewPath = path.join(rootDir, 'src/ui/shell/view.ts');
+  const scheduleListPath = path.join(rootDir, 'src/ui/daily/schedule-list.ts');
   const controlsPath = path.join(rootDir, 'src/ui/occurrence/action-controls.ts');
   const mainPath = path.join(rootDir, 'src/main.ts');
 
@@ -743,6 +744,7 @@ function checkCanonicalOccurrenceActions() {
   const domain = fs.readFileSync(domainPath, 'utf8');
   const schedule = fs.readFileSync(schedulePath, 'utf8');
   const view = fs.readFileSync(viewPath, 'utf8');
+  const scheduleList = fs.readFileSync(scheduleListPath, 'utf8');
   const controls = fs.readFileSync(controlsPath, 'utf8');
   const main = fs.readFileSync(mainPath, 'utf8');
 
@@ -769,8 +771,10 @@ function checkCanonicalOccurrenceActions() {
   if (!policy.includes('export class OccurrenceActionPolicy') ||
       !controls.includes('OccurrenceActionPolicy.resolve({') ||
       !controls.includes('options.perform(action, actionOptions)') ||
-      !view.includes('renderOccurrenceActionControls(row, {') ||
+      !scheduleList.includes('renderOccurrenceActionControls(row, {') ||
+      !view.includes('renderDailyScheduleList(container, items, {') ||
       view.includes('occurrence_responses') ||
+      scheduleList.includes('occurrence_responses') ||
       controls.includes('occurrence_responses')) {
     console.error('FAIL: Daily UI owns occurrence business state instead of projecting the canonical policy/coordinator');
     return false;
@@ -786,6 +790,55 @@ function checkCanonicalOccurrenceActions() {
   console.log('PASS: Occurrence actions are canonical, idempotent, dated, Vault-safe and fail closed on unsupported domain parity');
   return true;
 }
+function checkCanonicalHomeAndDayDial() {
+  const shellPath = path.join(rootDir, 'src/ui/shell/view.ts');
+  const homePath = path.join(rootDir, 'src/ui/home/view.ts');
+  const homeProjectionPath = path.join(rootDir, 'src/ui/home/home-projection.ts');
+  const dialProjectionPath = path.join(rootDir, 'src/ui/day-dial/projection.ts');
+  const dialViewPath = path.join(rootDir, 'src/ui/day-dial/view.ts');
+
+  const shell = fs.readFileSync(shellPath, 'utf8');
+  const home = fs.readFileSync(homePath, 'utf8');
+  const homeProjection = fs.readFileSync(homeProjectionPath, 'utf8');
+  const dialProjection = fs.readFileSync(dialProjectionPath, 'utf8');
+  const dialView = fs.readFileSync(dialViewPath, 'utf8');
+
+  if (!shell.includes('renderHomeView(container, {') ||
+      !shell.includes('schedule,') ||
+      !home.includes('projectHomeSchedule(options.schedule') ||
+      !home.includes('renderDayDial(container, {') ||
+      !home.includes('schedule: options.schedule')) {
+    console.error('FAIL: Home and Day Dial are not projections of the same canonical Daily Schedule snapshot');
+    return false;
+  }
+
+  const forbiddenOwners = ['DailyScheduleEngine', 'Scheduler', 'ObjectParser', 'GoogleCalendarAdapter'];
+  if (forbiddenOwners.some(owner => home.includes(owner) || dialProjection.includes(owner) || dialView.includes(owner))) {
+    console.error('FAIL: Home/Day Dial reintroduces canonical scheduling/parser/integration business owners in UI');
+    return false;
+  }
+
+  if (!dialProjection.includes('DAY_DIAL_SHORT_OCCURRENCE_MINUTES = 24') ||
+      !dialProjection.includes("duration <= DAY_DIAL_SHORT_OCCURRENCE_MINUTES") ||
+      !dialProjection.includes("visual: rawEnd == null") ||
+      !dialProjection.includes('item.isAllDay || !item.isTimed') ||
+      !dialProjection.includes('resolveTypeSignature') ||
+      !dialProjection.includes('object?.frontmatter.color')) {
+    console.error('FAIL: Day Dial geometry/color contract is not the canonical 24h marker/arc projection');
+    return false;
+  }
+
+  if (!homeProjection.includes('Pure presentation projection over the canonical Daily Schedule result') ||
+      homeProjection.includes('overdue_policy') ||
+      homeProjection.includes('scheduler')) {
+    console.error('FAIL: Home projection can independently decide recurrence/overdue/scheduler business semantics');
+    return false;
+  }
+
+  console.log('PASS: Home and Day Dial share the canonical Daily Schedule and keep Dial work presentation-only');
+  return true;
+}
+
 function main() {
   console.log('Running architecture/completeness checks...\n');
   let allPassed = true;
@@ -814,6 +867,7 @@ function main() {
   if (!checkDriveTimeoutsAndSyncProgress()) allPassed = false;
   if (!checkManualStartupStateHydration()) allPassed = false;
   if (!checkCanonicalOccurrenceActions()) allPassed = false;
+  if (!checkCanonicalHomeAndDayDial()) allPassed = false;
   if (!checkFirstPairingApplyProgress()) allPassed = false;
 
   console.log('\n' + (allPassed ? 'All architecture checks passed' : 'Some architecture checks failed'));
