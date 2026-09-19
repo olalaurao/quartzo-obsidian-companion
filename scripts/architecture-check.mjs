@@ -1039,6 +1039,52 @@ function checkCalendarExternalNavigation() {
   return true;
 }
 
+function checkVaultIndexWaitsForWorkspaceReady() {
+  const mainPath = path.join(rootDir, 'src/main.ts');
+  const viewPath = path.join(rootDir, 'src/ui/shell/view.ts');
+  const main = fs.readFileSync(mainPath, 'utf8');
+  const view = fs.readFileSync(viewPath, 'utf8');
+
+  const onloadStart = main.indexOf('async onload()');
+  const runtimeStart = main.indexOf('private async initializeVaultRuntime()');
+  const indexStart = main.indexOf('private async initializeVaultIndex()');
+  if (onloadStart < 0 || runtimeStart < 0 || indexStart < 0) {
+    console.error('FAIL: Companion vault startup lifecycle owner is missing');
+    return false;
+  }
+
+  const onload = main.slice(onloadStart, runtimeStart);
+  const runtime = main.slice(runtimeStart, indexStart);
+  if (!onload.includes('this.app.workspace.onLayoutReady(() => {') ||
+      onload.includes('await this.initializeVaultIndex()') ||
+      onload.includes('await this.restoreSessionAndStartSync()') ||
+      onload.includes('await this.reminderService.start()')) {
+    console.error('FAIL: Vault index/sync/reminders may start before Obsidian workspace layout readiness');
+    return false;
+  }
+
+  const indexPos = runtime.indexOf('await this.initializeVaultIndex()');
+  const eventsPos = runtime.indexOf('this.registerVaultEvents()');
+  const readyPos = runtime.indexOf('this.vaultRuntimeReady = true');
+  const remindersPos = runtime.indexOf('await this.reminderService?.start()');
+  const restorePos = runtime.indexOf('await this.restoreSessionAndStartSync()');
+  if (indexPos < 0 || eventsPos < indexPos || readyPos < eventsPos ||
+      remindersPos < readyPos || restorePos < remindersPos) {
+    console.error('FAIL: Vault runtime readiness order is not index → events → ready → reminders → paired sync');
+    return false;
+  }
+
+  if (!main.includes("getSharedSettingsState(): 'loading' | 'ready' | 'missing'") ||
+      !view.includes('Loading Quartzo vault index…') ||
+      !view.includes('Shared Quartzo settings are missing (app/quartzo_shared_settings.md)')) {
+    console.error('FAIL: Vault readiness/shared-settings diagnostics are not visible in the Quartzo shell');
+    return false;
+  }
+
+  console.log('PASS: Vault indexing waits for workspace readiness and missing shared settings stay observable');
+  return true;
+}
+
 function main() {
   console.log('Running architecture/completeness checks...\n');
   let allPassed = true;
@@ -1066,6 +1112,7 @@ function main() {
   if (!checkDriveQuotaResilience()) allPassed = false;
   if (!checkDriveTimeoutsAndSyncProgress()) allPassed = false;
   if (!checkManualStartupStateHydration()) allPassed = false;
+  if (!checkVaultIndexWaitsForWorkspaceReady()) allPassed = false;
   if (!checkCanonicalOccurrenceActions()) allPassed = false;
   if (!checkCanonicalHomeAndDayDial()) allPassed = false;
   if (!checkCanonicalPlannerProjection()) allPassed = false;
