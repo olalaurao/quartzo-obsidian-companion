@@ -426,10 +426,10 @@ export default class QuartzoCompanionPlugin extends Plugin {
         break;
       case 'snooze': {
         const minutes = options.snoozeMinutes;
-        if (!Number.isFinite(minutes) || (minutes ?? 0) <= 0) {
+        if (minutes == null || !Number.isFinite(minutes) || minutes <= 0) {
           throw new Error('Choose a positive snooze duration.');
         }
-        result = await service.snooze(target, actionId, now, Math.round(minutes! * 60_000));
+        result = await service.snooze(target, actionId, now, Math.round(minutes * 60_000));
         break;
       }
       case 'dismiss':
