@@ -115,6 +115,8 @@ export default class QuartzoCompanionPlugin extends Plugin {
   private occurrenceResponses: Record<string, OccurrenceResponseState> = {};
   private googleAccessRefreshInFlight: Promise<string | null> | null = null;
   private pairingWorkflowModal: HTMLDivElement | null = null;
+  private vaultRuntimeReady = false;
+  private vaultEventsRegistered = false;
   private readonly calendarCache = new Map<string, CalendarCacheEntry>();
   private readonly browserOpener = new ElectronBrowserOpener();
   calendarStatus: GoogleCalendarStatus = 'disconnected';
@@ -201,11 +203,8 @@ export default class QuartzoCompanionPlugin extends Plugin {
     });
 
     this.sharedSettingsRepository = new SharedSettingsRepository(this.app.vault);
-    this.sharedSettings = await this.sharedSettingsRepository.load();
-    await this.initializeVaultIndex();
-    this.registerVaultEvents();
     this.registerDomEvent(window, 'focus', () => {
-      if (this.settings.syncMode !== 'automatic' || !this.settings.isPaired || !this.driveSyncCoordinator) return;
+      if (!this.vaultRuntimeReady || this.settings.syncMode !== 'automatic' || !this.settings.isPaired || !this.driveSyncCoordinator) return;
       void this.driveSyncCoordinator.triggerFocusSync().catch(error => {
         console.error('Focus sync failed:', error);
       });
@@ -223,7 +222,6 @@ export default class QuartzoCompanionPlugin extends Plugin {
       ),
       gateway: this.reminderDeliveryGateway,
     });
-    await this.reminderService.start();
     this.registerInterval(window.setInterval(() => {
       void this.reminderService?.poll(new Date()).catch(error => {
         console.error('Reminder delivery poll failed:', error instanceof Error ? error.message : String(error));
@@ -232,9 +230,13 @@ export default class QuartzoCompanionPlugin extends Plugin {
 
     if (!this.settings.firstRunCompleted) {
       this.showFirstRunDialog();
-    } else if (this.settings.isPaired) {
-      await this.restoreSessionAndStartSync();
     }
+
+    this.app.workspace.onLayoutReady(() => {
+      void this.initializeVaultRuntime().catch(error => {
+        console.error('Quartzo vault runtime initialization failed:', error);
+      });
+    });
 
     this.addSettingTab(new QuartzoSettingTab(this.app, this));
   }
@@ -560,6 +562,32 @@ export default class QuartzoCompanionPlugin extends Plugin {
     const normalized = normalizeVaultPath(rawPath);
     if (normalized === '_deleted' || normalized.startsWith('_deleted/')) return false;
     return VaultSyncFilePolicy.shouldSyncFile(normalized);
+  }
+
+  getSharedSettingsState(): 'loading' | 'ready' | 'missing' {
+    if (!this.vaultRuntimeReady) return 'loading';
+    return this.sharedSettings ? 'ready' : 'missing';
+  }
+
+  private async initializeVaultRuntime(): Promise<void> {
+    if (this.vaultRuntimeReady) return;
+
+    this.sharedSettings = await this.sharedSettingsRepository?.load() ?? null;
+    await this.initializeVaultIndex();
+
+    if (!this.vaultEventsRegistered) {
+      this.registerVaultEvents();
+      this.vaultEventsRegistered = true;
+    }
+
+    this.vaultRuntimeReady = true;
+    await this.reminderService?.start();
+    await this.refreshQuartzoView();
+
+    if (this.settings.isPaired) {
+      await this.restoreSessionAndStartSync();
+      await this.refreshQuartzoView();
+    }
   }
 
   private async initializeVaultIndex() {
