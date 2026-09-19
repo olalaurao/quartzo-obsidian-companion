@@ -18,7 +18,7 @@ export interface ObjectDetailModel {
   body: string;
 }
 
-const BASE_KEYS = new Set(['id', 'type', 'title']);
+const BASE_KEYS = new Set(['id', 'type', 'title', 'body']);
 const RELATIONSHIP_KEYS = new Set(['links', 'organizers', 'categories', 'tags']);
 const SCHEDULE_KEYS = new Set(['scheduler', 'schedulers']);
 
