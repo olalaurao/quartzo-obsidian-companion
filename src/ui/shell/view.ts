@@ -8,6 +8,7 @@ import { VaultIndexEngine } from '../../vault/index';
 import { renderObjectDetail } from '../detail/object-detail';
 import { renderHomeView } from '../home/view';
 import { renderPlannerSurface, type PlannerDayLens } from '../planner/view';
+import { monthGridDates, weekDates } from '../planner/calendar-projection';
 import { renderScheduleList as renderDailyScheduleList } from '../daily/schedule-list';
 import { projectJournalDay } from '../journal/journal-projection';
 import {
@@ -350,7 +351,6 @@ export class QuartzoView extends ItemView {
     container.appendChild(controls);
 
     const settings = await this.sharedSettingsRepository.load();
-    const selected = parseIsoDate(this.selectedDate);
     let googleEvents: GoogleCalendarProjection[] = [];
     let schedule = this.buildSchedule(this.selectedDate);
     const schedulesByDate = new Map<string, NormalizedSchedule>();
@@ -359,24 +359,17 @@ export class QuartzoView extends ItemView {
       googleEvents = await this.context.plugin.listGoogleCalendarEvents(this.selectedDate, 1);
       schedule = this.buildSchedule(this.selectedDate, googleEvents);
     } else if (this.plannerMode === 'week') {
-      const startOfWeek = settings?.startOfWeek ?? 1;
-      const delta = (selected.getDay() - startOfWeek + 7) % 7;
-      const startDate = addDays(selected, -delta);
-      const start = isoDate(startDate);
-      googleEvents = await this.context.plugin.listGoogleCalendarEvents(start, 7);
-      for (let index = 0; index < 7; index++) {
-        const date = isoDate(addDays(startDate, index));
+      const dates = weekDates(this.selectedDate, settings?.startOfWeek ?? 1);
+      const start = dates[0] ?? this.selectedDate;
+      googleEvents = await this.context.plugin.listGoogleCalendarEvents(start, dates.length);
+      for (const date of dates) {
         schedulesByDate.set(date, this.buildSchedule(date, googleEvents));
       }
     } else {
-      const first = new Date(selected.getFullYear(), selected.getMonth(), 1);
-      const startOfWeek = settings?.startOfWeek ?? 1;
-      const leading = (first.getDay() - startOfWeek + 7) % 7;
-      const gridStart = addDays(first, -leading);
-      const start = isoDate(gridStart);
-      googleEvents = await this.context.plugin.listGoogleCalendarEvents(start, 42);
-      for (let index = 0; index < 42; index++) {
-        const date = isoDate(addDays(gridStart, index));
+      const dates = monthGridDates(this.selectedDate, settings?.startOfWeek ?? 1);
+      const start = dates[0] ?? this.selectedDate;
+      googleEvents = await this.context.plugin.listGoogleCalendarEvents(start, dates.length);
+      for (const date of dates) {
         schedulesByDate.set(date, this.buildSchedule(date, googleEvents));
       }
     }
