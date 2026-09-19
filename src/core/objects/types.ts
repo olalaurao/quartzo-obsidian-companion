@@ -255,6 +255,10 @@ export interface Label extends BaseObject {
 export interface Person extends BaseObject {
   type: 'person';
   organizer_type: 'person';
+  last_contact_date?: string;
+  contact_frequency_days?: number;
+  contact_priority?: string;
+  /** Legacy aliases accepted for older vaults. */
   last_contact?: string;
   frequency_days?: number;
 }
