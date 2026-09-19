@@ -1,6 +1,6 @@
 import { ItemView, Notice, WorkspaceLeaf } from 'obsidian';
 import { DailyScheduleEngine } from '../../core/daily_schedule';
-import type { NormalizedItem } from '../../core/daily_schedule/types';
+import type { NormalizedItem, NormalizedSchedule } from '../../core/daily_schedule/types';
 import type { GoogleCalendarProjection } from '../../integrations/google/calendar';
 import { addLocalDays, localIsoDate, parseLocalIsoDate, shiftLocalMonth } from '../../core/local-date';
 import { chooseNewestConflictResolution, type SyncProgress } from '../../sync/coordinator';
@@ -353,7 +353,7 @@ export class QuartzoView extends ItemView {
     const selected = parseIsoDate(this.selectedDate);
     let googleEvents: GoogleCalendarProjection[] = [];
     let schedule = this.buildSchedule(this.selectedDate);
-    const schedulesByDate = new Map<string, ReturnType<QuartzoView['buildSchedule']>>();
+    const schedulesByDate = new Map<string, NormalizedSchedule>();
 
     if (this.plannerMode === 'day') {
       googleEvents = await this.context.plugin.listGoogleCalendarEvents(this.selectedDate, 1);
