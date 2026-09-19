@@ -23,6 +23,7 @@ export interface NormalizedItem {
   slotIndex?: number;
   reminderId?: string;
   occurrenceId?: string;
+  actionOccurrenceId?: string;
 }
 
 export interface NormalizedSchedule {
