@@ -1,4 +1,3 @@
-import { Notice } from 'obsidian';
 import type { ReminderDeliveryGateway, ReminderMode } from '../core/reminders';
 import type { ReminderDeliveryOccurrence } from '../core/reminders/types';
 
@@ -29,6 +28,7 @@ export class ObsidianReminderDeliveryGateway implements ReminderDeliveryGateway 
   constructor(
     private readonly isPrivacyMode: () => boolean,
     private readonly openQuartzo: (occurrence: ReminderDeliveryOccurrence) => void,
+    private readonly showInObsidianNotice: (message: string) => void,
     private readonly desktopApi: DesktopNotificationApi | null = browserNotificationApi(),
   ) {}
 
@@ -54,6 +54,6 @@ export class ObsidianReminderDeliveryGateway implements ReminderDeliveryGateway 
       return;
     }
 
-    new Notice(body ? `${title}: ${body}` : title);
+    this.showInObsidianNotice(body ? `${title}: ${body}` : title);
   }
 }
