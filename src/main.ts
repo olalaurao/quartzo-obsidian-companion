@@ -1268,6 +1268,12 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { void this.reloadSharedSettingsAndIndex(); return; }
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_OCCURRENCE_STATE_PATH) { void this.reloadOccurrenceResponses(); return; }
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_PLANNING_STATE_PATH) { void this.reloadOccurrenceOverrides(); return; }
+      if (file instanceof TFile && normalizeVaultPath(file.path) === FOCUS_RUNTIME_PATH) {
+        void this.reloadFocusRuntime().catch(error => {
+          console.error('Focus runtime reload failed:', error);
+        });
+        return;
+      }
       if (file instanceof TFile && this.vaultIndexEngine && this.shouldIndexPath(file.path)) {
         const idx = this.vaultIndexEngine.getIndex();
         if (idx) {
@@ -1299,6 +1305,12 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { void this.reloadSharedSettingsAndIndex(); return; }
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_OCCURRENCE_STATE_PATH) { void this.reloadOccurrenceResponses(); return; }
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_PLANNING_STATE_PATH) { void this.reloadOccurrenceOverrides(); return; }
+      if (file instanceof TFile && normalizeVaultPath(file.path) === FOCUS_RUNTIME_PATH) {
+        void this.reloadFocusRuntime().catch(error => {
+          console.error('Focus runtime reload failed:', error);
+        });
+        return;
+      }
       if (file instanceof TFile && this.vaultIndexEngine && this.shouldIndexPath(file.path)) {
         const idx = this.vaultIndexEngine.getIndex();
         if (idx) {
@@ -1341,6 +1353,13 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
         void this.refreshQuartzoView();
         return;
       }
+      if (file instanceof TFile && normalizeVaultPath(file.path) === FOCUS_RUNTIME_PATH) {
+        this.focusRuntimeState = createIdleFocusRuntimeState(
+          this.focusRuntimeState.presetSnapshot,
+        );
+        void this.refreshQuartzoView();
+        return;
+      }
       if (file instanceof TFile && this.vaultIndexEngine && this.shouldIndexPath(file.path)) {
         const idx = this.vaultIndexEngine.getIndex();
         if (idx) {
@@ -1363,6 +1382,15 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
       }
       if (normalizeVaultPath(oldPath) === SHARED_PLANNING_STATE_PATH || normalizeVaultPath(file.path) === SHARED_PLANNING_STATE_PATH) {
         void this.reloadOccurrenceOverrides();
+        return;
+      }
+      if (
+        normalizeVaultPath(oldPath) === FOCUS_RUNTIME_PATH
+        || normalizeVaultPath(file.path) === FOCUS_RUNTIME_PATH
+      ) {
+        void this.reloadFocusRuntime().catch(error => {
+          console.error('Focus runtime reload failed:', error);
+        });
         return;
       }
       if (!(file instanceof TFile) || !this.vaultIndexEngine) return;
