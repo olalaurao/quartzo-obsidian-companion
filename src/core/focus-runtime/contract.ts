@@ -67,11 +67,16 @@ export function focusStopwatchElapsedSeconds(input: {
   now: Date;
   stopwatchStartedAt?: string | null;
 }): number {
-  const previous = Math.max(0, Math.trunc(input.elapsedBeforeCurrentRun));
+  const maxSeconds = 1 << 31;
+  const previous = Math.max(
+    0,
+    Math.min(maxSeconds, Math.trunc(input.elapsedBeforeCurrentRun)),
+  );
   if (!input.isRunning || !input.stopwatchStartedAt) return previous;
   const started = Date.parse(input.stopwatchStartedAt);
   if (!Number.isFinite(started)) return previous;
-  return Math.max(0, previous + Math.floor((input.now.getTime() - started) / 1000));
+  const deltaSeconds = Math.trunc((input.now.getTime() - started) / 1000);
+  return Math.max(0, Math.min(maxSeconds, previous + deltaSeconds));
 }
 
 export function isFocusPhase(phase: FocusPhase): boolean {
