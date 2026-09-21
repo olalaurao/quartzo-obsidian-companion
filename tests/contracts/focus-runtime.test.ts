@@ -150,6 +150,9 @@ describe('Focus runtime V1 contract vectors', () => {
     };
     const encoded = focusRuntimeToFrontmatter(idle, {
       future_key: 'preserve-me',
+      preset_snapshot: {
+        future_preset_key: 'preserve-too',
+      },
     });
     expect(encoded.future_key).toBe('preserve-me');
     expect((encoded.preset_snapshot as Record<string, unknown>).future_preset_key)
