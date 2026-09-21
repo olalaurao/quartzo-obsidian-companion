@@ -828,9 +828,7 @@ function checkCanonicalManualExecution() {
   const repository = fs.readFileSync(repositoryPath, 'utf8');
   const controls = fs.readFileSync(controlsPath, 'utf8');
   const list = fs.readFileSync(listPath, 'utf8');
-  const focusView = fs.readFileSync(focusViewPath, 'utf8');
-  const manualModal = fs.readFileSync(manualModalPath, 'utf8');
-  const shell = fs.readFileSync(shellPath, 'utf8');
+  const modal = fs.readFileSync(modalPath, 'utf8');
   const main = fs.readFileSync(mainPath, 'utf8');
   const vectors = JSON.parse(fs.readFileSync(vectorsPath, 'utf8'));
   const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
@@ -922,7 +920,9 @@ function checkCanonicalFocusRuntime() {
   const codec = fs.readFileSync(codecPath, 'utf8');
   const runtime = fs.readFileSync(runtimePath, 'utf8');
   const repository = fs.readFileSync(repositoryPath, 'utf8');
-  const modal = fs.readFileSync(modalPath, 'utf8');
+  const focusView = fs.readFileSync(focusViewPath, 'utf8');
+  const manualModal = fs.readFileSync(manualModalPath, 'utf8');
+  const shell = fs.readFileSync(shellPath, 'utf8');
   const parser = fs.readFileSync(parserPath, 'utf8');
   const main = fs.readFileSync(mainPath, 'utf8');
   const shared = fs.readFileSync(sharedCorePath, 'utf8') + '\n'
