@@ -96,7 +96,7 @@ Resultado:
 
 ## Milestone ativo — A5 Focus/Pomodoro runtime
 
-**Status: 🟡 pré-mapeamento concluído; contrato upstream é o próximo write.**
+**Status: 🟡 A5 upstream implementado no PR Quartzo #44; CI em fila no head `212e922e`.**
 
 ### A5.1 — owner e persistência atuais
 - [x] Confirmar que existe um único Focus/Pomodoro runtime no Quartzo.
@@ -114,8 +114,8 @@ Resultado:
 - [x] Identificar identidade estável de checklist Pomodoro:
   `checklist:<parentObjectId>:<stepId>`.
 - [x] Confirmar que sessão `completed` nessa data + `linked_item_slug` é evidence de conclusão do step.
-- [ ] Contratar explicitamente que `partial` **não** marca checklist Pomodoro como concluído.
-- [ ] Adicionar vectors cross-client para identidade/evidence de checklist Pomodoro.
+- [x] Contratar explicitamente que `partial` **não** marca checklist Pomodoro como concluído.
+- [x] Adicionar vectors cross-client para identidade/evidence de checklist Pomodoro.
 - [ ] Depois do runtime Companion, alterar manual execution capability de Pomodoro de `requiresFocusRuntime` para `supported`.
 
 ### A5.3 — multi-client ownership / takeover
@@ -125,38 +125,38 @@ Descoberta nova:
 - o contrato Companion já proíbe takeover simultâneo silencioso.
 
 Plano:
-- [ ] definir `focus_controller_id` como identidade **device-local**;
-- [ ] gerar/persistir o ID por instalação no owner local existente, sem colocar credencial/segredo em Markdown;
-- [ ] enquanto a sessão estiver ativa/paused, persistir `focus_controller_id` em `sessions/current.md`;
-- [ ] cliente cujo ID não seja o controller observa a sessão como read-only;
-- [ ] takeover explícito fica fora de V1 até existir protocolo próprio;
-- [ ] sessão idle pode ser observada/assumida sem takeover de runtime ativo;
-- [ ] vectors devem provar owner match / foreign owner / legacy state sem controller;
+- [x] definir `focusControllerId` como identidade **device-local**;
+- [x] gerar/persistir o ID por instalação no `SettingsNotifier`, sem colocar credencial/segredo em shared settings;
+- [x] enquanto a sessão estiver ativa/paused, persistir `focusControllerId` em `sessions/current.md`;
+- [x] cliente cujo ID não seja o controller observa a sessão como read-only;
+- [x] takeover explícito fica fora de V1 até existir protocolo próprio;
+- [x] sessão idle não mantém claim de controller; nova sessão pode ser iniciada sem takeover;
+- [x] vectors provam owner match / foreign owner / legacy state sem controller;
 - [x] decidir comportamento seguro para `sessions/current.md` legado sem controller ID: Companion observa read-only; Quartzo mobile atualizado pode fazer o claim de migração porque o Companion pré-A5 não tinha runtime capaz de originar esse estado.
-- [ ] contratar essa regra em vectors e testes.
+- [x] contratar essa regra em vectors e testes.
 
 ### A5.4 — contrato upstream
-- [ ] criar `contracts/quartzo/focus_runtime/vectors.json`;
-- [ ] adicionar `focusRuntimeContractVersion: 1.0.0` ao manifest;
-- [ ] documentar Focus Runtime V1 no Companion contract upstream;
-- [ ] atualizar `contracts/quartzo/README.md`;
-- [ ] criar runner Dart executável dos vectors;
-- [ ] incluir vectors no contract fixture gate geral;
-- [ ] adicionar architecture gate para owner/persistência/controller;
-- [ ] atualizar `guidelines.md` se a regra de ownership cross-client for permanente;
-- [ ] atualizar `agents.md` com owner e boundary de takeover;
-- [ ] manter `PomodoroNotifier` como runtime owner; não criar provider/runtime paralelo.
+- [x] criar `contracts/quartzo/focus_runtime/vectors.json`;
+- [x] adicionar `focusRuntimeContractVersion: 1.0.0` ao manifest;
+- [x] documentar Focus Runtime V1 no Companion contract upstream;
+- [x] atualizar `contracts/quartzo/README.md`;
+- [x] criar runner Dart executável dos vectors;
+- [x] incluir vectors no contract fixture gate geral;
+- [x] adicionar architecture gate para owner/persistência/controller;
+- [x] atualizar `guidelines.md` com ownership cross-client;
+- [x] atualizar `agents.md` com owner e boundary de takeover;
+- [x] manter `PomodoroNotifier` como runtime owner; não criar provider/runtime paralelo.
 
 ### A5.5 — Quartzo implementation alignment
-- [ ] extrair codec/policy puro apenas se necessário para compartilhar a regra; não duplicar `PomodoroNotifier`;
-- [ ] persistir controller ID no current state ativo/paused;
-- [ ] preservar leitura de `sessions/current.md` legado;
-- [ ] garantir pause/resume/finish/cancel através do mesmo owner;
-- [ ] garantir fase/duração derivadas do preset snapshot persistido;
-- [ ] garantir que reopen/reload recalcule por timestamps;
-- [ ] confirmar completion evidence `PomodoroSession`;
-- [ ] confirmar partial/cancelled semantics;
-- [ ] testar checklist linked evidence;
+- [x] extrair somente `FocusRuntimeContract` puro; `PomodoroNotifier` continua runtime owner;
+- [x] persistir controller ID no current state ativo/paused;
+- [x] preservar leitura de `sessions/current.md` legado com migration claim Quartzo/read-only Companion;
+- [x] garantir pause/resume/finish/cancel através do mesmo `PomodoroNotifier` + control gate;
+- [x] garantir fase/duração derivadas do preset snapshot persistido;
+- [x] garantir que reopen/reload recalcule por timestamps;
+- [x] confirmar completion evidence `PomodoroSession`;
+- [x] confirmar partial/cancelled semantics;
+- [x] testar checklist linked evidence;
 - [ ] flutter analyze;
 - [ ] testes relevantes;
 - [ ] architecture/compliance gates;
@@ -164,7 +164,7 @@ Plano:
 - [ ] merge upstream.
 
 ### A5.6 — Companion implementation
-Somente após upstream A5 verde/mergeado:
+Somente após upstream A5 verde/mergeado. Upstream atual: Quartzo PR #44 (`212e922e`), CI pendente:
 - [ ] repin/vendoring no SHA canônico;
 - [ ] implementar core puro a partir dos vectors;
 - [ ] implementar Vault adapter único para `sessions/current.md`;
