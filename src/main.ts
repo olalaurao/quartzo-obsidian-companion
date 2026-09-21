@@ -883,6 +883,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
           latest.references,
           latest.objects,
           this.occurrenceResponses,
+          { parentObjectId: latest.source.id },
         );
         const persisted = await repository.updateRoutineOccurrence(latest.source, {
           occurrenceId,
@@ -916,6 +917,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
           latest.references,
           latest.objects,
           this.occurrenceResponses,
+          { parentObjectId: latest.source.id },
         );
 
         if (latest.source.type === 'system') {
