@@ -1,18 +1,20 @@
 {
   "repository": "olalaurao/aplicativo",
-  "sourceCommit": "6aa6fd1787a147c7598bf98cb4473ea2b5fb9cdd",
-  "syncTimestamp": "2026-09-21T13:25:34.424Z",
+  "sourceCommit": "a8ec975c055d44a97ab8cbe1799f47c455b857f7",
+  "syncTimestamp": "2026-09-21T15:22:23.835Z",
   "contractVersions": {
     "vaultInteropVersion": "1.0.0",
     "syncProtocolVersion": "1.0.0",
     "schedulerContractVersion": "1.0.0",
     "dailyScheduleContractVersion": "1.0.0",
     "sharedSettingsContractVersion": "1.0.0",
-    "systemRoutineExecutionContractVersion": "1.0.0"
+    "systemRoutineExecutionContractVersion": "1.0.0",
+    "focusRuntimeContractVersion": "1.0.0"
   },
   "sources": {
     "contract_manifest.json": "contracts/quartzo/contract_manifest.json",
     "daily_schedule/vectors.json": "contracts/quartzo/daily_schedule/vectors.json",
+    "focus_runtime/vectors.json": "contracts/quartzo/focus_runtime/vectors.json",
     "object_fixtures/coverage.json": "contracts/quartzo/object_fixtures/coverage.json",
     "object_fixtures/fixtures.json": "contracts/quartzo/object_fixtures/fixtures.json",
     "object_fixtures/priority_vectors.json": "contracts/quartzo/object_fixtures/priority_vectors.json",
@@ -32,8 +34,9 @@
     "system_routine_execution/vectors.json": "contracts/quartzo/system_routine_execution/vectors.json"
   },
   "manifest": {
-    "contract_manifest.json": "ccafc9fd59aa457527ee35bf764b692fec5435e178a946f9e26868efdb35747d",
+    "contract_manifest.json": "33ad9565c1626854d61d6dab457391bc648eacb70b3297873df371729c83e416",
     "daily_schedule/vectors.json": "9d9a14cebd8fb6c96817f290ea00dfddad9e24146f85251088064d2c423e9531",
+    "focus_runtime/vectors.json": "e2a3edc49d712c5cd69660bd89546e1616b57fc8127e2b284dd35d30d6864c59",
     "object_fixtures/coverage.json": "5ac238b554b1e31e2b904df6fbe55724a8918b02c247556e69982920a673f71d",
     "object_fixtures/fixtures.json": "cf2ba5d141391a2b8a5de1ef4a6f7ea14e5a0b2df8df00c47efbd7a59916eca1",
     "object_fixtures/priority_vectors.json": "cfec6a6e63ceed29a19fce070b5da9b517b42c4162f78ba4ff74f30771c6f353",
@@ -42,7 +45,7 @@
     "occurrence_reschedule/vectors.json": "cc7a930588742390af0401b496fe39abec101922c1a6abdbb6da6d057a45a071",
     "P0_COMPLIANCE_MATRIX.md": "85dce7e0694650281d6d156ebedcd0c25f1aaefcfc40741376a4154f2c69e76a",
     "QUARTZO_COMPANION_UI_SPEC_V1.md": "1df313555ee2a269afdecd70a6c36debf248b35b399f751cc1fcce7f8b2a0580",
-    "QUARTZO_OBSIDIAN_COMPANION_CONTRACT.md": "e40b7924c32f18721815fbd158005a6c791a63e21c1d26558ebb4a19382e8203",
+    "QUARTZO_OBSIDIAN_COMPANION_CONTRACT.md": "929b3f80b1f78e6092193b7bf5d8bec0440184a5f81dbdd21020eaccd5eda1de",
     "QUARTZO_SYNC_PROTOCOL_V1.md": "b64cb2a498462f58b081a1fcb81d949085be6ad9768c8468e22e1eb5149b69a3",
     "QUARTZO_VAULT_INTEROP_CONTRACT_V1.md": "b37003c08bc16a3184029076080c24750bd8648523cb0cff9f4f014e736dfca9",
     "README.md": "db53ed3508f809256c1e3c491196aef7b0a7b208f29c7cdce83454fd0d4f56f4",

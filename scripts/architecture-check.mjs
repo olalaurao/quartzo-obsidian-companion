@@ -309,6 +309,7 @@ function checkDeviceLocalSettingsBoundaries() {
     'hideSensitivePreviews',
     'hideJournalPreviewText',
     'hideNotificationBody',
+    'focusControllerId',
   ];
   const missing = requiredLocal.filter(key => !main.includes(key));
   if (missing.length > 0) {
@@ -888,6 +889,114 @@ function checkCanonicalManualExecution() {
   return true;
 }
 
+
+function checkCanonicalFocusRuntime() {
+  const contractPath = path.join(rootDir, 'src/core/focus-runtime/contract.ts');
+  const codecPath = path.join(rootDir, 'src/core/focus-runtime/state-codec.ts');
+  const runtimePath = path.join(rootDir, 'src/core/focus-runtime/runtime.ts');
+  const repositoryPath = path.join(rootDir, 'src/vault/focus-runtime.ts');
+  const focusViewPath = path.join(rootDir, 'src/ui/focus/view.ts');
+  const manualModalPath = path.join(rootDir, 'src/ui/execution/manual-execution-modal.ts');
+  const shellPath = path.join(rootDir, 'src/ui/shell/view.ts');
+  const parserPath = path.join(rootDir, 'src/core/objects/parser.ts');
+  const mainPath = path.join(rootDir, 'src/main.ts');
+  const sharedCorePath = path.join(rootDir, 'src/core/shared-settings.ts');
+  const sharedVaultPath = path.join(rootDir, 'src/vault/shared-settings.ts');
+  const vectorsPath = path.join(rootDir, 'contracts/quartzo/focus_runtime/vectors.json');
+  const lockPath = path.join(rootDir, 'contracts/UPSTREAM.lock.json');
+
+  for (const file of [
+    contractPath, codecPath, runtimePath, repositoryPath, focusViewPath,
+    manualModalPath, shellPath, parserPath, mainPath, sharedCorePath,
+    sharedVaultPath, vectorsPath, lockPath,
+  ]) {
+    if (!fs.existsSync(file)) {
+      console.error(`FAIL: Focus runtime canonical file missing: ${path.relative(rootDir, file)}`);
+      return false;
+    }
+  }
+
+  const contract = fs.readFileSync(contractPath, 'utf8');
+  const codec = fs.readFileSync(codecPath, 'utf8');
+  const runtime = fs.readFileSync(runtimePath, 'utf8');
+  const repository = fs.readFileSync(repositoryPath, 'utf8');
+  const focusView = fs.readFileSync(focusViewPath, 'utf8');
+  const manualModal = fs.readFileSync(manualModalPath, 'utf8');
+  const shell = fs.readFileSync(shellPath, 'utf8');
+  const parser = fs.readFileSync(parserPath, 'utf8');
+  const main = fs.readFileSync(mainPath, 'utf8');
+  const shared = fs.readFileSync(sharedCorePath, 'utf8') + '\n'
+    + fs.readFileSync(sharedVaultPath, 'utf8');
+  const vectors = JSON.parse(fs.readFileSync(vectorsPath, 'utf8'));
+  const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+
+  if (!Array.isArray(vectors) || vectors.length === 0 ||
+      lock.contractVersions?.focusRuntimeContractVersion !== '1.0.0' ||
+      !lock.manifest?.['focus_runtime/vectors.json']) {
+    console.error('FAIL: Focus runtime is not pinned to the vendored executable contract');
+    return false;
+  }
+
+  if (contract.includes("from 'obsidian'") ||
+      codec.includes("from 'obsidian'") ||
+      runtime.includes("from 'obsidian'") ||
+      !contract.includes('resolveFocusRuntimeControl') ||
+      !contract.includes('focusRemainingSeconds') ||
+      !contract.includes('focusChecklistLinkId') ||
+      !runtime.includes('startFocusRuntime') ||
+      !runtime.includes('finishFocusRuntime')) {
+    console.error('FAIL: Focus runtime pure semantics are not isolated in the canonical core');
+    return false;
+  }
+
+  if (!repository.includes("FOCUS_RUNTIME_PATH = 'sessions/current.md'") ||
+      !repository.includes('export class FocusRuntimeRepository') ||
+      !repository.includes('await this.vault.process(file, current =>') ||
+      !repository.includes('pomodoro_sessions') ||
+      !repository.includes('Focus runtime changed before finalization') ||
+      !codec.includes('...existing')) {
+    console.error('FAIL: Focus persistence bypasses the single Vault-safe adapter or drops unknown fields');
+    return false;
+  }
+
+  if (!main.includes('focusControllerId') ||
+      !main.includes('createCanonicalObjectId()') ||
+      shared.includes('focusControllerId') ||
+      !main.includes('new FocusRuntimeRepository(this.app.vault)') ||
+      !main.includes('resolveFocusRuntimeControl({') ||
+      !main.includes("clientKind: 'companion'") ||
+      !main.includes('FOCUS_RUNTIME_PATH') ||
+      !main.includes('processFocusRuntimeTick(') ||
+      !main.includes('startChecklistFocus(') ||
+      !main.includes('focusChecklistLinkId(parentObjectId, step.id)') ||
+      !main.includes('focusRuntimeAvailable: this.focusRuntimeRepository != null')) {
+    console.error('FAIL: Focus controller identity/lifecycle/manual-execution wiring bypasses the canonical owner');
+    return false;
+  }
+
+  if (!focusView.includes('controlled by another device') ||
+      !focusView.includes('!initial.canControl') ||
+      !focusView.includes('renderFocusRuntime(') ||
+      focusView.includes('extends Modal') ||
+      main.includes('FocusRuntimeModal') ||
+      !shell.includes("this.action === 'focus'") ||
+      !shell.includes('renderFocusRuntime(content, this.context.plugin)') ||
+      !manualModal.includes('renderFocusRuntime(contentEl, this.options.focusController')) {
+    console.error('FAIL: Focus UI is not a shared inline read-only projection of the canonical runtime');
+    return false;
+  }
+
+  if (!parser.includes("'daily': 'daily_note'") ||
+      !parser.includes("objectType === 'daily_note'") ||
+      !parser.includes('frontmatter.id ?? frontmatter.date')) {
+    console.error('FAIL: Quartzo daily Focus evidence is not projected through the canonical VaultIndex parser');
+    return false;
+  }
+
+  console.log('PASS: Focus runtime is vector-pinned, timestamp-based, device-owned, Vault-safe and single-owner');
+  return true;
+}
+
 function checkCanonicalOccurrenceReschedule() {
   const servicePath = path.join(rootDir, 'src/core/occurrence_reschedule/service.ts');
   const codecPath = path.join(rootDir, 'src/core/occurrence_reschedule/state-codec.ts');
@@ -1348,6 +1457,7 @@ function main() {
   if (!checkSharedSettingsReloadReindexesVault()) allPassed = false;
   if (!checkCanonicalOccurrenceActions()) allPassed = false;
   if (!checkCanonicalManualExecution()) allPassed = false;
+  if (!checkCanonicalFocusRuntime()) allPassed = false;
   if (!checkCanonicalOccurrenceReschedule()) allPassed = false;
   if (!checkCanonicalHomeAndDayDial()) allPassed = false;
   if (!checkCanonicalPlannerProjection()) allPassed = false;

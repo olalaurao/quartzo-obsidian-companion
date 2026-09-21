@@ -9,6 +9,8 @@ import {
   mutateRoutineOccurrence,
   resolveManualExecutionRunCapability,
   resolveManualExecutionStepCapability,
+  resolveEffectiveLinkedSteps,
+  resolveManualExecutionReferences,
   type ManualExecutionStep,
 } from '../../src/core/manual-execution';
 
@@ -191,4 +193,97 @@ describe('System/Routine manual execution contract vectors', () => {
     expect(result.execution.steps.find(step => step.step_id === 'task')?.completed).toBe(false);
     expect(result.isCompleted).toBe(false);
   });
+
+  it('routine Pomodoro step closes only from completed checklist evidence', () => {
+    const steps: ManualExecutionStep[] = [{
+      id: 'deep-work',
+      title: 'Deep work',
+      kind: 'pomodoro',
+      required: true,
+    }];
+    const references = resolveManualExecutionReferences(steps, []);
+    const completedObjects = [{
+      id: '2026-09-21',
+      type: 'daily_note',
+      title: '',
+      frontmatter: {
+        type: 'daily_note',
+        date: '2026-09-21',
+        pomodoro_sessions: [{
+          id: 'pomo-checklist',
+          linked_item: 'checklist:routine-morning:deep-work',
+          state: 'completed',
+          occurred_at: '2026-09-21T08:30:00.000',
+          completed_at: '2026-09-21T08:55:00.000',
+        }],
+      },
+      body: '',
+    }];
+    const effective = resolveEffectiveLinkedSteps(
+      steps,
+      '2026-09-21T09:00:00.000',
+      references,
+      completedObjects,
+      {},
+      { parentObjectId: 'routine-morning' },
+    );
+    expect(effective.completions['deep-work']).toBe(true);
+
+    const source = {
+      id: 'routine-morning',
+      type: 'routine',
+      title: 'Morning',
+      steps: [{
+        id: 'deep-work',
+        title: 'Deep work',
+        kind: 'pomodoro',
+        required: true,
+      }],
+    };
+    const result = finalizeRoutineOccurrence(source, {
+      occurrenceId: 'routine:routine-morning@2026-09-21T09:00:00.000',
+      scheduledFor: '2026-09-21T09:00:00.000',
+      startedAt: '2026-09-21T09:00:00.000',
+      now: '2026-09-21T09:01:00.000',
+      effectiveLinkedCompletions: effective.completions,
+      effectiveLinkedCompletedAt: effective.completedAt,
+    });
+    expect(result.isCompleted).toBe(true);
+    expect(result.execution.steps[0]?.completed).toBe(true);
+    expect(result.execution.steps[0]?.completed_at)
+      .toBe('2026-09-21T08:55:00.000');
+  });
+
+  it('routine Pomodoro step stays pending for partial evidence', () => {
+    const steps: ManualExecutionStep[] = [{
+      id: 'deep-work',
+      title: 'Deep work',
+      kind: 'pomodoro',
+      required: true,
+    }];
+    const references = resolveManualExecutionReferences(steps, []);
+    const effective = resolveEffectiveLinkedSteps(
+      steps,
+      '2026-09-21T09:00:00.000',
+      references,
+      [{
+        id: '2026-09-21',
+        type: 'daily_note',
+        title: '',
+        frontmatter: {
+          pomodoro_sessions: [{
+            id: 'pomo-partial',
+            linked_item: 'checklist:routine-morning:deep-work',
+            state: 'partial',
+            occurred_at: '2026-09-21T08:30:00.000',
+            completed_at: '2026-09-21T08:40:00.000',
+          }],
+        },
+      }],
+      {},
+      { parentObjectId: 'routine-morning' },
+    );
+    expect(effective.completions['deep-work']).toBe(false);
+  });
+
 });

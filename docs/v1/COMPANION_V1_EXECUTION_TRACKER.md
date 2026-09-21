@@ -30,7 +30,7 @@ A V1 só é considerada pronta quando todos os quatro marcos abaixo estiverem co
 - [x] Reschedule implementado e vendorado no Companion.
 - [x] A4 System/Routine manual execution contract upstream.
 - [x] A4 Companion manual Run / Routine execution.
-- [ ] **A5 Focus/Pomodoro runtime contract upstream.**
+- [x] **A5 Focus/Pomodoro runtime contract upstream.**
 - [ ] **A5 Companion Focus/Pomodoro runtime.**
 - [ ] Resolver semântica cross-client de conclusão de ocorrência agendada de System.
 - [ ] Resolver/documentar boundary V1 de Overdue + Adaptive Essentials/Capacity.
@@ -96,7 +96,7 @@ Resultado:
 
 ## Milestone ativo — A5 Focus/Pomodoro runtime
 
-**Status: 🟡 A5 upstream ✅ mergeado no Quartzo `a8ec975c`; iniciando repin/implementação no Companion.**
+**Status: 🟡 A5 upstream ✅ mergeado no Quartzo `a8ec975c`; Companion implementado no branch `contracts/companion-focus-runtime-v1`, certificação/CI pendentes.**
 
 ### A5.1 — owner e persistência atuais
 - [x] Confirmar que existe um único Focus/Pomodoro runtime no Quartzo.
@@ -161,13 +161,13 @@ Plano:
 - [x] confirmar partial/cancelled semantics;
 - [x] testar checklist linked evidence;
 - [x] flutter analyze — verde no head `222ac11a`;
-- [ ] testes relevantes;
-- [ ] architecture/compliance gates;
+- [x] testes relevantes — Flutter Test ✅ no head `222ac11a`;
+- [x] architecture/compliance gates — Agent Contract Gate ✅ no head `222ac11a`;
 - [x] CI final — Analyze ✅, Flutter Test ✅, Dial Focus CI ✅, Agent Contract Gate ✅;
-- [ ] merge upstream.
+- [x] merge upstream — PR #44 → `a8ec975c`.
 
 ### A5.6 — Companion implementation
-Somente após upstream A5 verde/mergeado. Upstream atual: Quartzo PR #44 (`212e922e`), CI pendente:
+Upstream fechado: Quartzo PR #44 → merge canônico `a8ec975c`. Implementação downstream em `contracts/companion-focus-runtime-v1`; itens abaixo só viram concluídos após gates/CI quando aplicável:
 #### Mapeamento de owners/arquivos já concluído
 - `src/main.ts`: composition root; adicionar controller ID device-local em `QuartzoCompanionSettings`, inicializar Focus repository/runtime e expor callbacks para UI/manual execution.
 - `loadSettings()/saveSettings()`: owner local canônico do `focusControllerId`; não colocar o ID em shared settings/vault.
@@ -182,7 +182,8 @@ Somente após upstream A5 verde/mergeado. Upstream atual: Quartzo PR #44 (`212e9
 - foreign/legacy active controller: timer visível por timestamp, todos os controles mutáveis disabled/read-only.
 - colisão offline: deixar `sessions/current.md` no sync three-way normal; não auto-merge nem takeover.
 
-- [ ] repin/vendoring no SHA canônico;
+- [x] repin/vendoring no SHA canônico `a8ec975c` — bytes + SHA-256 verificados;
+- Implementado no branch, aguardando certificação: core puro + lifecycle, `FocusRuntimeRepository`, evidence em daily note, `focusControllerId` device-local, Vault-event reload, header/modal, foreign/legacy read-only, checklist identity/evidence e integração System/Routine.
 - [ ] implementar core puro a partir dos vectors;
 - [ ] implementar Vault adapter único para `sessions/current.md`;
 - [ ] implementar leitura/escrita de `PomodoroSession` sem source of truth paralelo;

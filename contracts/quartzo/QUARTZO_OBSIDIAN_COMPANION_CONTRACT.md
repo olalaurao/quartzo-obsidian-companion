@@ -1521,29 +1521,180 @@ The OS/Desktop notification registry remains local.
 
 # 24. Focus / Pomodoro
 
-The Companion must not resurrect the deprecated independent floating Pomodoro overlay architecture.
+The Companion must not resurrect the deprecated independent floating Pomodoro
+overlay architecture. Each client may render Focus in its own UI, but there is
+one logical runtime contract and one shared persisted runtime state.
 
-Inside Obsidian, active focus is represented through:
+Cross-client conformance is executable in
+`contracts/quartzo/focus_runtime/vectors.json`.
+
+## 24.1 Canonical runtime state
+
+The current Focus/Pomodoro runtime is persisted at:
+
+```text
+sessions/current.md
+```
+
+Quartzo's existing `PomodoroNotifier` remains the mobile runtime owner.
+`PomodoroPhaseEngine` remains the phase-transition owner. A Companion
+implementation may port the same contract, but it must not introduce a second
+mobile provider, a shadow timer database, or an independent interval-counter
+truth.
+
+Important persisted fields include:
+
+```text
+currentSessionId
+focusControllerId
+runtimeMode
+currentType
+selectedPresetId
+preset_snapshot
+phaseStartedAt
+phaseEndsAt
+phaseDurationSeconds
+pausedAt
+pausedRemainingSeconds
+stopwatchStartedAt
+stopwatchElapsedBeforeCurrentRun
+actualStartedAt
+```
+
+The preset snapshot inside the runtime state is sufficient to continue the
+active session. A client must not invent a second shared preset store merely to
+resume a timer.
+
+## 24.2 Timer truth
+
+Timer truth is timestamp/state-based.
+
+For Pomodoro/countdown phases:
+
+```text
+running -> remaining = phaseEndsAt - now
+paused  -> remaining = pausedRemainingSeconds
+```
+
+For stopwatch mode:
+
+```text
+running -> elapsed = stopwatchElapsedBeforeCurrentRun + (now - stopwatchStartedAt)
+paused  -> elapsed = stopwatchElapsedBeforeCurrentRun
+```
+
+All projections clamp invalid negative time to zero. Closing/reopening a view
+must not reset the timer. A UI interval may request repaint, but it is never the
+source of elapsed/remaining truth.
+
+## 24.3 Single-controller V1 rule
+
+Every installation has one device-local Focus controller identity. On Quartzo
+mobile that identity is stored by the existing settings/local-preferences owner
+and is **not** part of shared settings.
+
+While `currentSessionId` is present, `sessions/current.md` persists
+`focusControllerId`.
+
+Control capability is:
+
+```text
+no currentSessionId
+  -> available
+
+active/paused runtime + focusControllerId == local controller
+  -> controller
+
+active/paused runtime + foreign focusControllerId
+  -> read-only
+
+legacy active runtime without focusControllerId:
+  Quartzo mobile -> one-time migration claim
+  Companion      -> read-only
+```
+
+The legacy exception exists only because pre-A5 Companion builds had no Focus
+runtime capable of creating an active `sessions/current.md`; a legacy
+controller-less runtime therefore belongs to the pre-A5 Quartzo runtime
+migration path.
+
+A read-only client may display the synchronized state but must not:
+
+- start/resume it;
+- pause it;
+- skip/complete a phase;
+- finish/cancel it;
+- run a local background ticker that performs phase mutations;
+- overwrite `focusControllerId`.
+
+Explicit takeover/handoff is outside V1 and requires a separate contract.
+There is no silent "last writer wins" timer takeover.
+
+`focusControllerId` is an observed-controller claim, not a distributed online
+lease. If two disconnected clients independently start from the same idle
+baseline before either observes the other's claim, their
+`sessions/current.md` bytes diverge. The canonical three-way sync protocol
+must treat that as a normal same-path conflict: neither runtime may silently
+overwrite, merge, or take over the other. V1 therefore prevents silent takeover
+after a foreign claim is observed, but does not claim offline distributed
+mutual exclusion.
+
+When a runtime returns to idle, the shared runtime no longer carries an active
+controller claim.
+
+## 24.4 Phase transitions
+
+Canonical phase transitions remain:
+
+```text
+work/custom -> short break
+work/custom -> long break on every Nth completed work interval
+short break -> work
+long break  -> work
+```
+
+Durations come from the persisted `preset_snapshot`, not from whatever preset
+the observing client currently has selected locally.
+
+## 24.5 Saved session evidence
+
+Completed/partial Focus history remains represented by canonical
+`PomodoroSession` objects. Runtime UI state is not a replacement for history
+evidence.
+
+For checklist steps whose `ChecklistStep.kind == pomodoro`, the stable linked
+identity is:
+
+```text
+checklist:<parentObjectId>:<stepId>
+```
+
+The step is complete only when a `PomodoroSession` exists with:
+
+```text
+linked_item_slug == checklist:<parentObjectId>:<stepId>
+state            == completed
+session date      == evaluated checklist date
+```
+
+A `partial` or `cancelled` session does not complete the checklist step.
+A completed session for another date or another checklist link does not count.
+
+Once a client implements this canonical runtime, the existing
+System/Routine manual-execution capability may treat `pomodoro` as supported.
+Until then it remains `requiresFocusRuntime`.
+
+## 24.6 Obsidian presentation
+
+Inside Obsidian, active focus may be represented through:
 
 - Home;
 - Planner;
 - Quick Add/header;
 - optional compact timer pane.
 
-Timer truth must be timestamp/state-based, never a JavaScript interval counter.
-
-```text
-startAt
-plannedDuration
-currentStep
-pause/resume state
-```
-
-UI timers recalculate elapsed time from timestamps.
-
-Closing and reopening the view must not reset the timer.
-
-Cross-client timer takeover/handoff must be explicitly specified before allowing two devices to control one active session simultaneously.
+These are views/controllers of the same runtime state. They do not get separate
+timer truth and they do not authorize an independent floating Pomodoro overlay.
 
 ---
 

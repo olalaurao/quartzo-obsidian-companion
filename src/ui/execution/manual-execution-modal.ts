@@ -4,6 +4,7 @@ import type {
   ManualExecutionStepState,
 } from '../../core/manual-execution';
 import type { IndexedObject } from '../../vault/index/types';
+import { renderFocusRuntime, type FocusRuntimeUiController } from '../focus/view';
 
 export interface ManualExecutionModalFinishResult {
   completed: boolean;
@@ -18,6 +19,7 @@ export interface ManualExecutionModalOptions {
   occurrenceId?: string;
   initialPlainCompletions: Record<string, boolean>;
   initialLinkedStates: Record<string, ManualExecutionStepState>;
+  focusController: FocusRuntimeUiController;
   onPlainChange(step: ManualExecutionStep, completed: boolean): Promise<void>;
   onLinkedAction(step: ManualExecutionStep): Promise<void>;
   refreshLinkedStates(): Promise<Record<string, ManualExecutionStepState>>;
@@ -28,6 +30,7 @@ export class ManualExecutionModal extends Modal {
   private busy = false;
   private plainCompletions: Record<string, boolean>;
   private linkedStates: Record<string, ManualExecutionStepState>;
+  private focusStepId: string | null = null;
 
   constructor(
     app: App,
@@ -45,6 +48,18 @@ export class ManualExecutionModal extends Modal {
   private render(): void {
     const { contentEl } = this;
     contentEl.empty();
+
+    if (this.focusStepId) {
+      renderFocusRuntime(contentEl, this.options.focusController, {
+        backLabel: 'Back to execution',
+        onBack: async () => {
+          this.linkedStates = { ...await this.options.refreshLinkedStates() };
+          this.focusStepId = null;
+          this.render();
+        },
+      });
+      return;
+    }
 
     const heading = document.createElement('h2');
     heading.textContent = String(this.options.source.frontmatter.title ?? this.options.source.id);
@@ -105,10 +120,18 @@ export class ManualExecutionModal extends Modal {
           const action = document.createElement('button');
           action.type = 'button';
           action.disabled = this.busy;
-          action.textContent = step.kind === 'tracker_entry' ? 'Log' : 'Complete';
+          action.textContent = step.kind === 'tracker_entry'
+            ? 'Log'
+            : step.kind === 'pomodoro'
+              ? 'Focus'
+              : 'Complete';
           action.addEventListener('click', () => {
             void this.runBusy(async () => {
               await this.options.onLinkedAction(step);
+              if (step.kind === 'pomodoro') {
+                this.focusStepId = step.id;
+                return;
+              }
               this.linkedStates = { ...await this.options.refreshLinkedStates() };
             });
           });

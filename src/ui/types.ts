@@ -8,6 +8,7 @@ import type { NormalizedItem } from '../core/daily_schedule/types';
 import type { OccurrenceTimeOverride } from '../core/occurrence_reschedule';
 import type { SafeObjectMutation } from '../core/object-mutation';
 import type { ManualExecutionRunCapability } from '../core/manual-execution';
+import type { FocusRuntimeUiController, FocusRuntimeViewState } from './focus/view';
 import type { IndexedObject } from '../vault/index/types';
 import type {
   CanonicalOccurrenceAction,
@@ -23,7 +24,7 @@ export interface UIState {
 
 export interface ViewContext {
   app: App;
-  plugin: Plugin & {
+  plugin: Plugin & FocusRuntimeUiController & {
     driveSyncCoordinator: DriveSyncCoordinator | null;
     driveAdapter: GoogleDriveAdapter | null;
     calendarStatus: 'disconnected' | 'ready' | 'authorization_required' | 'error';
@@ -41,6 +42,7 @@ export interface ViewContext {
       oauthClientId: string;
       isPaired: boolean;
       reminderDelivery: ReminderMode;
+      focusControllerId: string;
     };
     saveSettings(): Promise<void>;
     setSyncMode(mode: 'manual' | 'automatic'): Promise<void>;
@@ -74,6 +76,8 @@ export interface ViewContext {
     performOccurrenceReschedule(item: NormalizedItem, start: Date, end: Date): Promise<void>;
     getManualExecutionCapability(item: NormalizedItem): ManualExecutionRunCapability;
     startManualExecution(item: NormalizedItem): Promise<void>;
+    getFocusRuntimeViewState(now?: Date): FocusRuntimeViewState;
+    openFocusRuntime(): Promise<void>;
     mutateObject(object: IndexedObject, patch: SafeObjectMutation): Promise<void>;
     adoptFile(filePath: string): Promise<void>;
     openSettings(): void;

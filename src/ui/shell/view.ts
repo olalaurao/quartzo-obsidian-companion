@@ -17,12 +17,13 @@ import {
 } from '../../vault/shared-settings';
 import type { IndexedObject, VaultIndex } from '../../vault/index/types';
 import { QuickAddModal } from '../quick-add/modal';
+import { renderFocusRuntime } from '../focus/view';
 import type { ViewContext } from '../types';
 import { buildConflictDiff, formatConflictDiff } from '../sync/conflict-diff';
 
 export const QUARTZO_VIEW_TYPE = 'quartzo-view';
 export type QuartzoSection = 'home' | 'planner' | 'journal' | 'browse';
-export type QuartzoAction = 'search' | 'add' | 'sync' | 'conflicts' | 'settings';
+export type QuartzoAction = 'focus' | 'search' | 'add' | 'sync' | 'conflicts' | 'settings';
 function isoDate(date: Date): string {
   return localIsoDate(date);
 }
@@ -201,6 +202,20 @@ export class QuartzoView extends ItemView {
 
     const actions = document.createElement('div');
     actions.className = 'quartzo-shell-actions';
+
+    const focusSnapshot = this.context.plugin.getFocusRuntimeViewState(new Date());
+    const focusButton = document.createElement('button');
+    focusButton.textContent = focusSnapshot.runtime.currentSessionId
+      ? focusSnapshot.canControl
+        ? 'Focus · Active'
+        : 'Focus · Read-only'
+      : 'Focus';
+    if (this.action === 'focus') focusButton.classList.add('is-active');
+    focusButton.addEventListener('click', () => {
+      void this.handleAction('focus');
+    });
+    actions.appendChild(focusButton);
+
     for (const [action, label] of [['search', 'Search'], ['add', 'Add'], ['sync', 'Sync'], ['settings', 'Settings']] as Array<[QuartzoAction, string]>) {
       const button = document.createElement('button');
       button.textContent = label;
@@ -264,6 +279,10 @@ export class QuartzoView extends ItemView {
       this.editingSelectedObject = false;
     }
 
+    if (this.action === 'focus') {
+      renderFocusRuntime(content, this.context.plugin);
+      return;
+    }
     if (this.action === 'search') {
       this.renderSearch(content);
       return;

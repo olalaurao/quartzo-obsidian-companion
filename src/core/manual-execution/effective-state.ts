@@ -1,3 +1,4 @@
+import { findChecklistPomodoroEvidence } from '../focus-runtime';
 import { occurrenceResponseIdForDailyItem, type OccurrenceResponseState } from '../occurrence_actions';
 import type { ManualExecutionObject, ManualExecutionReferenceResolution } from './references';
 import type { ManualExecutionStep } from './types';
@@ -49,10 +50,22 @@ export function resolveManualExecutionStepState(
   references: ManualExecutionReferenceResolution,
   allObjects: Iterable<ManualExecutionObject>,
   responses: Readonly<Record<string, OccurrenceResponseState>>,
+  options: { parentObjectId?: string } = {},
 ): ManualExecutionStepState {
   if (step.kind === 'plain') return { completed: false };
   const date = localDateKey(scheduledFor);
   if (!date) throw new Error('Manual execution scheduledFor must include a local date.');
+
+  if (step.kind === 'pomodoro') {
+    const parentObjectId = options.parentObjectId?.trim();
+    if (!parentObjectId) return { completed: false };
+    return findChecklistPomodoroEvidence({
+      parentObjectId,
+      stepId: step.id,
+      evaluationDate: scheduledFor,
+      objects: allObjects,
+    });
+  }
 
   const linked = references.byStepId.get(step.id);
   if (!linked) return { completed: false };
@@ -121,6 +134,7 @@ export function resolveEffectiveLinkedSteps(
   references: ManualExecutionReferenceResolution,
   allObjects: Iterable<ManualExecutionObject>,
   responses: Readonly<Record<string, OccurrenceResponseState>>,
+  options: { parentObjectId?: string } = {},
 ): {
   completions: Record<string, boolean>;
   completedAt: Record<string, string | undefined>;
@@ -136,6 +150,7 @@ export function resolveEffectiveLinkedSteps(
       references,
       objects,
       responses,
+      options,
     );
     completions[step.id] = state.completed;
     completedAt[step.id] = state.completedAt;

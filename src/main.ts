@@ -3,6 +3,7 @@ import { VaultIndexEngine } from './vault/index';
 import type { IndexedObject } from './vault/index/types';
 import { SafeObjectMutationRepository } from './vault/object-mutation';
 import { ManualExecutionRepository } from './vault/manual-execution';
+import { FOCUS_RUNTIME_PATH, FocusRuntimeRepository } from './vault/focus-runtime';
 import type { SafeObjectMutation } from './core/object-mutation';
 import { ObjectParser } from './core/objects';
 import type { TrackerDefinition } from './core/objects/types';
@@ -25,6 +26,18 @@ import {
   type ManualExecutionRunCapability,
 } from './core/manual-execution';
 import {
+  canMutateFocusRuntime,
+  createIdleFocusRuntimeState,
+  focusChecklistLinkId,
+  focusElapsedSeconds,
+  focusPhaseIsDue,
+  focusRemainingSeconds,
+  focusTotalSeconds,
+  resolveFocusRuntimeControl,
+  type FocusRuntimeState,
+  type FocusSessionDisposition,
+} from './core/focus-runtime';
+import {
   DriveSyncCoordinator,
   type PairingScanProgress,
   type PairingApplyProgress,
@@ -39,6 +52,7 @@ import { QuartzoView, QUARTZO_VIEW_TYPE, type QuartzoSection, type QuartzoAction
 import { buildPairingDiagnosticsText } from './ui/sync/pairing-diagnostics';
 import { ViewContext } from './ui/types';
 import { ManualExecutionModal } from './ui/execution/manual-execution-modal';
+import type { FocusRuntimeUiController, FocusRuntimeViewState } from './ui/focus/view';
 import { QuickAddModal } from './ui/quick-add/modal';
 import { addLocalDays, localIsoDate, localIsoDateTime, parseLocalIsoDate } from './core/local-date';
 import { ReminderService, type ReminderMode, type ReminderSourceObject, type ReminderDeliveryOccurrence } from './core/reminders';
@@ -101,6 +115,7 @@ interface QuartzoCompanionSettings {
   oauthClientId: string;
   isPaired: boolean;
   reminderDelivery: ReminderMode;
+  focusControllerId: string;
 }
 
 const DEFAULT_SETTINGS: QuartzoCompanionSettings = {
@@ -115,6 +130,7 @@ const DEFAULT_SETTINGS: QuartzoCompanionSettings = {
   oauthClientId: 'PLACEHOLDER_CLIENT_ID',
   isPaired: false,
   reminderDelivery: 'in_obsidian_only',
+  focusControllerId: '',
 };
 
 
@@ -134,7 +150,7 @@ const OAUTH_CONFIG: OAuthConfig = {
   // Google verification/testing requirements apply before production listing.
 };
 
-export default class QuartzoCompanionPlugin extends Plugin {
+export default class QuartzoCompanionPlugin extends Plugin implements FocusRuntimeUiController {
   settings!: QuartzoCompanionSettings;
   vaultIndexEngine: VaultIndexEngine | null = null;
   driveSyncCoordinator: DriveSyncCoordinator | null = null;
@@ -154,6 +170,9 @@ export default class QuartzoCompanionPlugin extends Plugin {
   private occurrenceDomainMutationRepository: OccurrenceDomainMutationRepository | null = null;
   private safeObjectMutationRepository: SafeObjectMutationRepository | null = null;
   private manualExecutionRepository: ManualExecutionRepository | null = null;
+  private focusRuntimeRepository: FocusRuntimeRepository | null = null;
+  private focusRuntimeState: FocusRuntimeState = createIdleFocusRuntimeState();
+  private focusPhaseCompletionInFlight = false;
   private occurrenceResponses: Record<string, OccurrenceResponseState> = {};
   private occurrenceOverrides: Record<string, OccurrenceTimeOverride> = {};
   private googleAccessRefreshInFlight: Promise<string | null> | null = null;
@@ -190,6 +209,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.occurrenceDomainMutationRepository = new OccurrenceDomainMutationRepository(this.app.vault);
     this.safeObjectMutationRepository = new SafeObjectMutationRepository(this.app.vault);
     this.manualExecutionRepository = new ManualExecutionRepository(this.app.vault);
+    this.focusRuntimeRepository = new FocusRuntimeRepository(this.app.vault);
     try {
       this.occurrenceResponses = await this.occurrenceStateRepository.loadResponses();
     } catch (error) {
@@ -236,6 +256,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.addCommand({ id: 'quartzo-browse', name: 'Quartzo: Browse', callback: () => { void this.activateQuartzo('browse'); } });
     this.addCommand({ id: 'quartzo-search', name: 'Quartzo: Search', callback: () => { void this.activateQuartzo('browse', 'search'); } });
     this.addCommand({ id: 'quartzo-quick-add', name: 'Quartzo: Quick Add', callback: () => { void this.activateQuartzo('home', 'add'); } });
+    this.addCommand({ id: 'quartzo-focus', name: 'Quartzo: Focus', callback: () => { void this.openFocusRuntime(); } });
     this.addCommand({ id: 'quartzo-sync-center', name: 'Quartzo: View sync status', callback: () => { void this.activateQuartzo('home', 'sync'); } });
     this.addCommand({ id: 'quartzo-conflict-center', name: 'Quartzo: Conflicts', callback: () => { void this.activateQuartzo('home', 'conflicts'); } });
     this.addCommand({
@@ -278,6 +299,9 @@ export default class QuartzoCompanionPlugin extends Plugin {
         console.error('Reminder delivery poll failed:', error instanceof Error ? error.message : String(error));
       });
     }, 15_000));
+    this.registerInterval(window.setInterval(() => {
+      void this.processFocusRuntimeTick(new Date());
+    }, 1_000));
 
     if (!this.settings.firstRunCompleted) {
       this.showFirstRunDialog();
@@ -644,7 +668,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
         context.source.type,
         context.steps,
         {
-          focusRuntimeAvailable: false,
+          focusRuntimeAvailable: this.focusRuntimeRepository != null,
           availableDelegatedKinds: new Set(['habit', 'task', 'tracker_entry']),
         },
       );
@@ -672,6 +696,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
       context.references,
       context.objects,
       this.occurrenceResponses,
+      { parentObjectId: context.source.id },
     );
     return Object.fromEntries(
       context.steps
@@ -754,6 +779,11 @@ export default class QuartzoCompanionPlugin extends Plugin {
     run: ManualExecutionRunContext,
     item: NormalizedItem,
   ): Promise<void> {
+    if (step.kind === 'pomodoro') {
+      await this.startChecklistFocus(context.source.id, step);
+      return;
+    }
+
     const linked = context.references.byStepId.get(step.id);
     if (!linked) throw new Error(`Linked object for step ${step.id} is unavailable.`);
 
@@ -814,12 +844,12 @@ export default class QuartzoCompanionPlugin extends Plugin {
       initialContext.source.type,
       initialContext.steps,
       {
-        focusRuntimeAvailable: false,
+        focusRuntimeAvailable: this.focusRuntimeRepository != null,
         availableDelegatedKinds: new Set(['habit', 'task', 'tracker_entry']),
       },
     );
     if (capability === 'requiresFocusRuntime') {
-      throw new Error('This run requires the canonical Focus runtime, which is not available in Companion yet.');
+      throw new Error('This run requires the canonical Focus runtime, which is not initialized.');
     }
     if (capability !== 'supported') {
       throw new Error('This run contains a step that cannot execute safely in Companion.');
@@ -843,6 +873,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
       occurrenceId,
       initialPlainCompletions,
       initialLinkedStates: this.manualExecutionLinkedStates(initialContext, run.scheduledFor),
+      focusController: this,
       onPlainChange: async (step, completed) => {
         if (initialContext.source.type === 'system') return;
         if (!occurrenceId) throw new Error('Routine occurrence identity is missing.');
@@ -853,6 +884,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
           latest.references,
           latest.objects,
           this.occurrenceResponses,
+          { parentObjectId: latest.source.id },
         );
         const persisted = await repository.updateRoutineOccurrence(latest.source, {
           occurrenceId,
@@ -886,6 +918,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
           latest.references,
           latest.objects,
           this.occurrenceResponses,
+          { parentObjectId: latest.source.id },
         );
 
         if (latest.source.type === 'system') {
@@ -1023,6 +1056,170 @@ export default class QuartzoCompanionPlugin extends Plugin {
     await this.saveSettings();
     this.reminderService?.resetWindow(new Date());
   }
+  private requireFocusRuntimeRepository(): FocusRuntimeRepository {
+    const repository = this.focusRuntimeRepository;
+    if (!repository) throw new Error('Focus runtime is not initialized.');
+    return repository;
+  }
+
+  private async reloadFocusRuntime(refreshView = true): Promise<void> {
+    this.focusRuntimeState = await this.requireFocusRuntimeRepository().load();
+    if (refreshView) await this.refreshQuartzoView();
+  }
+
+  getFocusRuntimeViewState(now = new Date()): FocusRuntimeViewState {
+    const runtime = this.focusRuntimeState;
+    const capability = resolveFocusRuntimeControl({
+      clientKind: 'companion',
+      currentSessionId: runtime.currentSessionId,
+      persistedControllerId: runtime.focusControllerId,
+      localControllerId: this.settings.focusControllerId,
+    });
+    const remainingSeconds = runtime.runtimeMode === 'stopwatch'
+      ? 0
+      : focusRemainingSeconds({
+          isRunning: runtime.isRunning,
+          totalSeconds: focusTotalSeconds(runtime),
+          now,
+          phaseEndsAt: runtime.phaseEndsAt,
+          pausedRemainingSeconds: runtime.pausedRemainingSeconds,
+        });
+    return {
+      runtime,
+      capability,
+      canControl: canMutateFocusRuntime(capability),
+      remainingSeconds,
+      elapsedSeconds: focusElapsedSeconds(runtime, now),
+    };
+  }
+
+  async openFocusRuntime(): Promise<void> {
+    await this.activateQuartzo('home', 'focus');
+  }
+
+  async startPomodoro(): Promise<void> {
+    const now = new Date();
+    this.focusRuntimeState = await this.requireFocusRuntimeRepository().start({
+      localControllerId: this.settings.focusControllerId,
+      sessionId: `pomo_${createCanonicalObjectId()}`,
+      now,
+      mode: 'pomodoro',
+      phase: 'work',
+    });
+    await this.refreshQuartzoView();
+  }
+
+  async startStopwatch(): Promise<void> {
+    const now = new Date();
+    this.focusRuntimeState = await this.requireFocusRuntimeRepository().start({
+      localControllerId: this.settings.focusControllerId,
+      sessionId: `pomo_${createCanonicalObjectId()}`,
+      now,
+      mode: 'stopwatch',
+      phase: 'stopwatch',
+    });
+    await this.refreshQuartzoView();
+  }
+
+  async pauseFocus(): Promise<void> {
+    this.focusRuntimeState = await this.requireFocusRuntimeRepository().pause(
+      this.settings.focusControllerId,
+      new Date(),
+    );
+    await this.refreshQuartzoView();
+  }
+
+  async resumeFocus(): Promise<void> {
+    const now = new Date();
+    this.focusRuntimeState = await this.requireFocusRuntimeRepository().start({
+      localControllerId: this.settings.focusControllerId,
+      sessionId:
+        this.focusRuntimeState.currentSessionId
+        ?? `pomo_${createCanonicalObjectId()}`,
+      now,
+    });
+    await this.refreshQuartzoView();
+  }
+
+  async skipFocusPhase(): Promise<void> {
+    this.focusRuntimeState = await this.requireFocusRuntimeRepository().advancePhase({
+      localControllerId: this.settings.focusControllerId,
+      now: new Date(),
+      skipped: true,
+    });
+    await this.refreshQuartzoView();
+  }
+
+  async finishFocus(disposition: FocusSessionDisposition): Promise<void> {
+    const result = await this.requireFocusRuntimeRepository().finish({
+      localControllerId: this.settings.focusControllerId,
+      now: new Date(),
+      disposition,
+    });
+    this.focusRuntimeState = result.state;
+    if (result.evidencePath) {
+      await this.refreshIndexedFile(result.evidencePath);
+    }
+    await this.refreshQuartzoView();
+  }
+
+  private async processFocusRuntimeTick(now: Date): Promise<void> {
+    if (
+      this.focusPhaseCompletionInFlight
+      || !this.focusRuntimeState.currentSessionId
+      || !focusPhaseIsDue(this.focusRuntimeState, now)
+    ) return;
+
+    const snapshot = this.getFocusRuntimeViewState(now);
+    if (!snapshot.canControl) return;
+
+    this.focusPhaseCompletionInFlight = true;
+    try {
+      this.focusRuntimeState = await this.requireFocusRuntimeRepository()
+        .advancePhaseIfDue(this.settings.focusControllerId, now);
+      await this.refreshQuartzoView();
+    } catch (error) {
+      console.error(
+        'Focus phase completion failed:',
+        error instanceof Error ? error.message : String(error),
+      );
+    } finally {
+      this.focusPhaseCompletionInFlight = false;
+    }
+  }
+
+  private async startChecklistFocus(
+    parentObjectId: string,
+    step: ManualExecutionStep,
+  ): Promise<void> {
+    const linkId = focusChecklistLinkId(parentObjectId, step.id);
+    const current = this.focusRuntimeState;
+
+    if (current.currentSessionId && current.currentItemId !== linkId) {
+      const snapshot = this.getFocusRuntimeViewState();
+      if (!snapshot.canControl) {
+        throw new Error(
+          'Another device controls a different Focus session. Finish it there before starting this checklist step.',
+        );
+      }
+      throw new Error(
+        'Another Focus session is already active. Finish or discard it before starting this checklist step.',
+      );
+    }
+
+    if (!current.currentSessionId) {
+      this.focusRuntimeState = await this.requireFocusRuntimeRepository().start({
+        localControllerId: this.settings.focusControllerId,
+        sessionId: `pomo_${createCanonicalObjectId()}`,
+        now: new Date(),
+        mode: 'pomodoro',
+        phase: 'work',
+        currentItemId: linkId,
+        currentItemTitle: step.title,
+      });
+    }
+  }
+
   private shouldIndexPath(rawPath: string): boolean {
     const normalized = normalizeVaultPath(rawPath);
     if (normalized === '_deleted' || normalized.startsWith('_deleted/')) return false;
@@ -1038,6 +1235,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     if (this.vaultRuntimeReady) return;
 
     this.sharedSettings = await this.sharedSettingsRepository?.load() ?? null;
+    await this.reloadFocusRuntime(false);
     await this.initializeVaultIndex();
 
     if (!this.vaultEventsRegistered) {
@@ -1076,6 +1274,12 @@ export default class QuartzoCompanionPlugin extends Plugin {
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { void this.reloadSharedSettingsAndIndex(); return; }
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_OCCURRENCE_STATE_PATH) { void this.reloadOccurrenceResponses(); return; }
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_PLANNING_STATE_PATH) { void this.reloadOccurrenceOverrides(); return; }
+      if (file instanceof TFile && normalizeVaultPath(file.path) === FOCUS_RUNTIME_PATH) {
+        void this.reloadFocusRuntime().catch(error => {
+          console.error('Focus runtime reload failed:', error);
+        });
+        return;
+      }
       if (file instanceof TFile && this.vaultIndexEngine && this.shouldIndexPath(file.path)) {
         const idx = this.vaultIndexEngine.getIndex();
         if (idx) {
@@ -1107,6 +1311,12 @@ export default class QuartzoCompanionPlugin extends Plugin {
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { void this.reloadSharedSettingsAndIndex(); return; }
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_OCCURRENCE_STATE_PATH) { void this.reloadOccurrenceResponses(); return; }
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_PLANNING_STATE_PATH) { void this.reloadOccurrenceOverrides(); return; }
+      if (file instanceof TFile && normalizeVaultPath(file.path) === FOCUS_RUNTIME_PATH) {
+        void this.reloadFocusRuntime().catch(error => {
+          console.error('Focus runtime reload failed:', error);
+        });
+        return;
+      }
       if (file instanceof TFile && this.vaultIndexEngine && this.shouldIndexPath(file.path)) {
         const idx = this.vaultIndexEngine.getIndex();
         if (idx) {
@@ -1149,6 +1359,13 @@ export default class QuartzoCompanionPlugin extends Plugin {
         void this.refreshQuartzoView();
         return;
       }
+      if (file instanceof TFile && normalizeVaultPath(file.path) === FOCUS_RUNTIME_PATH) {
+        this.focusRuntimeState = createIdleFocusRuntimeState(
+          this.focusRuntimeState.presetSnapshot,
+        );
+        void this.refreshQuartzoView();
+        return;
+      }
       if (file instanceof TFile && this.vaultIndexEngine && this.shouldIndexPath(file.path)) {
         const idx = this.vaultIndexEngine.getIndex();
         if (idx) {
@@ -1171,6 +1388,15 @@ export default class QuartzoCompanionPlugin extends Plugin {
       }
       if (normalizeVaultPath(oldPath) === SHARED_PLANNING_STATE_PATH || normalizeVaultPath(file.path) === SHARED_PLANNING_STATE_PATH) {
         void this.reloadOccurrenceOverrides();
+        return;
+      }
+      if (
+        normalizeVaultPath(oldPath) === FOCUS_RUNTIME_PATH
+        || normalizeVaultPath(file.path) === FOCUS_RUNTIME_PATH
+      ) {
+        void this.reloadFocusRuntime().catch(error => {
+          console.error('Focus runtime reload failed:', error);
+        });
         return;
       }
       if (!(file instanceof TFile) || !this.vaultIndexEngine) return;
@@ -2216,6 +2442,11 @@ export default class QuartzoCompanionPlugin extends Plugin {
         ? 'automatic'
         : 'manual';
 
+    const existingFocusControllerId = typeof stored.focusControllerId === 'string'
+      ? stored.focusControllerId.trim()
+      : '';
+    const focusControllerId = existingFocusControllerId || createCanonicalObjectId();
+
     this.settings = {
       googleDriveFolderId: typeof stored.googleDriveFolderId === 'string' ? stored.googleDriveFolderId : null,
       googleDriveFolderName: typeof stored.googleDriveFolderName === 'string' ? stored.googleDriveFolderName : null,
@@ -2230,7 +2461,12 @@ export default class QuartzoCompanionPlugin extends Plugin {
       reminderDelivery: stored.reminderDelivery === 'off' || stored.reminderDelivery === 'desktop_notifications'
         ? stored.reminderDelivery
         : 'in_obsidian_only',
+      focusControllerId,
     };
+
+    if (!existingFocusControllerId) {
+      await this.saveData(this.settings);
+    }
   }
 
   async saveSettings() {
