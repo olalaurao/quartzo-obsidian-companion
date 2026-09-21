@@ -5,6 +5,7 @@ import type {
   CanonicalOccurrenceActionResult,
 } from '../../core/occurrence_actions';
 import { renderOccurrenceActionControls } from '../occurrence/action-controls';
+import type { ManualExecutionRunCapability } from '../../core/manual-execution';
 
 export interface ScheduleListOptions {
   app: App;
@@ -15,6 +16,8 @@ export interface ScheduleListOptions {
     options?: { completedAt?: Date; snoozeMinutes?: number },
   ): Promise<CanonicalOccurrenceActionResult>;
   performOccurrenceReschedule?(item: NormalizedItem, start: Date, end: Date): Promise<void>;
+  manualExecutionCapability?(item: NormalizedItem): ManualExecutionRunCapability;
+  startManualExecution?(item: NormalizedItem): Promise<void>;
   canOpenItem?(item: NormalizedItem): boolean;
   onOpenItem?(item: NormalizedItem): void;
 }
@@ -59,6 +62,10 @@ export function renderScheduleList(
         options.performOccurrenceAction(item, action, actionOptions),
       reschedule: options.performOccurrenceReschedule
         ? (start, end) => options.performOccurrenceReschedule!(item, start, end)
+        : undefined,
+      manualExecutionCapability: options.manualExecutionCapability?.(item),
+      startManualExecution: options.startManualExecution
+        ? () => options.startManualExecution!(item)
         : undefined,
     });
     list.appendChild(row);
