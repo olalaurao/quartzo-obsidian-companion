@@ -1047,6 +1047,173 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     await this.saveSettings();
     this.reminderService?.resetWindow(new Date());
   }
+  private requireFocusRuntimeRepository(): FocusRuntimeRepository {
+    const repository = this.focusRuntimeRepository;
+    if (!repository) throw new Error('Focus runtime is not initialized.');
+    return repository;
+  }
+
+  private async reloadFocusRuntime(refreshView = true): Promise<void> {
+    this.focusRuntimeState = await this.requireFocusRuntimeRepository().load();
+    if (refreshView) await this.refreshQuartzoView();
+  }
+
+  getFocusRuntimeViewState(now = new Date()): FocusRuntimeViewState {
+    const runtime = this.focusRuntimeState;
+    const capability = resolveFocusRuntimeControl({
+      clientKind: 'companion',
+      currentSessionId: runtime.currentSessionId,
+      persistedControllerId: runtime.focusControllerId,
+      localControllerId: this.settings.focusControllerId,
+    });
+    const remainingSeconds = runtime.runtimeMode === 'stopwatch'
+      ? 0
+      : focusRemainingSeconds({
+          isRunning: runtime.isRunning,
+          totalSeconds: focusTotalSeconds(runtime),
+          now,
+          phaseEndsAt: runtime.phaseEndsAt,
+          pausedRemainingSeconds: runtime.pausedRemainingSeconds,
+        });
+    return {
+      runtime,
+      capability,
+      canControl: canMutateFocusRuntime(capability),
+      remainingSeconds,
+      elapsedSeconds: focusElapsedSeconds(runtime, now),
+    };
+  }
+
+  async openFocusRuntime(): Promise<void> {
+    await new Promise<void>(resolve => {
+      const modal = new FocusRuntimeModal(this.app, this, resolve);
+      modal.open();
+    });
+  }
+
+  async startPomodoro(): Promise<void> {
+    const now = new Date();
+    this.focusRuntimeState = await this.requireFocusRuntimeRepository().start({
+      localControllerId: this.settings.focusControllerId,
+      sessionId: `pomo_${createCanonicalObjectId()}`,
+      now,
+      mode: 'pomodoro',
+      phase: 'work',
+    });
+    await this.refreshQuartzoView();
+  }
+
+  async startStopwatch(): Promise<void> {
+    const now = new Date();
+    this.focusRuntimeState = await this.requireFocusRuntimeRepository().start({
+      localControllerId: this.settings.focusControllerId,
+      sessionId: `pomo_${createCanonicalObjectId()}`,
+      now,
+      mode: 'stopwatch',
+      phase: 'stopwatch',
+    });
+    await this.refreshQuartzoView();
+  }
+
+  async pauseFocus(): Promise<void> {
+    this.focusRuntimeState = await this.requireFocusRuntimeRepository().pause(
+      this.settings.focusControllerId,
+      new Date(),
+    );
+    await this.refreshQuartzoView();
+  }
+
+  async resumeFocus(): Promise<void> {
+    const now = new Date();
+    this.focusRuntimeState = await this.requireFocusRuntimeRepository().start({
+      localControllerId: this.settings.focusControllerId,
+      sessionId:
+        this.focusRuntimeState.currentSessionId
+        ?? `pomo_${createCanonicalObjectId()}`,
+      now,
+    });
+    await this.refreshQuartzoView();
+  }
+
+  async skipFocusPhase(): Promise<void> {
+    this.focusRuntimeState = await this.requireFocusRuntimeRepository().advancePhase({
+      localControllerId: this.settings.focusControllerId,
+      now: new Date(),
+      skipped: true,
+    });
+    await this.refreshQuartzoView();
+  }
+
+  async finishFocus(disposition: FocusSessionDisposition): Promise<void> {
+    const result = await this.requireFocusRuntimeRepository().finish({
+      localControllerId: this.settings.focusControllerId,
+      now: new Date(),
+      disposition,
+    });
+    this.focusRuntimeState = result.state;
+    if (result.evidencePath) {
+      await this.refreshIndexedFile(result.evidencePath);
+    }
+    await this.refreshQuartzoView();
+  }
+
+  private async processFocusRuntimeTick(now: Date): Promise<void> {
+    if (
+      this.focusPhaseCompletionInFlight
+      || !this.focusRuntimeState.currentSessionId
+      || !focusPhaseIsDue(this.focusRuntimeState, now)
+    ) return;
+
+    const snapshot = this.getFocusRuntimeViewState(now);
+    if (!snapshot.canControl) return;
+
+    this.focusPhaseCompletionInFlight = true;
+    try {
+      this.focusRuntimeState = await this.requireFocusRuntimeRepository()
+        .advancePhaseIfDue(this.settings.focusControllerId, now);
+      await this.refreshQuartzoView();
+    } catch (error) {
+      console.error(
+        'Focus phase completion failed:',
+        error instanceof Error ? error.message : String(error),
+      );
+    } finally {
+      this.focusPhaseCompletionInFlight = false;
+    }
+  }
+
+  private async startChecklistFocus(
+    parentObjectId: string,
+    step: ManualExecutionStep,
+  ): Promise<void> {
+    const linkId = focusChecklistLinkId(parentObjectId, step.id);
+    const current = this.focusRuntimeState;
+
+    if (current.currentSessionId && current.currentItemId !== linkId) {
+      const snapshot = this.getFocusRuntimeViewState();
+      if (!snapshot.canControl) {
+        await this.openFocusRuntime();
+        return;
+      }
+      throw new Error(
+        'Another Focus session is already active. Finish or discard it before starting this checklist step.',
+      );
+    }
+
+    if (!current.currentSessionId) {
+      this.focusRuntimeState = await this.requireFocusRuntimeRepository().start({
+        localControllerId: this.settings.focusControllerId,
+        sessionId: `pomo_${createCanonicalObjectId()}`,
+        now: new Date(),
+        mode: 'pomodoro',
+        phase: 'work',
+        currentItemId: linkId,
+        currentItemTitle: step.title,
+      });
+    }
+    await this.openFocusRuntime();
+  }
+
   private shouldIndexPath(rawPath: string): boolean {
     const normalized = normalizeVaultPath(rawPath);
     if (normalized === '_deleted' || normalized.startsWith('_deleted/')) return false;
@@ -1062,6 +1229,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     if (this.vaultRuntimeReady) return;
 
     this.sharedSettings = await this.sharedSettingsRepository?.load() ?? null;
+    await this.reloadFocusRuntime(false);
     await this.initializeVaultIndex();
 
     if (!this.vaultEventsRegistered) {
