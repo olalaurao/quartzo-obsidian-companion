@@ -197,6 +197,9 @@ export function renderTrackerRecordQuickAdd(
     }
   };
   select.addEventListener('change', refresh);
+  if (initialTrackerId && trackers.some(item => item.id === initialTrackerId)) {
+    select.value = initialTrackerId;
+  }
   refresh();
 
   return {
