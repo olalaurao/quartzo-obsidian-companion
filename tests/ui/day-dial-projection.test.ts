@@ -26,6 +26,7 @@ function item(overrides: Partial<NormalizedItem> & Pick<NormalizedItem, 'id' | '
     isSkipped: false,
     outcome: 'pending',
     isPlayable: false,
+    editable: true,
     origin: 'schedule',
     ...rest,
   };

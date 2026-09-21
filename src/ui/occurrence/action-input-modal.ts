@@ -136,10 +136,112 @@ class SnoozeActionModal extends Modal {
   }
 }
 
+class RescheduleActionModal extends Modal {
+  private settled = false;
+
+  constructor(
+    app: App,
+    private readonly initialStart: Date,
+    private readonly initialEnd: Date,
+    private readonly resolveValue: (value: { start: Date; end: Date } | null) => void,
+  ) {
+    super(app);
+  }
+
+  onOpen(): void {
+    this.contentEl.empty();
+    const title = document.createElement('h2');
+    title.textContent = 'Reschedule';
+    this.contentEl.appendChild(title);
+
+    const hint = document.createElement('p');
+    hint.textContent = 'Choose the new start and end for this occurrence.';
+    this.contentEl.appendChild(hint);
+
+    const start = document.createElement('input');
+    start.type = 'datetime-local';
+    start.className = 'quartzo-input';
+    start.value = localDateTimeInputValue(this.initialStart);
+    this.contentEl.appendChild(start);
+
+    const end = document.createElement('input');
+    end.type = 'datetime-local';
+    end.className = 'quartzo-input';
+    end.value = localDateTimeInputValue(this.initialEnd);
+    this.contentEl.appendChild(end);
+
+    const actions = document.createElement('div');
+    actions.className = 'quartzo-modal-actions';
+    const cancel = document.createElement('button');
+    cancel.textContent = 'Cancel';
+    cancel.addEventListener('click', () => this.finish(null));
+    const save = document.createElement('button');
+    save.textContent = 'Reschedule';
+    save.className = 'mod-cta';
+    save.addEventListener('click', () => {
+      const startValue = new Date(start.value);
+      const endValue = new Date(end.value);
+      if (
+        Number.isNaN(startValue.getTime()) ||
+        Number.isNaN(endValue.getTime()) ||
+        endValue.getTime() <= startValue.getTime()
+      ) {
+        end.setCustomValidity('End must be after start.');
+        end.reportValidity();
+        return;
+      }
+      end.setCustomValidity('');
+      this.finish({ start: startValue, end: endValue });
+    });
+    actions.append(cancel, save);
+    this.contentEl.appendChild(actions);
+    start.focus();
+  }
+
+  onClose(): void {
+    if (!this.settled) {
+      this.settled = true;
+      this.resolveValue(null);
+    }
+    this.contentEl.empty();
+  }
+
+  private finish(value: { start: Date; end: Date } | null): void {
+    if (this.settled) return;
+    this.settled = true;
+    this.resolveValue(value);
+    this.close();
+  }
+}
+
+function localDateTimeInputValue(value: Date): string {
+  return [
+    value.getFullYear().toString().padStart(4, '0'),
+    '-',
+    (value.getMonth() + 1).toString().padStart(2, '0'),
+    '-',
+    value.getDate().toString().padStart(2, '0'),
+    'T',
+    value.getHours().toString().padStart(2, '0'),
+    ':',
+    value.getMinutes().toString().padStart(2, '0'),
+  ].join('');
+}
+
 export function promptAlreadyDid(app: App): Promise<Date | null> {
   return new Promise(resolve => new DateTimeActionModal(app, resolve).open());
 }
 
 export function promptSnoozeMinutes(app: App): Promise<number | null> {
   return new Promise(resolve => new SnoozeActionModal(app, resolve).open());
+}
+
+export function promptReschedule(
+  app: App,
+  initialStart: Date,
+  initialEnd: Date,
+): Promise<{ start: Date; end: Date } | null> {
+  return new Promise(resolve =>
+    new RescheduleActionModal(app, initialStart, initialEnd, resolve).open()
+  );
 }

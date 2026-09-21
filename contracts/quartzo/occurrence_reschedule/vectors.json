@@ -1,0 +1,107 @@
+[
+  {
+    "id": "one_off_task_updates_source",
+    "source_type": "task",
+    "source_id": "task-one-off",
+    "occurrence_id": "task:task-one-off@2026-09-21",
+    "editable": true,
+    "series_id": null,
+    "original_start": "2026-09-21T09:00:00.000",
+    "original_end": "2026-09-21T10:00:00.000",
+    "new_start": "2026-09-21T14:30:00.000",
+    "new_end": "2026-09-21T15:15:00.000",
+    "expected": {
+      "can_replan": true,
+      "storage": "source_task",
+      "start_date": "2026-09-21",
+      "scheduled_time": "14:30",
+      "duration_minutes": 45
+    }
+  },
+  {
+    "id": "recurring_task_instance_uses_single_override",
+    "source_type": "task",
+    "source_id": "task-recurring",
+    "occurrence_id": "task:task-recurring@2026-09-21",
+    "editable": true,
+    "series_id": "task-recurring-series",
+    "original_start": "2026-09-21T09:00:00.000",
+    "original_end": "2026-09-21T10:00:00.000",
+    "new_start": "2026-09-21T16:00:00.000",
+    "new_end": "2026-09-21T17:00:00.000",
+    "expected": {
+      "can_replan": true,
+      "storage": "shared_planning_override",
+      "shared_file": "sessions/shared_planning_state_v1.md",
+      "scope": "single"
+    }
+  },
+  {
+    "id": "time_block_uses_single_override",
+    "source_type": "timeBlock",
+    "source_id": "time-block-1",
+    "occurrence_id": "timeBlock:time-block-1@2026-09-21",
+    "editable": true,
+    "series_id": null,
+    "original_start": "2026-09-21T11:00:00.000",
+    "original_end": "2026-09-21T12:00:00.000",
+    "new_start": "2026-09-21T13:00:00.000",
+    "new_end": "2026-09-21T14:00:00.000",
+    "expected": {
+      "can_replan": true,
+      "storage": "shared_planning_override",
+      "shared_file": "sessions/shared_planning_state_v1.md",
+      "scope": "single"
+    }
+  },
+  {
+    "id": "goal_deadline_uses_single_override",
+    "source_type": "goalDeadline",
+    "source_id": "goal-1",
+    "occurrence_id": "goalDeadline:goal-1@2026-09-21",
+    "editable": true,
+    "series_id": null,
+    "original_start": "2026-09-21T18:00:00.000",
+    "original_end": "2026-09-21T18:30:00.000",
+    "new_start": "2026-09-22T09:00:00.000",
+    "new_end": "2026-09-22T09:30:00.000",
+    "expected": {
+      "can_replan": true,
+      "storage": "shared_planning_override",
+      "shared_file": "sessions/shared_planning_state_v1.md",
+      "scope": "single"
+    }
+  },
+  {
+    "id": "external_calendar_is_not_reschedulable",
+    "source_type": "googleCalendar",
+    "source_id": "google-event-1",
+    "occurrence_id": "googleCalendar:google-event-1@2026-09-21",
+    "editable": false,
+    "series_id": null,
+    "original_start": "2026-09-21T12:00:00.000",
+    "original_end": "2026-09-21T13:00:00.000",
+    "new_start": "2026-09-21T15:00:00.000",
+    "new_end": "2026-09-21T16:00:00.000",
+    "expected": {
+      "can_replan": false,
+      "storage": "blocked"
+    }
+  },
+  {
+    "id": "non_editable_task_is_not_reschedulable",
+    "source_type": "task",
+    "source_id": "task-locked",
+    "occurrence_id": "task:task-locked@2026-09-21",
+    "editable": false,
+    "series_id": null,
+    "original_start": "2026-09-21T09:00:00.000",
+    "original_end": "2026-09-21T10:00:00.000",
+    "new_start": "2026-09-21T11:00:00.000",
+    "new_end": "2026-09-21T12:00:00.000",
+    "expected": {
+      "can_replan": false,
+      "storage": "blocked"
+    }
+  }
+]

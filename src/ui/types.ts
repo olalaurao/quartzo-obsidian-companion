@@ -5,6 +5,7 @@ import type { GoogleDriveAdapter } from '../integrations/google/drive';
 import type { GoogleCalendarProjection } from '../integrations/google/calendar';
 import type { ReminderMode } from '../core/reminders';
 import type { NormalizedItem } from '../core/daily_schedule/types';
+import type { OccurrenceTimeOverride } from '../core/occurrence_reschedule';
 import type { SafeObjectMutation } from '../core/object-mutation';
 import type { IndexedObject } from '../vault/index/types';
 import type {
@@ -62,12 +63,14 @@ export interface ViewContext {
     reauthorizeGoogleCalendar(): Promise<void>;
     setReminderDelivery(mode: ReminderMode): Promise<void>;
     getOccurrenceResponses(): Record<string, OccurrenceResponseState>;
+    getOccurrenceOverrides(): Record<string, OccurrenceTimeOverride>;
     getSharedSettingsState(): 'loading' | 'ready' | 'missing';
     performOccurrenceAction(
       item: NormalizedItem,
       action: CanonicalOccurrenceAction,
       options?: { completedAt?: Date; snoozeMinutes?: number },
     ): Promise<CanonicalOccurrenceActionResult>;
+    performOccurrenceReschedule(item: NormalizedItem, start: Date, end: Date): Promise<void>;
     mutateObject(object: IndexedObject, patch: SafeObjectMutation): Promise<void>;
     adoptFile(filePath: string): Promise<void>;
     openSettings(): void;

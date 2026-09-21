@@ -1,4 +1,5 @@
 import type { OccurrenceResponseState, OccurrenceOutcome } from '../occurrence_actions';
+import type { OccurrenceTimeOverride } from '../occurrence_reschedule';
 
 export type DailyScheduleOrigin = 'schedule' | 'reminder' | 'legacyTime' | 'externalEvent';
 
@@ -17,6 +18,8 @@ export interface NormalizedItem {
   isSkipped: boolean;
   outcome: OccurrenceOutcome;
   isPlayable: boolean;
+  editable: boolean;
+  seriesId?: string;
   restrictionMetadata?: Record<string, unknown>;
   responseState?: OccurrenceResponseState;
   origin: DailyScheduleOrigin;
@@ -38,4 +41,5 @@ export interface DailyScheduleInput {
   objects?: Array<Record<string, unknown>>;
   googleEvents?: Array<Record<string, unknown>>;
   occurrenceResponses?: Record<string, OccurrenceResponseState>;
+  occurrenceOverrides?: Record<string, OccurrenceTimeOverride>;
 }

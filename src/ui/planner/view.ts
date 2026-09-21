@@ -28,6 +28,7 @@ export interface PlannerViewOptions {
     action: CanonicalOccurrenceAction,
     options?: { completedAt?: Date; snoozeMinutes?: number },
   ): Promise<CanonicalOccurrenceActionResult>;
+  performOccurrenceReschedule?(item: NormalizedItem, start: Date, end: Date): Promise<void>;
   canOpenItem?(item: NormalizedItem): boolean;
   onOpenItem?(item: NormalizedItem): void;
   onDayLensChange?(lens: PlannerDayLens): void;
@@ -39,6 +40,7 @@ function listOptions(options: PlannerViewOptions): ScheduleListOptions {
     app: options.app,
     titleForItem: options.titleForItem,
     performOccurrenceAction: options.performOccurrenceAction,
+    performOccurrenceReschedule: options.performOccurrenceReschedule,
     canOpenItem: options.canOpenItem,
     onOpenItem: options.onOpenItem,
   };

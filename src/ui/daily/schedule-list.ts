@@ -14,6 +14,7 @@ export interface ScheduleListOptions {
     action: CanonicalOccurrenceAction,
     options?: { completedAt?: Date; snoozeMinutes?: number },
   ): Promise<CanonicalOccurrenceActionResult>;
+  performOccurrenceReschedule?(item: NormalizedItem, start: Date, end: Date): Promise<void>;
   canOpenItem?(item: NormalizedItem): boolean;
   onOpenItem?(item: NormalizedItem): void;
 }
@@ -56,6 +57,9 @@ export function renderScheduleList(
       item,
       perform: (action, actionOptions) =>
         options.performOccurrenceAction(item, action, actionOptions),
+      reschedule: options.performOccurrenceReschedule
+        ? (start, end) => options.performOccurrenceReschedule!(item, start, end)
+        : undefined,
     });
     list.appendChild(row);
   }

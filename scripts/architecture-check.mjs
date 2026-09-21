@@ -794,6 +794,63 @@ function checkCanonicalOccurrenceActions() {
   console.log('PASS: Occurrence actions are canonical, idempotent, dated, Vault-safe and fail closed on unsupported domain parity');
   return true;
 }
+function checkCanonicalOccurrenceReschedule() {
+  const servicePath = path.join(rootDir, 'src/core/occurrence_reschedule/service.ts');
+  const codecPath = path.join(rootDir, 'src/core/occurrence_reschedule/state-codec.ts');
+  const planningPath = path.join(rootDir, 'src/vault/planning-state.ts');
+  const actionTypesPath = path.join(rootDir, 'src/core/occurrence_actions/types.ts');
+  const controlsPath = path.join(rootDir, 'src/ui/occurrence/action-controls.ts');
+  const schedulePath = path.join(rootDir, 'src/core/daily_schedule/engine.ts');
+  const mainPath = path.join(rootDir, 'src/main.ts');
+
+  for (const file of [servicePath, codecPath, planningPath, actionTypesPath, controlsPath, schedulePath, mainPath]) {
+    if (!fs.existsSync(file)) {
+      console.error(`FAIL: Reschedule canonical file missing: ${path.relative(rootDir, file)}`);
+      return false;
+    }
+  }
+
+  const service = fs.readFileSync(servicePath, 'utf8');
+  const codec = fs.readFileSync(codecPath, 'utf8');
+  const planning = fs.readFileSync(planningPath, 'utf8');
+  const actionTypes = fs.readFileSync(actionTypesPath, 'utf8');
+  const controls = fs.readFileSync(controlsPath, 'utf8');
+  const schedule = fs.readFileSync(schedulePath, 'utf8');
+  const main = fs.readFileSync(mainPath, 'utf8');
+
+  if (!service.includes('planOccurrenceReschedule(') ||
+      !service.includes("storage: 'source_task'") ||
+      !service.includes("storage: 'shared_planning_override'") ||
+      !service.includes('OccurrenceActionPolicy.resolve({')) {
+    console.error('FAIL: Reschedule is not owned by the canonical capability-gated planning owner');
+    return false;
+  }
+  if (!planning.includes("SHARED_PLANNING_STATE_PATH = 'sessions/shared_planning_state_v1.md'") ||
+      !planning.includes('await this.vault.process(file, current =>') ||
+      !codec.includes('...parsed.frontmatter') ||
+      !codec.includes('...rawOverrides') ||
+      !codec.includes('...existing')) {
+    console.error('FAIL: Reschedule planning writes can bypass Vault.process or discard unknown planning fields');
+    return false;
+  }
+  if (actionTypes.includes("'reschedule'") ||
+      !controls.includes('const reschedule = options.reschedule') ||
+      !controls.includes('capabilities.canReplan && reschedule') ||
+      !main.includes('performOccurrenceReschedule(')) {
+    console.error('FAIL: Reschedule is mixed into occurrence responses or bypasses the shared UI callback');
+    return false;
+  }
+  if (!schedule.includes('occurrenceOverrides') ||
+      !schedule.includes('obj.scheduled_time ?? obj.time') ||
+      !main.includes('getOccurrenceOverrides()') ||
+      !main.includes('SHARED_PLANNING_STATE_PATH')) {
+    console.error('FAIL: Shared Reschedule state is not projected back through the canonical Daily Schedule');
+    return false;
+  }
+
+  console.log('PASS: Reschedule is a canonical planning mutation, Vault-safe and separate from occurrence responses');
+  return true;
+}
 function checkCanonicalHomeAndDayDial() {
   const shellPath = path.join(rootDir, 'src/ui/shell/view.ts');
   const homePath = path.join(rootDir, 'src/ui/home/view.ts');
@@ -1196,6 +1253,7 @@ function main() {
   if (!checkVaultIndexWaitsForWorkspaceReady()) allPassed = false;
   if (!checkSharedSettingsReloadReindexesVault()) allPassed = false;
   if (!checkCanonicalOccurrenceActions()) allPassed = false;
+  if (!checkCanonicalOccurrenceReschedule()) allPassed = false;
   if (!checkCanonicalHomeAndDayDial()) allPassed = false;
   if (!checkCanonicalPlannerProjection()) allPassed = false;
   if (!checkCanonicalUniversalDetailMutation()) allPassed = false;

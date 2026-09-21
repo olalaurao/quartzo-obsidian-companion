@@ -15,6 +15,7 @@ function item(value: Pick<NormalizedItem, 'id' | 'sourceId' | 'date' | 'isTimed'
     isSkipped: false,
     outcome: 'pending',
     isPlayable: false,
+    editable: true,
     origin: 'schedule',
     ...value,
   };

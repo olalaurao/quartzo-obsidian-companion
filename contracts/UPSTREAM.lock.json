@@ -1,7 +1,7 @@
 {
   "repository": "olalaurao/aplicativo",
-  "sourceCommit": "53b47a5986ee00151551ecee367dfbd7d0dc6dfe",
-  "syncTimestamp": "2026-09-21T00:56:00.000Z",
+  "sourceCommit": "a50d779ff4e201cfb522dcea08952a58a3dc7efb",
+  "syncTimestamp": "2026-09-21T01:26:00.000Z",
   "contractVersions": {
     "vaultInteropVersion": "1.0.0",
     "syncProtocolVersion": "1.0.0",
@@ -26,7 +26,8 @@
     "resource_capture/vectors.json": "contracts/quartzo/resource_capture/vectors.json",
     "scheduler/vectors.json": "contracts/quartzo/scheduler/vectors.json",
     "sync/vectors.json": "contracts/quartzo/sync/vectors.json",
-    "shared_settings/v1.md": "contracts/quartzo/shared_settings/v1.md"
+    "shared_settings/v1.md": "contracts/quartzo/shared_settings/v1.md",
+    "occurrence_reschedule/vectors.json": "contracts/quartzo/occurrence_reschedule/vectors.json"
   },
   "manifest": {
     "contract_manifest.json": "2d123c87f41c9e378401e4daa3c27cc3b40a54daedbc05c397e8991678ae9ed1",
@@ -38,13 +39,14 @@
     "occurrence_actions/vectors.json": "90d3baa533262db8f8956a0182083a126439417458214d3e32e392585d101805",
     "P0_COMPLIANCE_MATRIX.md": "85dce7e0694650281d6d156ebedcd0c25f1aaefcfc40741376a4154f2c69e76a",
     "QUARTZO_COMPANION_UI_SPEC_V1.md": "1df313555ee2a269afdecd70a6c36debf248b35b399f751cc1fcce7f8b2a0580",
-    "QUARTZO_OBSIDIAN_COMPANION_CONTRACT.md": "951e9f280041d449354f3abd1cc1008125484b120b8ccb9b8352375c7463c110",
+    "QUARTZO_OBSIDIAN_COMPANION_CONTRACT.md": "ef4d440ea56655cb734a647468459f21c7402de91140bb59641d9d09185f934c",
     "QUARTZO_SYNC_PROTOCOL_V1.md": "b64cb2a498462f58b081a1fcb81d949085be6ad9768c8468e22e1eb5149b69a3",
     "QUARTZO_VAULT_INTEROP_CONTRACT_V1.md": "b37003c08bc16a3184029076080c24750bd8648523cb0cff9f4f014e736dfca9",
     "README.md": "db53ed3508f809256c1e3c491196aef7b0a7b208f29c7cdce83454fd0d4f56f4",
     "resource_capture/vectors.json": "9791209466a3b81a24f53e023082dc5c18cf354e408a8b4982b02456f2f49543",
     "scheduler/vectors.json": "82c7326f9ee8c3bf7c2398b9c7ff41aabb8c8fd535768faf614164cfa2ea9b01",
     "sync/vectors.json": "c2af75c58cbc0bec4888bfa33796bb029f9387753e5a3a5f108f442ea016dbe1",
-    "shared_settings/v1.md": "91c4575b18068bc0c26a2f7533938eb05cede53fc348a031c3221da0eb0e7f89"
+    "shared_settings/v1.md": "91c4575b18068bc0c26a2f7533938eb05cede53fc348a031c3221da0eb0e7f89",
+    "occurrence_reschedule/vectors.json": "cc7a930588742390af0401b496fe39abec101922c1a6abdbb6da6d057a45a071"
   }
 }
