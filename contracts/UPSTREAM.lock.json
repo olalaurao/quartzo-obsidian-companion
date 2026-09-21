@@ -1,7 +1,7 @@
 {
   "repository": "olalaurao/aplicativo",
-  "sourceCommit": "06496579fc87d083d17c6d259d43de751bd76717",
-  "syncTimestamp": "2026-09-19T17:51:44.870Z",
+  "sourceCommit": "53b47a5986ee00151551ecee367dfbd7d0dc6dfe",
+  "syncTimestamp": "2026-09-21T00:56:00.000Z",
   "contractVersions": {
     "vaultInteropVersion": "1.0.0",
     "syncProtocolVersion": "1.0.0",
@@ -39,7 +39,7 @@
     "P0_COMPLIANCE_MATRIX.md": "85dce7e0694650281d6d156ebedcd0c25f1aaefcfc40741376a4154f2c69e76a",
     "QUARTZO_COMPANION_UI_SPEC_V1.md": "1df313555ee2a269afdecd70a6c36debf248b35b399f751cc1fcce7f8b2a0580",
     "QUARTZO_OBSIDIAN_COMPANION_CONTRACT.md": "951e9f280041d449354f3abd1cc1008125484b120b8ccb9b8352375c7463c110",
-    "QUARTZO_SYNC_PROTOCOL_V1.md": "2733702dffad7734892cd2e64505fa0fa5a34328b7085783b04f75581ebfd544",
+    "QUARTZO_SYNC_PROTOCOL_V1.md": "b64cb2a498462f58b081a1fcb81d949085be6ad9768c8468e22e1eb5149b69a3",
     "QUARTZO_VAULT_INTEROP_CONTRACT_V1.md": "b37003c08bc16a3184029076080c24750bd8648523cb0cff9f4f014e736dfca9",
     "README.md": "db53ed3508f809256c1e3c491196aef7b0a7b208f29c7cdce83454fd0d4f56f4",
     "resource_capture/vectors.json": "9791209466a3b81a24f53e023082dc5c18cf354e408a8b4982b02456f2f49543",
