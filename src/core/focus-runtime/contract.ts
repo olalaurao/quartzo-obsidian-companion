@@ -67,7 +67,7 @@ export function focusStopwatchElapsedSeconds(input: {
   now: Date;
   stopwatchStartedAt?: string | null;
 }): number {
-  const maxSeconds = 1 << 31;
+  const maxSeconds = 2 ** 31;
   const previous = Math.max(
     0,
     Math.min(maxSeconds, Math.trunc(input.elapsedBeforeCurrentRun)),
