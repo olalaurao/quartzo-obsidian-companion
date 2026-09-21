@@ -68,6 +68,27 @@ export function manualRoutineOccurrenceId(routineId: string, startedAt: string):
   return `manual:routine:${id}@${startedAt}`;
 }
 
+export function routineExecutionForOccurrence(
+  source: Readonly<Record<string, unknown>>,
+  occurrenceId: string,
+): RoutineExecutionEvidence | undefined {
+  return parseExecutions(source.routine_executions)
+    .find(execution => execution.occurrence_id === occurrenceId);
+}
+
+export function routinePlainCompletions(
+  source: Readonly<Record<string, unknown>>,
+  occurrenceId: string,
+): Record<string, boolean> {
+  const execution = routineExecutionForOccurrence(source, occurrenceId);
+  if (!execution) return {};
+  return Object.fromEntries(
+    execution.steps
+      .filter(step => step.kind_snapshot === 'plain')
+      .map(step => [step.step_id, step.completed]),
+  );
+}
+
 function initialStepEvidence(
   step: ManualExecutionStep,
   completed: boolean,
