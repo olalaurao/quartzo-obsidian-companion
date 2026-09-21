@@ -2,7 +2,7 @@ import { DailyScheduleInput, NormalizedSchedule, NormalizedItem } from './types'
 import { localIsoDate } from '../local-date';
 import { occurrenceResponseIdForDailyItem } from '../occurrence_actions';
 
-type PresentationField = 'sourceType' | 'sourceLabel' | 'isCompletable' | 'isCompleted' | 'isSkipped' | 'outcome' | 'isPlayable' | 'restrictionMetadata' | 'responseState' | 'origin';
+type PresentationField = 'sourceType' | 'sourceLabel' | 'isCompletable' | 'isCompleted' | 'isSkipped' | 'outcome' | 'isPlayable' | 'editable' | 'restrictionMetadata' | 'responseState' | 'origin';
 type RawNormalizedItem = Omit<NormalizedItem, PresentationField>;
 
 export class DailyScheduleEngine {
@@ -72,7 +72,13 @@ export class DailyScheduleEngine {
 
     // Enrich the canonical occurrence projection with presentation capabilities.
     // UI surfaces consume these values and must never infer them independently.
-    const normalizedItems = this.enrichPresentationContract(items, objects, input.occurrenceResponses ?? {});
+    const normalizedItems = this.applyPlanningOverrides(
+      this.enrichPresentationContract(items, objects, input.occurrenceResponses ?? {}),
+      input.occurrenceOverrides ?? {},
+      objects,
+      input.occurrenceResponses ?? {},
+      date,
+    );
 
     // Determine kind based on what was processed
     const kind = this.determineKind(items, objects, googleEvents);
@@ -148,24 +154,28 @@ export class DailyScheduleEngine {
   }
 
   private static processTask(obj: Record<string, unknown>, date: string, items: RawNormalizedItem[]): void {
-    const id = obj.id as string;
-    const startDate = obj.start_date as string;
-    const endDate = obj.end_date as string;
-    const time = obj.time as string;
-    const duration = obj.duration as number;
+    const id = String(obj.id ?? '');
+    const scheduler = obj.scheduler && typeof obj.scheduler === 'object' && !Array.isArray(obj.scheduler)
+      ? obj.scheduler as Record<string, unknown>
+      : undefined;
+    const rawStartDate = String(obj.start_date ?? scheduler?.start_date ?? '');
+    const startDate = rawStartDate.includes('T') ? rawStartDate.split('T')[0] ?? '' : rawStartDate;
+    const time = String(obj.scheduled_time ?? obj.time ?? '');
+    const duration = Number(obj.duration ?? 0);
+    const rules = Array.isArray(scheduler?.rules) ? scheduler?.rules : [];
+    const seriesId = rules.length > 0 ? id : undefined;
 
-    if (startDate !== date) {
-      return;
-    }
+    if (!id || startDate !== date) return;
 
     if (time) {
       items.push({
         id: `task:${id}`,
         sourceId: id,
         occurrenceId: id,
+        seriesId,
         date,
         start: time,
-        end: duration ? this.calculateEndTime(time, duration) : this.calculateEndTime(time, 60),
+        end: this.calculateEndTime(time, duration > 0 ? duration : 60),
         isTimed: true
       });
     } else {
@@ -173,6 +183,7 @@ export class DailyScheduleEngine {
         id: `task:${id}`,
         sourceId: id,
         occurrenceId: id,
+        seriesId,
         date,
         isTimed: false
       });
@@ -385,12 +396,22 @@ export class DailyScheduleEngine {
   }
 
   private static processGoal(obj: Record<string, unknown>, date: string, items: RawNormalizedItem[]): void {
-    const id = obj.id as string;
-    const startDate = obj.start_date as string;
+    const id = String(obj.id ?? '');
+    const startDate = String(obj.start_date ?? '').split('T')[0] ?? '';
+    const deadline = String(obj.deadline ?? '').split('T')[0] ?? '';
 
     if (startDate === date) {
       items.push({
         id: `goalStart:${id}`,
+        sourceId: id,
+        date,
+        isTimed: false,
+        isAllDay: false
+      });
+    }
+    if (deadline === date) {
+      items.push({
+        id: `goalDeadline:${id}`,
         sourceId: id,
         date,
         isTimed: false,
@@ -451,7 +472,9 @@ export class DailyScheduleEngine {
 
     return items.map(item => {
       const source = byId.get(item.sourceId);
-      const sourceType = source == null ? 'google_calendar' : String(source.type ?? '');
+      let sourceType = source == null ? 'google_calendar' : String(source.type ?? '');
+      if (item.id.startsWith('goalStart:')) sourceType = 'goalStart';
+      if (item.id.startsWith('goalDeadline:')) sourceType = 'goalDeadline';
       const sourcePath = source == null ? '' : String(source.__path ?? '');
       const rotationGroup = item.id.startsWith('rotation:') ? item.id.split(':')[2] ?? '' : '';
       const sourceLabel = source == null
@@ -466,7 +489,9 @@ export class DailyScheduleEngine {
       ]);
       const isCompletable = source != null && completableTypes.has(sourceType);
       const occurrenceId = item.occurrenceId ?? item.id;
-      const actionOccurrenceId = occurrenceResponseIdForDailyItem(item.id, item.date);
+      const actionOccurrenceId = item.occurrenceId?.includes('@')
+        ? item.occurrenceId
+        : occurrenceResponseIdForDailyItem(item.id, item.date);
       const responseState = occurrenceResponses?.[actionOccurrenceId]
         ?? occurrenceResponses?.[occurrenceId]
         ?? occurrenceResponses?.[item.id];
@@ -479,6 +504,7 @@ export class DailyScheduleEngine {
         ? { ...(restrictionRaw as Record<string, unknown>) }
         : undefined;
       const isPlayable = source?.playable === true;
+      const editable = source != null && source.editable !== false;
       const origin = item.id.startsWith('google_calendar:')
         ? 'externalEvent' as const
         : item.id.startsWith('legacyTime:')
@@ -496,11 +522,98 @@ export class DailyScheduleEngine {
         isSkipped,
         outcome,
         isPlayable,
+        editable,
         restrictionMetadata,
         ...(responseState ? { responseState } : {}),
         origin,
       };
     });
+  }
+
+  private static applyPlanningOverrides(
+    items: NormalizedItem[],
+    overrides: DailyScheduleInput['occurrenceOverrides'],
+    objects: Array<Record<string, unknown>>,
+    occurrenceResponses: DailyScheduleInput['occurrenceResponses'],
+    date: string,
+  ): NormalizedItem[] {
+    if (!overrides || Object.keys(overrides).length === 0) return items;
+    const matched = new Set<string>();
+    const projected: NormalizedItem[] = [];
+
+    for (const item of items) {
+      const candidates = [item.actionOccurrenceId, item.occurrenceId, item.id].filter(
+        (value): value is string => Boolean(value),
+      );
+      const override = candidates
+        .map(key => overrides[key])
+        .find(value => value?.scope === 'single' && value.startAtOverride && value.endAtOverride);
+      if (!override) {
+        projected.push(item);
+        continue;
+      }
+      matched.add(override.occurrenceId);
+      const placement = this.overridePlacement(override.startAtOverride!, override.endAtOverride!);
+      if (placement.date !== date) continue;
+      projected.push({
+        ...item,
+        date,
+        start: placement.start,
+        end: placement.end,
+        isTimed: true,
+        isAllDay: false,
+        occurrenceId: override.occurrenceId,
+        actionOccurrenceId: override.occurrenceId,
+      });
+    }
+
+    const objectIds = new Set(objects.map(object => String(object.id ?? '')).filter(Boolean));
+    for (const override of Object.values(overrides)) {
+      if (
+        matched.has(override.occurrenceId) ||
+        override.scope !== 'single' ||
+        !override.startAtOverride ||
+        !override.endAtOverride ||
+        !objectIds.has(override.sourceId)
+      ) {
+        continue;
+      }
+      const placement = this.overridePlacement(override.startAtOverride, override.endAtOverride);
+      if (placement.date !== date) continue;
+
+      const id = override.occurrenceId.replace(/@\d{4}-\d{2}-\d{2}$/, '');
+      const enriched = this.enrichPresentationContract([{
+        id,
+        sourceId: override.sourceId,
+        occurrenceId: override.occurrenceId,
+        date,
+        start: placement.start,
+        end: placement.end,
+        isTimed: true,
+        isAllDay: false,
+      }], objects, occurrenceResponses ?? {});
+      if (enriched[0]) projected.push(enriched[0]);
+    }
+
+    return projected.sort((left, right) => {
+      if (left.start == null && right.start == null) return left.id.localeCompare(right.id);
+      if (left.start == null) return 1;
+      if (right.start == null) return -1;
+      return left.start.localeCompare(right.start) || left.id.localeCompare(right.id);
+    });
+  }
+
+  private static overridePlacement(startIso: string, endIso: string): { date: string; start: string; end: string } {
+    const startMatch = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(startIso);
+    const endMatch = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(endIso);
+    if (!startMatch || !endMatch) {
+      throw new Error('Shared planning override has an invalid time range.');
+    }
+    return {
+      date: startMatch[1],
+      start: startMatch[2],
+      end: endMatch[2],
+    };
   }
 
   private static isSourceCompleted(sourceType: string, source: Record<string, unknown>): boolean {
