@@ -2,7 +2,25 @@ import { App, Modal, Plugin, PluginSettingTab, Setting, Notice, TFile, TAbstract
 import { VaultIndexEngine } from './vault/index';
 import type { IndexedObject } from './vault/index/types';
 import { SafeObjectMutationRepository } from './vault/object-mutation';
+import { ManualExecutionRepository } from './vault/manual-execution';
 import type { SafeObjectMutation } from './core/object-mutation';
+import { ObjectParser } from './core/objects';
+import {
+  assertTrackerCaptureSupported,
+  projectTrackerForCapture,
+} from './core/tracker-capture';
+import {
+  manualRoutineOccurrenceId,
+  parseManualExecutionSteps,
+  resolveEffectiveLinkedSteps,
+  resolveManualExecutionReferences,
+  resolveManualExecutionRunCapability,
+  routinePlainCompletions,
+  type ManualExecutionObject,
+  type ManualExecutionReferenceResolution,
+  type ManualExecutionStep,
+  type ManualExecutionStepState,
+} from './core/manual-execution';
 import {
   DriveSyncCoordinator,
   type PairingScanProgress,
@@ -17,7 +35,9 @@ import { GOOGLE_COMPANION_SCOPES } from './integrations/google/auth/scopes';
 import { QuartzoView, QUARTZO_VIEW_TYPE, type QuartzoSection, type QuartzoAction } from './ui';
 import { buildPairingDiagnosticsText } from './ui/sync/pairing-diagnostics';
 import { ViewContext } from './ui/types';
-import { addLocalDays, localIsoDate, parseLocalIsoDate } from './core/local-date';
+import { ManualExecutionModal } from './ui/execution/manual-execution-modal';
+import { QuickAddModal } from './ui/quick-add/modal';
+import { addLocalDays, localIsoDate, localIsoDateTime, parseLocalIsoDate } from './core/local-date';
 import { ReminderService, type ReminderMode, type ReminderSourceObject, type ReminderDeliveryOccurrence } from './core/reminders';
 import {
   OccurrenceActionService,
@@ -115,6 +135,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
   private planningStateRepository: SharedPlanningStateRepository | null = null;
   private occurrenceDomainMutationRepository: OccurrenceDomainMutationRepository | null = null;
   private safeObjectMutationRepository: SafeObjectMutationRepository | null = null;
+  private manualExecutionRepository: ManualExecutionRepository | null = null;
   private occurrenceResponses: Record<string, OccurrenceResponseState> = {};
   private occurrenceOverrides: Record<string, OccurrenceTimeOverride> = {};
   private googleAccessRefreshInFlight: Promise<string | null> | null = null;
@@ -150,6 +171,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.planningStateRepository = new SharedPlanningStateRepository(this.app.vault);
     this.occurrenceDomainMutationRepository = new OccurrenceDomainMutationRepository(this.app.vault);
     this.safeObjectMutationRepository = new SafeObjectMutationRepository(this.app.vault);
+    this.manualExecutionRepository = new ManualExecutionRepository(this.app.vault);
     try {
       this.occurrenceResponses = await this.occurrenceStateRepository.loadResponses();
     } catch (error) {
