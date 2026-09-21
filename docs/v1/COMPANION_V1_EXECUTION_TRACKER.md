@@ -31,7 +31,7 @@ A V1 só é considerada pronta quando todos os quatro marcos abaixo estiverem co
 - [x] A4 System/Routine manual execution contract upstream.
 - [x] A4 Companion manual Run / Routine execution.
 - [x] **A5 Focus/Pomodoro runtime contract upstream.**
-- [ ] **A5 Companion Focus/Pomodoro runtime.**
+- [x] **A5 Companion Focus/Pomodoro runtime.**
 - [ ] Resolver semântica cross-client de conclusão de ocorrência agendada de System.
 - [ ] Resolver/documentar boundary V1 de Overdue + Adaptive Essentials/Capacity.
 
@@ -96,7 +96,7 @@ Resultado:
 
 ## Milestone ativo — A5 Focus/Pomodoro runtime
 
-**Status: 🟡 A5 upstream ✅ mergeado no Quartzo `a8ec975c`; Companion implementado no branch `contracts/companion-focus-runtime-v1`, certificação/CI pendentes.**
+**Status: ✅ A5 fechado upstream + Companion. Quartzo `a8ec975c`; Companion PR #47 → `16c2b616`.**
 
 ### A5.1 — owner e persistência atuais
 - [x] Confirmar que existe um único Focus/Pomodoro runtime no Quartzo.
@@ -116,7 +116,7 @@ Resultado:
 - [x] Confirmar que sessão `completed` nessa data + `linked_item_slug` é evidence de conclusão do step.
 - [x] Contratar explicitamente que `partial` **não** marca checklist Pomodoro como concluído.
 - [x] Adicionar vectors cross-client para identidade/evidence de checklist Pomodoro.
-- [ ] Depois do runtime Companion, alterar manual execution capability de Pomodoro de `requiresFocusRuntime` para `supported`.
+- [x] Depois do runtime Companion, alterar manual execution capability de Pomodoro de `requiresFocusRuntime` para `supported`.
 
 ### A5.3 — multi-client ownership / takeover
 Descoberta nova:
@@ -184,26 +184,43 @@ Upstream fechado: Quartzo PR #44 → merge canônico `a8ec975c`. Implementação
 
 - [x] repin/vendoring no SHA canônico `a8ec975c` — bytes + SHA-256 verificados;
 - Implementado no branch, aguardando certificação: core puro + lifecycle, `FocusRuntimeRepository`, evidence em daily note, `focusControllerId` device-local, Vault-event reload, header/modal, foreign/legacy read-only, checklist identity/evidence e integração System/Routine.
-- [ ] implementar core puro a partir dos vectors;
-- [ ] implementar Vault adapter único para `sessions/current.md`;
-- [ ] implementar leitura/escrita de `PomodoroSession` sem source of truth paralelo;
-- [ ] usar timestamp state para renderização;
-- [ ] Home/Planner/Quick Add/header podem projetar o mesmo runtime;
-- [ ] optional compact timer pane, sem overlay Pomodoro independente;
-- [ ] pause/resume/finish/cancel somente se Companion for controller;
-- [ ] foreign active controller = read-only;
-- [ ] link de checklist usa `checklist:<parent>:<step>`;
-- [ ] liberar Pomodoro no manual-execution preflight;
-- [ ] validar System/Routine com step Pomodoro end-to-end;
-- [ ] Linux CI;
-- [ ] Windows CI;
-- [ ] contracts verify;
-- [ ] typecheck;
-- [ ] lint;
-- [ ] full tests;
-- [ ] architecture check;
-- [ ] build/release validation;
-- [ ] merge Companion.
+- [x] implementar core puro a partir dos vectors;
+- [x] implementar Vault adapter único para `sessions/current.md`;
+- [x] implementar leitura/escrita de `PomodoroSession` sem source of truth paralelo;
+- [x] usar timestamp state para renderização;
+- [x] Home/Planner/Quick Add/header podem projetar o mesmo runtime — header/Quartzo shell usam o owner único; sem runtime paralelo;
+- [x] compact Focus surface dentro do Quartzo + inline em manual execution; overlay Focus independente removido;
+- [x] pause/resume/finish/cancel somente se Companion for controller;
+- [x] foreign active controller = read-only;
+- [x] link de checklist usa `checklist:<parent>:<step>`;
+- [x] liberar Pomodoro no manual-execution preflight;
+- [x] validar System/Routine com step Pomodoro end-to-end — completed fecha; partial não fecha;
+- [x] Linux CI — verde no head `4a764303`;
+- [x] Windows CI — verde no head `4a764303`;
+- [x] contracts verify;
+- [x] typecheck;
+- [x] lint;
+- [x] full tests — 551/551 no head certificado;
+- [x] architecture check;
+- [x] build/release validation + clean-artifact/package;
+- [x] merge Companion — PR #47 → `16c2b616cd6dfe4983007a087f08a6adbdccf7b6`.
+
+---
+
+## Certificação A5 Companion
+
+- [x] contratos repinados byte-for-byte no upstream `a8ec975c055d44a97ab8cbe1799f47c455b857f7`;
+- [x] PR #47 final head certificado: `4a764303005429d078a9fd6e100e0f768069b0aa`;
+- [x] Linux CI: verde;
+- [x] Windows CI: verde;
+- [x] audit production dependencies: verde;
+- [x] contracts verify: verde;
+- [x] typecheck + lint: verdes;
+- [x] full tests: 551/551 verdes;
+- [x] contract tests + sync regressions: verdes;
+- [x] architecture check: verde, incluindo single-owner Focus / no independent overlay;
+- [x] build + release validate + clean artifact + package: verdes;
+- [x] merge canônico Companion: `16c2b616cd6dfe4983007a087f08a6adbdccf7b6`.
 
 ---
 
