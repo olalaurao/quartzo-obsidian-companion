@@ -9,6 +9,7 @@ import type { QuartzoSharedSettings } from '../../core/shared-settings';
 import { renderScheduleList, type ScheduleListOptions } from '../daily/schedule-list';
 import { projectAdaptivePlanner } from './adaptive-projection';
 import { monthGridDates, positionWeekItems, weekDates } from './calendar-projection';
+import type { ManualExecutionRunCapability } from '../../core/manual-execution';
 
 export type PlannerMode = 'day' | 'week' | 'month';
 export type PlannerDayLens = 'timeline' | 'adaptive';
@@ -29,6 +30,8 @@ export interface PlannerViewOptions {
     options?: { completedAt?: Date; snoozeMinutes?: number },
   ): Promise<CanonicalOccurrenceActionResult>;
   performOccurrenceReschedule?(item: NormalizedItem, start: Date, end: Date): Promise<void>;
+  manualExecutionCapability?(item: NormalizedItem): ManualExecutionRunCapability;
+  startManualExecution?(item: NormalizedItem): Promise<void>;
   canOpenItem?(item: NormalizedItem): boolean;
   onOpenItem?(item: NormalizedItem): void;
   onDayLensChange?(lens: PlannerDayLens): void;
@@ -41,6 +44,8 @@ function listOptions(options: PlannerViewOptions): ScheduleListOptions {
     titleForItem: options.titleForItem,
     performOccurrenceAction: options.performOccurrenceAction,
     performOccurrenceReschedule: options.performOccurrenceReschedule,
+    manualExecutionCapability: options.manualExecutionCapability,
+    startManualExecution: options.startManualExecution,
     canOpenItem: options.canOpenItem,
     onOpenItem: options.onOpenItem,
   };
