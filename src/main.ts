@@ -668,7 +668,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
         context.source.type,
         context.steps,
         {
-          focusRuntimeAvailable: false,
+          focusRuntimeAvailable: this.focusRuntimeRepository != null,
           availableDelegatedKinds: new Set(['habit', 'task', 'tracker_entry']),
         },
       );
@@ -696,6 +696,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
       context.references,
       context.objects,
       this.occurrenceResponses,
+      { parentObjectId: context.source.id },
     );
     return Object.fromEntries(
       context.steps
@@ -778,6 +779,11 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     run: ManualExecutionRunContext,
     item: NormalizedItem,
   ): Promise<void> {
+    if (step.kind === 'pomodoro') {
+      await this.startChecklistFocus(context.source.id, step);
+      return;
+    }
+
     const linked = context.references.byStepId.get(step.id);
     if (!linked) throw new Error(`Linked object for step ${step.id} is unavailable.`);
 
@@ -838,12 +844,12 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
       initialContext.source.type,
       initialContext.steps,
       {
-        focusRuntimeAvailable: false,
+        focusRuntimeAvailable: this.focusRuntimeRepository != null,
         availableDelegatedKinds: new Set(['habit', 'task', 'tracker_entry']),
       },
     );
     if (capability === 'requiresFocusRuntime') {
-      throw new Error('This run requires the canonical Focus runtime, which is not available in Companion yet.');
+      throw new Error('This run requires the canonical Focus runtime, which is not initialized.');
     }
     if (capability !== 'supported') {
       throw new Error('This run contains a step that cannot execute safely in Companion.');
