@@ -96,7 +96,7 @@ Resultado:
 
 ## Milestone ativo — A5 Focus/Pomodoro runtime
 
-**Status: 🟡 A5 upstream implementado no PR Quartzo #44; certificação no head `222ac11a`.**
+**Status: 🟡 A5 upstream ✅ mergeado no Quartzo `a8ec975c`; iniciando repin/implementação no Companion.**
 
 ### A5.1 — owner e persistência atuais
 - [x] Confirmar que existe um único Focus/Pomodoro runtime no Quartzo.
@@ -163,7 +163,7 @@ Plano:
 - [x] flutter analyze — verde no head `222ac11a`;
 - [ ] testes relevantes;
 - [ ] architecture/compliance gates;
-- [ ] CI final — Analyze ✅, Flutter Test ✅, Dial Focus CI ✅; Agent Contract Gate pendente;
+- [x] CI final — Analyze ✅, Flutter Test ✅, Dial Focus CI ✅, Agent Contract Gate ✅;
 - [ ] merge upstream.
 
 ### A5.6 — Companion implementation
@@ -210,7 +210,7 @@ Somente após upstream A5 verde/mergeado. Upstream atual: Quartzo PR #44 (`212e9
 
 - [x] Head `fc388f0a`: Agent preflight passou, mas `architecture_gate_test.dart` não compilou porque o assertion de identidade checklist usava uma string Dart interpolada (`$parentObjectId/$stepId`) em vez de literal raw.
 - [x] Corrigido em `222ac11a` com assertion raw; nenhuma regra de produto/runtime foi alterada por esse fix.
-- [ ] Certificar o head atual: Analyze ✅; Flutter Test ✅; Dial Focus CI ✅; Agent Contract Gate pendente.
+- [x] Certificar o head `222ac11a`: Analyze ✅; Flutter Test ✅; Dial Focus CI ✅; Agent Contract Gate ✅.
 
 ## Descobertas / scope growth log
 
