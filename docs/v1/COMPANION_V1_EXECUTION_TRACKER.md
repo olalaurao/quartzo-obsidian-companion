@@ -152,6 +152,7 @@ Plano:
 - [x] persistir controller ID no current state ativo/paused;
 - [x] preservar leitura de `sessions/current.md` legado com migration claim Quartzo/read-only Companion;
 - [x] garantir pause/resume/finish/cancel através do mesmo `PomodoroNotifier` + control gate;
+- [x] projetar foreign active runtime como read-only também na UI Quartzo;
 - [x] garantir fase/duração derivadas do preset snapshot persistido;
 - [x] garantir que reopen/reload recalcule por timestamps;
 - [x] confirmar completion evidence `PomodoroSession`;
@@ -201,6 +202,7 @@ Adicionar aqui qualquer coisa nova encontrada durante implementação. Não expa
 | 2026-09-21 | preset snapshot já viaja dentro do current-state; não é necessário sincronizar lista de presets para continuar sessão. | redução de escopo | A5 |
 | 2026-09-21 | checklist Pomodoro usa `checklist:<parentId>:<stepId>`. | contrato cross-client necessário | A5 |
 | 2026-09-21 | Legacy active `sessions/current.md` sem controller só pode ter vindo de runtime Quartzo pré-A5; Companion pré-A5 não criava Focus. | permite migração assimétrica segura: Quartzo claim, Companion read-only | A5 |
+| 2026-09-21 | Provider-level foreign Focus blocking alone is insufficient: mutation controls must visibly project read-only state instead of remaining tappable and failing. | permanent UX/integration invariant; architecture-gated | A5 |
 
 ---
 
