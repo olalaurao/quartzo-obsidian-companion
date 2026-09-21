@@ -56,6 +56,7 @@ export class FocusRuntimeModal extends Modal {
   constructor(
     app: App,
     private readonly controller: FocusRuntimeUiController,
+    private readonly onClosed?: () => void,
   ) {
     super(app);
   }
@@ -69,6 +70,7 @@ export class FocusRuntimeModal extends Modal {
     if (this.timer != null) window.clearInterval(this.timer);
     this.timer = null;
     this.contentEl.empty();
+    this.onClosed?.();
   }
 
   private render(): void {
