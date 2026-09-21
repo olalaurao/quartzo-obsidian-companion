@@ -1,0 +1,228 @@
+# Companion V1 Execution Tracker
+
+> **Status-only / execution tracker.**
+>
+> Este arquivo existe para não perder o estado do caminho até a V1 entre sessões, agentes e PRs. Ele **não é fonte canônica de regra de produto ou arquitetura**.
+>
+> Autoridade continua sendo:
+> 1. pedido atual;
+> 2. spec ativa aplicável;
+> 3. Quartzo `guidelines.md`;
+> 4. Quartzo `agents.md`;
+> 5. contratos upstream em `contracts/quartzo/`;
+> 6. Companion `guidelines.md` / `agents.md`;
+> 7. owners canônicos existentes.
+>
+> Quando este tracker descobrir uma regra permanente nova, a regra deve ser promovida ao documento/contract canônico correspondente no mesmo milestone.
+
+Última atualização operacional: **2026-09-21**.
+
+---
+
+## Linha de chegada V1
+
+A V1 só é considerada pronta quando todos os quatro marcos abaixo estiverem concluídos com evidência.
+
+### Marco A — fronteira Quartzo ↔ Companion
+- [x] Sync trigger coalescing upstream.
+- [x] Companion repinado após correção de sync.
+- [x] Occurrence Reschedule contract upstream.
+- [x] Reschedule implementado e vendorado no Companion.
+- [x] A4 System/Routine manual execution contract upstream.
+- [x] A4 Companion manual Run / Routine execution.
+- [ ] **A5 Focus/Pomodoro runtime contract upstream.**
+- [ ] **A5 Companion Focus/Pomodoro runtime.**
+- [ ] Resolver semântica cross-client de conclusão de ocorrência agendada de System.
+- [ ] Resolver/documentar boundary V1 de Overdue + Adaptive Essentials/Capacity.
+
+### Marco B — comportamento restante da V1
+- [x] System manual Run no Companion.
+- [x] Routine manual execution no Companion.
+- [ ] Focus/Pomodoro parity.
+- [ ] Home/Planner/Dial/Detail/Search/Browse/Journal polish final.
+- [ ] Reminder/Calendar edge-case closure.
+- [ ] Sync Center diagnostics finais sem reescrever o sync.
+
+### Marco C — qualidade/release gates
+- [ ] UI/UX + accessibility pass.
+- [ ] performance/lifecycle/race pass.
+- [ ] pending-sync path + reason diagnostics.
+- [ ] macOS CI.
+- [ ] docs/capability matrix final.
+
+### Marco D — prova e release
+- [ ] E2E app ↔ Drive ↔ Obsidian.
+- [ ] BRAT clean install.
+- [ ] BRAT update sobre instalação existente.
+- [ ] Release Candidate.
+- [ ] feature freeze.
+- [ ] blocker-only fixes.
+- [ ] **V1.**
+
+---
+
+## Estado certificado atual
+
+### A4 — System/Routine manual execution
+**Status: ✅ fechado.**
+
+Upstream Quartzo:
+- PR #42.
+- final head certificado: `cfb05278`.
+- merge canônico: `6aa6fd1787a147c7598bf98cb4473ea2b5fb9cdd`.
+- Flutter Analyze: verde.
+- Flutter Test: verde.
+- Dial Focus CI: verde.
+- Agent Contract Gate: verde.
+
+Companion:
+- PR #46.
+- final head certificado: `c50e3853`.
+- merge canônico: `574904eee7d734c4d2e22f26df6825efffc186c7`.
+- Linux CI: verde.
+- Windows CI: verde.
+- contracts verify / typecheck / lint / full tests / contract vectors / sync regression / architecture check / build / release validation / package: verdes.
+
+Resultado:
+- System Run e Routine execution usam contrato vendorizado.
+- whole-run preflight é fail-closed.
+- linked owners permanecem canônicos.
+- System evidence + summary Task são retry-safe.
+- Routine progress é occurrence-scoped.
+- Pomodoro continua `requiresFocusRuntime` até A5.
+- Run continua separado de Done/Already did.
+
+---
+
+## Milestone ativo — A5 Focus/Pomodoro runtime
+
+**Status: 🟡 pré-mapeamento concluído; contrato upstream é o próximo write.**
+
+### A5.1 — owner e persistência atuais
+- [x] Confirmar que existe um único Focus/Pomodoro runtime no Quartzo.
+- [x] Confirmar que `PomodoroNotifier` é o owner de runtime atual.
+- [x] Confirmar que transição de work/short break/long break pertence a `PomodoroPhaseEngine`.
+- [x] Confirmar que timer é timestamp/state-based, não contador de UI.
+- [x] Confirmar runtime persistido em `sessions/current.md`.
+- [x] Confirmar histórico/evidence persistido como `PomodoroSession`.
+- [x] Confirmar que preset ativo é persistido via `selectedPresetId` + `preset_snapshot`; não criar segundo sync de presets.
+- [x] Confirmar estados relevantes: scheduled / active / paused / completed / partial / cancelled.
+- [x] Confirmar modos: pomodoro / stopwatch.
+- [x] Confirmar phases: work / shortBreak / longBreak / custom / stopwatch.
+
+### A5.2 — integração com Checklist/System/Routine
+- [x] Identificar identidade estável de checklist Pomodoro:
+  `checklist:<parentObjectId>:<stepId>`.
+- [x] Confirmar que sessão `completed` nessa data + `linked_item_slug` é evidence de conclusão do step.
+- [ ] Contratar explicitamente que `partial` **não** marca checklist Pomodoro como concluído.
+- [ ] Adicionar vectors cross-client para identidade/evidence de checklist Pomodoro.
+- [ ] Depois do runtime Companion, alterar manual execution capability de Pomodoro de `requiresFocusRuntime` para `supported`.
+
+### A5.3 — multi-client ownership / takeover
+Descoberta nova:
+- `sessions/current.md` é compartilhado, mas hoje não persiste quem controla a sessão.
+- não existe no Flutter um client/device ID canônico reutilizável.
+- o contrato Companion já proíbe takeover simultâneo silencioso.
+
+Plano:
+- [ ] definir `focus_controller_id` como identidade **device-local**;
+- [ ] gerar/persistir o ID por instalação no owner local existente, sem colocar credencial/segredo em Markdown;
+- [ ] enquanto a sessão estiver ativa/paused, persistir `focus_controller_id` em `sessions/current.md`;
+- [ ] cliente cujo ID não seja o controller observa a sessão como read-only;
+- [ ] takeover explícito fica fora de V1 até existir protocolo próprio;
+- [ ] sessão idle pode ser observada/assumida sem takeover de runtime ativo;
+- [ ] vectors devem provar owner match / foreign owner / legacy state sem controller;
+- [ ] decidir e contratar comportamento seguro para `sessions/current.md` legado sem controller ID.
+
+### A5.4 — contrato upstream
+- [ ] criar `contracts/quartzo/focus_runtime/vectors.json`;
+- [ ] adicionar `focusRuntimeContractVersion: 1.0.0` ao manifest;
+- [ ] documentar Focus Runtime V1 no Companion contract upstream;
+- [ ] atualizar `contracts/quartzo/README.md`;
+- [ ] criar runner Dart executável dos vectors;
+- [ ] incluir vectors no contract fixture gate geral;
+- [ ] adicionar architecture gate para owner/persistência/controller;
+- [ ] atualizar `guidelines.md` se a regra de ownership cross-client for permanente;
+- [ ] atualizar `agents.md` com owner e boundary de takeover;
+- [ ] manter `PomodoroNotifier` como runtime owner; não criar provider/runtime paralelo.
+
+### A5.5 — Quartzo implementation alignment
+- [ ] extrair codec/policy puro apenas se necessário para compartilhar a regra; não duplicar `PomodoroNotifier`;
+- [ ] persistir controller ID no current state ativo/paused;
+- [ ] preservar leitura de `sessions/current.md` legado;
+- [ ] garantir pause/resume/finish/cancel através do mesmo owner;
+- [ ] garantir fase/duração derivadas do preset snapshot persistido;
+- [ ] garantir que reopen/reload recalcule por timestamps;
+- [ ] confirmar completion evidence `PomodoroSession`;
+- [ ] confirmar partial/cancelled semantics;
+- [ ] testar checklist linked evidence;
+- [ ] flutter analyze;
+- [ ] testes relevantes;
+- [ ] architecture/compliance gates;
+- [ ] CI final;
+- [ ] merge upstream.
+
+### A5.6 — Companion implementation
+Somente após upstream A5 verde/mergeado:
+- [ ] repin/vendoring no SHA canônico;
+- [ ] implementar core puro a partir dos vectors;
+- [ ] implementar Vault adapter único para `sessions/current.md`;
+- [ ] implementar leitura/escrita de `PomodoroSession` sem source of truth paralelo;
+- [ ] usar timestamp state para renderização;
+- [ ] Home/Planner/Quick Add/header podem projetar o mesmo runtime;
+- [ ] optional compact timer pane, sem overlay Pomodoro independente;
+- [ ] pause/resume/finish/cancel somente se Companion for controller;
+- [ ] foreign active controller = read-only;
+- [ ] link de checklist usa `checklist:<parent>:<step>`;
+- [ ] liberar Pomodoro no manual-execution preflight;
+- [ ] validar System/Routine com step Pomodoro end-to-end;
+- [ ] Linux CI;
+- [ ] Windows CI;
+- [ ] contracts verify;
+- [ ] typecheck;
+- [ ] lint;
+- [ ] full tests;
+- [ ] architecture check;
+- [ ] build/release validation;
+- [ ] merge Companion.
+
+---
+
+## Descobertas / scope growth log
+
+Adicionar aqui qualquer coisa nova encontrada durante implementação. Não expandir automaticamente o milestone atual; primeiro classificar.
+
+| Data | Descoberta | Classificação | Milestone/owner |
+|---|---|---|---|
+| 2026-09-21 | Daily Schedule do Quartzo não deriva atualmente `isCompleted` de `SystemExecution` para ocorrência agendada de System. | gap real; não resolver tratando Run como Done | Marco A, pós-A5/boundary |
+| 2026-09-21 | `sessions/current.md` não identifica controller cross-client. | blocker arquitetural A5 | A5 |
+| 2026-09-21 | Não existe client/device ID canônico reutilizável no Flutter. | nova decisão necessária | A5 |
+| 2026-09-21 | preset snapshot já viaja dentro do current-state; não é necessário sincronizar lista de presets para continuar sessão. | redução de escopo | A5 |
+| 2026-09-21 | checklist Pomodoro usa `checklist:<parentId>:<stepId>`. | contrato cross-client necessário | A5 |
+
+---
+
+## Parking lot — não inflar milestone atual
+
+Itens reais, mas que não devem entrar no PR corrente sem necessidade de correctness:
+
+- scheduled System occurrence completion projection;
+- Overdue cross-client boundary;
+- Adaptive Essentials / Capacity / parked-items boundary;
+- full public multi-client focus takeover protocol;
+- background auto-run de Systems/Routines;
+- series-wide / thisAndFuture Reschedule;
+- garantias de timer quando Obsidian está fechado;
+- UI polish não relacionada ao correctness do milestone atual.
+
+---
+
+## Regra de atualização deste tracker
+
+A cada milestone/PR:
+1. atualizar estado e SHA/PR;
+2. marcar apenas itens comprovados por teste/CI/E2E;
+3. registrar descobertas novas;
+4. promover regras permanentes para contracts/`guidelines.md`/`agents.md`;
+5. não apagar gaps: mover para o milestone correto;
+6. manter uma única linha de chegada até a V1.
