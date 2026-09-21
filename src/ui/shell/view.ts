@@ -201,6 +201,19 @@ export class QuartzoView extends ItemView {
 
     const actions = document.createElement('div');
     actions.className = 'quartzo-shell-actions';
+
+    const focusSnapshot = this.context.plugin.getFocusRuntimeViewState(new Date());
+    const focusButton = document.createElement('button');
+    focusButton.textContent = focusSnapshot.runtime.currentSessionId
+      ? focusSnapshot.canControl
+        ? 'Focus · Active'
+        : 'Focus · Read-only'
+      : 'Focus';
+    focusButton.addEventListener('click', () => {
+      void this.context.plugin.openFocusRuntime();
+    });
+    actions.appendChild(focusButton);
+
     for (const [action, label] of [['search', 'Search'], ['add', 'Add'], ['sync', 'Sync'], ['settings', 'Settings']] as Array<[QuartzoAction, string]>) {
       const button = document.createElement('button');
       button.textContent = label;
