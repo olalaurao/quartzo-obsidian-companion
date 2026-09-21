@@ -51,8 +51,15 @@ const KNOWN_FIELDS: Record<ObjectType, Set<string>> = {
   goal: new Set(['id', 'type', 'title', 'state', 'start_date', 'deadline', 'description', 'body']),
   event: new Set(['id', 'type', 'title', 'date', 'time_of_day', 'duration', 'body']),
   pomodoro_session: new Set(['id', 'type', 'title', 'date', 'work_duration', 'start', 'duration', 'state', 'body']),
-  system: new Set(['id', 'type', 'title', 'time', 'scheduler', 'body']),
-  routine: new Set(['id', 'type', 'title', 'organizer_type', 'statement', 'start_date', 'estimated_minutes', 'body']),
+  system: new Set([
+    'id', 'type', 'title', 'time', 'trigger', 'scheduled_time', 'scheduler',
+    'steps', 'execution_history', 'body',
+  ]),
+  routine: new Set([
+    'id', 'type', 'title', 'organizer_type', 'statement', 'start_date',
+    'estimated_minutes', 'show_in_planner', 'mood_trigger', 'scheduler',
+    'steps', 'routine_executions_version', 'routine_executions', 'body',
+  ]),
   social_post: new Set(['id', 'type', 'title', 'platform', 'personal_note', 'body']),
   mood_definition: new Set(['id', 'type', 'title', 'numeric_value', 'pleasantness', 'body']),
   idea: new Set(['id', 'type', 'title', 'horizon', 'body']),
@@ -404,7 +411,15 @@ export class ObjectParser {
           ...baseObject,
           type: 'system',
           time: frontmatter.time as string,
+          trigger: frontmatter.trigger as string,
+          scheduled_time: frontmatter.scheduled_time as string,
           scheduler: frontmatter.scheduler as System['scheduler'],
+          steps: Array.isArray(frontmatter.steps)
+            ? frontmatter.steps as System['steps']
+            : undefined,
+          execution_history: Array.isArray(frontmatter.execution_history)
+            ? frontmatter.execution_history as System['execution_history']
+            : undefined,
         } as System;
         break;
       
@@ -416,6 +431,16 @@ export class ObjectParser {
           statement: frontmatter.statement as string,
           start_date: frontmatter.start_date as string,
           estimated_minutes: frontmatter.estimated_minutes as number,
+          show_in_planner: frontmatter.show_in_planner as boolean,
+          mood_trigger: frontmatter.mood_trigger as string,
+          scheduler: frontmatter.scheduler as Record<string, unknown>,
+          steps: Array.isArray(frontmatter.steps)
+            ? frontmatter.steps as Routine['steps']
+            : undefined,
+          routine_executions_version: frontmatter.routine_executions_version as number,
+          routine_executions: Array.isArray(frontmatter.routine_executions)
+            ? frontmatter.routine_executions as Routine['routine_executions']
+            : undefined,
         } as Routine;
         break;
       
