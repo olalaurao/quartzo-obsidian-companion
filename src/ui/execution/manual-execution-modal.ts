@@ -1,4 +1,4 @@
-import { Modal, Notice } from 'obsidian';
+import { App, Modal, Notice } from 'obsidian';
 import type {
   ManualExecutionStep,
   ManualExecutionStepState,
@@ -30,7 +30,7 @@ export class ManualExecutionModal extends Modal {
   private linkedStates: Record<string, ManualExecutionStepState>;
 
   constructor(
-    app: ConstructorParameters<typeof Modal>[0],
+    app: App,
     private readonly options: ManualExecutionModalOptions,
   ) {
     super(app);
