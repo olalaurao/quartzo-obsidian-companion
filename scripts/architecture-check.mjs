@@ -834,7 +834,8 @@ function checkCanonicalOccurrenceReschedule() {
     return false;
   }
   if (actionTypes.includes("'reschedule'") ||
-      !controls.includes('capabilities.canReplan && options.reschedule') ||
+      !controls.includes('const reschedule = options.reschedule') ||
+      !controls.includes('capabilities.canReplan && reschedule') ||
       !main.includes('performOccurrenceReschedule(')) {
     console.error('FAIL: Reschedule is mixed into occurrence responses or bypasses the shared UI callback');
     return false;
