@@ -105,7 +105,11 @@ export class ManualExecutionModal extends Modal {
           const action = document.createElement('button');
           action.type = 'button';
           action.disabled = this.busy;
-          action.textContent = step.kind === 'tracker_entry' ? 'Log' : 'Complete';
+          action.textContent = step.kind === 'tracker_entry'
+            ? 'Log'
+            : step.kind === 'pomodoro'
+              ? 'Focus'
+              : 'Complete';
           action.addEventListener('click', () => {
             void this.runBusy(async () => {
               await this.options.onLinkedAction(step);
