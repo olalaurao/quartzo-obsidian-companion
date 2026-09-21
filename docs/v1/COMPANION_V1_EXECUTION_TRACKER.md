@@ -168,6 +168,20 @@ Plano:
 
 ### A5.6 — Companion implementation
 Somente após upstream A5 verde/mergeado. Upstream atual: Quartzo PR #44 (`212e922e`), CI pendente:
+#### Mapeamento de owners/arquivos já concluído
+- `src/main.ts`: composition root; adicionar controller ID device-local em `QuartzoCompanionSettings`, inicializar Focus repository/runtime e expor callbacks para UI/manual execution.
+- `loadSettings()/saveSettings()`: owner local canônico do `focusControllerId`; não colocar o ID em shared settings/vault.
+- novo `src/core/focus-runtime/*`: somente policy/codec/timer/phase semantics puras a partir dos vectors vendorizados; sem segundo store.
+- novo `src/vault/focus-runtime.ts`: único adapter de `sessions/current.md`, usando `Vault.process()` para mutações owner-only e preservando campos desconhecidos.
+- `registerVaultEvents()`: tratar create/modify/delete/rename de `sessions/current.md` como reload do mesmo runtime; não criar watcher paralelo.
+- `src/core/manual-execution/policy.ts`: manter policy única e passar `focusRuntimeAvailable: true` quando o owner estiver inicializado.
+- `completeLinkedManualExecutionStep()`: Pomodoro deve abrir/iniciar o Focus owner com linked ID `checklist:<parent>:<step>`; Habit/Task/Tracker continuam nos owners atuais.
+- `manualExecutionLinkedStates()`: completion continua resolvida por evidence `PomodoroSession.completed`, nunca por estado transitório do timer.
+- `src/ui/shell/view.ts` + Home/Planner: apenas projetar snapshot/callbacks do mesmo runtime.
+- UI Focus V1: preferir pane/section compacta no Quartzo view; nada de overlay Pomodoro independente.
+- foreign/legacy active controller: timer visível por timestamp, todos os controles mutáveis disabled/read-only.
+- colisão offline: deixar `sessions/current.md` no sync three-way normal; não auto-merge nem takeover.
+
 - [ ] repin/vendoring no SHA canônico;
 - [ ] implementar core puro a partir dos vectors;
 - [ ] implementar Vault adapter único para `sessions/current.md`;
