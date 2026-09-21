@@ -256,7 +256,7 @@
       "kind": "system",
       "count": 1,
       "items": [
-        {"id": "system:system-fixture", "sourceId": "system-fixture", "occurrenceId": "system-fixture", "date": "2026-09-06", "start": "08:00", "isTimed": true}
+        {"id": "system:system-fixture", "sourceId": "system-fixture", "occurrenceId": "system:system-fixture@2026-09-06", "date": "2026-09-06", "start": "08:00", "isTimed": true}
       ]
     }
   },

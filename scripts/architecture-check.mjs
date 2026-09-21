@@ -773,6 +773,21 @@ function checkCanonicalOccurrenceActions() {
     console.error('FAIL: Companion occurrence actions do not use the app canonical dated identity');
     return false;
   }
+  const reportDoneStart = policy.indexOf('function canReportDone(');
+  const reportDoneEnd = policy.indexOf('function canSkip(', reportDoneStart);
+  const reportDoneBlock = reportDoneStart >= 0 && reportDoneEnd > reportDoneStart
+    ? policy.slice(reportDoneStart, reportDoneEnd)
+    : '';
+  if (!reportDoneBlock || reportDoneBlock.includes("'systemRun'")) {
+    console.error('FAIL: Scheduled System exposes a generic Done owner instead of Run + Finish evidence');
+    return false;
+  }
+  if (!schedule.includes('isScheduledSystemOccurrenceCompleted') ||
+      !schedule.includes("sourceType === 'system' ? false") ||
+      !schedule.includes('occurrenceId: `system:${id}@${date}`')) {
+    console.error('FAIL: Daily Schedule System completion is not exact execution evidence by canonical occurrence ID');
+    return false;
+  }
   if (!policy.includes('export class OccurrenceActionPolicy') ||
       !controls.includes('OccurrenceActionPolicy.resolve({') ||
       !controls.includes('options.perform(action, actionOptions)') ||
@@ -834,7 +849,7 @@ function checkCanonicalManualExecution() {
   const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
 
   if (!Array.isArray(vectors) || vectors.length === 0 ||
-      lock.contractVersions?.systemRoutineExecutionContractVersion !== '1.0.0' ||
+      lock.contractVersions?.systemRoutineExecutionContractVersion !== '1.1.0' ||
       !lock.manifest?.['system_routine_execution/vectors.json']) {
     console.error('FAIL: Manual execution is not pinned to the vendored executable contract');
     return false;
@@ -846,6 +861,10 @@ function checkCanonicalManualExecution() {
       !system.includes('finalizeSystemRun') ||
       !system.includes('execution_history') ||
       !system.includes('systemSummaryTaskId') ||
+      !system.includes('isScheduledSystemOccurrenceCompleted') ||
+      !system.includes('occurrence_id') ||
+      !system.includes('scheduled_for') ||
+      !system.includes('different scheduled occurrence context') ||
       !routine.includes('manualRoutineOccurrenceId') ||
       !routine.includes('routine_executions_version: 2') ||
       !references.includes('resolveManualExecutionReferences') ||
@@ -867,6 +886,8 @@ function checkCanonicalManualExecution() {
       !main.includes('new ManualExecutionModal(') ||
       !main.includes('this.manualExecutionRepository') ||
       !main.includes('OccurrenceActionService') ||
+      !main.includes("source.type === 'system' && scheduledOccurrence") ||
+      !main.includes('{ occurrenceId: run.occurrenceId, scheduledFor: run.scheduledFor }') ||
       !controls.includes('manualExecutionCapability') ||
       !controls.includes('startManualExecution') ||
       !list.includes('manualExecutionCapability: options.manualExecutionCapability?.(item)') ||

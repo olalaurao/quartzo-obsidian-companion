@@ -58,4 +58,18 @@ describe('OccurrenceActionPolicy', () => {
     expect(record.canSkip).toBe(false);
     expect(record.statusLabel).toBe('Logged');
   });
+  it('scheduled System exposes Run + Skip but no generic Done owner', () => {
+    const system = OccurrenceActionPolicy.resolve({
+      sourceType: 'system',
+      outcome: 'pending',
+      completable: true,
+      playable: true,
+    });
+    expect(system.role).toBe('systemRun');
+    expect(system.canReportDone).toBe(false);
+    expect(system.canAlreadyDid).toBe(false);
+    expect(system.canSkip).toBe(true);
+    expect(system.canStart).toBe(true);
+    expect(system.startAction).toBe('runSystem');
+  });
 });

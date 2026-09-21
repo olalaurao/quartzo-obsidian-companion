@@ -4,6 +4,6 @@
   "schedulerContractVersion": "1.0.0",
   "dailyScheduleContractVersion": "1.0.0",
   "sharedSettingsContractVersion": "1.0.0",
-  "systemRoutineExecutionContractVersion": "1.0.0",
+  "systemRoutineExecutionContractVersion": "1.1.0",
   "focusRuntimeContractVersion": "1.0.0"
 }

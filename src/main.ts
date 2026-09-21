@@ -720,17 +720,26 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     const now = new Date();
     const startedAt = localIsoDateTime(now);
     const scheduledFor = this.scheduledForManualExecution(item);
+    const scheduledOccurrence = item.occurrenceId?.includes('@')
+      ? item.occurrenceId
+      : item.actionOccurrenceId?.includes('@')
+        ? item.actionOccurrenceId
+        : undefined;
+
     if (source.type === 'routine') {
-      const scheduledOccurrence = item.occurrenceId?.includes('@')
-        ? item.occurrenceId
-        : item.actionOccurrenceId?.includes('@')
-          ? item.actionOccurrenceId
-          : undefined;
       return {
         sourceId: source.id,
         startedAt,
         scheduledFor,
         occurrenceId: scheduledOccurrence ?? manualRoutineOccurrenceId(source.id, startedAt),
+      };
+    }
+    if (source.type === 'system' && scheduledOccurrence) {
+      return {
+        sourceId: source.id,
+        startedAt,
+        scheduledFor,
+        occurrenceId: scheduledOccurrence,
       };
     }
     return { sourceId: source.id, startedAt, scheduledFor };
@@ -936,6 +945,9 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
               startedAt: run.startedAt,
               finishedAt: localIsoDateTime(new Date()),
               stepCompletions,
+              ...(run.occurrenceId
+                ? { occurrenceId: run.occurrenceId, scheduledFor: run.scheduledFor }
+                : {}),
             },
             currentIndex,
             this.sharedSettings,

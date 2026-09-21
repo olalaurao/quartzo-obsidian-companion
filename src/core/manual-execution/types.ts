@@ -33,6 +33,8 @@ export type ManualExecutionRunCapability =
 export interface SystemExecutionEvidence {
   executed_at: string;
   finished_at?: string;
+  occurrence_id?: string;
+  scheduled_for?: string;
   step_completions: Record<string, boolean>;
   notes?: string;
 }
