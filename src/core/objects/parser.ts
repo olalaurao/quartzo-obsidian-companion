@@ -140,6 +140,7 @@ export class ObjectParser {
       'inbox': 'inbox',
       'shopping_list': 'shopping_list',
       'template': 'template',
+      'daily': 'daily_note',
       'daily_note': 'daily_note',
       'analysis': 'combined_analysis',
       'combined_analysis': 'combined_analysis',
@@ -223,17 +224,19 @@ export class ObjectParser {
     const { frontmatter, body } = this.parseMarkdown(markdown);
     const objectType = this.identifyType(frontmatter);
     
-    if (frontmatter.type === 'daily_note') {
-      // Daily notes are raw/read-only - return as-is with no transformation
+    if (objectType === 'daily_note') {
+      // Quartzo writes daily notes as type: daily while older Companion fixtures
+      // may use type: daily_note. Keep one canonical read-only projection and
+      // derive identity from date when the source file has no explicit id.
       return {
         object: {
-          id: String(frontmatter.id || ''),
+          ...frontmatter,
+          id: String(frontmatter.id ?? frontmatter.date ?? ''),
           type: 'daily_note',
-          title: String(frontmatter.title || ''),
+          title: String(frontmatter.title ?? ''),
           body,
-          ...frontmatter
         } as DailyNote,
-        unknownFields: []
+        unknownFields: [],
       };
     }
     
