@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DailyScheduleEngine } from '../../src/core/daily_schedule';
 import {
   parseOccurrenceTimeOverrides,
   planOccurrenceReschedule,
@@ -117,4 +118,70 @@ overrides:
       },
     });
   });
+  it('projects canonical Task schedule fields and editable capability', () => {
+    const schedule = DailyScheduleEngine.normalize({
+      date: '2026-09-21',
+      objects: [{
+        id: 'task-one-off',
+        type: 'task',
+        title: 'Task',
+        start_date: '2026-09-21T00:00:00.000',
+        scheduled_time: '14:30',
+        duration: 45,
+      }],
+    });
+
+    expect(schedule.items).toHaveLength(1);
+    expect(schedule.items[0]).toMatchObject({
+      id: 'task:task-one-off',
+      start: '14:30',
+      end: '15:15',
+      editable: true,
+      actionOccurrenceId: 'task:task-one-off@2026-09-21',
+    });
+  });
+
+  it('moves a single planning override across dates without changing occurrence identity', () => {
+    const overrides = {
+      'goalDeadline:goal-1@2026-09-21': {
+        occurrenceId: 'goalDeadline:goal-1@2026-09-21',
+        sourceId: 'goal-1',
+        scope: 'single' as const,
+        startAtOverride: '2026-09-22T09:00:00.000',
+        endAtOverride: '2026-09-22T09:30:00.000',
+        updatedAt: '2026-09-21T12:00:00.000',
+      },
+    };
+    const objects = [{
+      id: 'goal-1',
+      type: 'goal',
+      title: 'Goal',
+      deadline: '2026-09-21T00:00:00.000',
+    }];
+
+    const oldDay = DailyScheduleEngine.normalize({
+      date: '2026-09-21',
+      objects,
+      occurrenceOverrides: overrides,
+    });
+    expect(oldDay.items).toHaveLength(0);
+
+    const newDay = DailyScheduleEngine.normalize({
+      date: '2026-09-22',
+      objects,
+      occurrenceOverrides: overrides,
+    });
+    expect(newDay.items).toHaveLength(1);
+    expect(newDay.items[0]).toMatchObject({
+      sourceId: 'goal-1',
+      sourceType: 'goalDeadline',
+      occurrenceId: 'goalDeadline:goal-1@2026-09-21',
+      actionOccurrenceId: 'goalDeadline:goal-1@2026-09-21',
+      date: '2026-09-22',
+      start: '09:00',
+      end: '09:30',
+      editable: true,
+    });
+  });
+
 });
