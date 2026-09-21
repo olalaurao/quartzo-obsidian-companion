@@ -5,6 +5,7 @@ export interface ManualExecutionObject {
   type: string;
   title: string;
   frontmatter: Record<string, unknown>;
+  body?: string;
 }
 
 export interface ManualExecutionReferenceResolution {
