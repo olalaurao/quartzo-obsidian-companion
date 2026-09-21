@@ -96,7 +96,7 @@ Resultado:
 
 ## Milestone ativo — A5 Focus/Pomodoro runtime
 
-**Status: 🟡 A5 upstream implementado no PR Quartzo #44; certificação no head `f602754f`.**
+**Status: 🟡 A5 upstream implementado no PR Quartzo #44; certificação no head `222ac11a`.**
 
 ### A5.1 — owner e persistência atuais
 - [x] Confirmar que existe um único Focus/Pomodoro runtime no Quartzo.
@@ -205,6 +205,12 @@ Somente após upstream A5 verde/mergeado. Upstream atual: Quartzo PR #44 (`212e9
 - [ ] merge Companion.
 
 ---
+
+## Incidentes de certificação A5
+
+- [x] Head `fc388f0a`: Agent preflight passou, mas `architecture_gate_test.dart` não compilou porque o assertion de identidade checklist usava uma string Dart interpolada (`$parentObjectId/$stepId`) em vez de literal raw.
+- [x] Corrigido em `222ac11a` com assertion raw; nenhuma regra de produto/runtime foi alterada por esse fix.
+- [ ] Certificar o head atual em Flutter Test + Analyze + Dial Focus CI + Agent Contract Gate.
 
 ## Descobertas / scope growth log
 
