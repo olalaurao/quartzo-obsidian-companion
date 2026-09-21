@@ -32,7 +32,7 @@ A V1 só é considerada pronta quando todos os quatro marcos abaixo estiverem co
 - [x] A4 Companion manual Run / Routine execution.
 - [x] **A5 Focus/Pomodoro runtime contract upstream.**
 - [x] **A5 Companion Focus/Pomodoro runtime.**
-- [ ] Resolver semântica cross-client de conclusão de ocorrência agendada de System.
+- [x] **A6 conclusão cross-client de ocorrência agendada de System.**
 - [ ] Resolver/documentar boundary V1 de Overdue + Adaptive Essentials/Capacity.
 
 ### Marco B — comportamento restante da V1
@@ -230,9 +230,9 @@ Upstream fechado: Quartzo PR #44 → merge canônico `a8ec975c`. Implementação
 - [x] Corrigido em `222ac11a` com assertion raw; nenhuma regra de produto/runtime foi alterada por esse fix.
 - [x] Certificar o head `222ac11a`: Analyze ✅; Flutter Test ✅; Dial Focus CI ✅; Agent Contract Gate ✅.
 
-## Milestone ativo — A6 conclusão de ocorrência agendada de System
+## Milestone fechado — A6 conclusão de ocorrência agendada de System
 
-**Status: 🟡 upstream certificado/mergeado; port Companion implementado neste branch e aguardando CI.**
+**Status: ✅ fechado upstream + Companion. Quartzo `9f11f92a`; Companion PR #48 → `635ff280`.**
 
 Upstream Quartzo:
 - [x] PR #45 certificado no head `fc7f93d1caecfa2d0d49f01d696e9a88a78186ff`.
@@ -245,11 +245,13 @@ Upstream Quartzo:
 
 Companion:
 - [x] branch `contracts/system-scheduled-occurrence-v1` criado a partir de `aaab6c7a4aa7806f4f6264516e69ddbef11de109`.
-- [x] repin preparado contra o merge SHA upstream, somente nas quatro fontes declaradas alteradas.
+- [x] repin byte-for-byte contra o merge SHA upstream, somente nas quatro fontes declaradas alteradas.
 - [x] evidence pareada, retry fail-closed, projeção exata no Daily Schedule e policy Run + Skip portados.
-- [x] regressões preparadas para manual same-day, linked exact, half-pair e reschedule cross-day.
-- [ ] CI Linux/Windows + contracts/typecheck/lint/tests/architecture/build/release.
-- [ ] merge canônico Companion.
+- [x] regressões para manual same-day, linked exact, half-pair e reschedule cross-day.
+- [x] PR #48 final head certificado: `52e5df905c241fffe0f11776f416767f7362e3e2`.
+- [x] CI #667 Linux: audit, contracts verify, typecheck, lint, full tests, contract vectors, sync regressions, architecture check, build, release validate, clean artifact e package verdes.
+- [x] CI #667 Windows: audit, typecheck, sync regression, build, clean artifact e package verdes.
+- [x] merge canônico Companion: `635ff28071587de61d8ed71c31d90a1657c39cb6`.
 
 ---
 
