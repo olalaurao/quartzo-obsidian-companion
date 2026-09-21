@@ -7,7 +7,7 @@ import {
   type CanonicalOccurrenceActionResult,
 } from '../../core/occurrence_actions';
 import type { NormalizedItem } from '../../core/daily_schedule/types';
-import { promptAlreadyDid, promptSnoozeMinutes } from './action-input-modal';
+import { promptAlreadyDid, promptReschedule, promptSnoozeMinutes } from './action-input-modal';
 
 export interface OccurrenceActionControlsOptions {
   app: App;
@@ -16,6 +16,7 @@ export interface OccurrenceActionControlsOptions {
     action: CanonicalOccurrenceAction,
     options?: { completedAt?: Date; snoozeMinutes?: number },
   ): Promise<CanonicalOccurrenceActionResult>;
+  reschedule?(start: Date, end: Date): Promise<void>;
 }
 
 export function renderOccurrenceActionControls(
@@ -28,6 +29,7 @@ export function renderOccurrenceActionControls(
     outcome: item.outcome,
     completable: item.isCompletable,
     playable: item.isPlayable,
+    editable: item.editable,
     reminderId: item.reminderId,
     restrictionMetadata: item.restrictionMetadata,
     completed: item.isCompleted,
@@ -98,6 +100,28 @@ export function renderOccurrenceActionControls(
         })();
       });
     }
+  }
+
+  if (capabilities.canReplan && options.reschedule) {
+    addAction('Reschedule', () => {
+      void (async () => {
+        const initialStart = new Date(`${item.date}T${item.start ?? '09:00'}:00`);
+        const initialEnd = item.end
+          ? new Date(`${item.date}T${item.end}:00`)
+          : new Date(initialStart.getTime() + 60 * 60_000);
+        const next = await promptReschedule(options.app, initialStart, initialEnd);
+        if (!next) return;
+
+        const buttons = Array.from(actionRow.querySelectorAll('button'));
+        for (const button of buttons) button.disabled = true;
+        try {
+          await options.reschedule(next.start, next.end);
+        } catch (error) {
+          for (const button of buttons) button.disabled = false;
+          new Notice(`Reschedule blocked: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      })();
+    });
   }
 
   if (actionRow.childElementCount === 0) return null;
