@@ -70,6 +70,10 @@ export function resolveManualExecutionStepState(
   }
 
   if (step.kind === 'task') {
+    const response = responseFor('task', linked.id, date, responses);
+    if (response?.completedAt) {
+      return { completed: true, completedAt: response.completedAt };
+    }
     if (linked.frontmatter.scheduler == null) {
       const completed = ['done', 'completed', 'finalized'].includes(
         String(linked.frontmatter.stage ?? ''),
@@ -81,11 +85,7 @@ export function resolveManualExecutionStepState(
           : {}),
       };
     }
-    const response = responseFor('task', linked.id, date, responses);
-    return {
-      completed: response?.completedAt != null,
-      ...(response?.completedAt ? { completedAt: response.completedAt } : {}),
-    };
+    return { completed: false };
   }
 
   if (step.kind === 'tracker_entry') {
