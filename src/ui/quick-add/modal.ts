@@ -28,6 +28,7 @@ export interface QuickAddModalOptions {
   initialTrackerId?: string;
   trackerReferenceId?: string;
   onCreated?(created: { id: string; type: QuickAddType; path: string }): void | Promise<void>;
+  onClosed?(): void;
 }
 
 export class QuickAddModal extends Modal {
@@ -47,6 +48,10 @@ export class QuickAddModal extends Modal {
 
   onOpen(): void {
     this.render();
+  }
+
+  onClose(): void {
+    this.options.onClosed?.();
   }
 
   private render(): void {
