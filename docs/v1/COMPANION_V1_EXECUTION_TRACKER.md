@@ -132,7 +132,8 @@ Plano:
 - [ ] takeover explícito fica fora de V1 até existir protocolo próprio;
 - [ ] sessão idle pode ser observada/assumida sem takeover de runtime ativo;
 - [ ] vectors devem provar owner match / foreign owner / legacy state sem controller;
-- [ ] decidir e contratar comportamento seguro para `sessions/current.md` legado sem controller ID.
+- [x] decidir comportamento seguro para `sessions/current.md` legado sem controller ID: Companion observa read-only; Quartzo mobile atualizado pode fazer o claim de migração porque o Companion pré-A5 não tinha runtime capaz de originar esse estado.
+- [ ] contratar essa regra em vectors e testes.
 
 ### A5.4 — contrato upstream
 - [ ] criar `contracts/quartzo/focus_runtime/vectors.json`;
@@ -199,6 +200,7 @@ Adicionar aqui qualquer coisa nova encontrada durante implementação. Não expa
 | 2026-09-21 | Não existe client/device ID canônico reutilizável no Flutter. | nova decisão necessária | A5 |
 | 2026-09-21 | preset snapshot já viaja dentro do current-state; não é necessário sincronizar lista de presets para continuar sessão. | redução de escopo | A5 |
 | 2026-09-21 | checklist Pomodoro usa `checklist:<parentId>:<stepId>`. | contrato cross-client necessário | A5 |
+| 2026-09-21 | Legacy active `sessions/current.md` sem controller só pode ter vindo de runtime Quartzo pré-A5; Companion pré-A5 não criava Focus. | permite migração assimétrica segura: Quartzo claim, Companion read-only | A5 |
 
 ---
 
