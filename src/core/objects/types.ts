@@ -192,6 +192,7 @@ export interface Routine extends BaseObject {
   estimated_minutes?: number;
   show_in_planner?: boolean;
   mood_trigger?: string;
+  scheduler?: Record<string, unknown>;
   steps?: ChecklistStep[];
   routine_executions_version?: number;
   routine_executions?: RoutineExecution[];
