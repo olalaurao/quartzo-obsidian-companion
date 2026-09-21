@@ -2240,6 +2240,11 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
         ? 'automatic'
         : 'manual';
 
+    const existingFocusControllerId = typeof stored.focusControllerId === 'string'
+      ? stored.focusControllerId.trim()
+      : '';
+    const focusControllerId = existingFocusControllerId || createCanonicalObjectId();
+
     this.settings = {
       googleDriveFolderId: typeof stored.googleDriveFolderId === 'string' ? stored.googleDriveFolderId : null,
       googleDriveFolderName: typeof stored.googleDriveFolderName === 'string' ? stored.googleDriveFolderName : null,
@@ -2254,7 +2259,12 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
       reminderDelivery: stored.reminderDelivery === 'off' || stored.reminderDelivery === 'desktop_notifications'
         ? stored.reminderDelivery
         : 'in_obsidian_only',
+      focusControllerId,
     };
+
+    if (!existingFocusControllerId) {
+      await this.saveData(this.settings);
+    }
   }
 
   async saveSettings() {
