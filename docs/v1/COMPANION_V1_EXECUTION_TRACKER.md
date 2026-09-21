@@ -96,7 +96,7 @@ Resultado:
 
 ## Milestone ativo — A5 Focus/Pomodoro runtime
 
-**Status: 🟡 A5 upstream implementado no PR Quartzo #44; CI em fila no head `212e922e`.**
+**Status: 🟡 A5 upstream implementado no PR Quartzo #44; certificação no head `f602754f`.**
 
 ### A5.1 — owner e persistência atuais
 - [x] Confirmar que existe um único Focus/Pomodoro runtime no Quartzo.
@@ -154,6 +154,7 @@ Plano:
 - [x] preservar leitura de `sessions/current.md` legado com migration claim Quartzo/read-only Companion;
 - [x] garantir pause/resume/finish/cancel através do mesmo `PomodoroNotifier` + control gate;
 - [x] projetar foreign active runtime como read-only também na UI Quartzo;
+- [x] bloquear start de Focus estrangeiro também no `RuntimeInteractionDispatcher`;
 - [x] garantir fase/duração derivadas do preset snapshot persistido;
 - [x] garantir que reopen/reload recalcule por timestamps;
 - [x] confirmar completion evidence `PomodoroSession`;
@@ -205,6 +206,7 @@ Adicionar aqui qualquer coisa nova encontrada durante implementação. Não expa
 | 2026-09-21 | Legacy active `sessions/current.md` sem controller só pode ter vindo de runtime Quartzo pré-A5; Companion pré-A5 não criava Focus. | permite migração assimétrica segura: Quartzo claim, Companion read-only | A5 |
 | 2026-09-21 | Provider-level foreign Focus blocking alone is insufficient: mutation controls must visibly project read-only state instead of remaining tappable and failing. | permanent UX/integration invariant; architecture-gated | A5 |
 | 2026-09-21 | `focusControllerId` é claim observada, não lease distribuído. Dois clientes offline podem iniciar do mesmo idle antes de ver a claim alheia. | V1 deve deixar `sessions/current.md` cair no conflito three-way normal; nunca auto-merge/takeover | A5 / sync boundary |
+| 2026-09-21 | Runtime actions/notifications também podem iniciar Focus, então read-only não pode ser tratado só na PomodoroScreen. | `RuntimeInteractionDispatcher` deve consultar o mesmo owner canônico e abrir a tela read-only sem mutar | A5 |
 
 ---
 
