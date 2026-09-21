@@ -52,7 +52,7 @@ import { QuartzoView, QUARTZO_VIEW_TYPE, type QuartzoSection, type QuartzoAction
 import { buildPairingDiagnosticsText } from './ui/sync/pairing-diagnostics';
 import { ViewContext } from './ui/types';
 import { ManualExecutionModal } from './ui/execution/manual-execution-modal';
-import { FocusRuntimeModal, type FocusRuntimeUiController, type FocusRuntimeViewState } from './ui/focus/runtime-modal';
+import type { FocusRuntimeUiController, FocusRuntimeViewState } from './ui/focus/view';
 import { QuickAddModal } from './ui/quick-add/modal';
 import { addLocalDays, localIsoDate, localIsoDateTime, parseLocalIsoDate } from './core/local-date';
 import { ReminderService, type ReminderMode, type ReminderSourceObject, type ReminderDeliveryOccurrence } from './core/reminders';
@@ -1093,10 +1093,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
   }
 
   async openFocusRuntime(): Promise<void> {
-    await new Promise<void>(resolve => {
-      const modal = new FocusRuntimeModal(this.app, this, resolve);
-      modal.open();
-    });
+    await this.activateQuartzo('home', 'focus');
   }
 
   async startPomodoro(): Promise<void> {
@@ -1200,8 +1197,9 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     if (current.currentSessionId && current.currentItemId !== linkId) {
       const snapshot = this.getFocusRuntimeViewState();
       if (!snapshot.canControl) {
-        await this.openFocusRuntime();
-        return;
+        throw new Error(
+          'Another device controls a different Focus session. Finish it there before starting this checklist step.',
+        );
       }
       throw new Error(
         'Another Focus session is already active. Finish or discard it before starting this checklist step.',
@@ -1219,7 +1217,6 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
         currentItemTitle: step.title,
       });
     }
-    await this.openFocusRuntime();
   }
 
   private shouldIndexPath(rawPath: string): boolean {
