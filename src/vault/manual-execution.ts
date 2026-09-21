@@ -44,18 +44,23 @@ export class ManualExecutionRepository {
   ): Promise<PersistedSystemRun> {
     if (source.type !== 'system') throw new Error('System execution requires a System source.');
     const file = this.requireFile(source.path);
-    let finalization: SystemRunFinalization | null = null;
-    let sourceMarkdown = '';
+    const output: { finalization?: SystemRunFinalization; sourceMarkdown?: string } = {};
 
     await this.vault.process(file, current => {
       const parsed = ObjectParser.parseMarkdown(current);
       this.assertSourceIdentity(parsed.frontmatter, source, 'system');
-      finalization = finalizeSystemRun(parsed.frontmatter, input);
-      sourceMarkdown = ObjectParser.serializeMarkdown(finalization.frontmatter, parsed.body);
+      const finalization = finalizeSystemRun(parsed.frontmatter, input);
+      const sourceMarkdown = ObjectParser.serializeMarkdown(finalization.frontmatter, parsed.body);
+      output.finalization = finalization;
+      output.sourceMarkdown = sourceMarkdown;
       return sourceMarkdown;
     });
 
-    if (!finalization) throw new Error('System finalization did not produce evidence.');
+    const finalization = output.finalization;
+    const sourceMarkdown = output.sourceMarkdown;
+    if (!finalization || sourceMarkdown == null) {
+      throw new Error('System finalization did not produce evidence.');
+    }
     const summaryPath = await this.ensureSystemSummaryTask(
       finalization.summaryTask,
       index,
@@ -85,20 +90,25 @@ export class ManualExecutionRepository {
   ): Promise<PersistedRoutineRun> {
     if (source.type !== 'routine') throw new Error('Routine execution requires a Routine source.');
     const file = this.requireFile(source.path);
-    let result: RoutineOccurrenceMutationResult | null = null;
-    let sourceMarkdown = '';
+    const output: { result?: RoutineOccurrenceMutationResult; sourceMarkdown?: string } = {};
 
     await this.vault.process(file, current => {
       const parsed = ObjectParser.parseMarkdown(current);
       this.assertSourceIdentity(parsed.frontmatter, source, 'routine');
-      result = finish
+      const result = finish
         ? finalizeRoutineOccurrence(parsed.frontmatter, input)
         : mutateRoutineOccurrence(parsed.frontmatter, input);
-      sourceMarkdown = ObjectParser.serializeMarkdown(result.frontmatter, parsed.body);
+      const sourceMarkdown = ObjectParser.serializeMarkdown(result.frontmatter, parsed.body);
+      output.result = result;
+      output.sourceMarkdown = sourceMarkdown;
       return sourceMarkdown;
     });
 
-    if (!result) throw new Error('Routine mutation did not produce execution evidence.');
+    const result = output.result;
+    const sourceMarkdown = output.sourceMarkdown;
+    if (!result || sourceMarkdown == null) {
+      throw new Error('Routine mutation did not produce execution evidence.');
+    }
     return { sourceMarkdown, result };
   }
 
