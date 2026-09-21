@@ -7,6 +7,7 @@ import {
   type CanonicalOccurrenceActionResult,
 } from '../../core/occurrence_actions';
 import type { NormalizedItem } from '../../core/daily_schedule/types';
+import type { ManualExecutionRunCapability } from '../../core/manual-execution';
 import { promptAlreadyDid, promptReschedule, promptSnoozeMinutes } from './action-input-modal';
 
 export interface OccurrenceActionControlsOptions {
@@ -17,6 +18,8 @@ export interface OccurrenceActionControlsOptions {
     options?: { completedAt?: Date; snoozeMinutes?: number },
   ): Promise<CanonicalOccurrenceActionResult>;
   reschedule?(start: Date, end: Date): Promise<void>;
+  manualExecutionCapability?: ManualExecutionRunCapability;
+  startManualExecution?(): Promise<void>;
 }
 
 export function renderOccurrenceActionControls(
@@ -100,6 +103,37 @@ export function renderOccurrenceActionControls(
         })();
       });
     }
+  }
+
+  if (
+    item.outcome === 'pending' &&
+    capabilities.canStart &&
+    options.manualExecutionCapability === 'supported' &&
+    options.startManualExecution
+  ) {
+    addAction(capabilities.startLabel ?? 'Run', () => {
+      void (async () => {
+        const buttons = Array.from(actionRow.querySelectorAll('button'));
+        for (const button of buttons) button.disabled = true;
+        try {
+          await options.startManualExecution!();
+        } catch (error) {
+          for (const button of buttons) button.disabled = false;
+          new Notice(`Execution blocked: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      })();
+    });
+  }
+
+  if (
+    item.outcome === 'pending' &&
+    capabilities.canStart &&
+    options.manualExecutionCapability === 'requiresFocusRuntime'
+  ) {
+    const status = document.createElement('small');
+    status.className = 'quartzo-occurrence-status';
+    status.textContent = 'Requires Focus runtime';
+    actionRow.appendChild(status);
   }
 
   const reschedule = options.reschedule;

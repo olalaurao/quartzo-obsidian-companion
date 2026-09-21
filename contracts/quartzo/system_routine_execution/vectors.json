@@ -1,0 +1,341 @@
+[
+  {
+    "id": "system_plain_step_supported",
+    "case": "step_capability",
+    "step_kind": "plain",
+    "expected_capability": "supported"
+  },
+  {
+    "id": "system_habit_step_delegated",
+    "case": "step_capability",
+    "step_kind": "habit",
+    "expected_capability": "delegated",
+    "linked_object_slug": "habit-slug"
+  },
+  {
+    "id": "system_task_step_delegated",
+    "case": "step_capability",
+    "step_kind": "task",
+    "expected_capability": "delegated",
+    "linked_object_slug": "task-slug"
+  },
+  {
+    "id": "system_tracker_step_delegated",
+    "case": "step_capability",
+    "step_kind": "tracker_entry",
+    "expected_capability": "delegated",
+    "linked_object_slug": "tracker-slug",
+    "tracker_field_id": "field"
+  },
+  {
+    "id": "system_pomodoro_waits_for_focus_runtime",
+    "case": "step_capability",
+    "step_kind": "pomodoro",
+    "expected_capability": "requiresFocusRuntime"
+  },
+  {
+    "id": "unknown_step_fails_closed",
+    "case": "step_capability",
+    "step_kind": "future_action",
+    "expected_capability": "unsupported"
+  },
+  {
+    "id": "system_background_auto_run_forbidden",
+    "case": "background_auto_run",
+    "source_type": "system",
+    "expected_allowed": false
+  },
+  {
+    "id": "routine_background_auto_run_forbidden",
+    "case": "background_auto_run",
+    "source_type": "routine",
+    "expected_allowed": false
+  },
+  {
+    "id": "system_manual_finish_records_evidence",
+    "case": "system_finish",
+    "system_id": "system-morning",
+    "title": "Morning reset",
+    "started_at": "2026-09-21T08:00:00.000",
+    "finished_at": "2026-09-21T08:27:00.000",
+    "steps": [
+      {
+        "id": "water",
+        "kind": "plain"
+      },
+      {
+        "id": "habit",
+        "kind": "habit"
+      }
+    ],
+    "step_completions": {
+      "water": true,
+      "habit": false
+    },
+    "repeat_finalize": 1,
+    "expected": {
+      "execution_count": 1,
+      "duration_minutes": 27,
+      "summary_task_id": "system-run:system-morning@2026-09-21T08:00:00.000",
+      "summary_task_stage": "finalized",
+      "linked_system": "system-morning",
+      "step_completions": {
+        "water": true,
+        "habit": false
+      },
+      "finished_at": "2026-09-21T08:27:00.000"
+    }
+  },
+  {
+    "id": "system_same_run_retry_is_idempotent",
+    "case": "system_finish",
+    "system_id": "system-morning",
+    "title": "Morning reset",
+    "started_at": "2026-09-21T08:00:00.000",
+    "finished_at": "2026-09-21T08:27:00.000",
+    "steps": [
+      {
+        "id": "water",
+        "kind": "plain"
+      }
+    ],
+    "step_completions": {
+      "water": true
+    },
+    "repeat_finalize": 2,
+    "expected": {
+      "execution_count": 1,
+      "duration_minutes": 27,
+      "summary_task_id": "system-run:system-morning@2026-09-21T08:00:00.000",
+      "summary_task_stage": "finalized",
+      "linked_system": "system-morning",
+      "step_completions": {
+        "water": true
+      },
+      "finished_at": "2026-09-21T08:27:00.000"
+    },
+    "retry_finished_at": "2026-09-21T08:41:00.000"
+  },
+  {
+    "id": "routine_manual_run_has_manual_identity",
+    "case": "routine_manual_identity",
+    "routine_id": "routine-evening",
+    "started_at": "2026-09-21T20:15:00.000",
+    "expected_occurrence_id": "manual:routine:routine-evening@2026-09-21T20:15:00.000"
+  },
+  {
+    "id": "routine_bulk_complete_does_not_fake_required_linked_step",
+    "case": "routine_complete",
+    "routine_id": "routine-mixed",
+    "occurrence_id": "manual:routine:routine-mixed@2026-09-21T09:00:00.000",
+    "scheduled_for": "2026-09-21T09:00:00.000",
+    "linked_task_completed": false,
+    "expected": {
+      "plain_completed": true,
+      "linked_completed": false,
+      "routine_completed": false
+    }
+  },
+  {
+    "id": "routine_closes_after_required_linked_owner_is_complete",
+    "case": "routine_complete",
+    "routine_id": "routine-mixed",
+    "occurrence_id": "manual:routine:routine-mixed@2026-09-21T09:00:00.000",
+    "scheduled_for": "2026-09-21T09:00:00.000",
+    "linked_task_completed": true,
+    "expected": {
+      "plain_completed": true,
+      "linked_completed": true,
+      "routine_completed": true
+    }
+  },
+  {
+    "id": "manual_run_all_supported",
+    "case": "run_capability",
+    "source_type": "system",
+    "focus_runtime_available": false,
+    "available_delegated_kinds": [
+      "habit",
+      "task",
+      "tracker_entry"
+    ],
+    "steps": [
+      {
+        "id": "plain",
+        "kind": "plain"
+      },
+      {
+        "id": "task",
+        "kind": "task",
+        "linked_object_slug": "task-slug"
+      }
+    ],
+    "expected_capability": "supported"
+  },
+  {
+    "id": "manual_run_empty_fails_closed",
+    "case": "run_capability",
+    "source_type": "system",
+    "focus_runtime_available": false,
+    "available_delegated_kinds": [
+      "habit",
+      "task",
+      "tracker_entry"
+    ],
+    "steps": [],
+    "expected_capability": "unsupported"
+  },
+  {
+    "id": "manual_run_unknown_step_blocks_before_start",
+    "case": "run_capability",
+    "source_type": "routine",
+    "focus_runtime_available": false,
+    "available_delegated_kinds": [
+      "habit",
+      "task",
+      "tracker_entry"
+    ],
+    "steps": [
+      {
+        "id": "plain",
+        "kind": "plain"
+      },
+      {
+        "id": "future",
+        "kind": "future_action"
+      }
+    ],
+    "expected_capability": "unsupported"
+  },
+  {
+    "id": "manual_run_malformed_link_blocks_before_start",
+    "case": "run_capability",
+    "source_type": "system",
+    "focus_runtime_available": false,
+    "available_delegated_kinds": [
+      "habit",
+      "task",
+      "tracker_entry"
+    ],
+    "steps": [
+      {
+        "id": "task",
+        "kind": "task"
+      }
+    ],
+    "expected_capability": "unsupported"
+  },
+  {
+    "id": "manual_run_tracker_requires_field",
+    "case": "run_capability",
+    "source_type": "routine",
+    "focus_runtime_available": false,
+    "available_delegated_kinds": [
+      "habit",
+      "task",
+      "tracker_entry"
+    ],
+    "steps": [
+      {
+        "id": "tracker",
+        "kind": "tracker_entry",
+        "linked_object_slug": "tracker-slug"
+      }
+    ],
+    "expected_capability": "unsupported"
+  },
+  {
+    "id": "manual_run_delegated_owner_unavailable_blocks",
+    "case": "run_capability",
+    "source_type": "system",
+    "focus_runtime_available": false,
+    "available_delegated_kinds": [
+      "habit",
+      "tracker_entry"
+    ],
+    "steps": [
+      {
+        "id": "task",
+        "kind": "task",
+        "linked_object_slug": "task-slug"
+      }
+    ],
+    "expected_capability": "unsupported"
+  },
+  {
+    "id": "manual_run_pomodoro_requires_focus_runtime",
+    "case": "run_capability",
+    "source_type": "routine",
+    "focus_runtime_available": false,
+    "available_delegated_kinds": [
+      "habit",
+      "task",
+      "tracker_entry"
+    ],
+    "steps": [
+      {
+        "id": "focus",
+        "kind": "pomodoro"
+      }
+    ],
+    "expected_capability": "requiresFocusRuntime"
+  },
+  {
+    "id": "manual_run_pomodoro_supported_with_focus_runtime",
+    "case": "run_capability",
+    "source_type": "routine",
+    "focus_runtime_available": true,
+    "available_delegated_kinds": [
+      "habit",
+      "task",
+      "tracker_entry"
+    ],
+    "steps": [
+      {
+        "id": "focus",
+        "kind": "pomodoro"
+      }
+    ],
+    "expected_capability": "supported"
+  },
+  {
+    "id": "system_same_run_retry_with_different_evidence_fails_closed",
+    "case": "system_retry_conflict",
+    "system_id": "system-morning",
+    "title": "Morning reset",
+    "started_at": "2026-09-21T08:00:00.000",
+    "finished_at": "2026-09-21T08:27:00.000",
+    "retry_finished_at": "2026-09-21T08:41:00.000",
+    "steps": [
+      {
+        "id": "water",
+        "kind": "plain"
+      }
+    ],
+    "first_step_completions": {
+      "water": true
+    },
+    "retry_step_completions": {
+      "water": false
+    },
+    "expected_error": "StateError"
+  },
+  {
+    "id": "manual_run_other_source_type_blocks",
+    "case": "run_capability",
+    "source_type": "task",
+    "focus_runtime_available": false,
+    "available_delegated_kinds": [
+      "habit",
+      "task",
+      "tracker_entry"
+    ],
+    "steps": [
+      {
+        "id": "plain",
+        "kind": "plain"
+      }
+    ],
+    "expected_capability": "unsupported"
+  }
+]

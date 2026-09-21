@@ -503,7 +503,7 @@ export class DailyScheduleEngine {
       const restrictionMetadata = restrictionRaw && typeof restrictionRaw === 'object' && !Array.isArray(restrictionRaw)
         ? { ...(restrictionRaw as Record<string, unknown>) }
         : undefined;
-      const isPlayable = source?.playable === true;
+      const isPlayable = source?.playable === true || sourceType === 'system' || sourceType === 'routine';
       const editable = source != null && source.editable !== false;
       const origin = item.id.startsWith('google_calendar:')
         ? 'externalEvent' as const

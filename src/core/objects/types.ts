@@ -129,9 +129,55 @@ export interface PomodoroSession extends BaseObject {
   state?: string;
 }
 
+export interface ChecklistStep {
+  id: string;
+  title: string;
+  substeps?: string[];
+  kind: 'plain' | 'habit' | 'task' | 'tracker_entry' | 'pomodoro' | string;
+  linked_object_slug?: string;
+  tracker_field_id?: string;
+  attached_collection_slug?: string;
+  reminder_config?: Record<string, unknown>;
+  estimated_minutes?: number;
+  required?: boolean;
+}
+
+export interface SystemExecution {
+  executed_at: string;
+  finished_at?: string;
+  step_completions: Record<string, boolean>;
+  notes?: string;
+}
+
+export interface RoutineExecutionStep {
+  step_id: string;
+  title_snapshot: string;
+  kind_snapshot: string;
+  required_snapshot?: boolean;
+  completed: boolean;
+  completed_at?: string;
+}
+
+export interface RoutineExecution {
+  occurrence_id?: string;
+  scheduled_for?: string;
+  started_at: string;
+  updated_at: string;
+  completed_at?: string;
+  steps: RoutineExecutionStep[];
+  notes?: string;
+  mood_before?: string;
+  mood_after?: string;
+  legacy_summary?: Record<string, unknown>;
+}
+
 export interface System extends BaseObject {
   type: 'system';
   time?: string;
+  trigger?: string;
+  scheduled_time?: string;
+  steps?: ChecklistStep[];
+  execution_history?: SystemExecution[];
   scheduler?: {
     start_date: string;
     rules: Array<{repeat_type: string; interval?: number}>;
@@ -144,6 +190,12 @@ export interface Routine extends BaseObject {
   statement?: string;
   start_date?: string;
   estimated_minutes?: number;
+  show_in_planner?: boolean;
+  mood_trigger?: string;
+  scheduler?: Record<string, unknown>;
+  steps?: ChecklistStep[];
+  routine_executions_version?: number;
+  routine_executions?: RoutineExecution[];
 }
 
 export interface SocialPost extends BaseObject {

@@ -2,7 +2,28 @@ import { App, Modal, Plugin, PluginSettingTab, Setting, Notice, TFile, TAbstract
 import { VaultIndexEngine } from './vault/index';
 import type { IndexedObject } from './vault/index/types';
 import { SafeObjectMutationRepository } from './vault/object-mutation';
+import { ManualExecutionRepository } from './vault/manual-execution';
 import type { SafeObjectMutation } from './core/object-mutation';
+import { ObjectParser } from './core/objects';
+import type { TrackerDefinition } from './core/objects/types';
+import { resolveCreationFolder } from './core/shared-settings';
+import {
+  assertTrackerCaptureSupported,
+  projectTrackerForCapture,
+} from './core/tracker-capture';
+import {
+  manualRoutineOccurrenceId,
+  parseManualExecutionSteps,
+  resolveEffectiveLinkedSteps,
+  resolveManualExecutionReferences,
+  resolveManualExecutionRunCapability,
+  routinePlainCompletions,
+  type ManualExecutionObject,
+  type ManualExecutionReferenceResolution,
+  type ManualExecutionStep,
+  type ManualExecutionStepState,
+  type ManualExecutionRunCapability,
+} from './core/manual-execution';
 import {
   DriveSyncCoordinator,
   type PairingScanProgress,
@@ -17,11 +38,14 @@ import { GOOGLE_COMPANION_SCOPES } from './integrations/google/auth/scopes';
 import { QuartzoView, QUARTZO_VIEW_TYPE, type QuartzoSection, type QuartzoAction } from './ui';
 import { buildPairingDiagnosticsText } from './ui/sync/pairing-diagnostics';
 import { ViewContext } from './ui/types';
-import { addLocalDays, localIsoDate, parseLocalIsoDate } from './core/local-date';
+import { ManualExecutionModal } from './ui/execution/manual-execution-modal';
+import { QuickAddModal } from './ui/quick-add/modal';
+import { addLocalDays, localIsoDate, localIsoDateTime, parseLocalIsoDate } from './core/local-date';
 import { ReminderService, type ReminderMode, type ReminderSourceObject, type ReminderDeliveryOccurrence } from './core/reminders';
 import {
   OccurrenceActionService,
   companionOccurrenceDomainMode,
+  occurrenceResponseIdForDailyItem,
   type CanonicalOccurrenceAction,
   type CanonicalOccurrenceActionResult,
   type OccurrenceActionTarget,
@@ -49,6 +73,20 @@ type SyncMode = 'manual' | 'automatic';
 interface CalendarCacheEntry {
   expiresAt: number;
   events: GoogleCalendarProjection[];
+}
+
+interface ManualExecutionContext {
+  source: IndexedObject;
+  steps: ManualExecutionStep[];
+  references: ManualExecutionReferenceResolution;
+  objects: ManualExecutionObject[];
+}
+
+interface ManualExecutionRunContext {
+  sourceId: string;
+  startedAt: string;
+  scheduledFor: string;
+  occurrenceId?: string;
 }
 
 interface QuartzoCompanionSettings {
@@ -115,6 +153,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
   private planningStateRepository: SharedPlanningStateRepository | null = null;
   private occurrenceDomainMutationRepository: OccurrenceDomainMutationRepository | null = null;
   private safeObjectMutationRepository: SafeObjectMutationRepository | null = null;
+  private manualExecutionRepository: ManualExecutionRepository | null = null;
   private occurrenceResponses: Record<string, OccurrenceResponseState> = {};
   private occurrenceOverrides: Record<string, OccurrenceTimeOverride> = {};
   private googleAccessRefreshInFlight: Promise<string | null> | null = null;
@@ -150,6 +189,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.planningStateRepository = new SharedPlanningStateRepository(this.app.vault);
     this.occurrenceDomainMutationRepository = new OccurrenceDomainMutationRepository(this.app.vault);
     this.safeObjectMutationRepository = new SafeObjectMutationRepository(this.app.vault);
+    this.manualExecutionRepository = new ManualExecutionRepository(this.app.vault);
     try {
       this.occurrenceResponses = await this.occurrenceStateRepository.loadResponses();
     } catch (error) {
@@ -543,6 +583,377 @@ export default class QuartzoCompanionPlugin extends Plugin {
     return result;
   }
 
+  private manualExecutionObjects(): ManualExecutionObject[] {
+    const index = this.vaultIndexEngine?.getIndex();
+    if (!index) throw new Error('Vault index is not initialized.');
+    return [...index.objects.values()].map(object => ({
+      id: object.id,
+      type: object.type,
+      title: String(object.frontmatter.title ?? object.id),
+      frontmatter: { ...object.frontmatter },
+      body: object.body,
+    }));
+  }
+
+  private prepareManualExecution(item: NormalizedItem): ManualExecutionContext {
+    const index = this.vaultIndexEngine?.getIndex();
+    if (!index) throw new Error('Vault index is not initialized.');
+    const source = index.objects.get(item.sourceId);
+    if (!source || (source.type !== 'system' && source.type !== 'routine')) {
+      throw new Error('Manual execution requires a System or Routine source.');
+    }
+
+    const steps = parseManualExecutionSteps(source.frontmatter.steps);
+    const objects = this.manualExecutionObjects();
+    const references = resolveManualExecutionReferences(steps, objects);
+
+    // Tracker-linked steps use the existing Tracker Record capture owner.
+    // Validate that the exact UI path is available before the run starts.
+    for (const step of steps) {
+      if (step.kind !== 'tracker_entry') continue;
+      const linked = references.byStepId.get(step.id);
+      if (!linked || linked.type !== 'tracker_definition') {
+        throw new Error(`Linked Tracker for step ${step.id} is unavailable.`);
+      }
+      const parsed = ObjectParser.parse(
+        ObjectParser.serializeMarkdown(linked.frontmatter, linked.body ?? ''),
+      ).object;
+      if (parsed.type !== 'tracker_definition') {
+        throw new Error(`Linked Tracker for step ${step.id} is invalid.`);
+      }
+      const definition = projectTrackerForCapture(parsed as TrackerDefinition);
+      assertTrackerCaptureSupported(definition);
+      const fieldId = step.trackerFieldId?.trim();
+      if (!fieldId || !definition.sections.some(section =>
+        section.fields.some(field => field.id === fieldId)
+      )) {
+        throw new Error(`Linked Tracker field “${fieldId ?? ''}” is unavailable.`);
+      }
+    }
+
+    return { source, steps, references, objects };
+  }
+
+  getManualExecutionCapability(item: NormalizedItem): ManualExecutionRunCapability {
+    if (item.sourceType !== 'system' && item.sourceType !== 'routine') {
+      return 'unsupported';
+    }
+    try {
+      const context = this.prepareManualExecution(item);
+      return resolveManualExecutionRunCapability(
+        context.source.type,
+        context.steps,
+        {
+          focusRuntimeAvailable: false,
+          availableDelegatedKinds: new Set(['habit', 'task', 'tracker_entry']),
+        },
+      );
+    } catch {
+      return 'unsupported';
+    }
+  }
+
+  private scheduledForManualExecution(item: NormalizedItem): string {
+    const scheduled = parseLocalIsoDate(item.date);
+    const match = /^(\d{2}):(\d{2})/.exec(item.start ?? '');
+    if (match) {
+      scheduled.setHours(Number(match[1]), Number(match[2]), 0, 0);
+    }
+    return localIsoDateTime(scheduled);
+  }
+
+  private manualExecutionLinkedStates(
+    context: ManualExecutionContext,
+    scheduledFor: string,
+  ): Record<string, ManualExecutionStepState> {
+    const effective = resolveEffectiveLinkedSteps(
+      context.steps,
+      scheduledFor,
+      context.references,
+      context.objects,
+      this.occurrenceResponses,
+    );
+    return Object.fromEntries(
+      context.steps
+        .filter(step => step.kind !== 'plain')
+        .map(step => [
+          step.id,
+          {
+            completed: effective.completions[step.id] === true,
+            ...(effective.completedAt[step.id]
+              ? { completedAt: effective.completedAt[step.id] }
+              : {}),
+          },
+        ]),
+    );
+  }
+
+  private manualExecutionRunContext(
+    item: NormalizedItem,
+    source: IndexedObject,
+  ): ManualExecutionRunContext {
+    const now = new Date();
+    const startedAt = localIsoDateTime(now);
+    const scheduledFor = this.scheduledForManualExecution(item);
+    if (source.type === 'routine') {
+      const scheduledOccurrence = item.occurrenceId?.includes('@')
+        ? item.occurrenceId
+        : item.actionOccurrenceId?.includes('@')
+          ? item.actionOccurrenceId
+          : undefined;
+      return {
+        sourceId: source.id,
+        startedAt,
+        scheduledFor,
+        occurrenceId: scheduledOccurrence ?? manualRoutineOccurrenceId(source.id, startedAt),
+      };
+    }
+    return { sourceId: source.id, startedAt, scheduledFor };
+  }
+
+  private async applyIndexedMarkdown(
+    filePath: string,
+    markdown: string,
+    expected?: { id: string; type: string },
+  ): Promise<IndexedObject> {
+    const engine = this.vaultIndexEngine;
+    const index = engine?.getIndex();
+    if (!engine || !index) throw new Error('Vault index is not initialized.');
+    const parsed = parseObjectWithSharedSettings(markdown, filePath, this.sharedSettings);
+    if (
+      expected &&
+      (parsed.object.id !== expected.id || parsed.object.type !== expected.type)
+    ) {
+      throw new Error('Persisted object changed identity or type unexpectedly.');
+    }
+    const object: IndexedObject = {
+      id: parsed.object.id,
+      type: parsed.object.type,
+      path: filePath,
+      frontmatter: parsed.object as Record<string, unknown>,
+      body: parsed.object.body || '',
+    };
+    const type = index.objects.has(object.id) ? 'modified' as const : 'added' as const;
+    engine.setIndex(VaultIndexEngine.updateIndex(index, [{
+      type,
+      path: normalizeVaultPath(filePath),
+      object,
+    }]));
+    return object;
+  }
+
+  private async refreshIndexedFile(filePath: string): Promise<IndexedObject | null> {
+    const file = this.app.vault.getAbstractFileByPath(normalizeVaultPath(filePath));
+    if (!(file instanceof TFile)) return null;
+    return this.applyIndexedMarkdown(file.path, await this.app.vault.read(file));
+  }
+
+  private async completeLinkedManualExecutionStep(
+    step: ManualExecutionStep,
+    context: ManualExecutionContext,
+    run: ManualExecutionRunContext,
+    item: NormalizedItem,
+  ): Promise<void> {
+    const linked = context.references.byStepId.get(step.id);
+    if (!linked) throw new Error(`Linked object for step ${step.id} is unavailable.`);
+
+    if (step.kind === 'tracker_entry') {
+      const viewContext = this.viewContext;
+      if (!viewContext) throw new Error('Quartzo UI context is unavailable.');
+      await new Promise<void>(resolve => {
+        let created = false;
+        const modal = new QuickAddModal(viewContext, 'tracker_record', {
+          initialTrackerId: linked.id,
+          trackerReferenceId: step.linkedObjectSlug,
+          onCreated: async result => {
+            await this.refreshIndexedFile(result.path);
+            created = true;
+            resolve();
+          },
+          onClosed: () => {
+            if (!created) resolve();
+          },
+        });
+        modal.open();
+      });
+      return;
+    }
+
+    if (step.kind !== 'habit' && step.kind !== 'task') {
+      throw new Error(`Step kind ${step.kind} has no delegated Companion owner.`);
+    }
+    const service = this.occurrenceActionService;
+    if (!service) throw new Error('Occurrence actions are not initialized.');
+
+    const occurrenceId = occurrenceResponseIdForDailyItem(
+      `${step.kind}:${linked.id}`,
+      item.date,
+    );
+    const target: OccurrenceActionTarget = {
+      occurrenceId,
+      sourceId: linked.id,
+      sourceType: step.kind,
+      dueAt: run.scheduledFor,
+    };
+    const actionId = `client:obsidian:${createCanonicalObjectId()}:manual_execution`;
+    const result = await service.completeNow(target, actionId, new Date());
+    this.occurrenceResponses = {
+      ...this.occurrenceResponses,
+      [result.occurrenceId]: result.responseState,
+    };
+  }
+
+  async startManualExecution(item: NormalizedItem): Promise<void> {
+    const repository = this.manualExecutionRepository;
+    const index = this.vaultIndexEngine?.getIndex();
+    if (!repository || !index) throw new Error('Manual execution is not initialized.');
+
+    // Whole-run preflight happens before the modal opens and before any side effect.
+    const initialContext = this.prepareManualExecution(item);
+    const capability = resolveManualExecutionRunCapability(
+      initialContext.source.type,
+      initialContext.steps,
+      {
+        focusRuntimeAvailable: false,
+        availableDelegatedKinds: new Set(['habit', 'task', 'tracker_entry']),
+      },
+    );
+    if (capability === 'requiresFocusRuntime') {
+      throw new Error('This run requires the canonical Focus runtime, which is not available in Companion yet.');
+    }
+    if (capability !== 'supported') {
+      throw new Error('This run contains a step that cannot execute safely in Companion.');
+    }
+
+    const run = this.manualExecutionRunContext(item, initialContext.source);
+    const occurrenceId = run.occurrenceId;
+    const initialPlainCompletions = initialContext.source.type === 'routine' && occurrenceId
+      ? routinePlainCompletions(initialContext.source.frontmatter, occurrenceId)
+      : Object.fromEntries(
+          initialContext.steps
+            .filter(step => step.kind === 'plain')
+            .map(step => [step.id, false]),
+        );
+
+    const modal = new ManualExecutionModal(this.app, {
+      source: initialContext.source,
+      steps: initialContext.steps,
+      startedAt: run.startedAt,
+      scheduledFor: run.scheduledFor,
+      occurrenceId,
+      initialPlainCompletions,
+      initialLinkedStates: this.manualExecutionLinkedStates(initialContext, run.scheduledFor),
+      onPlainChange: async (step, completed) => {
+        if (initialContext.source.type === 'system') return;
+        if (!occurrenceId) throw new Error('Routine occurrence identity is missing.');
+        const latest = this.prepareManualExecution(item);
+        const effective = resolveEffectiveLinkedSteps(
+          latest.steps,
+          run.scheduledFor,
+          latest.references,
+          latest.objects,
+          this.occurrenceResponses,
+        );
+        const persisted = await repository.updateRoutineOccurrence(latest.source, {
+          occurrenceId,
+          scheduledFor: run.scheduledFor,
+          startedAt: run.startedAt,
+          now: localIsoDateTime(new Date()),
+          plainStepUpdates: { [step.id]: completed },
+          effectiveLinkedCompletions: effective.completions,
+          effectiveLinkedCompletedAt: effective.completedAt,
+        });
+        await this.applyIndexedMarkdown(
+          latest.source.path,
+          persisted.sourceMarkdown,
+          { id: latest.source.id, type: 'routine' },
+        );
+      },
+      onLinkedAction: async step => {
+        const latest = this.prepareManualExecution(item);
+        await this.completeLinkedManualExecutionStep(step, latest, run, item);
+        await this.refreshQuartzoView();
+      },
+      refreshLinkedStates: async () => {
+        const latest = this.prepareManualExecution(item);
+        return this.manualExecutionLinkedStates(latest, run.scheduledFor);
+      },
+      finish: async plainCompletions => {
+        const latest = this.prepareManualExecution(item);
+        const effective = resolveEffectiveLinkedSteps(
+          latest.steps,
+          run.scheduledFor,
+          latest.references,
+          latest.objects,
+          this.occurrenceResponses,
+        );
+
+        if (latest.source.type === 'system') {
+          const stepCompletions: Record<string, boolean> = {};
+          for (const step of latest.steps) {
+            stepCompletions[step.id] = step.kind === 'plain'
+              ? plainCompletions[step.id] === true
+              : effective.completions[step.id] === true;
+          }
+          const currentIndex = this.vaultIndexEngine?.getIndex();
+          if (!currentIndex) throw new Error('Vault index is not initialized.');
+          const persisted = await repository.finishSystem(
+            latest.source,
+            {
+              startedAt: run.startedAt,
+              finishedAt: localIsoDateTime(new Date()),
+              stepCompletions,
+            },
+            currentIndex,
+            this.sharedSettings,
+          );
+          await this.applyIndexedMarkdown(
+            latest.source.path,
+            persisted.sourceMarkdown,
+            { id: latest.source.id, type: 'system' },
+          );
+          await this.refreshIndexedFile(persisted.summaryPath);
+          await this.refreshQuartzoView();
+          return {
+            completed: true,
+            message: `System “${String(latest.source.frontmatter.title ?? latest.source.id)}” executed.`,
+          };
+        }
+
+        if (!occurrenceId) throw new Error('Routine occurrence identity is missing.');
+        const persisted = await repository.finishRoutineOccurrence(latest.source, {
+          occurrenceId,
+          scheduledFor: run.scheduledFor,
+          startedAt: run.startedAt,
+          now: localIsoDateTime(new Date()),
+          effectiveLinkedCompletions: effective.completions,
+          effectiveLinkedCompletedAt: effective.completedAt,
+        });
+        await this.applyIndexedMarkdown(
+          latest.source.path,
+          persisted.sourceMarkdown,
+          { id: latest.source.id, type: 'routine' },
+        );
+        await this.refreshQuartzoView();
+        if (persisted.result.isCompleted) {
+          return {
+            completed: true,
+            message: `Routine “${String(latest.source.frontmatter.title ?? latest.source.id)}” completed.`,
+          };
+        }
+        const byId = new Map(persisted.result.execution.steps.map(step => [step.step_id, step]));
+        const remaining = latest.steps.filter(step =>
+          step.required && byId.get(step.id)?.completed !== true
+        ).length;
+        return {
+          completed: false,
+          message: `${remaining} required linked step${remaining === 1 ? '' : 's'} still need completion.`,
+        };
+      },
+    });
+    modal.open();
+  }
+
   async performOccurrenceReschedule(
     item: NormalizedItem,
     newStart: Date,
@@ -592,22 +1003,11 @@ export default class QuartzoCompanionPlugin extends Plugin {
     }
 
     const markdown = await repository.mutate(object, patch);
-    const parsed = parseObjectWithSharedSettings(markdown, object.path, this.sharedSettings);
-    if (parsed.object.id !== object.id || parsed.object.type !== object.type) {
-      throw new Error('Object mutation changed identity or type unexpectedly.');
-    }
-
-    engine.setIndex(VaultIndexEngine.updateIndex(index, [{
-      type: 'modified',
-      path: normalizeVaultPath(object.path),
-      object: {
-        id: parsed.object.id,
-        type: parsed.object.type,
-        path: object.path,
-        frontmatter: parsed.object as Record<string, unknown>,
-        body: parsed.object.body || '',
-      },
-    }]));
+    await this.applyIndexedMarkdown(
+      object.path,
+      markdown,
+      { id: object.id, type: object.type },
+    );
   }
 
   async setReminderDelivery(mode: ReminderMode): Promise<void> {

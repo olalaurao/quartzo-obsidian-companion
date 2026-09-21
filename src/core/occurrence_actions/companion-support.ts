@@ -34,9 +34,11 @@ export function companionOccurrenceDomainMode(sourceType: string): CompanionOccu
     case 'pomodoro_session':
       return 'response_only';
 
-    // System and Routine completion also owns execution evidence. That adapter
-    // is implemented in the later Systems/Routines milestone, so fail closed
-    // instead of recording only half of the canonical mutation.
+    // System/Routine user-triggered Run is owned separately by
+    // core/manual-execution + vault/manual-execution and persists execution
+    // evidence. Direct Done/Already did remains fail-closed here: Run is not
+    // equivalent to an occurrence outcome, and cross-client completion
+    // projection is not guessed.
     case 'system':
     case 'routine':
       return 'unsupported';

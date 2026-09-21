@@ -134,6 +134,7 @@ export function renderTrackerRecordQuickAdd(
   container: HTMLElement,
   trackers: TrackerDefinition[],
   today: string,
+  initialTrackerId?: string,
 ): TrackerRecordFormController {
   const wrapper = document.createElement('section');
   wrapper.className = 'quartzo-record-quick-add';
@@ -152,6 +153,9 @@ export function renderTrackerRecordQuickAdd(
     option.value = tracker.id;
     option.textContent = tracker.title || tracker.id;
     select.appendChild(option);
+  }
+  if (initialTrackerId && trackers.some(tracker => tracker.id === initialTrackerId)) {
+    select.value = initialTrackerId;
   }
   wrapper.appendChild(select);
 
@@ -193,6 +197,9 @@ export function renderTrackerRecordQuickAdd(
     }
   };
   select.addEventListener('change', refresh);
+  if (initialTrackerId && trackers.some(item => item.id === initialTrackerId)) {
+    select.value = initialTrackerId;
+  }
   refresh();
 
   return {

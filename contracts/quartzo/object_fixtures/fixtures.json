@@ -453,5 +453,24 @@
       "source_object_id": "quartzo-source",
       "body": "Quote body"
     }
+  },
+  {
+    "id": "system_execution_history_v1",
+    "type": "system",
+    "path": "systems/history.md",
+    "markdown": "---\nid: system-history\ntype: system\ntitle: System with history\nsteps:\n  - id: water\n    title: Water\n    substeps: []\n    kind: plain\n    required: true\nexecution_history:\n  - executed_at: 2026-09-21T08:00:00.000\n    finished_at: 2026-09-21T08:27:00.000\n    step_completions:\n      water: true\n---\nSystem history body\n",
+    "expected": {
+      "id": "system-history",
+      "type": "system",
+      "title": "System with history",
+      "body": "System history body",
+      "execution_history": [
+        {
+          "executed_at": "2026-09-21T08:00:00.000",
+          "finished_at": "2026-09-21T08:27:00.000",
+          "step_completions": {"water": true}
+        }
+      ]
+    }
   }
 ]

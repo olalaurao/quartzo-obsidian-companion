@@ -24,12 +24,23 @@ function labelForType(type: string): string {
   return type.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
 }
 
+export interface QuickAddModalOptions {
+  initialTrackerId?: string;
+  trackerReferenceId?: string;
+  onCreated?(created: { id: string; type: QuickAddType; path: string }): void | Promise<void>;
+  onClosed?(): void;
+}
+
 export class QuickAddModal extends Modal {
   private type: QuickAddType = 'task';
   private settingsRepository: SharedSettingsRepository;
   private readonly resourceMetadataService = new ResourceMetadataService();
 
-  constructor(private readonly context: ViewContext, initialType?: QuickAddType) {
+  constructor(
+    private readonly context: ViewContext,
+    initialType?: QuickAddType,
+    private readonly options: QuickAddModalOptions = {},
+  ) {
     super(context.app);
     if (initialType) this.type = initialType;
     this.settingsRepository = new SharedSettingsRepository(context.app.vault);
@@ -37,6 +48,10 @@ export class QuickAddModal extends Modal {
 
   onOpen(): void {
     this.render();
+  }
+
+  onClose(): void {
+    this.options.onClosed?.();
   }
 
   private render(): void {
@@ -86,7 +101,12 @@ export class QuickAddModal extends Modal {
 
     let recordForm: TrackerRecordFormController | null = null;
     if (this.type === 'tracker_record') {
-      recordForm = renderTrackerRecordQuickAdd(contentEl, this.trackerDefinitions(), isoDate(new Date()));
+      recordForm = renderTrackerRecordQuickAdd(
+        contentEl,
+        this.trackerDefinitions(),
+        isoDate(new Date()),
+        this.options.initialTrackerId,
+      );
     }
 
     let sourceUrlInput: HTMLInputElement | null = null;
@@ -192,7 +212,10 @@ export class QuickAddModal extends Modal {
         const currentMetadata = resourceMetadata?.sourceUrl === currentResourceUrl && resourceMetadata.fetched
           ? resourceMetadata
           : null;
-        const recordInput = this.type === 'tracker_record' ? recordForm?.value() : undefined;
+        const rawRecordInput = this.type === 'tracker_record' ? recordForm?.value() : undefined;
+        const recordInput = rawRecordInput && this.options.trackerReferenceId
+          ? { ...rawRecordInput, trackerId: this.options.trackerReferenceId }
+          : rawRecordInput;
         const resourceInput = this.type === 'resource'
           ? {
               mediaType: mediaTypeSelect?.value ?? '',
@@ -246,6 +269,7 @@ export class QuickAddModal extends Modal {
           throw new Error(`Target already exists: ${documentData.path}`);
         }
         await this.context.app.vault.create(documentData.path, documentData.content);
+        await this.options.onCreated?.({ id, type: this.type, path: documentData.path });
         new Notice(`${labelForType(this.type)} created`);
         this.close();
       } catch (error) {
