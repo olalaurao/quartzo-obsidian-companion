@@ -1251,6 +1251,30 @@ second application → idempotent no-op
 
 This rule applies across clients.
 
+## 17.1 Reschedule is a planning mutation, not an occurrence response
+
+`Reschedule` is capability-gated by the canonical occurrence action policy,
+but it does not write `OccurrenceResponseState`, `processedActionIds`,
+Snooze state or the device notification registry. It changes canonical schedule
+placement through the existing schedule-mutation owner.
+
+V1 cross-client behavior is defined by
+`contracts/quartzo/occurrence_reschedule/vectors.json`:
+
+- a non-recurring Task occurrence may update the Task's canonical
+  `startDate`, `scheduledTime` and duration through the safe object mutation
+  path;
+- a recurring Task instance and editable non-Task occurrences whose canonical
+  placement owner is Time Architecture persist a single-occurrence
+  `OccurrenceOverride` in `sessions/shared_planning_state_v1.md`;
+- external or non-editable occurrences fail closed and do not expose
+  Reschedule;
+- Companion V1 reschedules the selected occurrence only. Series-wide and
+  `thisAndFuture` mutations remain unsupported until separately contracted.
+
+Snooze and Reschedule are distinct: Snooze changes delivery timing while
+Reschedule changes canonical schedule placement.
+
 ---
 
 # 18. Time Architecture Shared-State Refactor — P0
@@ -2245,6 +2269,7 @@ Skip
 Undo/Clear
 Snooze
 Dismiss
+Reschedule
 ```
 
 including:
@@ -2253,7 +2278,9 @@ including:
 - stable reminder identity;
 - Habit slot identity;
 - processedActionIds union/idempotence;
-- action replay.
+- action replay;
+- Reschedule capability gating and persistence strategy through
+  `contracts/quartzo/occurrence_reschedule/vectors.json`.
 
 ---
 
