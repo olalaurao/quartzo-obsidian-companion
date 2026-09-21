@@ -766,8 +766,8 @@ export default class QuartzoCompanionPlugin extends Plugin {
           initialTrackerId: linked.id,
           trackerReferenceId: step.linkedObjectSlug,
           onCreated: async result => {
-            created = true;
             await this.refreshIndexedFile(result.path);
+            created = true;
             resolve();
           },
           onClosed: () => {
