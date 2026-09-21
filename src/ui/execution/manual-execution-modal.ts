@@ -140,7 +140,17 @@ export class ManualExecutionModal extends Modal {
       });
     });
 
-    actions.append(cancel, finish);
+    const refresh = document.createElement('button');
+    refresh.type = 'button';
+    refresh.textContent = 'Refresh linked steps';
+    refresh.disabled = this.busy;
+    refresh.addEventListener('click', () => {
+      void this.runBusy(async () => {
+        this.linkedStates = { ...await this.options.refreshLinkedStates() };
+      });
+    });
+
+    actions.append(cancel, refresh, finish);
     contentEl.appendChild(actions);
   }
 
