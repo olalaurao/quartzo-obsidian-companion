@@ -11,6 +11,7 @@ import type { VaultIndex } from '../../vault/index/types';
 import { renderDayDial } from '../day-dial/view';
 import { renderScheduleList, type ScheduleListOptions } from '../daily/schedule-list';
 import { projectHomeSchedule, type HomeProgress } from './home-projection';
+import type { ManualExecutionRunCapability } from '../../core/manual-execution';
 
 export type HomeQuickAddType = 'task' | 'entry' | 'note' | 'tracker_record';
 
@@ -29,6 +30,8 @@ export interface HomeViewOptions {
     options?: { completedAt?: Date; snoozeMinutes?: number },
   ): Promise<CanonicalOccurrenceActionResult>;
   performOccurrenceReschedule?(item: NormalizedItem, start: Date, end: Date): Promise<void>;
+  manualExecutionCapability?(item: NormalizedItem): ManualExecutionRunCapability;
+  startManualExecution?(item: NormalizedItem): Promise<void>;
   canOpenItem?(item: NormalizedItem): boolean;
   onOpenItem?(item: NormalizedItem): void;
   onQuickAdd(type: HomeQuickAddType): void;
@@ -104,6 +107,8 @@ export function renderHomeView(container: HTMLElement, options: HomeViewOptions)
     titleForItem: options.titleForItem,
     performOccurrenceAction: options.performOccurrenceAction,
     performOccurrenceReschedule: options.performOccurrenceReschedule,
+    manualExecutionCapability: options.manualExecutionCapability,
+    startManualExecution: options.startManualExecution,
     canOpenItem: options.canOpenItem,
     onOpenItem: options.onOpenItem,
   };
