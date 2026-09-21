@@ -8,7 +8,7 @@ import type { NormalizedItem } from '../core/daily_schedule/types';
 import type { OccurrenceTimeOverride } from '../core/occurrence_reschedule';
 import type { SafeObjectMutation } from '../core/object-mutation';
 import type { ManualExecutionRunCapability } from '../core/manual-execution';
-import type { FocusRuntimeViewState } from './focus/runtime-modal';
+import type { FocusRuntimeViewState } from './focus/view';
 import type { IndexedObject } from '../vault/index/types';
 import type {
   CanonicalOccurrenceAction,
