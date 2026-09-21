@@ -119,13 +119,13 @@ export class FocusRuntimeRepository {
     localControllerId: string;
     now: Date;
     disposition: FocusSessionDisposition;
-  }): Promise<FocusRuntimeState> {
+  }): Promise<{ state: FocusRuntimeState; evidencePath?: string }> {
     const before = await this.load();
     const result = finishFocusRuntime(before, input);
-    if (result.evidence) {
-      await this.saveSessionEvidence(result.evidence);
-    }
-    return this.mutate(current => {
+    const evidencePath = result.evidence
+      ? await this.saveSessionEvidence(result.evidence)
+      : undefined;
+    const state = await this.mutate(current => {
       if (
         current.currentSessionId !== before.currentSessionId
         || current.focusControllerId !== before.focusControllerId
@@ -136,11 +136,12 @@ export class FocusRuntimeRepository {
       }
       return finishFocusRuntime(current, input).state;
     });
+    return { state, ...(evidencePath ? { evidencePath } : {}) };
   }
 
   private async saveSessionEvidence(
     evidence: FocusSessionEvidence,
-  ): Promise<void> {
+  ): Promise<string> {
     const dateKey = evidence.occurred_at.slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
       throw new Error('Focus session evidence has an invalid occurrence date.');
@@ -157,7 +158,7 @@ export class FocusRuntimeRepository {
           pomodoro_sessions: [evidence],
         }, ''),
       );
-      return;
+      return dailyPath;
     }
     if (!(file instanceof TFile)) {
       throw new Error(`Daily note path is not a file: ${dailyPath}`);
@@ -176,6 +177,7 @@ export class FocusRuntimeRepository {
         pomodoro_sessions: [...sessions, evidence],
       }, parsed.body);
     });
+    return dailyPath;
   }
 
   private async ensureFolder(folder: string): Promise<void> {
