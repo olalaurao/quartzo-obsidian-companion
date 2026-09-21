@@ -152,7 +152,14 @@ export function focusRuntimeToFrontmatter(
     runtimeMode: state.runtimeMode,
     currentType: state.currentType,
     selectedPresetId: state.selectedPresetId ?? null,
-    preset_snapshot: focusPresetToFrontmatter(state.presetSnapshot),
+    preset_snapshot: {
+      ...(existing.preset_snapshot
+        && typeof existing.preset_snapshot === 'object'
+        && !Array.isArray(existing.preset_snapshot)
+        ? existing.preset_snapshot as Record<string, unknown>
+        : {}),
+      ...focusPresetToFrontmatter(state.presetSnapshot),
+    },
     currentItemId: state.currentItemId ?? null,
     currentItemTitle: state.currentItemTitle ?? null,
     linkedObjectRef: state.linkedObjectRef ?? null,
