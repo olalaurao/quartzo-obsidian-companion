@@ -8,6 +8,11 @@ export function localIsoDate(date: Date): string {
   return `${date.getFullYear().toString().padStart(4, '0')}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
 
+export function localIsoDateTime(date: Date): string {
+  const milliseconds = date.getMilliseconds().toString().padStart(3, '0');
+  return `${localIsoDate(date)}T${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}.${milliseconds}`;
+}
+
 export function parseLocalIsoDate(value: string): Date {
   const match = ISO_DATE_PATTERN.exec(value);
   if (!match) throw new Error(`Invalid local ISO date: ${value}`);
