@@ -132,6 +132,7 @@ Plano:
 - [x] takeover explícito fica fora de V1 até existir protocolo próprio;
 - [x] sessão idle não mantém claim de controller; nova sessão pode ser iniciada sem takeover;
 - [x] vectors provam owner match / foreign owner / legacy state sem controller;
+- [x] contratar colisão offline como conflito three-way de `sessions/current.md`, sem promessa de lease distribuído;
 - [x] decidir comportamento seguro para `sessions/current.md` legado sem controller ID: Companion observa read-only; Quartzo mobile atualizado pode fazer o claim de migração porque o Companion pré-A5 não tinha runtime capaz de originar esse estado.
 - [x] contratar essa regra em vectors e testes.
 
@@ -203,6 +204,7 @@ Adicionar aqui qualquer coisa nova encontrada durante implementação. Não expa
 | 2026-09-21 | checklist Pomodoro usa `checklist:<parentId>:<stepId>`. | contrato cross-client necessário | A5 |
 | 2026-09-21 | Legacy active `sessions/current.md` sem controller só pode ter vindo de runtime Quartzo pré-A5; Companion pré-A5 não criava Focus. | permite migração assimétrica segura: Quartzo claim, Companion read-only | A5 |
 | 2026-09-21 | Provider-level foreign Focus blocking alone is insufficient: mutation controls must visibly project read-only state instead of remaining tappable and failing. | permanent UX/integration invariant; architecture-gated | A5 |
+| 2026-09-21 | `focusControllerId` é claim observada, não lease distribuído. Dois clientes offline podem iniciar do mesmo idle antes de ver a claim alheia. | V1 deve deixar `sessions/current.md` cair no conflito three-way normal; nunca auto-merge/takeover | A5 / sync boundary |
 
 ---
 
