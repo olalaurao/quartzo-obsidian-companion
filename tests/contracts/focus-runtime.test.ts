@@ -137,6 +137,7 @@ describe('Focus runtime V1 contract vectors', () => {
         short_break_minutes: 5,
         long_break_minutes: 15,
         long_break_every: 4,
+        future_preset_key: 'preserve-too',
       },
       future_key: 'preserve-me',
     });
@@ -151,11 +152,24 @@ describe('Focus runtime V1 contract vectors', () => {
       future_key: 'preserve-me',
     });
     expect(encoded.future_key).toBe('preserve-me');
+    expect((encoded.preset_snapshot as Record<string, unknown>).future_preset_key)
+      .toBe('preserve-too');
     expect(encoded.focusControllerId).toBeNull();
   });
 });
 
 describe('Focus runtime lifecycle compatibility', () => {
+  it('drops invalid persisted Focus timestamps like Quartzo DateTime.tryParse', () => {
+    const state = parseFocusRuntimeFrontmatter({
+      type: 'pomodoro_state',
+      isRunning: true,
+      currentType: 'work',
+      phaseEndsAt: 'not-a-date',
+      preset_snapshot: {},
+    });
+    expect(state?.phaseEndsAt).toBeUndefined();
+  });
+
   it('indexes Quartzo type: daily notes by date without inventing a second parser', () => {
     const parsed = ObjectParser.parse(`---
 type: daily
