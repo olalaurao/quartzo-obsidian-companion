@@ -5,6 +5,7 @@ import {
   allowsBackgroundAutoRun,
   finalizeRoutineOccurrence,
   finalizeSystemRun,
+  isScheduledSystemOccurrenceCompleted,
   manualRoutineOccurrenceId,
   mutateRoutineOccurrence,
   resolveManualExecutionRunCapability,
@@ -13,6 +14,7 @@ import {
   resolveManualExecutionReferences,
   type ManualExecutionStep,
 } from '../../src/core/manual-execution';
+import { OccurrenceActionPolicy } from '../../src/core/occurrence_actions';
 
 type Vector = Record<string, unknown> & { id: string; case: string };
 
@@ -77,10 +79,17 @@ describe('System/Routine manual execution contract vectors', () => {
             })),
           };
           const repeat = Number(vector.repeat_finalize ?? 1);
+          const context = vector.occurrence_id == null
+            ? {}
+            : {
+                occurrenceId: String(vector.occurrence_id),
+                scheduledFor: String(vector.scheduled_for),
+              };
           let result = finalizeSystemRun(source, {
             startedAt: String(vector.started_at),
             finishedAt: String(vector.finished_at),
             stepCompletions: vector.step_completions as Record<string, boolean>,
+            ...context,
           });
           source = result.frontmatter;
           for (let index = 1; index < repeat; index += 1) {
@@ -88,6 +97,7 @@ describe('System/Routine manual execution contract vectors', () => {
               startedAt: String(vector.started_at),
               finishedAt: String(vector.retry_finished_at ?? vector.finished_at),
               stepCompletions: vector.step_completions as Record<string, boolean>,
+              ...context,
             });
             source = result.frontmatter;
           }
@@ -96,6 +106,18 @@ describe('System/Routine manual execution contract vectors', () => {
           expect(history).toHaveLength(Number(expected.execution_count));
           expect(history[0]?.step_completions).toEqual(expected.step_completions);
           expect(history[0]?.finished_at).toBe(expected.finished_at);
+          if (expected.occurrence_id != null) {
+            expect(history[0]?.occurrence_id).toBe(expected.occurrence_id);
+          }
+          if (expected.scheduled_for != null) {
+            expect(history[0]?.scheduled_for).toBe(expected.scheduled_for);
+          }
+          if (expected.scheduled_occurrence_completed != null) {
+            expect(isScheduledSystemOccurrenceCompleted(
+              source,
+              String(expected.occurrence_id),
+            )).toBe(expected.scheduled_occurrence_completed);
+          }
           expect(result.summaryTask.id).toBe(expected.summary_task_id);
           expect(result.summaryTask.duration).toBe(expected.duration_minutes);
           expect(result.summaryTask.stage).toBe(expected.summary_task_stage);
@@ -126,6 +148,62 @@ describe('System/Routine manual execution contract vectors', () => {
             finishedAt: String(vector.retry_finished_at),
             stepCompletions: vector.retry_step_completions as Record<string, boolean>,
           })).toThrow(/collides with different step completions/i);
+          return;
+        }
+        case 'system_occurrence_completion': {
+          const source: Record<string, unknown> = {
+            id: vector.system_id,
+            type: 'system',
+            title: vector.title,
+            execution_history: vector.executions,
+          };
+          expect(isScheduledSystemOccurrenceCompleted(
+            source,
+            String(vector.scheduled_occurrence_id),
+          )).toBe(vector.expected_completed);
+          return;
+        }
+        case 'system_occurrence_retry_conflict': {
+          const steps = (vector.steps as Record<string, unknown>[]).map(vectorStep);
+          const source: Record<string, unknown> = {
+            id: vector.system_id,
+            type: 'system',
+            title: vector.title,
+            steps: steps.map(step => ({
+              id: step.id,
+              title: step.title,
+              kind: step.kind,
+              required: step.required,
+            })),
+          };
+          const first = finalizeSystemRun(source, {
+            startedAt: String(vector.started_at),
+            finishedAt: String(vector.finished_at),
+            stepCompletions: vector.step_completions as Record<string, boolean>,
+            occurrenceId: String(vector.occurrence_id),
+            scheduledFor: String(vector.scheduled_for),
+          });
+          expect(() => finalizeSystemRun(first.frontmatter, {
+            startedAt: String(vector.started_at),
+            finishedAt: String(vector.finished_at),
+            stepCompletions: vector.step_completions as Record<string, boolean>,
+            occurrenceId: String(vector.retry_occurrence_id),
+            scheduledFor: String(vector.retry_scheduled_for),
+          })).toThrow(/different scheduled occurrence context/i);
+          return;
+        }
+        case 'system_occurrence_actions': {
+          const expected = vector.expected as Record<string, unknown>;
+          const capabilities = OccurrenceActionPolicy.resolve({
+            sourceType: 'system',
+            outcome: 'pending',
+            completable: true,
+            playable: true,
+          });
+          expect(capabilities.canReportDone).toBe(expected.can_report_done);
+          expect(capabilities.canSkip).toBe(expected.can_skip);
+          expect(capabilities.canStart).toBe(expected.can_start);
+          expect(capabilities.startAction).toBe(expected.start_action);
           return;
         }
         case 'routine_manual_identity':
@@ -286,4 +364,30 @@ describe('System/Routine manual execution contract vectors', () => {
     expect(effective.completions['deep-work']).toBe(false);
   });
 
+  it('rejects half-linked System scheduled occurrence evidence', () => {
+    const source = {
+      id: 'system-morning',
+      type: 'system',
+      title: 'Morning reset',
+      steps: [{ id: 'water', title: 'Water', kind: 'plain', required: true }],
+    };
+    expect(() => finalizeSystemRun(source, {
+      startedAt: '2026-09-21T08:03:00.000',
+      finishedAt: '2026-09-21T08:27:00.000',
+      stepCompletions: { water: true },
+      occurrenceId: 'system:system-morning@2026-09-21',
+    })).toThrow(/requires occurrenceId and scheduledFor together/i);
+
+    expect(() => isScheduledSystemOccurrenceCompleted({
+      ...source,
+      execution_history: [{
+        executed_at: '2026-09-21T08:03:00.000',
+        finished_at: '2026-09-21T08:27:00.000',
+        occurrence_id: 'system:system-morning@2026-09-21',
+        step_completions: { water: true },
+      }],
+    }, 'system:system-morning@2026-09-21')).toThrow(
+      /requires occurrence_id and scheduled_for together/i,
+    );
+  });
 });

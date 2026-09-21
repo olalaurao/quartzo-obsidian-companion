@@ -1170,6 +1170,24 @@ contains `finished_at`, retry uses that original timestamp rather than the
 retry wall clock. The same run identity with different step completion evidence
 is a collision and fails closed.
 
+If the Run was opened from a scheduled System occurrence, the same
+`SystemExecution` also persists the pair `occurrence_id` +
+`scheduled_for`. `occurrence_id` is the exact stable
+`ScheduledOccurrence.occurrenceId`; `scheduled_for` records the concrete
+scheduled/start context presented to the Run. They are absent for genuinely
+manual and legacy runs. A reschedule may move `scheduled_for` to another civil
+day without changing `occurrence_id`. Retry of one `startedAt` identity may
+not change this occurrence context.
+
+A scheduled System occurrence is complete only when its System contains a
+finished `SystemExecution` whose `occurrence_id` exactly matches that
+occurrence. A manual execution on the same date does not complete it, and
+clients must not synthesize an `OccurrenceResponseState` merely because the
+System Run finished. Scheduled System occurrences expose Run and may expose
+Skip, but generic Done/Already did is unsupported. The canonical occurrence
+action coordinator must reject a direct System completion mutation, and readers
+must ignore legacy/shared `completedAt` as positive System completion evidence.
+
 System run-in-progress UI state is device-local and transient in V1. Until
 Finish succeeds, there is no canonical `SystemExecution` or summary Task.
 Cancel, plugin/app reload, or abandoning that transient run discards local

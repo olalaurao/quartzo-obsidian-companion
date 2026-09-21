@@ -230,6 +230,29 @@ Upstream fechado: Quartzo PR #44 → merge canônico `a8ec975c`. Implementação
 - [x] Corrigido em `222ac11a` com assertion raw; nenhuma regra de produto/runtime foi alterada por esse fix.
 - [x] Certificar o head `222ac11a`: Analyze ✅; Flutter Test ✅; Dial Focus CI ✅; Agent Contract Gate ✅.
 
+## Milestone ativo — A6 conclusão de ocorrência agendada de System
+
+**Status: 🟡 upstream certificado/mergeado; port Companion implementado neste branch e aguardando CI.**
+
+Upstream Quartzo:
+- [x] PR #45 certificado no head `fc7f93d1caecfa2d0d49f01d696e9a88a78186ff`.
+- [x] Flutter CI, Dial Focus CI e Agent Contract Gate verdes no mesmo head.
+- [x] merge canônico: `9f11f92a3008b5b14d88c8febf46a67b186efe24`.
+- [x] `systemRoutineExecutionContractVersion = 1.1.0`.
+- [x] Finish evidence é o único owner de conclusão positiva de System; Run manual não fecha occurrence.
+- [x] `occurrence_id` permanece estável em Reschedule; `scheduled_for` é contexto temporal.
+- [x] System agendado expõe Run + Skip e não expõe Done/Already did.
+
+Companion:
+- [x] branch `contracts/system-scheduled-occurrence-v1` criado a partir de `aaab6c7a4aa7806f4f6264516e69ddbef11de109`.
+- [x] repin preparado contra o merge SHA upstream, somente nas quatro fontes declaradas alteradas.
+- [x] evidence pareada, retry fail-closed, projeção exata no Daily Schedule e policy Run + Skip portados.
+- [x] regressões preparadas para manual same-day, linked exact, half-pair e reschedule cross-day.
+- [ ] CI Linux/Windows + contracts/typecheck/lint/tests/architecture/build/release.
+- [ ] merge canônico Companion.
+
+---
+
 ## Descobertas / scope growth log
 
 Adicionar aqui qualquer coisa nova encontrada durante implementação. Não expandir automaticamente o milestone atual; primeiro classificar.
@@ -252,7 +275,6 @@ Adicionar aqui qualquer coisa nova encontrada durante implementação. Não expa
 
 Itens reais, mas que não devem entrar no PR corrente sem necessidade de correctness:
 
-- scheduled System occurrence completion projection;
 - Overdue cross-client boundary;
 - Adaptive Essentials / Capacity / parked-items boundary;
 - full public multi-client focus takeover protocol;

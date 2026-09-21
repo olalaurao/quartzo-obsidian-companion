@@ -337,5 +337,144 @@
       }
     ],
     "expected_capability": "unsupported"
+  },
+  {
+    "id": "system_scheduled_finish_links_exact_occurrence",
+    "case": "system_finish",
+    "system_id": "system-morning",
+    "title": "Morning reset",
+    "started_at": "2026-09-21T08:03:00.000",
+    "finished_at": "2026-09-21T08:27:00.000",
+    "occurrence_id": "system:system-morning@2026-09-21",
+    "scheduled_for": "2026-09-21T08:00:00.000",
+    "steps": [
+      {
+        "id": "water",
+        "kind": "plain"
+      }
+    ],
+    "step_completions": {
+      "water": true
+    },
+    "repeat_finalize": 1,
+    "expected": {
+      "execution_count": 1,
+      "duration_minutes": 24,
+      "summary_task_id": "system-run:system-morning@2026-09-21T08:03:00.000",
+      "summary_task_stage": "finalized",
+      "linked_system": "system-morning",
+      "step_completions": {
+        "water": true
+      },
+      "finished_at": "2026-09-21T08:27:00.000",
+      "occurrence_id": "system:system-morning@2026-09-21",
+      "scheduled_for": "2026-09-21T08:00:00.000",
+      "scheduled_occurrence_completed": true
+    }
+  },
+  {
+    "id": "system_rescheduled_finish_preserves_original_occurrence_identity",
+    "case": "system_finish",
+    "system_id": "system-morning",
+    "title": "Morning reset",
+    "started_at": "2026-09-22T09:03:00.000",
+    "finished_at": "2026-09-22T09:20:00.000",
+    "occurrence_id": "system:system-morning@2026-09-21",
+    "scheduled_for": "2026-09-22T09:00:00.000",
+    "steps": [
+      {
+        "id": "water",
+        "kind": "plain"
+      }
+    ],
+    "step_completions": {
+      "water": true
+    },
+    "repeat_finalize": 1,
+    "expected": {
+      "execution_count": 1,
+      "duration_minutes": 17,
+      "summary_task_id": "system-run:system-morning@2026-09-22T09:03:00.000",
+      "summary_task_stage": "finalized",
+      "linked_system": "system-morning",
+      "step_completions": {
+        "water": true
+      },
+      "finished_at": "2026-09-22T09:20:00.000",
+      "occurrence_id": "system:system-morning@2026-09-21",
+      "scheduled_for": "2026-09-22T09:00:00.000",
+      "scheduled_occurrence_completed": true
+    }
+  },
+  {
+    "id": "system_manual_finish_does_not_complete_scheduled_occurrence",
+    "case": "system_occurrence_completion",
+    "system_id": "system-morning",
+    "title": "Morning reset",
+    "scheduled_occurrence_id": "system:system-morning@2026-09-21",
+    "executions": [
+      {
+        "executed_at": "2026-09-21T08:03:00.000",
+        "finished_at": "2026-09-21T08:27:00.000",
+        "step_completions": {
+          "water": true
+        }
+      }
+    ],
+    "expected_completed": false
+  },
+  {
+    "id": "system_exact_linked_finish_completes_scheduled_occurrence",
+    "case": "system_occurrence_completion",
+    "system_id": "system-morning",
+    "title": "Morning reset",
+    "scheduled_occurrence_id": "system:system-morning@2026-09-21",
+    "executions": [
+      {
+        "executed_at": "2026-09-21T08:03:00.000",
+        "finished_at": "2026-09-21T08:27:00.000",
+        "occurrence_id": "system:system-morning@2026-09-21",
+        "scheduled_for": "2026-09-21T08:00:00.000",
+        "step_completions": {
+          "water": true
+        }
+      }
+    ],
+    "expected_completed": true
+  },
+  {
+    "id": "system_same_run_retry_with_different_occurrence_context_fails_closed",
+    "case": "system_occurrence_retry_conflict",
+    "system_id": "system-morning",
+    "title": "Morning reset",
+    "started_at": "2026-09-21T08:03:00.000",
+    "finished_at": "2026-09-21T08:27:00.000",
+    "occurrence_id": "system:system-morning@2026-09-21",
+    "scheduled_for": "2026-09-21T08:00:00.000",
+    "retry_occurrence_id": "system:system-morning@2026-09-22",
+    "retry_scheduled_for": "2026-09-22T08:00:00.000",
+    "steps": [
+      {
+        "id": "water",
+        "kind": "plain"
+      }
+    ],
+    "step_completions": {
+      "water": true
+    },
+    "expected_error": "StateError"
+  },
+  {
+    "id": "system_scheduled_occurrence_exposes_run_not_done",
+    "case": "system_occurrence_actions",
+    "occurrence_id": "system:system-morning@2026-09-21",
+    "system_id": "system-morning",
+    "scheduled_for": "2026-09-21T08:00:00.000",
+    "expected": {
+      "can_report_done": false,
+      "can_skip": true,
+      "can_start": true,
+      "start_action": "runSystem"
+    }
   }
 ]

@@ -1,6 +1,7 @@
 import { DailyScheduleInput, NormalizedSchedule, NormalizedItem } from './types';
 import { localIsoDate } from '../local-date';
 import { occurrenceResponseIdForDailyItem } from '../occurrence_actions';
+import { isScheduledSystemOccurrenceCompleted } from '../manual-execution';
 
 type PresentationField = 'sourceType' | 'sourceLabel' | 'isCompletable' | 'isCompleted' | 'isSkipped' | 'outcome' | 'isPlayable' | 'editable' | 'restrictionMetadata' | 'responseState' | 'origin';
 type RawNormalizedItem = Omit<NormalizedItem, PresentationField>;
@@ -318,7 +319,7 @@ export class DailyScheduleEngine {
       items.push({
         id: `system:${id}`,
         sourceId: id,
-        occurrenceId: id,
+        occurrenceId: `system:${id}@${date}`,
         date,
         start: time,
         isTimed: true
@@ -495,8 +496,20 @@ export class DailyScheduleEngine {
       const responseState = occurrenceResponses?.[actionOccurrenceId]
         ?? occurrenceResponses?.[occurrenceId]
         ?? occurrenceResponses?.[item.id];
-      const domainCompleted = source == null ? false : this.isSourceCompleted(sourceType, source);
-      const isCompleted = responseState?.completedAt != null || domainCompleted;
+      const systemExecutionCompleted =
+        sourceType === 'system' && source != null
+          ? isScheduledSystemOccurrenceCompleted(source, occurrenceId)
+          : false;
+      const domainCompleted =
+        source == null || sourceType === 'system'
+          ? false
+          : this.isSourceCompleted(sourceType, source);
+      const responseCompleted =
+        sourceType === 'system' ? false : responseState?.completedAt != null;
+      const isCompleted =
+        sourceType === 'system'
+          ? systemExecutionCompleted
+          : responseCompleted || domainCompleted;
       const isSkipped = responseState?.skippedAt != null;
       const outcome = isCompleted ? 'done' as const : isSkipped ? 'skipped' as const : 'pending' as const;
       const restrictionRaw = source?.restriction_metadata ?? source?.restrictionMetadata;

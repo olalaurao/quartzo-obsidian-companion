@@ -38,6 +38,8 @@ export class ManualExecutionRepository {
       startedAt: string;
       finishedAt: string;
       stepCompletions: Readonly<Record<string, boolean>>;
+      occurrenceId?: string;
+      scheduledFor?: string;
     },
     index: VaultIndex,
     settings: QuartzoSharedSettings | null,

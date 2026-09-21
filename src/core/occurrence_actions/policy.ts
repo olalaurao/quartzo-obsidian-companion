@@ -152,7 +152,7 @@ function canReportDone(role: OccurrenceSemanticRole, input: OccurrencePolicyInpu
     return input.completable;
   }
   if ([
-    'trackerPrompt','journalPrompt','timeAllocation','systemRun','routineRun','rotationBlock',
+    'trackerPrompt','journalPrompt','timeAllocation','routineRun','rotationBlock',
     'contactPrompt','goalStart','goalDeadline',
   ].includes(role)) return true;
   return role === 'referencePrompt' ? input.completable : false;
