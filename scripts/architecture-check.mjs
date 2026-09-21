@@ -828,7 +828,9 @@ function checkCanonicalManualExecution() {
   const repository = fs.readFileSync(repositoryPath, 'utf8');
   const controls = fs.readFileSync(controlsPath, 'utf8');
   const list = fs.readFileSync(listPath, 'utf8');
-  const modal = fs.readFileSync(modalPath, 'utf8');
+  const focusView = fs.readFileSync(focusViewPath, 'utf8');
+  const manualModal = fs.readFileSync(manualModalPath, 'utf8');
+  const shell = fs.readFileSync(shellPath, 'utf8');
   const main = fs.readFileSync(mainPath, 'utf8');
   const vectors = JSON.parse(fs.readFileSync(vectorsPath, 'utf8'));
   const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
@@ -895,7 +897,9 @@ function checkCanonicalFocusRuntime() {
   const codecPath = path.join(rootDir, 'src/core/focus-runtime/state-codec.ts');
   const runtimePath = path.join(rootDir, 'src/core/focus-runtime/runtime.ts');
   const repositoryPath = path.join(rootDir, 'src/vault/focus-runtime.ts');
-  const modalPath = path.join(rootDir, 'src/ui/focus/runtime-modal.ts');
+  const focusViewPath = path.join(rootDir, 'src/ui/focus/view.ts');
+  const manualModalPath = path.join(rootDir, 'src/ui/execution/manual-execution-modal.ts');
+  const shellPath = path.join(rootDir, 'src/ui/shell/view.ts');
   const parserPath = path.join(rootDir, 'src/core/objects/parser.ts');
   const mainPath = path.join(rootDir, 'src/main.ts');
   const sharedCorePath = path.join(rootDir, 'src/core/shared-settings.ts');
@@ -904,8 +908,9 @@ function checkCanonicalFocusRuntime() {
   const lockPath = path.join(rootDir, 'contracts/UPSTREAM.lock.json');
 
   for (const file of [
-    contractPath, codecPath, runtimePath, repositoryPath, modalPath, parserPath,
-    mainPath, sharedCorePath, sharedVaultPath, vectorsPath, lockPath,
+    contractPath, codecPath, runtimePath, repositoryPath, focusViewPath,
+    manualModalPath, shellPath, parserPath, mainPath, sharedCorePath,
+    sharedVaultPath, vectorsPath, lockPath,
   ]) {
     if (!fs.existsSync(file)) {
       console.error(`FAIL: Focus runtime canonical file missing: ${path.relative(rootDir, file)}`);
@@ -969,10 +974,15 @@ function checkCanonicalFocusRuntime() {
     return false;
   }
 
-  if (!modal.includes('snapshot.canControl') ||
-      !modal.includes('controlled by another device') ||
-      !modal.includes('button.disabled = disabled || this.busy')) {
-    console.error('FAIL: Foreign/legacy Focus runtime is not visibly read-only in the canonical UI projection');
+  if (!focusView.includes('controlled by another device') ||
+      !focusView.includes('!initial.canControl') ||
+      !focusView.includes('renderFocusRuntime(') ||
+      focusView.includes('extends Modal') ||
+      main.includes('FocusRuntimeModal') ||
+      !shell.includes("this.action === 'focus'") ||
+      !shell.includes('renderFocusRuntime(content, this.context.plugin)') ||
+      !manualModal.includes('renderFocusRuntime(contentEl, this.options.focusController')) {
+    console.error('FAIL: Focus UI is not a shared inline read-only projection of the canonical runtime');
     return false;
   }
 
