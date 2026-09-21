@@ -102,7 +102,8 @@ export function renderOccurrenceActionControls(
     }
   }
 
-  if (capabilities.canReplan && options.reschedule) {
+  const reschedule = options.reschedule;
+  if (capabilities.canReplan && reschedule) {
     addAction('Reschedule', () => {
       void (async () => {
         const initialStart = new Date(`${item.date}T${item.start ?? '09:00'}:00`);
@@ -115,7 +116,7 @@ export function renderOccurrenceActionControls(
         const buttons = Array.from(actionRow.querySelectorAll('button'));
         for (const button of buttons) button.disabled = true;
         try {
-          await options.reschedule(next.start, next.end);
+          await reschedule(next.start, next.end);
         } catch (error) {
           for (const button of buttons) button.disabled = false;
           new Notice(`Reschedule blocked: ${error instanceof Error ? error.message : String(error)}`);
