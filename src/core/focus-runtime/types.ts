@@ -97,10 +97,10 @@ export interface FocusSessionEvidence {
 }
 
 export const DEFAULT_FOCUS_PRESET: FocusPresetSnapshot = {
-  presetId: 'default',
+  presetId: 'default-25-5',
   name: '25/5',
   workMinutes: 25,
   shortBreakMinutes: 5,
-  longBreakMinutes: 15,
+  longBreakMinutes: 10,
   longBreakEvery: 4,
 };
