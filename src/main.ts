@@ -873,6 +873,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
       occurrenceId,
       initialPlainCompletions,
       initialLinkedStates: this.manualExecutionLinkedStates(initialContext, run.scheduledFor),
+      focusController: this,
       onPlainChange: async (step, completed) => {
         if (initialContext.source.type === 'system') return;
         if (!occurrenceId) throw new Error('Routine occurrence identity is missing.');
