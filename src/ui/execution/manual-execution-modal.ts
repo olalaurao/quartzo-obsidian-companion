@@ -5,11 +5,6 @@ import type {
 } from '../../core/manual-execution';
 import type { IndexedObject } from '../../vault/index/types';
 
-export interface ManualExecutionModalSnapshot {
-  plainCompletions: Record<string, boolean>;
-  linkedStates: Record<string, ManualExecutionStepState>;
-}
-
 export interface ManualExecutionModalFinishResult {
   completed: boolean;
   message: string;
@@ -21,10 +16,11 @@ export interface ManualExecutionModalOptions {
   startedAt: string;
   scheduledFor: string;
   occurrenceId?: string;
-  snapshot: ManualExecutionModalSnapshot;
+  initialPlainCompletions: Record<string, boolean>;
+  initialLinkedStates: Record<string, ManualExecutionStepState>;
   onPlainChange(step: ManualExecutionStep, completed: boolean): Promise<void>;
   onLinkedAction(step: ManualExecutionStep): Promise<void>;
-  refresh(): Promise<ManualExecutionModalSnapshot>;
+  refreshLinkedStates(): Promise<Record<string, ManualExecutionStepState>>;
   finish(plainCompletions: Readonly<Record<string, boolean>>): Promise<ManualExecutionModalFinishResult>;
 }
 
@@ -38,8 +34,8 @@ export class ManualExecutionModal extends Modal {
     private readonly options: ManualExecutionModalOptions,
   ) {
     super(app);
-    this.plainCompletions = { ...options.snapshot.plainCompletions };
-    this.linkedStates = { ...options.snapshot.linkedStates };
+    this.plainCompletions = { ...options.initialPlainCompletions };
+    this.linkedStates = { ...options.initialLinkedStates };
   }
 
   onOpen(): void {
@@ -113,9 +109,7 @@ export class ManualExecutionModal extends Modal {
           action.addEventListener('click', () => {
             void this.runBusy(async () => {
               await this.options.onLinkedAction(step);
-              const snapshot = await this.options.refresh();
-              this.plainCompletions = { ...snapshot.plainCompletions };
-              this.linkedStates = { ...snapshot.linkedStates };
+              this.linkedStates = { ...await this.options.refreshLinkedStates() };
             });
           });
           row.appendChild(action);
