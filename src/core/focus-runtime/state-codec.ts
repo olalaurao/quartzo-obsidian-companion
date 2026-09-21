@@ -12,6 +12,12 @@ function optionalText(value: unknown): string | undefined {
   return text || undefined;
 }
 
+function optionalDateText(value: unknown): string | undefined {
+  const text = optionalText(value);
+  if (!text || !Number.isFinite(Date.parse(text))) return undefined;
+  return text;
+}
+
 function intValue(value: unknown, fallback: number): number {
   const parsed = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
@@ -96,18 +102,18 @@ export function parseFocusRuntimeFrontmatter(
     plannedWorkIntervals: frontmatter.plannedWorkIntervals == null
       ? undefined
       : Math.max(0, intValue(frontmatter.plannedWorkIntervals, 0)),
-    phaseStartedAt: optionalText(frontmatter.phaseStartedAt),
-    phaseEndsAt: optionalText(frontmatter.phaseEndsAt),
+    phaseStartedAt: optionalDateText(frontmatter.phaseStartedAt),
+    phaseEndsAt: optionalDateText(frontmatter.phaseEndsAt),
     phaseDurationSeconds: frontmatter.phaseDurationSeconds == null
       ? undefined
       : Math.max(0, intValue(frontmatter.phaseDurationSeconds, 0)),
-    pausedAt: optionalText(frontmatter.pausedAt),
+    pausedAt: optionalDateText(frontmatter.pausedAt),
     pausedRemainingSeconds: frontmatter.pausedRemainingSeconds == null
       ? frontmatter.remainingSeconds == null
         ? undefined
         : Math.max(0, intValue(frontmatter.remainingSeconds, 0))
       : Math.max(0, intValue(frontmatter.pausedRemainingSeconds, 0)),
-    stopwatchStartedAt: optionalText(frontmatter.stopwatchStartedAt),
+    stopwatchStartedAt: optionalDateText(frontmatter.stopwatchStartedAt),
     stopwatchElapsedBeforeCurrentRun: Math.max(
       0,
       intValue(
@@ -115,7 +121,7 @@ export function parseFocusRuntimeFrontmatter(
         intValue(frontmatter.elapsedSeconds, 0),
       ),
     ),
-    actualStartedAt: optionalText(frontmatter.actualStartedAt),
+    actualStartedAt: optionalDateText(frontmatter.actualStartedAt),
     actualWorkSeconds: Math.max(0, intValue(frontmatter.actualWorkSeconds, 0)),
     actualBreakSeconds: Math.max(0, intValue(frontmatter.actualBreakSeconds, 0)),
     phaseSequence: Math.max(0, intValue(frontmatter.phaseSequence, 0)),
