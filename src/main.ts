@@ -3,6 +3,7 @@ import { VaultIndexEngine } from './vault/index';
 import type { IndexedObject } from './vault/index/types';
 import { SafeObjectMutationRepository } from './vault/object-mutation';
 import { ManualExecutionRepository } from './vault/manual-execution';
+import { FOCUS_RUNTIME_PATH, FocusRuntimeRepository } from './vault/focus-runtime';
 import type { SafeObjectMutation } from './core/object-mutation';
 import { ObjectParser } from './core/objects';
 import type { TrackerDefinition } from './core/objects/types';
@@ -25,6 +26,18 @@ import {
   type ManualExecutionRunCapability,
 } from './core/manual-execution';
 import {
+  canMutateFocusRuntime,
+  createIdleFocusRuntimeState,
+  focusChecklistLinkId,
+  focusElapsedSeconds,
+  focusPhaseIsDue,
+  focusRemainingSeconds,
+  focusTotalSeconds,
+  resolveFocusRuntimeControl,
+  type FocusRuntimeState,
+  type FocusSessionDisposition,
+} from './core/focus-runtime';
+import {
   DriveSyncCoordinator,
   type PairingScanProgress,
   type PairingApplyProgress,
@@ -39,6 +52,7 @@ import { QuartzoView, QUARTZO_VIEW_TYPE, type QuartzoSection, type QuartzoAction
 import { buildPairingDiagnosticsText } from './ui/sync/pairing-diagnostics';
 import { ViewContext } from './ui/types';
 import { ManualExecutionModal } from './ui/execution/manual-execution-modal';
+import { FocusRuntimeModal, type FocusRuntimeUiController, type FocusRuntimeViewState } from './ui/focus/runtime-modal';
 import { QuickAddModal } from './ui/quick-add/modal';
 import { addLocalDays, localIsoDate, localIsoDateTime, parseLocalIsoDate } from './core/local-date';
 import { ReminderService, type ReminderMode, type ReminderSourceObject, type ReminderDeliveryOccurrence } from './core/reminders';
@@ -101,6 +115,7 @@ interface QuartzoCompanionSettings {
   oauthClientId: string;
   isPaired: boolean;
   reminderDelivery: ReminderMode;
+  focusControllerId: string;
 }
 
 const DEFAULT_SETTINGS: QuartzoCompanionSettings = {
@@ -115,6 +130,7 @@ const DEFAULT_SETTINGS: QuartzoCompanionSettings = {
   oauthClientId: 'PLACEHOLDER_CLIENT_ID',
   isPaired: false,
   reminderDelivery: 'in_obsidian_only',
+  focusControllerId: '',
 };
 
 
@@ -134,7 +150,7 @@ const OAUTH_CONFIG: OAuthConfig = {
   // Google verification/testing requirements apply before production listing.
 };
 
-export default class QuartzoCompanionPlugin extends Plugin {
+export default class QuartzoCompanionPlugin extends Plugin implements FocusRuntimeUiController {
   settings!: QuartzoCompanionSettings;
   vaultIndexEngine: VaultIndexEngine | null = null;
   driveSyncCoordinator: DriveSyncCoordinator | null = null;
@@ -154,6 +170,9 @@ export default class QuartzoCompanionPlugin extends Plugin {
   private occurrenceDomainMutationRepository: OccurrenceDomainMutationRepository | null = null;
   private safeObjectMutationRepository: SafeObjectMutationRepository | null = null;
   private manualExecutionRepository: ManualExecutionRepository | null = null;
+  private focusRuntimeRepository: FocusRuntimeRepository | null = null;
+  private focusRuntimeState: FocusRuntimeState = createIdleFocusRuntimeState();
+  private focusPhaseCompletionInFlight = false;
   private occurrenceResponses: Record<string, OccurrenceResponseState> = {};
   private occurrenceOverrides: Record<string, OccurrenceTimeOverride> = {};
   private googleAccessRefreshInFlight: Promise<string | null> | null = null;
@@ -190,6 +209,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.occurrenceDomainMutationRepository = new OccurrenceDomainMutationRepository(this.app.vault);
     this.safeObjectMutationRepository = new SafeObjectMutationRepository(this.app.vault);
     this.manualExecutionRepository = new ManualExecutionRepository(this.app.vault);
+    this.focusRuntimeRepository = new FocusRuntimeRepository(this.app.vault);
     try {
       this.occurrenceResponses = await this.occurrenceStateRepository.loadResponses();
     } catch (error) {
@@ -236,6 +256,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     this.addCommand({ id: 'quartzo-browse', name: 'Quartzo: Browse', callback: () => { void this.activateQuartzo('browse'); } });
     this.addCommand({ id: 'quartzo-search', name: 'Quartzo: Search', callback: () => { void this.activateQuartzo('browse', 'search'); } });
     this.addCommand({ id: 'quartzo-quick-add', name: 'Quartzo: Quick Add', callback: () => { void this.activateQuartzo('home', 'add'); } });
+    this.addCommand({ id: 'quartzo-focus', name: 'Quartzo: Focus', callback: () => { void this.openFocusRuntime(); } });
     this.addCommand({ id: 'quartzo-sync-center', name: 'Quartzo: View sync status', callback: () => { void this.activateQuartzo('home', 'sync'); } });
     this.addCommand({ id: 'quartzo-conflict-center', name: 'Quartzo: Conflicts', callback: () => { void this.activateQuartzo('home', 'conflicts'); } });
     this.addCommand({
@@ -278,6 +299,9 @@ export default class QuartzoCompanionPlugin extends Plugin {
         console.error('Reminder delivery poll failed:', error instanceof Error ? error.message : String(error));
       });
     }, 15_000));
+    this.registerInterval(window.setInterval(() => {
+      void this.processFocusRuntimeTick(new Date());
+    }, 1_000));
 
     if (!this.settings.firstRunCompleted) {
       this.showFirstRunDialog();
