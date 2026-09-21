@@ -5,6 +5,8 @@ import { SafeObjectMutationRepository } from './vault/object-mutation';
 import { ManualExecutionRepository } from './vault/manual-execution';
 import type { SafeObjectMutation } from './core/object-mutation';
 import { ObjectParser } from './core/objects';
+import type { TrackerDefinition } from './core/objects/types';
+import { resolveCreationFolder } from './core/shared-settings';
 import {
   assertTrackerCaptureSupported,
   projectTrackerForCapture,
@@ -42,6 +44,7 @@ import { ReminderService, type ReminderMode, type ReminderSourceObject, type Rem
 import {
   OccurrenceActionService,
   companionOccurrenceDomainMode,
+  occurrenceResponseIdForDailyItem,
   type CanonicalOccurrenceAction,
   type CanonicalOccurrenceActionResult,
   type OccurrenceActionTarget,
@@ -69,6 +72,20 @@ type SyncMode = 'manual' | 'automatic';
 interface CalendarCacheEntry {
   expiresAt: number;
   events: GoogleCalendarProjection[];
+}
+
+interface ManualExecutionContext {
+  source: IndexedObject;
+  steps: ManualExecutionStep[];
+  references: ManualExecutionReferenceResolution;
+  objects: ManualExecutionObject[];
+}
+
+interface ManualExecutionRunContext {
+  sourceId: string;
+  startedAt: string;
+  scheduledFor: string;
+  occurrenceId?: string;
 }
 
 interface QuartzoCompanionSettings {
