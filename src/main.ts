@@ -28,6 +28,7 @@ import {
   type OccurrenceResponseState,
 } from './core/occurrence_actions';
 import type { NormalizedItem } from './core/daily_schedule/types';
+import { planOccurrenceReschedule, type OccurrenceTimeOverride } from './core/occurrence_reschedule';
 import { FileNotificationDeliveryRegistry } from './local-state/notification-delivery-registry';
 import { ObsidianReminderDeliveryGateway } from './platform/notifications';
 import { ElectronBrowserOpener } from './platform/browser-opener';
@@ -38,6 +39,7 @@ import { VaultSyncFilePolicy } from './sync/coordinator/file-policy';
 import { SHARED_SETTINGS_PATH, SharedSettingsRepository, parseObjectWithSharedSettings, type QuartzoSharedSettings } from './vault/shared-settings';
 import { SHARED_OCCURRENCE_STATE_PATH, SharedOccurrenceStateRepository } from './vault/occurrence-state';
 import { OccurrenceDomainMutationRepository } from './vault/occurrence-domain-mutations';
+import { SHARED_PLANNING_STATE_PATH, SharedPlanningStateRepository } from './vault/planning-state';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -110,9 +112,11 @@ export default class QuartzoCompanionPlugin extends Plugin {
   private sharedSettingsRepository: SharedSettingsRepository | null = null;
   private sharedSettings: QuartzoSharedSettings | null = null;
   private occurrenceStateRepository: SharedOccurrenceStateRepository | null = null;
+  private planningStateRepository: SharedPlanningStateRepository | null = null;
   private occurrenceDomainMutationRepository: OccurrenceDomainMutationRepository | null = null;
   private safeObjectMutationRepository: SafeObjectMutationRepository | null = null;
   private occurrenceResponses: Record<string, OccurrenceResponseState> = {};
+  private occurrenceOverrides: Record<string, OccurrenceTimeOverride> = {};
   private googleAccessRefreshInFlight: Promise<string | null> | null = null;
   private pairingWorkflowModal: HTMLDivElement | null = null;
   private vaultRuntimeReady = false;
@@ -143,6 +147,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     }
 
     this.occurrenceStateRepository = new SharedOccurrenceStateRepository(this.app.vault);
+    this.planningStateRepository = new SharedPlanningStateRepository(this.app.vault);
     this.occurrenceDomainMutationRepository = new OccurrenceDomainMutationRepository(this.app.vault);
     this.safeObjectMutationRepository = new SafeObjectMutationRepository(this.app.vault);
     try {
@@ -150,6 +155,12 @@ export default class QuartzoCompanionPlugin extends Plugin {
     } catch (error) {
       console.error('Failed to load shared occurrence state:', error);
       this.occurrenceResponses = {};
+    }
+    try {
+      this.occurrenceOverrides = await this.planningStateRepository.loadOverrides();
+    } catch (error) {
+      console.error('Failed to load shared planning state:', error);
+      this.occurrenceOverrides = {};
     }
     this.occurrenceActionService = new OccurrenceActionService({
       store: this.occurrenceStateRepository,
@@ -434,6 +445,20 @@ export default class QuartzoCompanionPlugin extends Plugin {
     return this.occurrenceResponses;
   }
 
+  getOccurrenceOverrides(): Record<string, OccurrenceTimeOverride> {
+    return this.occurrenceOverrides;
+  }
+
+  private async reloadOccurrenceOverrides(refreshView = true): Promise<void> {
+    if (!this.planningStateRepository) return;
+    try {
+      this.occurrenceOverrides = await this.planningStateRepository.loadOverrides();
+      if (refreshView) await this.refreshQuartzoView();
+    } catch (error) {
+      console.error('Shared planning state reload failed:', error);
+    }
+  }
+
   private async reloadOccurrenceResponses(refreshView = true): Promise<void> {
     if (!this.occurrenceStateRepository) return;
     try {
@@ -516,6 +541,46 @@ export default class QuartzoCompanionPlugin extends Plugin {
     };
     await this.refreshQuartzoView();
     return result;
+  }
+
+  async performOccurrenceReschedule(
+    item: NormalizedItem,
+    newStart: Date,
+    newEnd: Date,
+  ): Promise<void> {
+    const occurrenceId = item.actionOccurrenceId ?? item.occurrenceId ?? item.id;
+    const plan = planOccurrenceReschedule({
+      occurrenceId,
+      sourceId: item.sourceId,
+      sourceType: item.sourceType,
+      editable: item.editable,
+      seriesId: item.seriesId,
+      outcome: item.outcome,
+      isCompletable: item.isCompletable,
+      isPlayable: item.isPlayable,
+      reminderId: item.reminderId,
+      restrictionMetadata: item.restrictionMetadata,
+    }, newStart, newEnd);
+
+    if (plan.storage === 'source_task') {
+      const object = this.vaultIndexEngine?.getIndex()?.objects.get(item.sourceId);
+      if (!object || object.type !== 'task') {
+        throw new Error('Task source is not available for safe rescheduling.');
+      }
+      await this.mutateObject(object, plan.patch);
+      await this.refreshQuartzoView();
+      return;
+    }
+
+    if (!this.planningStateRepository) {
+      throw new Error('Shared planning state is not initialized.');
+    }
+    await this.planningStateRepository.upsertTimeOverride(plan.override);
+    this.occurrenceOverrides = {
+      ...this.occurrenceOverrides,
+      [plan.override.occurrenceId]: plan.override,
+    };
+    await this.refreshQuartzoView();
   }
 
   async mutateObject(object: IndexedObject, patch: SafeObjectMutation): Promise<void> {
@@ -610,6 +675,7 @@ export default class QuartzoCompanionPlugin extends Plugin {
     const oncreate = this.app.vault.on('create', (file: TAbstractFile) => {
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { void this.reloadSharedSettingsAndIndex(); return; }
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_OCCURRENCE_STATE_PATH) { void this.reloadOccurrenceResponses(); return; }
+      if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_PLANNING_STATE_PATH) { void this.reloadOccurrenceOverrides(); return; }
       if (file instanceof TFile && this.vaultIndexEngine && this.shouldIndexPath(file.path)) {
         const idx = this.vaultIndexEngine.getIndex();
         if (idx) {
@@ -677,6 +743,11 @@ export default class QuartzoCompanionPlugin extends Plugin {
         void this.refreshQuartzoView();
         return;
       }
+      if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_PLANNING_STATE_PATH) {
+        this.occurrenceOverrides = {};
+        void this.refreshQuartzoView();
+        return;
+      }
       if (file instanceof TFile && this.vaultIndexEngine && this.shouldIndexPath(file.path)) {
         const idx = this.vaultIndexEngine.getIndex();
         if (idx) {
@@ -695,6 +766,10 @@ export default class QuartzoCompanionPlugin extends Plugin {
       if (normalizeVaultPath(oldPath) === SHARED_SETTINGS_PATH || normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { void this.reloadSharedSettingsAndIndex(); return; }
       if (normalizeVaultPath(oldPath) === SHARED_OCCURRENCE_STATE_PATH || normalizeVaultPath(file.path) === SHARED_OCCURRENCE_STATE_PATH) {
         void this.reloadOccurrenceResponses();
+        return;
+      }
+      if (normalizeVaultPath(oldPath) === SHARED_PLANNING_STATE_PATH || normalizeVaultPath(file.path) === SHARED_PLANNING_STATE_PATH) {
+        void this.reloadOccurrenceOverrides();
         return;
       }
       if (!(file instanceof TFile) || !this.vaultIndexEngine) return;
