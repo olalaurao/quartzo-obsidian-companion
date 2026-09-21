@@ -794,6 +794,100 @@ function checkCanonicalOccurrenceActions() {
   console.log('PASS: Occurrence actions are canonical, idempotent, dated, Vault-safe and fail closed on unsupported domain parity');
   return true;
 }
+function checkCanonicalManualExecution() {
+  const coreDir = path.join(rootDir, 'src/core/manual-execution');
+  const policyPath = path.join(coreDir, 'policy.ts');
+  const systemPath = path.join(coreDir, 'system.ts');
+  const routinePath = path.join(coreDir, 'routine.ts');
+  const referencesPath = path.join(coreDir, 'references.ts');
+  const effectivePath = path.join(coreDir, 'effective-state.ts');
+  const repositoryPath = path.join(rootDir, 'src/vault/manual-execution.ts');
+  const controlsPath = path.join(rootDir, 'src/ui/occurrence/action-controls.ts');
+  const listPath = path.join(rootDir, 'src/ui/daily/schedule-list.ts');
+  const modalPath = path.join(rootDir, 'src/ui/execution/manual-execution-modal.ts');
+  const mainPath = path.join(rootDir, 'src/main.ts');
+  const vectorsPath = path.join(rootDir, 'contracts/quartzo/system_routine_execution/vectors.json');
+  const lockPath = path.join(rootDir, 'contracts/UPSTREAM.lock.json');
+
+  for (const file of [
+    policyPath, systemPath, routinePath, referencesPath, effectivePath,
+    repositoryPath, controlsPath, listPath, modalPath, mainPath, vectorsPath, lockPath,
+  ]) {
+    if (!fs.existsSync(file)) {
+      console.error(`FAIL: Manual execution canonical file missing: ${path.relative(rootDir, file)}`);
+      return false;
+    }
+  }
+
+  const policy = fs.readFileSync(policyPath, 'utf8');
+  const system = fs.readFileSync(systemPath, 'utf8');
+  const routine = fs.readFileSync(routinePath, 'utf8');
+  const references = fs.readFileSync(referencesPath, 'utf8');
+  const effective = fs.readFileSync(effectivePath, 'utf8');
+  const repository = fs.readFileSync(repositoryPath, 'utf8');
+  const controls = fs.readFileSync(controlsPath, 'utf8');
+  const list = fs.readFileSync(listPath, 'utf8');
+  const modal = fs.readFileSync(modalPath, 'utf8');
+  const main = fs.readFileSync(mainPath, 'utf8');
+  const vectors = JSON.parse(fs.readFileSync(vectorsPath, 'utf8'));
+  const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+
+  if (!Array.isArray(vectors) || vectors.length === 0 ||
+      lock.contractVersions?.systemRoutineExecutionContractVersion !== '1.0.0' ||
+      !lock.manifest?.['system_routine_execution/vectors.json']) {
+    console.error('FAIL: Manual execution is not pinned to the vendored executable contract');
+    return false;
+  }
+
+  if (!policy.includes('resolveManualExecutionRunCapability') ||
+      !policy.includes("return 'requiresFocusRuntime'") ||
+      !policy.includes('allowsBackgroundAutoRun') ||
+      !system.includes('finalizeSystemRun') ||
+      !system.includes('execution_history') ||
+      !system.includes('systemSummaryTaskId') ||
+      !routine.includes('manualRoutineOccurrenceId') ||
+      !routine.includes('routine_executions_version: 2') ||
+      !references.includes('resolveManualExecutionReferences') ||
+      !effective.includes('resolveEffectiveLinkedSteps')) {
+    console.error('FAIL: Manual execution semantics are not owned by the canonical pure core');
+    return false;
+  }
+
+  if (!repository.includes('export class ManualExecutionRepository') ||
+      repository.split('await this.vault.process(').length - 1 < 2 ||
+      !repository.includes('ensureSystemSummaryTask') ||
+      !repository.includes("resolveCreationFolder(settings, 'task')")) {
+    console.error('FAIL: System/Routine execution persistence bypasses the canonical Vault adapter');
+    return false;
+  }
+
+  if (!main.includes('prepareManualExecution(item)') ||
+      !main.includes('resolveManualExecutionRunCapability(') ||
+      !main.includes('new ManualExecutionModal(') ||
+      !main.includes('this.manualExecutionRepository') ||
+      !main.includes('OccurrenceActionService') ||
+      !controls.includes('manualExecutionCapability') ||
+      !controls.includes('startManualExecution') ||
+      !list.includes('manualExecutionCapability: options.manualExecutionCapability?.(item)') ||
+      !modal.includes('options.finish(this.plainCompletions)')) {
+    console.error('FAIL: UI/composition root does not project the canonical manual execution owner');
+    return false;
+  }
+
+  if (controls.includes('execution_history') ||
+      controls.includes('routine_executions') ||
+      list.includes('execution_history') ||
+      list.includes('routine_executions') ||
+      modal.includes('execution_history') ||
+      modal.includes('routine_executions')) {
+    console.error('FAIL: Manual execution UI serializes execution evidence directly');
+    return false;
+  }
+
+  console.log('PASS: System/Routine manual Run is vector-pinned, whole-run gated, Vault-safe and single-owner');
+  return true;
+}
+
 function checkCanonicalOccurrenceReschedule() {
   const servicePath = path.join(rootDir, 'src/core/occurrence_reschedule/service.ts');
   const codecPath = path.join(rootDir, 'src/core/occurrence_reschedule/state-codec.ts');
@@ -1253,6 +1347,7 @@ function main() {
   if (!checkVaultIndexWaitsForWorkspaceReady()) allPassed = false;
   if (!checkSharedSettingsReloadReindexesVault()) allPassed = false;
   if (!checkCanonicalOccurrenceActions()) allPassed = false;
+  if (!checkCanonicalManualExecution()) allPassed = false;
   if (!checkCanonicalOccurrenceReschedule()) allPassed = false;
   if (!checkCanonicalHomeAndDayDial()) allPassed = false;
   if (!checkCanonicalPlannerProjection()) allPassed = false;
