@@ -1,0 +1,230 @@
+[
+  {
+    "id": "focus_idle_is_available",
+    "case": "control_capability",
+    "client_kind": "quartzo",
+    "current_session_id": null,
+    "persisted_controller_id": null,
+    "local_controller_id": "device-a",
+    "expected_capability": "available",
+    "expected_can_mutate": true
+  },
+  {
+    "id": "focus_owner_can_control_active_runtime",
+    "case": "control_capability",
+    "client_kind": "quartzo",
+    "current_session_id": "pomo-1",
+    "persisted_controller_id": "device-a",
+    "local_controller_id": "device-a",
+    "expected_capability": "controller",
+    "expected_can_mutate": true
+  },
+  {
+    "id": "focus_foreign_active_runtime_is_read_only",
+    "case": "control_capability",
+    "client_kind": "quartzo",
+    "current_session_id": "pomo-1",
+    "persisted_controller_id": "device-b",
+    "local_controller_id": "device-a",
+    "expected_capability": "readOnlyForeign",
+    "expected_can_mutate": false
+  },
+  {
+    "id": "focus_legacy_runtime_is_migration_claimable_in_quartzo",
+    "case": "control_capability",
+    "client_kind": "quartzo",
+    "current_session_id": "legacy-pomo",
+    "persisted_controller_id": null,
+    "local_controller_id": "device-a",
+    "expected_capability": "migrationClaim",
+    "expected_can_mutate": true
+  },
+  {
+    "id": "focus_legacy_runtime_is_read_only_in_companion",
+    "case": "control_capability",
+    "client_kind": "companion",
+    "current_session_id": "legacy-pomo",
+    "persisted_controller_id": null,
+    "local_controller_id": "desktop-a",
+    "expected_capability": "readOnlyLegacy",
+    "expected_can_mutate": false
+  },
+  {
+    "id": "focus_companion_can_control_its_owned_runtime",
+    "case": "control_capability",
+    "client_kind": "companion",
+    "current_session_id": "pomo-companion",
+    "persisted_controller_id": "desktop-a",
+    "local_controller_id": "desktop-a",
+    "expected_capability": "controller",
+    "expected_can_mutate": true
+  },
+  {
+    "id": "pomodoro_active_remaining_uses_phase_end_timestamp",
+    "case": "timer_remaining",
+    "is_running": true,
+    "total_seconds": 1500,
+    "now": "2026-09-21T10:05:00.000",
+    "phase_ends_at": "2026-09-21T10:20:00.000",
+    "paused_remaining_seconds": 1499,
+    "expected_seconds": 900
+  },
+  {
+    "id": "pomodoro_active_remaining_clamps_after_deadline",
+    "case": "timer_remaining",
+    "is_running": true,
+    "total_seconds": 1500,
+    "now": "2026-09-21T10:25:00.000",
+    "phase_ends_at": "2026-09-21T10:20:00.000",
+    "paused_remaining_seconds": 100,
+    "expected_seconds": 0
+  },
+  {
+    "id": "pomodoro_paused_remaining_uses_persisted_value",
+    "case": "timer_remaining",
+    "is_running": false,
+    "total_seconds": 1500,
+    "now": "2026-09-21T10:25:00.000",
+    "phase_ends_at": null,
+    "paused_remaining_seconds": 420,
+    "expected_seconds": 420
+  },
+  {
+    "id": "stopwatch_active_elapsed_uses_timestamp",
+    "case": "stopwatch_elapsed",
+    "is_running": true,
+    "elapsed_before_current_run": 300,
+    "now": "2026-09-21T10:10:00.000",
+    "stopwatch_started_at": "2026-09-21T10:05:00.000",
+    "expected_seconds": 600
+  },
+  {
+    "id": "stopwatch_paused_elapsed_uses_persisted_value",
+    "case": "stopwatch_elapsed",
+    "is_running": false,
+    "elapsed_before_current_run": 725,
+    "now": "2026-09-21T10:20:00.000",
+    "stopwatch_started_at": null,
+    "expected_seconds": 725
+  },
+  {
+    "id": "pomodoro_work_transitions_to_short_break",
+    "case": "phase_transition",
+    "phase": "work",
+    "completed_work_intervals": 0,
+    "preset": {
+      "preset_id": "focus",
+      "name": "25/5",
+      "work_minutes": 25,
+      "short_break_minutes": 5,
+      "long_break_minutes": 15,
+      "long_break_every": 4
+    },
+    "expected": {
+      "next_phase": "shortBreak",
+      "next_duration_minutes": 5,
+      "completed_work_intervals": 1
+    }
+  },
+  {
+    "id": "pomodoro_fourth_work_transitions_to_long_break",
+    "case": "phase_transition",
+    "phase": "work",
+    "completed_work_intervals": 3,
+    "preset": {
+      "preset_id": "focus",
+      "name": "25/5",
+      "work_minutes": 25,
+      "short_break_minutes": 5,
+      "long_break_minutes": 15,
+      "long_break_every": 4
+    },
+    "expected": {
+      "next_phase": "longBreak",
+      "next_duration_minutes": 15,
+      "completed_work_intervals": 4
+    }
+  },
+  {
+    "id": "pomodoro_break_returns_to_work",
+    "case": "phase_transition",
+    "phase": "shortBreak",
+    "completed_work_intervals": 2,
+    "preset": {
+      "preset_id": "focus",
+      "name": "25/5",
+      "work_minutes": 25,
+      "short_break_minutes": 5,
+      "long_break_minutes": 15,
+      "long_break_every": 4
+    },
+    "expected": {
+      "next_phase": "work",
+      "next_duration_minutes": 25,
+      "completed_work_intervals": 2
+    }
+  },
+  {
+    "id": "pomodoro_checklist_link_identity_is_stable",
+    "case": "checklist_link_identity",
+    "parent_object_id": "routine-morning",
+    "step_id": "deep-work",
+    "expected_linked_item_slug": "checklist:routine-morning:deep-work"
+  },
+  {
+    "id": "pomodoro_completed_session_completes_checklist_step",
+    "case": "checklist_evidence",
+    "parent_object_id": "routine-morning",
+    "step_id": "deep-work",
+    "evaluation_date": "2026-09-21T09:00:00.000",
+    "session": {
+      "linked_item_slug": "checklist:routine-morning:deep-work",
+      "state": "completed",
+      "occurred_at": "2026-09-21T08:30:00.000",
+      "completed_at": "2026-09-21T08:55:00.000"
+    },
+    "expected_completed": true
+  },
+  {
+    "id": "pomodoro_partial_session_does_not_complete_checklist_step",
+    "case": "checklist_evidence",
+    "parent_object_id": "routine-morning",
+    "step_id": "deep-work",
+    "evaluation_date": "2026-09-21T09:00:00.000",
+    "session": {
+      "linked_item_slug": "checklist:routine-morning:deep-work",
+      "state": "partial",
+      "occurred_at": "2026-09-21T08:30:00.000",
+      "completed_at": "2026-09-21T08:40:00.000"
+    },
+    "expected_completed": false
+  },
+  {
+    "id": "pomodoro_wrong_date_does_not_complete_checklist_step",
+    "case": "checklist_evidence",
+    "parent_object_id": "routine-morning",
+    "step_id": "deep-work",
+    "evaluation_date": "2026-09-21T09:00:00.000",
+    "session": {
+      "linked_item_slug": "checklist:routine-morning:deep-work",
+      "state": "completed",
+      "occurred_at": "2026-09-20T08:30:00.000",
+      "completed_at": "2026-09-20T08:55:00.000"
+    },
+    "expected_completed": false
+  },
+  {
+    "id": "pomodoro_wrong_link_does_not_complete_checklist_step",
+    "case": "checklist_evidence",
+    "parent_object_id": "routine-morning",
+    "step_id": "deep-work",
+    "evaluation_date": "2026-09-21T09:00:00.000",
+    "session": {
+      "linked_item_slug": "checklist:routine-morning:other-step",
+      "state": "completed",
+      "occurred_at": "2026-09-21T08:30:00.000",
+      "completed_at": "2026-09-21T08:55:00.000"
+    },
+    "expected_completed": false
+  }
+]
