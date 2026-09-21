@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
+import { ObjectParser } from '../../src/core/objects';
 import {
   canMutateFocusRuntime,
   completeFocusPhase,
@@ -14,6 +15,9 @@ import {
   parseFocusPresetSnapshot,
   parseFocusRuntimeFrontmatter,
   resolveFocusRuntimeControl,
+  finishFocusRuntime,
+  pauseFocusRuntime,
+  startFocusRuntime,
   type FocusRuntimeClientKind,
   type FocusPhase,
 } from '../../src/core/focus-runtime';
@@ -150,3 +154,108 @@ describe('Focus runtime V1 contract vectors', () => {
     expect(encoded.focusControllerId).toBeNull();
   });
 });
+
+describe('Focus runtime lifecycle compatibility', () => {
+  it('indexes Quartzo type: daily notes by date without inventing a second parser', () => {
+    const parsed = ObjectParser.parse(`---
+type: daily
+date: 2026-09-21
+pomodoro_sessions:
+  - id: pomo-1
+    linked_item: checklist:routine-morning:deep-work
+    state: completed
+    occurred_at: 2026-09-21T08:30:00.000
+---
+`);
+    expect(parsed.object.type).toBe('daily_note');
+    expect(parsed.object.id).toBe('2026-09-21');
+    expect((parsed.object as Record<string, unknown>).pomodoro_sessions)
+      .toBeDefined();
+  });
+
+  it('starts, pauses and finishes an owned checklist Focus session as completed evidence', () => {
+    const idle = createIdleFocusRuntimeState({
+      presetId: 'focus',
+      name: '25/5',
+      workMinutes: 25,
+      shortBreakMinutes: 5,
+      longBreakMinutes: 15,
+      longBreakEvery: 4,
+    });
+    const started = startFocusRuntime(idle, {
+      localControllerId: 'desktop-a',
+      sessionId: 'pomo-checklist',
+      now: new Date('2026-09-21T08:00:00.000'),
+      currentItemId: 'checklist:routine-morning:deep-work',
+      currentItemTitle: 'Deep work',
+    });
+    expect(started.focusControllerId).toBe('desktop-a');
+    expect(started.isRunning).toBe(true);
+
+    const paused = pauseFocusRuntime(
+      started,
+      'desktop-a',
+      new Date('2026-09-21T08:10:00.000'),
+    );
+    expect(paused.isRunning).toBe(false);
+    expect(paused.pausedRemainingSeconds).toBe(900);
+
+    const resumed = startFocusRuntime(paused, {
+      localControllerId: 'desktop-a',
+      sessionId: 'pomo-checklist',
+      now: new Date('2026-09-21T08:12:00.000'),
+    });
+    const finished = finishFocusRuntime(resumed, {
+      localControllerId: 'desktop-a',
+      now: new Date('2026-09-21T08:17:00.000'),
+      disposition: 'finish',
+    });
+    expect(finished.evidence?.id).toBe('pomo-checklist');
+    expect(finished.evidence?.linked_item)
+      .toBe('checklist:routine-morning:deep-work');
+    expect(finished.evidence?.state).toBe('completed');
+    expect(finished.evidence?.worked).toBe(15);
+    expect(finished.state.currentSessionId).toBeUndefined();
+    expect(finished.state.focusControllerId).toBeUndefined();
+  });
+
+  it('partial Focus evidence never counts as checklist completion', () => {
+    const idle = createIdleFocusRuntimeState();
+    const started = startFocusRuntime(idle, {
+      localControllerId: 'desktop-a',
+      sessionId: 'pomo-partial',
+      now: new Date('2026-09-21T08:00:00.000'),
+      currentItemId: 'checklist:routine-morning:deep-work',
+    });
+    const result = finishFocusRuntime(started, {
+      localControllerId: 'desktop-a',
+      now: new Date('2026-09-21T08:05:00.000'),
+      disposition: 'savePartial',
+    });
+    expect(result.evidence?.state).toBe('partial');
+    expect(isChecklistPomodoroEvidence({
+      parentObjectId: 'routine-morning',
+      stepId: 'deep-work',
+      evaluationDate: '2026-09-21T09:00:00.000',
+      session: result.evidence as unknown as Record<string, unknown>,
+    })).toBe(false);
+  });
+
+  it('rejects mutation of a foreign active runtime', () => {
+    const foreign = {
+      ...createIdleFocusRuntimeState(),
+      currentSessionId: 'foreign-session',
+      focusControllerId: 'desktop-b',
+      isRunning: true,
+      phaseStartedAt: '2026-09-21T08:00:00.000',
+      phaseEndsAt: '2026-09-21T08:25:00.000',
+      phaseDurationSeconds: 1500,
+    };
+    expect(() => pauseFocusRuntime(
+      foreign,
+      'desktop-a',
+      new Date('2026-09-21T08:05:00.000'),
+    )).toThrow(/another device/i);
+  });
+});
+
