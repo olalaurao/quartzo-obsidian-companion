@@ -112,6 +112,11 @@ sync. A local-only file with `baseHash == null` is marked as requiring explicit
 adoption when the remote vault already contains canonical content. It is never
 published as an implicit first-client winner.
 
+The app must expose an explicit, user-confirmed adoption command for this state.
+That command may publish only paths that are local-only at reconciliation time.
+It must not overwrite an existing remote path, bypass same-path conflict
+detection, or change ordinary automatic/manual sync into implicit adoption.
+
 ## Rename And Move
 
 A rename or move is represented by the new normalized relative path and the
