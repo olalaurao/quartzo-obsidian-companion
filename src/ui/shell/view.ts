@@ -348,6 +348,10 @@ export class QuartzoView extends ItemView {
         this.context.plugin.performOccurrenceAction(item, action, options),
       performOccurrenceReschedule: (item, start, end) =>
         this.context.plugin.performOccurrenceReschedule(item, start, end),
+      manualExecutionCapability: item =>
+        this.context.plugin.getManualExecutionCapability(item),
+      startManualExecution: item =>
+        this.context.plugin.startManualExecution(item),
     });
   }
 
@@ -370,6 +374,10 @@ export class QuartzoView extends ItemView {
         this.context.plugin.performOccurrenceAction(item, action, options),
       performOccurrenceReschedule: (item, start, end) =>
         this.context.plugin.performOccurrenceReschedule(item, start, end),
+      manualExecutionCapability: item =>
+        this.context.plugin.getManualExecutionCapability(item),
+      startManualExecution: item =>
+        this.context.plugin.startManualExecution(item),
       onQuickAdd: type => new QuickAddModal(this.context, type).open(),
     });
   }
@@ -468,6 +476,10 @@ export class QuartzoView extends ItemView {
         this.context.plugin.performOccurrenceAction(item, action, options),
       performOccurrenceReschedule: (item, start, end) =>
         this.context.plugin.performOccurrenceReschedule(item, start, end),
+      manualExecutionCapability: item =>
+        this.context.plugin.getManualExecutionCapability(item),
+      startManualExecution: item =>
+        this.context.plugin.startManualExecution(item),
       onDayLensChange: lens => {
         this.plannerDayLens = lens;
         void this.render();
