@@ -1134,75 +1134,109 @@ A System becoming due at 09:00 does not automatically mean every connected clien
 
 # 15. Scheduled Systems and Routines
 
-Systems may have:
+Current System and Routine execution is checklist-based. The canonical persisted
+step model is `ChecklistStep`, with stable step IDs and these kinds:
 
 ```text
-scheduler
-scheduledTime
-steps
-executionHistory
+plain
+habit
+task
+tracker_entry
+pomodoro
 ```
 
-The Companion may:
+The Companion may calculate scheduled occurrences, render/open them, and allow
+an explicit manual Run. It must not invent a generic automation-action model
+that does not exist in the current Quartzo schema.
 
-- calculate when the System belongs in Planner;
-- render it;
-- open it;
-- allow the user to manually run it.
+## 15.1 System manual Run
 
-## V1 distributed automation restriction
+Linked step mutations remain owned by their canonical Habit, Task, Tracker or
+Focus/Pomodoro owner. Plain step state is run-local until Finish.
 
-The Companion must **not automatically execute mutating scheduled Systems/Routines in the background**.
+Finishing a System run is owned by `SystemExecutionService` and produces two
+pieces of canonical evidence:
 
-Reason:
+1. one `SystemExecution` keyed idempotently by the run's exact `startedAt`;
+   new executions persist `finished_at` so a retry after a partial write can
+   reconstruct the original elapsed duration;
+2. one finalized summary Task with `linked_system = <system id>`, elapsed
+   duration, and deterministic ID
+   `system-run:<systemId>@<startedAt ISO>`.
 
-```text
-Phone sees occurrence
-+
-Work Companion sees occurrence
-=
-potential duplicate execution
-```
+A retry of the same Finish operation must not append another execution or
+create another summary Task. When persisted evidence for that run already
+contains `finished_at`, retry uses that original timestamp rather than the
+retry wall clock. The same run identity with different step completion evidence
+is a collision and fails closed.
 
-Automatic multi-client execution requires a separate canonical distributed execution/claim protocol.
+System run-in-progress UI state is device-local and transient in V1. Until
+Finish succeeds, there is no canonical `SystemExecution` or summary Task.
+Cancel, plugin/app reload, or abandoning that transient run discards local
+plain-step progress only. It does not roll back linked-domain mutations that
+the user already performed; those mutations already belong to their canonical
+domains. Legacy `SystemExecution` entries without `finished_at` remain
+readable.
 
-Until that protocol exists:
+## 15.2 Routine manual/scheduled Run
+
+Scheduled Routine execution uses the exact scheduled `occurrenceId`. A truly
+manual run uses `OccurrenceIdentity.forManualRun`.
+
+`RoutineExecutionService` remains the owner of persisted Routine progress.
+Bulk Complete may mark eligible `plain` steps, but it must never fabricate
+completion for linked steps. Required linked steps must already be complete in
+their canonical owner before the Routine closes. Final close materializes the
+effective linked state into immutable historical step snapshots.
+
+## 15.3 V1 distributed automation restriction
+
+The Companion must **not automatically execute mutating scheduled Systems or
+Routines in the background**. Automatic multi-client execution requires a
+separate distributed claim protocol.
 
 ```text
 scheduled occurrence → visible
 manual Run           → allowed
-background auto-run  → Quartzo app only / unsupported
+background auto-run  → unsupported
 ```
-
-No client should pretend otherwise.
 
 ---
 
-# 16. Automation Action Compatibility
+# 16. Manual Execution Capability Contract
 
-When manually executing an action from the Companion, each action type must declare capability:
+Cross-client behavior is executable in
+`contracts/quartzo/system_routine_execution/vectors.json`.
 
-```text
-supported
-unsupported
-requires Quartzo app
-```
-
-The Companion must never partially execute a System if doing so would violate its semantics.
-
-Examples requiring explicit compatibility review:
+For current `ChecklistStep.kind` values:
 
 ```text
-add_entry
-create_task
-create_note
-update_kpi
-send_notification
-open_url
-custom_script
+plain         → supported
+habit         → delegated to canonical Habit owner
+task          → delegated to canonical Task/occurrence owner
+tracker_entry → delegated to canonical Tracker record owner
+pomodoro      → requires canonical Focus/Pomodoro runtime
+unknown       → unsupported / fail closed
 ```
 
-`custom_script` must be disabled in the Companion unless a future security specification explicitly allows it.
+Before the first execution side effect, a client must evaluate the complete
+System/Routine step set through the canonical capability policy. Manual Run is
+available only when every step is executable by that client. Unknown or
+malformed steps, or a required delegated owner that is unavailable, block the
+entire Run before it starts; the client must not execute the compatible prefix
+of an incompatible run.
+
+A `pomodoro` step yields `requiresFocusRuntime` until that client has the
+canonical Focus/Pomodoro runtime. Once the runtime exists, the same run may be
+supported without changing the persisted checklist schema. Routine completion
+still uses the canonical required-step rule; System Finish may record a
+supported-but-not-completed step as incomplete.
+
+Legacy/aspirational generic action names such as `add_entry`, `create_task`,
+`create_note`, `update_kpi`, `send_notification`, `open_url` and
+`custom_script` are not the current persisted System/Routine execution model
+and must not be synthesized by the Companion. `custom_script` remains
+unsupported unless a future security specification introduces it explicitly.
 
 ---
 
