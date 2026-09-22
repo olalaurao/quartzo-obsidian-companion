@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-21T23:42:00-03:00
+Last update: 2026-09-21T23:45:00-03:00
 Current milestone: C3.5 OAuth contract/runtime/release divergence
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
 Current branch: `codex/c35-oauth-no-client-secret`
-Current HEAD: 09cd76cdaa538a522a9d37f3afe580b4592d4d57 plus local C3.5 changes
+Current HEAD: 495d3e3046748ded43d67edbf0ec105f8c93897d plus local progress update
 Upstream main HEAD: d9302f0860fa1a4e33c1c611f2b448bec167e51f
 Companion main HEAD: 09cd76cdaa538a522a9d37f3afe580b4592d4d57
-Open PR: none for current milestone yet
-CI status: local C3.5 gates green; remote PR not opened yet.
-Blocker: C3.5 implementation is local and still needs PR CI/merge certification.
-Exact next action: commit/push C3.5 branch, open PR, monitor Linux/Windows/macOS CI.
+Open PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/56
+CI status: PR #56 first run `35680157336` green on Linux, Windows and macOS for head `495d3e3046748ded43d67edbf0ec105f8c93897d`.
+Blocker: C3.5 still needs progress checkpoint CI rerun and merge certification.
+Exact next action: commit/push this progress checkpoint, wait for rerun, merge PR #56 if green.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -1174,6 +1174,58 @@ Tests run:
 - `npm run smoke:clean-artifact` - green.
 - `npm run release:package` - green.
 Still open:
-- Commit/push C3.5 branch.
-- Open PR and wait for Linux/Windows/macOS CI.
-- Merge only after remote CI is green, then update tracker and issue #45.
+- Push first remote CI checkpoint.
+- Wait for progress-only CI rerun.
+- Merge only after remote CI rerun is green, then update tracker and issue #45.
+
+## 2026-09-21 - C3.5 PR opened and first CI green
+
+Repo: Companion
+Branch: `codex/c35-oauth-no-client-secret`
+Commit: 495d3e3046748ded43d67edbf0ec105f8c93897d (`Align OAuth desktop flow with no-secret contract`)
+PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/56
+CI run: 35680157336
+Result:
+- `test-linux`: success.
+- `test-windows`: success.
+- `test-macos`: success.
+Remote Linux covered:
+- `npm ci --audit=false`
+- production audit
+- contract verify
+- typecheck
+- lint
+- `npm test`
+- `npm run test:contracts`
+- `npm run test:sync`
+- architecture
+- build
+- release validate
+- clean artifact smoke
+- package
+Remote Windows covered:
+- `npm ci --audit=false`
+- production audit
+- typecheck
+- sync tests
+- build
+- clean artifact smoke
+- package
+Remote macOS covered:
+- `npm ci --audit=false`
+- production audit
+- contract verify
+- typecheck
+- lint
+- `npm test`
+- `npm run test:contracts`
+- `npm run test:sync`
+- architecture
+- build
+- release validate
+- clean artifact smoke
+- package
+Next:
+- Commit/push this progress checkpoint.
+- Wait for the progress-only CI rerun.
+- Merge PR #56 if the rerun remains green.
