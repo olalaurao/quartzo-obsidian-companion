@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-21T23:15:42-03:00
+Last update: 2026-09-21T23:18:30-03:00
 Current milestone: C2 performance/lifecycle/race pass
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
 Current branch: `codex/c2-lifecycle-race-hardening`
-Current HEAD: d7be18360f6defb496e63cc1d84b0d94af72fc16 plus local C2 implementation
+Current HEAD: 8c5a2f13938c9ad53fa88a9801aeb6f961464ca5
 Upstream main HEAD: d9302f0860fa1a4e33c1c611f2b448bec167e51f
 Companion main HEAD: d7be18360f6defb496e63cc1d84b0d94af72fc16
-Open PR: none for current milestone yet
-CI status: C2 local full gates green; remote PR not opened yet.
+Open PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/54
+CI status: PR #54 run `35678891223` green on Linux and Windows for head `8c5a2f13938c9ad53fa88a9801aeb6f961464ca5`.
 Blocker: OAuth contract/runtime divergence remains later C3.5 blocker, not C2.
-Exact next action: commit/push C2 branch, open PR, then monitor Linux/Windows CI before merge.
+Exact next action: commit/push this progress checkpoint, wait for progress-only CI rerun, then merge PR #54 if still green.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -945,3 +945,40 @@ Still open:
 Next:
 - Commit/push C2 branch and open PR.
 - Wait for Linux/Windows CI on the pushed head.
+
+## 2026-09-21 - C2 PR opened and first CI green
+
+Repo: Companion
+Branch: `codex/c2-lifecycle-race-hardening`
+Commit: 8c5a2f13938c9ad53fa88a9801aeb6f961464ca5 (`Harden C2 lifecycle race handling`)
+PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/54
+CI run: 35678891223
+Result:
+- `test-linux`: success.
+- `test-windows`: success.
+Remote Linux covered:
+- `npm ci --audit=false`
+- production audit
+- contract verify
+- typecheck
+- lint
+- `npm test`
+- `npm run test:contracts`
+- `npm run test:sync`
+- architecture
+- build
+- release validate
+- clean artifact smoke
+- package
+Remote Windows covered:
+- `npm ci --audit=false`
+- production audit
+- typecheck
+- sync tests
+- build
+- clean artifact smoke
+- package
+Next:
+- Commit/push this progress checkpoint.
+- Wait for the progress-only CI rerun.
+- Merge PR #54 if the rerun remains green.
