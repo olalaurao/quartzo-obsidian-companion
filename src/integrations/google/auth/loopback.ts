@@ -162,6 +162,7 @@ export class GoogleOAuthDesktop {
     const params = new URLSearchParams();
     params.append('code', code);
     params.append('client_id', this.config.clientId);
+    if (this.config.clientSecret) params.append('client_secret', this.config.clientSecret);
     params.append('redirect_uri', this.getRedirectUri());
     params.append('grant_type', 'authorization_code');
     params.append('code_verifier', this.codeVerifier);
@@ -174,6 +175,7 @@ export class GoogleOAuthDesktop {
     const params = new URLSearchParams();
     params.append('refresh_token', storedRefreshToken);
     params.append('client_id', this.config.clientId);
+    if (this.config.clientSecret) params.append('client_secret', this.config.clientSecret);
     params.append('grant_type', 'refresh_token');
     const tokenResponse = await this.makeTokenRequest(params);
     this.accessToken = tokenResponse.access_token;

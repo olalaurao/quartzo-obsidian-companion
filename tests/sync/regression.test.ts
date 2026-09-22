@@ -1085,18 +1085,19 @@ describe('Sync Regression Tests', () => {
   });
 
   describe('Reviewer Blocker 7: release Client ID wiring', () => {
-    it('release workflow passes QUARTZO_GOOGLE_DESKTOP_CLIENT_ID to build', () => {
+    it('release workflow passes QUARTZO_GOOGLE_DESKTOP_CLIENT_ID and CLIENT_SECRET to build', () => {
       const releaseSrc = fs.readFileSync(path.join(__dirname, '../../.github/workflows/release.yml'), 'utf-8');
       expect(releaseSrc).toContain('QUARTZO_GOOGLE_DESKTOP_CLIENT_ID');
       expect(releaseSrc).toContain('secrets.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID');
-      expect(releaseSrc).not.toContain('QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET');
+      expect(releaseSrc).toContain('QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET');
+      expect(releaseSrc).toContain('secrets.QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET');
     });
 
-    it('release validator checks built main.js for placeholder', () => {
+    it('release validator checks built main.js for placeholder and requires client secret', () => {
       const validatorSrc = fs.readFileSync(path.join(__dirname, '../../scripts/release-validate.mjs'), 'utf-8');
       expect(validatorSrc).toContain('main.js');
       expect(validatorSrc).toContain('PLACEHOLDER_CLIENT_ID');
-      expect(validatorSrc).toContain('must not contain QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET');
+      expect(validatorSrc).toContain('OAuth Client Secret is missing');
     });
   });
 

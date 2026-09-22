@@ -18,6 +18,7 @@ jobs:
     
     env:
       QUARTZO_GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID }}
+      QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET }}
       RELEASE_MODE: 'true'
 
     steps:
@@ -91,6 +92,7 @@ jobs:
         run: npm run build
         env:
           QUARTZO_GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID }}
+          QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET }}
       
       - name: Release validate (production mode)
         run: RELEASE_MODE=true npm run release:validate
