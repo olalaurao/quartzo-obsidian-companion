@@ -842,9 +842,16 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     let newStartPageToken: string | null = null;
     const driveFolderId = this.syncState.driveFolderId || '';
 
+
     do {
       const response = await this.driveAdapter.listChanges(pageToken!);
       newStartPageToken = response.newStartPageToken;
+
+      // Build the queued-IDs set once per page so that multiple folder-change
+      // entries in the same page don't each trigger an independent full scan of
+      // tracked files. This reduces total API calls from
+      // O(tracked_files × folder_changes_per_page) to O(tracked_files) per page.
+      const pageQueuedIds = new Set(response.changes.map(c => c.fileId));
 
       for (const change of response.changes) {
         processedChanges++;
@@ -876,13 +883,17 @@ export class DriveSyncCoordinator implements ConflictRegistry {
         if (!change.file) continue;
 
         if (change.file.mimeType === 'application/vnd.google-apps.folder') {
-          const queuedIds = new Set(response.changes.map(candidate => candidate.fileId));
+          // When a folder is renamed/moved, Drive does NOT emit individual change
+          // entries for its children — we must re-fetch their metadata to detect
+          // path changes. pageQueuedIds (built once per page above) ensures each
+          // tracked child is fetched at most once across all folder changes in
+          // this page, reducing O(tracked × folder_changes) → O(tracked) per page.
           for (const tracked of this.syncState.files.values()) {
-            if (!tracked.remoteFileId || queuedIds.has(tracked.remoteFileId)) continue;
+            if (!tracked.remoteFileId || pageQueuedIds.has(tracked.remoteFileId)) continue;
             try {
               const metadata = await this.driveAdapter.getFileMetadata(tracked.remoteFileId);
               response.changes.push({ fileId: tracked.remoteFileId, removed: false, file: metadata });
-              queuedIds.add(tracked.remoteFileId);
+              pageQueuedIds.add(tracked.remoteFileId);
             } catch {
               // A missing tracked child will be handled by its own removed change;
               // do not infer deletion from a metadata read failure.
