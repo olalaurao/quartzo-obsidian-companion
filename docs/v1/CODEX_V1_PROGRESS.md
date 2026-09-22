@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-21T23:26:20-03:00
-Current milestone: C3 macOS CI
+Last update: 2026-09-21T23:29:00-03:00
+Current milestone: C3.5 OAuth contract/runtime/release divergence
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
-Current branch: `codex/c3-macos-ci-release-gates`
-Current HEAD: 1f4267cd4be35dcb2cc628a146b4bc62df7e4a44
+Current branch: main
+Current HEAD: 49b27e02878ae1f2c5348ebefd845d989e0f5d7f plus local C3 closeout docs
 Upstream main HEAD: d9302f0860fa1a4e33c1c611f2b448bec167e51f
 Companion main HEAD: 6ccb085aaf3cfe5331ca05ac47e56ef7c480b825
-Open PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/55
-CI status: PR #55 run `35679365316` green on Linux, Windows and macOS for head `1f4267cd4be35dcb2cc628a146b4bc62df7e4a44`.
-Blocker: OAuth contract/runtime divergence remains later C3.5 blocker, not C3.
-Exact next action: commit/push this progress checkpoint, wait for progress-only CI rerun, then merge PR #55 if still green.
+Open PR: none for current milestone yet
+CI status: PR #55 final run `35679476172` green on Linux, Windows and macOS for head `3a6e2f3a45b6a185b86f344c13e7c49586420128`; merged as `49b27e02878ae1f2c5348ebefd845d989e0f5d7f`.
+Blocker: OAuth contract/runtime/release divergence is now the active C3.5 blocker.
+Exact next action: commit/push C3 tracker/progress closeout, add issue #45 comment, then start C3.5 upstream-first OAuth reconciliation unless redirected.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -1104,3 +1104,32 @@ Next:
 - Commit/push this progress checkpoint.
 - Wait for the progress-only CI rerun.
 - Merge PR #55 if the rerun remains green.
+
+## 2026-09-21 - C3 Companion merged
+
+Repo: Companion
+PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/55
+Final PR head: 3a6e2f3a45b6a185b86f344c13e7c49586420128
+Merge SHA: 49b27e02878ae1f2c5348ebefd845d989e0f5d7f
+Merged at: 2026-09-22T02:28:10Z
+Final CI run: 35679476172
+Result:
+- `test-linux`: success.
+- `test-windows`: success.
+- `test-macos`: success.
+Closed C3 evidence:
+- Main CI now includes `test-macos` on `macos-latest`.
+- macOS runs production audit, contracts verify, typecheck, lint, full tests, contract tests, sync tests, architecture, build, release validate, clean artifact smoke and package.
+- Architecture gate enforces macOS CI parity and audit gate use across Linux, Windows and macOS.
+- Contract test covers the macOS workflow gates.
+- Release/preflight OAuth behavior intentionally unchanged; OAuth divergence remains C3.5.
+Tracker updates:
+- C3 macOS CI marked closed.
+- Added C3 closed section with PR #55, final head, merge SHA and CI evidence.
+Still open:
+- C3.5 OAuth contract/runtime/release divergence.
+- C4 stale docs/capability matrix, including P0 `.agents/AGENTS.md` link.
+Next:
+- Commit/push tracker and progress closeout.
+- Add issue #45 progress comment.
+- Start C3.5 upstream-first unless redirected.

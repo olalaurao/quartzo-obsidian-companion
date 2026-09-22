@@ -47,7 +47,7 @@ A V1 só é considerada pronta quando todos os quatro marcos abaixo estiverem co
 - [x] UI/UX + accessibility pass.
 - [x] performance/lifecycle/race pass.
 - [x] pending-sync path + reason diagnostics.
-- [ ] macOS CI.
+- [x] macOS CI.
 - [ ] docs/capability matrix final.
 
 ### Marco D — prova e release
@@ -378,6 +378,25 @@ Companion:
 - [x] CI #35679013301 Linux: audit, contracts verify, typecheck, lint, full tests, contract vectors, sync regressions, architecture check, build, release validate, clean artifact e package verdes.
 - [x] CI #35679013301 Windows: audit, typecheck, sync regression, build, clean artifact e package verdes.
 - [x] merge canônico Companion: `6ccb085aaf3cfe5331ca05ac47e56ef7c480b825`.
+
+---
+
+## Milestone fechado — C3 macOS CI
+
+**Status: ✅ fechado no Companion. PR #55 → `49b27e0`.**
+
+Companion:
+- [x] Branch `codex/c3-macos-ci-release-gates`.
+- [x] CI principal agora inclui `test-macos` em `macos-latest`.
+- [x] macOS roda npm install, production audit, contracts verify, typecheck, lint, full tests, contract tests, sync tests, architecture check, build, release validate, clean artifact smoke e package.
+- [x] Architecture gate exige macOS CI parity e audit gate canônico nos três sistemas.
+- [x] Contract test cobre a presença dos gates macOS no workflow.
+- [x] Release/preflight OAuth behavior permaneceu intocado; divergência OAuth continua classificada como C3.5.
+- [x] PR #55 final head certificado: `3a6e2f3a45b6a185b86f344c13e7c49586420128`.
+- [x] CI #35679476172 Linux: audit, contracts verify, typecheck, lint, full tests, contract vectors, sync regressions, architecture check, build, release validate, clean artifact e package verdes.
+- [x] CI #35679476172 Windows: audit, typecheck, sync regression, build, clean artifact e package verdes.
+- [x] CI #35679476172 macOS: audit, contracts verify, typecheck, lint, full tests, contract vectors, sync regressions, architecture check, build, release validate, clean artifact e package verdes.
+- [x] merge canônico Companion: `49b27e02878ae1f2c5348ebefd845d989e0f5d7f`.
 
 ---
 
