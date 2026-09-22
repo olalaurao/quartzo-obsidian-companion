@@ -62,6 +62,7 @@ export class QuickAddModal extends Modal {
     contentEl.appendChild(title);
 
     const typeSelect = document.createElement('select');
+    typeSelect.setAttribute('aria-label', 'Quick Add type');
     for (const type of ['task', 'entry', 'note', 'reminder', 'tracker_record', 'resource'] as QuickAddType[]) {
       const option = document.createElement('option');
       option.value = type;
@@ -78,11 +79,13 @@ export class QuickAddModal extends Modal {
     const titleInput = document.createElement('input');
     titleInput.type = 'text';
     titleInput.placeholder = this.type === 'entry' ? 'Entry title (optional)' : `${labelForType(this.type)} title`;
+    titleInput.setAttribute('aria-label', this.type === 'entry' ? 'Entry title optional' : `${labelForType(this.type)} title`);
     titleInput.className = 'quartzo-input';
     if (this.type !== 'tracker_record') contentEl.appendChild(titleInput);
 
     const bodyInput = document.createElement('textarea');
     bodyInput.placeholder = this.type === 'resource' ? 'Synopsis or notes' : 'Content';
+    bodyInput.setAttribute('aria-label', this.type === 'resource' ? 'Synopsis or notes' : 'Content');
     bodyInput.className = 'quartzo-input';
     if (this.type !== 'tracker_record') contentEl.appendChild(bodyInput);
 
@@ -91,10 +94,12 @@ export class QuickAddModal extends Modal {
     if (this.type === 'entry' || this.type === 'reminder') {
       dateInput = document.createElement('input');
       dateInput.type = 'date';
+      dateInput.setAttribute('aria-label', `${labelForType(this.type)} date`);
       dateInput.value = isoDate(new Date());
       contentEl.appendChild(dateInput);
       timeInput = document.createElement('input');
       timeInput.type = 'time';
+      timeInput.setAttribute('aria-label', `${labelForType(this.type)} time`);
       timeInput.value = this.type === 'reminder' ? '09:00' : new Date().toTimeString().slice(0, 5);
       contentEl.appendChild(timeInput);
     }
@@ -125,6 +130,7 @@ export class QuickAddModal extends Modal {
       sourceUrlInput = document.createElement('input');
       sourceUrlInput.type = 'url';
       sourceUrlInput.placeholder = 'Source URL (optional)';
+      sourceUrlInput.setAttribute('aria-label', 'Source URL optional');
       sourceUrlInput.className = 'quartzo-input';
       sourceUrlInput.addEventListener('input', () => { resourceMetadata = null; });
       contentEl.appendChild(sourceUrlInput);
@@ -136,6 +142,8 @@ export class QuickAddModal extends Modal {
       contentEl.appendChild(mediaTypeSelect);
 
       const metadataStatus = document.createElement('small');
+      metadataStatus.setAttribute('role', 'status');
+      metadataStatus.setAttribute('aria-live', 'polite');
       metadataStatus.textContent = 'Paste a supported link and fetch metadata, or fill the fields manually.';
       const fetchMetadata = document.createElement('button');
       fetchMetadata.type = 'button';
@@ -184,6 +192,7 @@ export class QuickAddModal extends Modal {
       categoriesInput = document.createElement('input');
       categoriesInput.type = 'text';
       categoriesInput.placeholder = 'Categories, comma separated';
+      categoriesInput.setAttribute('aria-label', 'Categories comma separated');
       categoriesInput.className = 'quartzo-input';
       contentEl.appendChild(categoriesInput);
 

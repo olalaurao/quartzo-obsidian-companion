@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-21T22:54:13-03:00
+Last update: 2026-09-21T22:59:00-03:00
 Current milestone: C1 UI/UX + accessibility pass
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
-Current branch: main
-Current HEAD: cf0922c82f000532b97e907ffbb2b313654273dc plus local issue-link progress update
+Current branch: codex/c1-ui-accessibility-pass
+Current HEAD: 60635d8268298588672ee7ab78443bf38a417779 plus local C1 implementation/progress
 Upstream main HEAD: d9302f0860fa1a4e33c1c611f2b448bec167e51f
 Companion main HEAD: cf0922c82f000532b97e907ffbb2b313654273dc
 Open PR: none for current milestone yet
-CI status: PR #52 run `35677272561` green on Linux and Windows for head `68453db5f0143fa5cb50c285721c81cac200a08c`; merged as `7598ec7d7df86537447eb329b25567a93e1567a5`.
+CI status: no C1 PR yet; local full C1 gates green.
 Blocker: OAuth contract/runtime divergence remains later C3.5 blocker, not A7/B0.
-Exact next action: commit/push this issue-link progress update on main, then start C1 UI/UX + accessibility pass from main.
+Exact next action: commit/push C1 branch and open PR.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -787,3 +787,47 @@ Next:
 - Closeout docs commit pushed to main: `cf0922c82f000532b97e907ffbb2b313654273dc`.
 - Issue #45 progress comment added: https://github.com/olalaurao/quartzo-obsidian-companion/issues/45#issuecomment-5770120459
 - Start C1 from updated main unless redirected.
+
+## 2026-09-21 - C1 UI/UX accessibility implementation checkpoint
+
+Repo: Companion
+Branch: `codex/c1-ui-accessibility-pass`
+Base HEAD: 60635d8268298588672ee7ab78443bf38a417779
+Changed:
+- `src/ui/day-dial/view.ts`
+- `src/ui/quick-add/modal.ts`
+- `src/ui/shell/view.ts`
+- `styles.css`
+- `tests/contracts/ui_shell.test.ts`
+- `tests/ui/day-dial-accessibility.test.ts`
+- `docs/v1/CODEX_V1_PROGRESS.md`
+Implemented:
+- Shell navigation/actions expose current/pressed state.
+- Planner and Journal arrow/date controls have accessible names.
+- Browse/Search inputs and filters have accessible names.
+- Sync loading, warning, summary, last error and progress use status/alert/live-region semantics.
+- Disabled sync/pairing controls explain why they are disabled.
+- Quick Add fields and metadata status have accessible names/status.
+- Day Dial exposes done/skipped in accessible labels and visible legend/chip text, not only color/opacity.
+- CSS adds visible keyboard focus and wraps long diagnostics/errors/conflict content.
+Tests run:
+- `npx vitest run tests/ui/day-dial-accessibility.test.ts tests/contracts/ui_shell.test.ts` — green, 13 tests.
+- `npm run typecheck` — green.
+- `npm run lint` — green.
+- `npm run test:contracts` — green, 255 tests.
+- `npm test` — green, 594 tests.
+- `npm run architecture:check` — green.
+- `npm run build` — green.
+- `$env:GITHUB_TOKEN = gh auth token; npm run contracts:verify` — green, 22 contracts verified.
+- `npm run audit:prod` — green, zero vulnerabilities.
+- `npm run release:validate` — green.
+- `npm run smoke:clean-artifact` — green.
+- `npm run release:package` — green.
+Still open:
+- Remote PR CI.
+- C2 performance/lifecycle/race pass.
+- C3 macOS CI.
+- C3.5 OAuth contract/runtime/release divergence.
+- C4 stale docs/capability matrix, including P0 `.agents/AGENTS.md` link.
+Next:
+- Commit/push C1 branch and open PR.

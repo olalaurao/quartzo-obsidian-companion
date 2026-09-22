@@ -194,6 +194,26 @@
   color: var(--text-muted);
 }
 
+.quartzo-shell button:focus-visible,
+.quartzo-shell input:focus-visible,
+.quartzo-shell select:focus-visible,
+.quartzo-shell textarea:focus-visible,
+.quartzo-first-run-modal button:focus-visible,
+.quartzo-pairing-summary-modal button:focus-visible,
+.quartzo-detail-editor .quartzo-input:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
+
+.quartzo-warning-state,
+.quartzo-sync-summary,
+.quartzo-sync-pending-diagnostics,
+.quartzo-sync-progress,
+.quartzo-conflict-card,
+.quartzo-conflict-card pre {
+  overflow-wrap: anywhere;
+}
+
 /* Canonical 24-hour Day Dial */
 .quartzo-day-dial {
   min-width: 0;
@@ -306,6 +326,10 @@
 .quartzo-day-dial-legend-row.quartzo-clickable:focus {
   background: var(--background-modifier-hover);
   outline: none;
+}
+
+.quartzo-day-dial-legend-row.quartzo-clickable:focus-visible {
+  box-shadow: 0 0 0 2px var(--interactive-accent);
 }
 
 .quartzo-day-dial-swatch {

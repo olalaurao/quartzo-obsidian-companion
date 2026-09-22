@@ -54,6 +54,17 @@ function statusClass(item: NormalizedItem): string {
   return '';
 }
 
+function statusLabel(item: NormalizedItem): string {
+  if (item.outcome === 'done') return 'Done';
+  if (item.outcome === 'skipped') return 'Skipped';
+  return '';
+}
+
+function accessibleItemLabel(item: NormalizedItem, title: string): string {
+  const status = statusLabel(item);
+  return `${timeLabel(item)} ${title}${status ? `, ${status}` : ''}`;
+}
+
 function makeInteractive(
   element: SVGElement,
   projected: DayDialProjectedItem,
@@ -63,7 +74,7 @@ function makeInteractive(
   element.classList.add('quartzo-day-dial-interactive');
   element.setAttribute('role', 'button');
   element.setAttribute('tabindex', '0');
-  element.setAttribute('aria-label', `${timeLabel(projected.item)} ${projected.title}`);
+  element.setAttribute('aria-label', accessibleItemLabel(projected.item, projected.title));
   const open = () => options.onOpenItem?.(projected.item);
   element.addEventListener('click', open);
   element.addEventListener('keydown', event => {
@@ -175,9 +186,13 @@ function renderAllDay(
     chip.type = 'button';
     chip.className = `quartzo-day-dial-chip${statusClass(item)}`;
     const object = options.index?.objects.get(item.sourceId);
-    chip.textContent = String(object?.frontmatter.title ?? item.sourceLabel);
+    const title = String(object?.frontmatter.title ?? item.sourceLabel);
+    const status = statusLabel(item);
+    chip.textContent = `${title}${status ? ` · ${status}` : ''}`;
+    chip.setAttribute('aria-label', accessibleItemLabel(item, title));
     const canOpen = options.onOpenItem && options.canOpenItem?.(item) !== false;
     chip.disabled = !canOpen;
+    if (!canOpen) chip.title = 'This item is read-only in Companion V1.';
     if (canOpen) chip.addEventListener('click', () => options.onOpenItem?.(item));
     group.appendChild(chip);
   }
@@ -195,6 +210,8 @@ function renderLegend(
   for (const entry of projected) {
     const row = document.createElement('li');
     row.className = `quartzo-day-dial-legend-row${statusClass(entry.item)}`;
+    const status = statusLabel(entry.item);
+    row.setAttribute('aria-label', accessibleItemLabel(entry.item, entry.title));
 
     const swatch = document.createElement('span');
     swatch.className = 'quartzo-day-dial-swatch';
@@ -203,7 +220,7 @@ function renderLegend(
     row.appendChild(swatch);
 
     const label = document.createElement('span');
-    label.textContent = `${timeLabel(entry.item)} · ${entry.title}`;
+    label.textContent = `${timeLabel(entry.item)} · ${entry.title}${status ? ` · ${status}` : ''}`;
     row.appendChild(label);
 
     if (options.onOpenItem && options.canOpenItem?.(entry.item) !== false) {
