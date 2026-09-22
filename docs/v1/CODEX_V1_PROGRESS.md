@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-21T22:59:00-03:00
+Last update: 2026-09-21T23:01:42-03:00
 Current milestone: C1 UI/UX + accessibility pass
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
 Current branch: codex/c1-ui-accessibility-pass
-Current HEAD: 60635d8268298588672ee7ab78443bf38a417779 plus local C1 implementation/progress
+Current HEAD: 32e717027b93177f3ed7da6368674208cb52709d plus local C1 PR progress update
 Upstream main HEAD: d9302f0860fa1a4e33c1c611f2b448bec167e51f
 Companion main HEAD: cf0922c82f000532b97e907ffbb2b313654273dc
-Open PR: none for current milestone yet
-CI status: no C1 PR yet; local full C1 gates green.
+Open PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/53
+CI status: PR #53 run `35677820693` green on Linux and Windows for head `32e717027b93177f3ed7da6368674208cb52709d`.
 Blocker: OAuth contract/runtime divergence remains later C3.5 blocker, not A7/B0.
-Exact next action: commit/push C1 branch and open PR.
+Exact next action: commit/push this progress checkpoint, wait for the resulting PR #53 CI rerun, then merge if it remains green.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -831,3 +831,40 @@ Still open:
 - C4 stale docs/capability matrix, including P0 `.agents/AGENTS.md` link.
 Next:
 - Commit/push C1 branch and open PR.
+
+## 2026-09-21 - C1 PR opened and first CI green
+
+Repo: Companion
+Branch: `codex/c1-ui-accessibility-pass`
+Commit: 32e717027b93177f3ed7da6368674208cb52709d (`Improve C1 accessibility surfaces`)
+PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/53
+CI run: 35677820693
+Result:
+- `test-linux`: success.
+- `test-windows`: success.
+Remote Linux covered:
+- `npm ci --audit=false`
+- production audit
+- contract verify
+- typecheck
+- lint
+- `npm test`
+- `npm run test:contracts`
+- `npm run test:sync`
+- architecture
+- build
+- release validate
+- clean artifact smoke
+- package
+Remote Windows covered:
+- `npm ci --audit=false`
+- production audit
+- typecheck
+- sync tests
+- build
+- clean artifact smoke
+- package
+Next:
+- Commit/push this progress checkpoint.
+- Wait for the progress-only CI rerun.
+- Merge PR #53 if the rerun remains green.
