@@ -20,8 +20,7 @@ Quartzo Obsidian Companion can be installed using the [BRAT (Beta Release Auto-u
 
 ## Version Information
 
-- **Current Version**: 0.1.0-beta.1
-- **Branch**: feature/companion-v1-beta
+BRAT installs the latest validated GitHub prerelease for this repository. The release artifact version is defined by `manifest.json`, `package.json`, and `versions.json`; do not install from a feature branch or a local build.
 
 ## Updates
 

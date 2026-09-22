@@ -1,7 +1,7 @@
 {
   "repository": "olalaurao/aplicativo",
-  "sourceCommit": "d9302f0860fa1a4e33c1c611f2b448bec167e51f",
-  "syncTimestamp": "2026-09-22T01:24:27.299Z",
+  "sourceCommit": "e0bfa98611138512f916be9cf10f5395b78c10ed",
+  "syncTimestamp": "2026-09-22T03:04:21.344Z",
   "contractVersions": {
     "vaultInteropVersion": "1.0.0",
     "syncProtocolVersion": "1.0.0",
@@ -49,7 +49,7 @@
     "occurrence_actions/vectors.json": "90d3baa533262db8f8956a0182083a126439417458214d3e32e392585d101805",
     "occurrence_reschedule/vectors.json": "cc7a930588742390af0401b496fe39abec101922c1a6abdbb6da6d057a45a071",
     "overdue_projection/vectors.json": "469a72a77d31257be161e933835110f8cf3879b3f44f32313af27266e53cc95d",
-    "P0_COMPLIANCE_MATRIX.md": "85dce7e0694650281d6d156ebedcd0c25f1aaefcfc40741376a4154f2c69e76a",
+    "P0_COMPLIANCE_MATRIX.md": "af317bef3ad61aaa1b5880ed524f97344d6fa55811c3f3f1ae4aab2ed8b4d2c1",
     "QUARTZO_COMPANION_UI_SPEC_V1.md": "1df313555ee2a269afdecd70a6c36debf248b35b399f751cc1fcce7f8b2a0580",
     "QUARTZO_OBSIDIAN_COMPANION_CONTRACT.md": "44b87bc4737038ad7b03e5476b1c4bde1397eba081e25348e33db7ed44946d9e",
     "QUARTZO_SYNC_PROTOCOL_V1.md": "b64cb2a498462f58b081a1fcb81d949085be6ad9768c8468e22e1eb5149b69a3",

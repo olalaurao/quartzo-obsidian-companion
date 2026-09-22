@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-21T23:48:00-03:00
+Last update: 2026-09-22T00:10:00-03:00
 Current milestone: C4 docs/capability matrix final
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
-Current branch: main
-Current HEAD: 5c96485a91be1a20243dce32f38fbcaa89ac2f2b plus local C3.5 closeout progress update
-Upstream main HEAD: d9302f0860fa1a4e33c1c611f2b448bec167e51f
-Companion main HEAD: 5c96485a91be1a20243dce32f38fbcaa89ac2f2b
-Open PR: none
-CI status: PR #56 final run `35680269632` green on Linux, Windows and macOS for head `9b912ca2b0f91e742313e82cf545e8d8bd399d9a`; merged as `5c96485a91be1a20243dce32f38fbcaa89ac2f2b`.
-Blocker: C3.5 closed; C4 docs/capability matrix remains.
-Exact next action: commit/push this closeout progress update, comment issue #45, then start C4 unless redirected.
+Current branch: `codex/c4-v1-docs-capability-matrix`
+Current HEAD: 800f3394df0fb74dc551c6ed8f9d8b5307ade1b5 plus local C4 changes
+Upstream main HEAD: e0bfa98611138512f916be9cf10f5395b78c10ed
+Companion main HEAD: 800f3394df0fb74dc551c6ed8f9d8b5307ade1b5
+Open PR: none for Companion C4 yet
+CI status: local C4 gates green after reruns; remote Companion PR not opened yet.
+Blocker: C4 implementation is local and still needs PR CI/merge certification.
+Exact next action: commit/push C4 branch, open PR, monitor Linux/Windows/macOS CI.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -1259,3 +1259,64 @@ Next:
 - Push this closeout docs commit to main.
 - Add issue #45 progress comment for C3.5.
 - Start C4 from updated main unless redirected.
+
+## 2026-09-22 - C4 upstream P0 matrix link cleanup
+
+Repo: upstream Quartzo app (`C:\Users\lauri\Documents\aplicativo_v11_1_antigravity`)
+Branch: `codex/c4-p0-matrix-link-docs`
+PR: https://github.com/olalaurao/aplicativo/pull/48
+Final PR head: 6abb27dd235a0d493a2d5df29b8f506d7a2bc4f9
+Merge SHA: e0bfa98611138512f916be9cf10f5395b78c10ed
+Merged at: 2026-09-22T03:03:53Z
+Changed:
+- `docs/integrations/obsidian_companion/P0_COMPLIANCE_MATRIX.md`
+Rule/bug treated:
+- Replaced repository-relative Markdown links with literal repo paths so the matrix remains valid when vendored into Companion.
+- This corrected the stale Companion-local `.agents/AGENTS.md` link at the upstream-owned source instead of editing the vendored copy by hand.
+Local upstream tests:
+- `dart run tool/agent_preflight.dart` - green.
+- `flutter test test/architecture/agent_contract_bootstrap_test.dart test/obsidian_companion_contracts_test.dart` - green, 26 tests.
+Remote upstream CI:
+- Agent Contract Gate run `35680600034`: success.
+- Flutter CI run `35680600011`: Analyze success; Test success.
+Next:
+- Repin Companion contracts to upstream merge SHA `e0bfa98611138512f916be9cf10f5395b78c10ed`.
+
+## 2026-09-22 - C4 Companion docs/capability checkpoint
+
+Repo: Companion
+Branch: `codex/c4-v1-docs-capability-matrix`
+Base HEAD: 800f3394df0fb74dc551c6ed8f9d8b5307ade1b5
+Upstream pin:
+- `e0bfa98611138512f916be9cf10f5395b78c10ed`
+Changed:
+- `contracts/UPSTREAM.lock.json`
+- `contracts/quartzo/P0_COMPLIANCE_MATRIX.md`
+- `docs/v1/COMPANION_V1_CAPABILITY_MATRIX.md`
+- `docs/INSTALL_BRAT.md`
+- `README.md`
+- `docs/BETA_RELEASE_RUNBOOK.md`
+- `scripts/architecture-check.mjs`
+Implemented:
+- Created the final V1 capability matrix with Full / Read-only / Unsupported status, owner, contract/vector, test/gate, platform and V1 limitations.
+- Updated BRAT install docs to stop pinning stale `0.1.0-beta.1` and `feature/companion-v1-beta`.
+- Linked the V1 capability matrix from README and beta release runbook.
+- Added an architecture gate for C4 docs: matrix coverage, BRAT stale text, vendored P0 `.agents/AGENTS.md` broken link, and no-secret OAuth doc boundary.
+- Repinned vendored contracts byte-for-byte to upstream `e0bfa98611138512f916be9cf10f5395b78c10ed`.
+Tests run:
+- `$env:GITHUB_TOKEN = gh auth token; npm run contracts:verify` - green, 22 contracts verified byte-for-byte.
+- `npm run architecture:check` - green, including new C4 release docs/capability matrix gate.
+- `npm run typecheck` - green.
+- `npm run lint` - green.
+- `npm run test:contracts` - green, 259 tests.
+- `npm run test:sync` - first run had the known `GoogleDriveAdapter exposes withRetry via unknown cast` 5000ms timeout while heavy suites were parallelized; isolated rerun passed in 117ms, then full `npm run test:sync` rerun passed, 226 tests.
+- `npm test` - first run hit the same timeout; rerun passed, 598 tests.
+- `npm run build` - green.
+- `npm run release:validate` - green.
+- `npm run audit:prod` - green, zero vulnerabilities.
+- `npm run smoke:clean-artifact` - green.
+- `npm run release:package` - green.
+Still open:
+- Commit/push C4 branch.
+- Open Companion PR and wait for Linux/Windows/macOS CI.
+- Merge only after remote CI is green, then update tracker and issue #45.

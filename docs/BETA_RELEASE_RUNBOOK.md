@@ -2,6 +2,8 @@
 
 This runbook covers the first installable beta of the Quartzo Obsidian Companion.
 
+The final V1 support envelope is tracked in [`docs/v1/COMPANION_V1_CAPABILITY_MATRIX.md`](v1/COMPANION_V1_CAPABILITY_MATRIX.md).
+
 ## Release invariants
 
 - Desktop only.

@@ -1543,6 +1543,66 @@ function checkMacosCiParity() {
   return true;
 }
 
+function checkC4ReleaseDocsAndCapabilityMatrix() {
+  const matrixPath = path.join(rootDir, 'docs/v1/COMPANION_V1_CAPABILITY_MATRIX.md');
+  const bratPath = path.join(rootDir, 'docs/INSTALL_BRAT.md');
+  const p0Path = path.join(rootDir, 'contracts/quartzo/P0_COMPLIANCE_MATRIX.md');
+  const readmePath = path.join(rootDir, 'README.md');
+  const runbookPath = path.join(rootDir, 'docs/BETA_RELEASE_RUNBOOK.md');
+  const oauthPath = path.join(rootDir, 'docs/GOOGLE_OAUTH_SETUP.md');
+
+  if (!fs.existsSync(matrixPath)) {
+    console.error('FAIL: V1 capability matrix must exist at docs/v1/COMPANION_V1_CAPABILITY_MATRIX.md');
+    return false;
+  }
+
+  const matrix = fs.readFileSync(matrixPath, 'utf8');
+  const requiredMatrixSnippets = [
+    'Task | Full',
+    '`daily_note` | Read-only/raw',
+    'Google Calendar | Read-only',
+    'Focus/Pomodoro runtime | Full within V1 boundary',
+    'Numeric DayCapacitySummary in Companion | Unsupported',
+    'BRAT clean install',
+    'Release Preflight',
+  ];
+  for (const snippet of requiredMatrixSnippets) {
+    if (!matrix.includes(snippet)) {
+      console.error(`FAIL: V1 capability matrix missing required coverage: ${snippet}`);
+      return false;
+    }
+  }
+
+  const brat = fs.readFileSync(bratPath, 'utf8');
+  if (brat.includes('0.1.0-beta.1') || brat.includes('feature/companion-v1-beta')) {
+    console.error('FAIL: BRAT install docs must not pin stale beta version or feature branch');
+    return false;
+  }
+  if (!brat.includes('latest validated GitHub prerelease') || !brat.includes('manifest.json')) {
+    console.error('FAIL: BRAT install docs must point to the validated prerelease/version metadata flow');
+    return false;
+  }
+
+  const p0 = fs.readFileSync(p0Path, 'utf8');
+  if (p0.includes('](../../../.agents/AGENTS.md)')) {
+    console.error('FAIL: vendored P0 compliance matrix must not link to a Companion-local .agents/AGENTS.md path');
+    return false;
+  }
+
+  const docs = [
+    fs.readFileSync(readmePath, 'utf8'),
+    fs.readFileSync(runbookPath, 'utf8'),
+    fs.readFileSync(oauthPath, 'utf8'),
+  ].join('\n');
+  if (!docs.includes('COMPANION_V1_CAPABILITY_MATRIX.md') || !docs.includes('não configura, envia nem empacota Client Secret')) {
+    console.error('FAIL: release docs must link the V1 capability matrix and document the no-secret OAuth boundary');
+    return false;
+  }
+
+  console.log('PASS: C4 release docs and V1 capability matrix are present and not stale');
+  return true;
+}
+
 function main() {
   console.log('Running architecture/completeness checks...\n');
   let allPassed = true;
@@ -1567,6 +1627,7 @@ function main() {
   if (!checkReleasePipelineHardening()) allPassed = false;
   if (!checkProductionAuditGateResilience()) allPassed = false;
   if (!checkMacosCiParity()) allPassed = false;
+  if (!checkC4ReleaseDocsAndCapabilityMatrix()) allPassed = false;
   if (!checkPairingDuplicateCleanupIsReversible()) allPassed = false;
   if (!checkPostPairingDuplicateRecovery()) allPassed = false;
   if (!checkDriveQuotaResilience()) allPassed = false;
