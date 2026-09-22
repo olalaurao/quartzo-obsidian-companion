@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - '0.*.*'
+      - '1.*.*'
 
 permissions:
   contents: write
@@ -124,7 +125,7 @@ jobs:
             .release-artifact/styles.css
             .release-artifact/SHA256SUMS.txt
           draft: false
-          prerelease: true
+          prerelease: ${{ startsWith(github.ref_name, '0.') }}
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
