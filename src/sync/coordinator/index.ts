@@ -2018,7 +2018,13 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
   async applyPairingDecisions(
     summary: PairingSummary,
-    decisions: { autoAdopt: boolean; autoPull: boolean },
+    decisions: {
+      autoAdopt: boolean;
+      autoPull: boolean;
+      /** Per-path resolution for divergent files. 'keep_local' uploads the local file to Drive;
+       *  'keep_drive' downloads the Drive file and replaces the local copy. */
+      divergentResolutions?: Map<string, 'keep_local' | 'keep_drive'>;
+    },
     onProgress?: (progress: PairingApplyProgress) => void
   ): Promise<SyncResult> {
     const result: SyncResult = { synced: 0, conflicts: 0, errors: [] };
@@ -2033,7 +2039,10 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     try {
       const driveFolderId = this.syncState.driveFolderId || '';
 
-      if (summary.ambiguous.length > 0 || summary.divergent.length > 0) {
+      const unresolvedDivergent = summary.divergent.filter(
+        item => !(decisions.divergentResolutions?.has(item.path))
+      );
+      if (summary.ambiguous.length > 0 || unresolvedDivergent.length > 0) {
         result.errors.push('Pairing decisions blocked: unresolved divergent or ambiguous identities remain.');
         this.pairingLastError = result.errors.join('; ');
         return result;
@@ -2112,6 +2121,80 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     if (result.errors.length > 0) {
       this.pairingLastError = result.errors.join('; ');
       return result;
+    }
+    // --- Divergent resolutions ---
+    // Process explicitly-resolved divergent files before the adopt/pull passes so
+    // that the chosen version becomes the baseline for subsequent incremental syncs.
+    if (decisions.divergentResolutions && decisions.divergentResolutions.size > 0) {
+      let divergentCompleted = 0;
+      this.reportPairingApplyProgress(
+        { phase: 'adopting_local', completed: 0, total: decisions.divergentResolutions.size },
+        onProgress
+      );
+      for (const item of summary.divergent) {
+        const resolution = decisions.divergentResolutions.get(item.path);
+        if (!resolution) continue;
+        const normalized = normalizeVaultPath(item.path);
+        const localFilePath = pathModule.join(this.vaultPath, normalized);
+        const remoteEntry = remoteMap.get(normalized) ?? remoteMap.get(item.path);
+        this.reportPairingApplyProgress({
+          phase: resolution === 'keep_local' ? 'adopting_local' : 'pulling_remote',
+          completed: divergentCompleted,
+          total: decisions.divergentResolutions.size,
+          currentPath: item.path,
+        }, onProgress);
+        try {
+          if (resolution === 'keep_local') {
+            if (!fs.existsSync(localFilePath)) {
+              result.errors.push(`Cannot keep local for ${item.path}: local file missing.`);
+              continue;
+            }
+            const content = new Uint8Array(fs.readFileSync(localFilePath));
+            const quartzoHash = this.calculateHash(content);
+            if (remoteEntry) {
+              // Overwrite the existing Drive file with local content.
+              const updatedMeta = await this.driveAdapter.updateFile(remoteEntry.id, content, quartzoHash);
+              const syncFile = this.createSyncFile(normalized, { hash: quartzoHash, exists: true });
+              syncFile.baseHash = quartzoHash;
+              syncFile.localHash = quartzoHash;
+              syncFile.remoteHash = quartzoHash;
+              syncFile.remoteFileId = updatedMeta.id;
+              syncFile.remoteExists = true;
+              syncFile.remoteModifiedAt = updatedMeta.modifiedTime || null;
+              this.syncState.files.set(normalized, syncFile);
+            } else {
+              const metadata = await this.driveAdapter.uploadFile({ folderId: driveFolderId, name: normalized, content, quartzoHash });
+              const syncFile = this.createSyncFile(normalized, { hash: quartzoHash, exists: true });
+              syncFile.baseHash = quartzoHash;
+              syncFile.localHash = quartzoHash;
+              syncFile.remoteHash = quartzoHash;
+              syncFile.remoteFileId = metadata.id;
+              syncFile.remoteExists = true;
+              syncFile.remoteModifiedAt = metadata.modifiedTime || null;
+              this.syncState.files.set(normalized, syncFile);
+            }
+            result.synced++;
+          } else {
+            // keep_drive: download Drive content and replace local file.
+            if (!remoteEntry) {
+              result.errors.push(`Cannot keep Drive for ${item.path}: remote file no longer found.`);
+              continue;
+            }
+            const syncFile = this.createSyncFile(normalized, { hash: '', exists: fs.existsSync(localFilePath) });
+            syncFile.remoteFileId = remoteEntry.id;
+            await this.pullFile(normalized, remoteEntry, syncFile);
+            result.synced++;
+          }
+        } catch (error) {
+          if (error instanceof TemporaryDriveQuotaError) throw error;
+          result.errors.push(`Failed to resolve divergent ${item.path} (${resolution}): ${error}`);
+        }
+        divergentCompleted++;
+      }
+      if (result.errors.length > 0) {
+        this.pairingLastError = result.errors.join('; ');
+        return result;
+      }
     }
 
     if (decisions.autoAdopt) {
