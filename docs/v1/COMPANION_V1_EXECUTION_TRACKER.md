@@ -45,7 +45,7 @@ A V1 só é considerada pronta quando todos os quatro marcos abaixo estiverem co
 
 ### Marco C — qualidade/release gates
 - [x] UI/UX + accessibility pass.
-- [ ] performance/lifecycle/race pass.
+- [x] performance/lifecycle/race pass.
 - [x] pending-sync path + reason diagnostics.
 - [ ] macOS CI.
 - [ ] docs/capability matrix final.
@@ -357,6 +357,27 @@ Companion:
 - [x] CI #35677969176 Linux: audit, contracts verify, typecheck, lint, full tests, contract vectors, sync regressions, architecture check, build, release validate, clean artifact e package verdes.
 - [x] CI #35677969176 Windows: audit, typecheck, sync regression, build, clean artifact e package verdes.
 - [x] merge canônico Companion: `49ba27c6784e4732804d7eceacf7214996680532`.
+
+---
+
+## Milestone fechado — C2 performance/lifecycle/race pass
+
+**Status: ✅ fechado no Companion. PR #54 → `6ccb085`.**
+
+Companion:
+- [x] Branch `codex/c2-lifecycle-race-hardening`.
+- [x] Renderizações Home/Planner/Journal/Sync usam generation token para descartar callbacks assíncronos stale antes de mutar UI antiga/desconectada.
+- [x] Planner captura date/mode/lens por render; Week/Month continuam buscando Calendar uma vez por range, sem fetch por item.
+- [x] Sync Center guarda progress/final render contra callbacks stale.
+- [x] Unload bloqueia mutações tardias de Calendar/OAuth/Vault index/Drive watcher/shared-state callbacks e preserva `oauthClient.abort()`.
+- [x] VaultIndex inicial segue único após workspace layout readiness; create/modify/delete/rename permanecem incrementais.
+- [x] Shared settings serializa reload/reindex: uma execução ativa e no máximo um rerun solicitado por eventos concorrentes.
+- [x] Architecture gate cobre permanentemente lifecycle/race guards e coalescing de shared settings.
+- [x] Sem alteração de protocolo sync, cache canônico novo, segundo index owner ou mutação Calendar.
+- [x] PR #54 final head certificado: `bdd4ec3147ce13ab589ce504aad0805cb6742c4d`.
+- [x] CI #35679013301 Linux: audit, contracts verify, typecheck, lint, full tests, contract vectors, sync regressions, architecture check, build, release validate, clean artifact e package verdes.
+- [x] CI #35679013301 Windows: audit, typecheck, sync regression, build, clean artifact e package verdes.
+- [x] merge canônico Companion: `6ccb085aaf3cfe5331ca05ac47e56ef7c480b825`.
 
 ---
 

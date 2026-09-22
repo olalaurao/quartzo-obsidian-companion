@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-21T23:18:30-03:00
-Current milestone: C2 performance/lifecycle/race pass
+Last update: 2026-09-21T23:21:00-03:00
+Current milestone: C3 macOS CI
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
-Current branch: `codex/c2-lifecycle-race-hardening`
-Current HEAD: 8c5a2f13938c9ad53fa88a9801aeb6f961464ca5
+Current branch: main
+Current HEAD: 6ccb085aaf3cfe5331ca05ac47e56ef7c480b825 plus local C2 closeout docs
 Upstream main HEAD: d9302f0860fa1a4e33c1c611f2b448bec167e51f
-Companion main HEAD: d7be18360f6defb496e63cc1d84b0d94af72fc16
-Open PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/54
-CI status: PR #54 run `35678891223` green on Linux and Windows for head `8c5a2f13938c9ad53fa88a9801aeb6f961464ca5`.
-Blocker: OAuth contract/runtime divergence remains later C3.5 blocker, not C2.
-Exact next action: commit/push this progress checkpoint, wait for progress-only CI rerun, then merge PR #54 if still green.
+Companion main HEAD: 6ccb085aaf3cfe5331ca05ac47e56ef7c480b825
+Open PR: none for current milestone yet
+CI status: PR #54 final run `35679013301` green on Linux and Windows for head `bdd4ec3147ce13ab589ce504aad0805cb6742c4d`; merged as `6ccb085aaf3cfe5331ca05ac47e56ef7c480b825`.
+Blocker: OAuth contract/runtime divergence remains later C3.5 blocker, not C3.
+Exact next action: commit/push C2 tracker/progress closeout, add issue #45 comment, then start C3 macOS CI from updated main.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -982,3 +982,34 @@ Next:
 - Commit/push this progress checkpoint.
 - Wait for the progress-only CI rerun.
 - Merge PR #54 if the rerun remains green.
+
+## 2026-09-21 - C2 Companion merged
+
+Repo: Companion
+PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/54
+Final PR head: bdd4ec3147ce13ab589ce504aad0805cb6742c4d
+Merge SHA: 6ccb085aaf3cfe5331ca05ac47e56ef7c480b825
+Merged at: 2026-09-22T02:20:34Z
+Final CI run: 35679013301
+Result:
+- `test-linux`: success.
+- `test-windows`: success.
+Closed C2 evidence:
+- Render generation guards reject stale Home/Planner/Journal/Sync async callbacks before mutating old UI.
+- Planner date/mode/lens snapshots prevent quick navigation/lens changes from being contaminated by old Calendar responses.
+- Week/Month Calendar reads remain one range fetch, not per item.
+- Unload guards cover late Calendar/OAuth/Vault index/Drive watcher/shared-state callbacks; OAuth abort remains in `onunload`.
+- Shared settings reload/reindex is coalesced into one active reindex plus one requested rerun.
+- Architecture gate now enforces C2 lifecycle/race invariants.
+- No sync protocol, canonical cache, second index owner or Calendar mutation was added.
+Tracker updates:
+- C2 performance/lifecycle/race pass marked closed.
+- Added C2 closed section with PR #54, final head, merge SHA and CI evidence.
+Still open:
+- C3 macOS CI.
+- C3.5 OAuth contract/runtime/release divergence.
+- C4 stale docs/capability matrix, including P0 `.agents/AGENTS.md` link.
+Next:
+- Commit/push tracker and progress closeout.
+- Add issue #45 progress comment.
+- Start C3 from updated main unless redirected.
