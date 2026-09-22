@@ -58,6 +58,30 @@ describe('ReminderProjectionEngine', () => {
     expect([result[0].triggerAt.getDate(), result[0].triggerAt.getHours()]).toEqual([17, 9]);
   });
 
+  it('projects app-created Task reminders from end_date and scheduled_time', () => {
+    const object: ReminderSourceObject = {
+      id: 'task-end-date', type: 'task', title: 'Prepare campaign',
+      end_date: '2026-09-23T00:00:00.000',
+      scheduled_time: '10:00',
+      duration: 15,
+      reminders: [{ id: 'same-day', days_before: 0, time_of_day: '09:45', type: 'popup' }],
+    };
+    const result = ReminderProjectionEngine.projectWindow(
+      [object],
+      new Date(2026, 8, 23, 9, 44, 59),
+      new Date(2026, 8, 23, 9, 45),
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      sourceId: 'task-end-date',
+      occurrenceId: 'task-end-date',
+      reminderId: 'same-day',
+      notificationType: 'popup',
+    });
+    expect([result[0].triggerAt.getDate(), result[0].triggerAt.getHours(), result[0].triggerAt.getMinutes()])
+      .toEqual([23, 9, 45]);
+  });
+
   it('projects minutes_before across the previous local calendar day', () => {
     const object: ReminderSourceObject = {
       id: 'midnight-task', type: 'task', title: 'Late handoff',
