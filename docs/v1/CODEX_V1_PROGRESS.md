@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-21T23:04:21-03:00
+Last update: 2026-09-21T23:05:22-03:00
 Current milestone: C2 performance/lifecycle/race pass
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
 Current branch: main
-Current HEAD: 49ba27c6784e4732804d7eceacf7214996680532 plus local C1 closeout docs
+Current HEAD: c06ebf1ce68c07f732b4d68767e6113e96e9de78 plus local issue-link progress update
 Upstream main HEAD: d9302f0860fa1a4e33c1c611f2b448bec167e51f
-Companion main HEAD: 49ba27c6784e4732804d7eceacf7214996680532
+Companion main HEAD: c06ebf1ce68c07f732b4d68767e6113e96e9de78
 Open PR: none for current milestone yet
 CI status: PR #53 run `35677969176` green on Linux and Windows for head `82ec36acaa19a5e16c3bf26fe21905dad32f7b14`; merged as `49ba27c6784e4732804d7eceacf7214996680532`.
 Blocker: OAuth contract/runtime divergence remains later C3.5 blocker, not A7/B0.
-Exact next action: commit/push C1 closeout docs on main, comment issue #45, then start C2 performance/lifecycle/race pass from main.
+Exact next action: commit/push this issue-link progress update on main, then start C2 performance/lifecycle/race pass from main.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -895,6 +895,6 @@ Still open:
 - C3.5 OAuth contract/runtime/release divergence.
 - C4 stale docs/capability matrix, including P0 `.agents/AGENTS.md` link.
 Next:
-- Commit/push this C1 closeout docs update on main.
-- Add issue #45 progress comment with C1 evidence.
+- Closeout docs commit pushed to main: `c06ebf1ce68c07f732b4d68767e6113e96e9de78`.
+- Issue #45 progress comment added: https://github.com/olalaurao/quartzo-obsidian-companion/issues/45#issuecomment-5770195551
 - Start C2 from updated main unless redirected.
