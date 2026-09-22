@@ -27,8 +27,7 @@ const context = await esbuild.context({
     ...builtins,
     ...builtins.map(b => `node:${b}`)],
   define: {
-    'process.env.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID': JSON.stringify(process.env.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID || ''),
-    'process.env.QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET': JSON.stringify(process.env.QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET || '')
+    'process.env.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID': JSON.stringify(process.env.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID || '')
   },
   format: "cjs",
   target: "es2022",

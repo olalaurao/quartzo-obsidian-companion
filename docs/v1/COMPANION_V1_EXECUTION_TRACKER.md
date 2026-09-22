@@ -48,6 +48,7 @@ A V1 só é considerada pronta quando todos os quatro marcos abaixo estiverem co
 - [x] performance/lifecycle/race pass.
 - [x] pending-sync path + reason diagnostics.
 - [x] macOS CI.
+- [ ] OAuth contract/runtime/release divergence.
 - [ ] docs/capability matrix final.
 
 ### Marco D — prova e release

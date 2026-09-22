@@ -367,7 +367,7 @@ function checkObsidianSecretStorageIds() {
   const main = fs.readFileSync(mainPath, 'utf8');
   const loopback = fs.readFileSync(loopbackPath, 'utf8');
   const ids = Array.from(idsSource.matchAll(/export const [A-Z0-9_]+_SECRET_ID = '([^']+)'/g), match => match[1]);
-  if (ids.length < 2 || ids.some(id => !/^[a-z0-9-]{1,64}$/.test(id))) {
+  if (ids.length !== 1 || ids.some(id => !/^[a-z0-9-]{1,64}$/.test(id))) {
     console.error(`FAIL: Obsidian SecretStorage IDs must match ^[a-z0-9-]{1,64}$; found: ${ids.join(', ') || '(none)'}`);
     return false;
   }
@@ -375,8 +375,12 @@ function checkObsidianSecretStorageIds() {
     console.error('FAIL: Legacy invalid Obsidian SecretStorage IDs remain in runtime OAuth paths');
     return false;
   }
-  if (!main.includes('GOOGLE_OAUTH_CLIENT_SECRET_ID') || !loopback.includes('GOOGLE_REFRESH_TOKEN_SECRET_ID')) {
+  if (!main.includes('GOOGLE_REFRESH_TOKEN_SECRET_ID') || !loopback.includes('GOOGLE_REFRESH_TOKEN_SECRET_ID')) {
     console.error('FAIL: Runtime OAuth paths bypass the canonical SecretStorage ID owner');
+    return false;
+  }
+  if (idsSource.includes('GOOGLE_OAUTH_CLIENT_SECRET_ID') || main.includes('GOOGLE_OAUTH_CLIENT_SECRET_ID')) {
+    console.error('FAIL: Desktop OAuth client secret must not be stored in Obsidian SecretStorage');
     return false;
   }
   console.log('PASS: Obsidian SecretStorage IDs are canonical and API-compatible');
@@ -404,12 +408,11 @@ function checkOAuthDesktopPlatformBoundary() {
     console.error('FAIL: OAuth desktop loopback/PKCE contract regressed');
     return false;
   }
-  const secretParams = loopback.match(/params\.append\('client_secret'/g) || [];
-  if (secretParams.length < 2) {
-    console.error('FAIL: OAuth desktop token exchange/refresh does not send the configured client credential');
+  if (loopback.includes("params.append('client_secret'") || main.includes('QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET')) {
+    console.error('FAIL: Desktop OAuth must use Client ID + PKCE only and must not send or bundle a client secret');
     return false;
   }
-  console.log('PASS: OAuth desktop browser launch stays inside Obsidian/Electron with loopback PKCE and client credential token exchange');
+  console.log('PASS: OAuth desktop browser launch stays inside Obsidian/Electron with loopback PKCE and no client secret');
   return true;
 }
 function checkReleasePipelineHardening() {
@@ -435,8 +438,12 @@ function checkReleasePipelineHardening() {
     console.error('FAIL: Release/preflight do not require the production OAuth Client ID');
     return false;
   }
-  if (!release.includes('QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET') || !preflight.includes('QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET') || !validate.includes('QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET')) {
-    console.error('FAIL: Release/preflight/validator do not require the Google Desktop OAuth client credential');
+  if (release.includes('QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET') || preflight.includes('QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET')) {
+    console.error('FAIL: Release/preflight must not require or inject a Google Desktop OAuth client secret');
+    return false;
+  }
+  if (!validate.includes('must not contain QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET')) {
+    console.error('FAIL: Release validator must reject bundled Google Desktop OAuth client secrets');
     return false;
   }
   if (!release.includes('npm run release:package') || !preflight.includes('npm run release:package')) {
