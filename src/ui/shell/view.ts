@@ -3,7 +3,7 @@ import { DailyScheduleEngine } from '../../core/daily_schedule';
 import type { NormalizedItem, NormalizedSchedule } from '../../core/daily_schedule/types';
 import type { GoogleCalendarProjection } from '../../integrations/google/calendar';
 import { addLocalDays, localIsoDate, parseLocalIsoDate, shiftLocalMonth } from '../../core/local-date';
-import { chooseNewestConflictResolution, type SyncProgress } from '../../sync/coordinator';
+import { chooseNewestConflictResolution, type SyncPendingDiagnostic, type SyncProgress, type SyncStatusSnapshot } from '../../sync/coordinator';
 import { queryVaultObjects } from '../../core/object-query';
 import { renderObjectDetail } from '../detail/object-detail';
 import { renderObjectEditor } from '../detail/object-editor';
@@ -72,6 +72,49 @@ function formatSyncProgress(progress: SyncProgress | null): string {
       : '';
   const current = progress.currentPath ? ` · ${progress.currentPath}` : '';
   return `${phaseLabels[progress.phase]}${amount}${current} · elapsed ${elapsed} · last progress update ${lastActivity} ago`;
+}
+
+function formatPendingDiagnostic(diagnostic: SyncPendingDiagnostic): string {
+  const reasonLabels: Record<SyncPendingDiagnostic['reason'], string> = {
+    local_create: 'local create',
+    local_modify: 'local modify',
+    pending_delete: 'pending delete',
+    pending_rename: 'pending rename',
+    adoption_required: 'adoption required',
+    conflict: 'conflict',
+    quarantined_duplicate_identity: 'quarantined duplicate identity',
+  };
+  const related = diagnostic.relatedPath ? ` (${diagnostic.relatedPath})` : '';
+  return `${diagnostic.path}: ${reasonLabels[diagnostic.reason]}${related}`;
+}
+
+function formatSyncDiagnosticsText(input: {
+  statusLabel: string;
+  snapshot: SyncStatusSnapshot;
+  syncMode: 'automatic' | 'manual';
+  driveVault: string;
+  googleAccountStatus: string;
+  companionVersion: string;
+}): string {
+  const lines = [
+    'Quartzo Companion sync diagnostics',
+    `Status: ${input.statusLabel}`,
+    `Last successful sync: ${input.snapshot.lastSuccessfulSyncAt ?? 'Never'}`,
+    `Pending local changes: ${input.snapshot.pendingLocalChanges}`,
+    `Sync mode: ${input.syncMode === 'automatic' ? 'Automatic' : 'Manual'}`,
+    `Current Google Drive vault: ${input.driveVault}`,
+    `Google account: ${input.googleAccountStatus}`,
+    `Companion version: ${input.companionVersion}`,
+    `Conflicts: ${input.snapshot.conflictCount}`,
+  ];
+  if (input.snapshot.lastError) lines.push(`Last error: ${input.snapshot.lastError}`);
+  if (input.snapshot.pendingDiagnostics.length > 0) {
+    lines.push('Pending diagnostics:');
+    for (const diagnostic of input.snapshot.pendingDiagnostics) {
+      lines.push(`- ${formatPendingDiagnostic(diagnostic)}`);
+    }
+  }
+  return lines.join('\n');
 }
 
 function scheduleObjects(index: VaultIndex | null): Array<Record<string, unknown>> {
@@ -832,6 +875,41 @@ export class QuartzoView extends ItemView {
       const lastError = document.createElement('p');
       lastError.textContent = `Last error: ${snapshot.lastError}`;
       summary.appendChild(lastError);
+    }
+    if (snapshot && snapshot.pendingDiagnostics.length > 0) {
+      const pendingTitle = document.createElement('h3');
+      pendingTitle.textContent = 'Pending diagnostics';
+      summary.appendChild(pendingTitle);
+
+      const pendingList = document.createElement('ul');
+      pendingList.className = 'quartzo-sync-pending-diagnostics';
+      for (const diagnostic of snapshot.pendingDiagnostics) {
+        const item = document.createElement('li');
+        item.textContent = formatPendingDiagnostic(diagnostic);
+        pendingList.appendChild(item);
+      }
+      summary.appendChild(pendingList);
+    }
+
+    if (snapshot) {
+      const copyDiagnostics = document.createElement('button');
+      copyDiagnostics.textContent = 'Copy sync diagnostics';
+      copyDiagnostics.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(formatSyncDiagnosticsText({
+            statusLabel,
+            snapshot,
+            syncMode: plugin.settings.syncMode,
+            driveVault: plugin.settings.googleDriveFolderName ?? 'Not paired',
+            googleAccountStatus: plugin.authState.replace(/_/g, ' '),
+            companionVersion: plugin.manifest.version,
+          }));
+          new Notice('Sync diagnostics copied.');
+        } catch (error) {
+          new Notice(`Could not copy sync diagnostics: ${error}`);
+        }
+      });
+      summary.appendChild(copyDiagnostics);
     }
 
     let syncProgressLine: HTMLParagraphElement | null = null;

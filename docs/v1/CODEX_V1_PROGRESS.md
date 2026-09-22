@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-21T22:44:00-03:00
+Last update: 2026-09-21T22:48:00-03:00
 Current milestone: B3 Sync Center diagnostics
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
-Current branch: main
-Current HEAD: 5717523fdafe1845d6c63123ab8a845cde035e98 plus local issue-link progress update
+Current branch: codex/b3-sync-center-diagnostics
+Current HEAD: 77560da1c9239918acaf9a1f526931fbce98fa58 plus local B3 implementation/progress
 Upstream main HEAD: d9302f0860fa1a4e33c1c611f2b448bec167e51f
-Companion main HEAD: 5717523fdafe1845d6c63123ab8a845cde035e98
+Companion main HEAD: 77560da1c9239918acaf9a1f526931fbce98fa58
 Open PR: none for current milestone yet
-CI status: PR #51 run `35676498790` green on Linux and Windows for head `f85cbf782c61bce67a10f1f8ad7e14473e62ffe0`; merged as `6e340fed9380820f768baa089dd2aa5547a5220f`.
+CI status: no B3 PR yet; local full B3 gates green.
 Blocker: OAuth contract/runtime divergence remains later C3.5 blocker, not A7/B0.
-Exact next action: commit/push this issue-link progress update on main, then start B3 Sync Center pending path+reason diagnostics from main.
+Exact next action: commit/push B3 branch and open PR.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -679,3 +679,42 @@ Next:
 - Closeout docs commit pushed to main: `5717523fdafe1845d6c63123ab8a845cde035e98`.
 - Issue #45 progress comment added: https://github.com/olalaurao/quartzo-obsidian-companion/issues/45#issuecomment-5770039783
 - Start B3 from updated main unless redirected.
+
+## 2026-09-21 - B3 Sync Center diagnostics implementation checkpoint
+
+Repo: Companion
+Branch: `codex/b3-sync-center-diagnostics`
+Base HEAD: 77560da1c9239918acaf9a1f526931fbce98fa58
+Changed:
+- `src/sync/coordinator/index.ts`
+- `src/ui/shell/view.ts`
+- `tests/sync/runtime.test.ts`
+- `docs/v1/CODEX_V1_PROGRESS.md`
+Implemented:
+- `SyncStatusSnapshot` now exposes typed `pendingDiagnostics` from `DriveSyncCoordinator`.
+- `pendingLocalChanges` is derived from the diagnostics list.
+- Diagnostics are based on real coordinator state: local create, local modify, pending delete, pending rename, adoption required, conflict and quarantined duplicate identity.
+- Sync Center renders pending path/reason diagnostics and can copy the same snapshot for support/debugging.
+Boundary preserved:
+- No second sync queue.
+- No new reconciliation engine.
+- No new canonical persistence.
+- UI does not infer reason from error text.
+Tests run:
+- `npx vitest run tests/sync/runtime.test.ts` — green, 77 tests.
+- `npm run typecheck` — green.
+- `npm run lint` — green.
+- `npm run test:sync` — green, 226 tests.
+- `npm run architecture:check` — green.
+- `npm test` — green, 592 tests.
+- `npm run test:contracts` — green, 254 tests.
+- `npm run build` — green.
+- `$env:GITHUB_TOKEN = gh auth token; npm run contracts:verify` — green, 22 contracts verified.
+- `npm run audit:prod` — green, zero vulnerabilities.
+- `npm run release:validate` — green.
+- `npm run smoke:clean-artifact` — green.
+- `npm run release:package` — green.
+Still open:
+- Commit/push B3 branch and open PR if green.
+Next:
+- Commit/push B3 branch and open PR.

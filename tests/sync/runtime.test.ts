@@ -1400,6 +1400,10 @@ describe('Runtime Sync Tests', () => {
 
     const result = await coordinator.reconcile();
     expect(result.errors.length).toBeGreaterThan(0);
+    expect((await coordinator.getSyncStatusSnapshot()).pendingDiagnostics).toContainEqual({
+      path: 'dup.md',
+      reason: 'quarantined_duplicate_identity',
+    });
   });
 
   it('16: backslash and forward slash normalize to same path', () => {
@@ -1750,6 +1754,17 @@ describe('Runtime Sync Tests', () => {
     expect(await coordinator.getSyncStatusSnapshot()).toMatchObject({
       status: 'local_changes',
       pendingLocalChanges: 1,
+      pendingDiagnostics: [
+        { path: 'pending.md', reason: 'local_create' },
+      ],
+    });
+
+    await coordinator.reconcile();
+    expect(await coordinator.getSyncStatusSnapshot()).toMatchObject({
+      status: 'local_changes',
+      pendingDiagnostics: [
+        { path: 'pending.md', reason: 'adoption_required' },
+      ],
     });
 
     adapter.addRemoteFile('pending.md', Buffer.from('remote different'));
@@ -1757,6 +1772,7 @@ describe('Runtime Sync Tests', () => {
     const snapshot = await coordinator.getSyncStatusSnapshot();
     expect(snapshot.status).toBe('conflict');
     expect(snapshot.conflictCount).toBe(1);
+    expect(snapshot.pendingDiagnostics).toContainEqual({ path: 'pending.md', reason: 'conflict' });
     expect(snapshot.lastSuccessfulSyncAt).toBeTruthy();
   });
 
@@ -1867,6 +1883,91 @@ describe('Runtime Sync Tests', () => {
     expect(restoredAdapter.listChangesCalls).toBe(0);
     expect(restoredAdapter.downloadCalls).toBe(0);
     expect(restoredAdapter.uploadCalls).toBe(0);
+  });
+
+  it('47: Sync Center status reports typed pending path and reason diagnostics', async () => {
+    const initialFiles = [
+      'dirty.md',
+      'delete-me.md',
+      'old-name.md',
+    ];
+    for (const fileName of initialFiles) {
+      const content = Buffer.from(`initial ${fileName}`);
+      fs.writeFileSync(path.join(tmpDir, fileName), content);
+      adapter.addRemoteFile(fileName, content);
+    }
+    await coordinator.reconcile();
+    adapter.pendingChanges.length = 0;
+
+    fs.writeFileSync(path.join(tmpDir, 'dirty.md'), 'edited');
+    fs.unlinkSync(path.join(tmpDir, 'delete-me.md'));
+    coordinator.queueDelete('delete-me.md');
+    fs.renameSync(path.join(tmpDir, 'old-name.md'), path.join(tmpDir, 'new-name.md'));
+    coordinator.queueRename('old-name.md', 'new-name.md');
+
+    const snapshot = await coordinator.getSyncStatusSnapshot();
+    expect(snapshot.status).toBe('local_changes');
+    expect(snapshot.pendingDiagnostics).toEqual([
+      { path: 'delete-me.md', reason: 'pending_delete' },
+      { path: 'dirty.md', reason: 'local_modify' },
+      { path: 'new-name.md', reason: 'pending_rename', relatedPath: 'old-name.md' },
+      { path: 'old-name.md', reason: 'pending_rename', relatedPath: 'new-name.md' },
+    ]);
+    expect(snapshot.pendingLocalChanges).toBe(snapshot.pendingDiagnostics.length);
+  });
+
+  it('48: pending path diagnostics hydrate from local state without Drive network calls', async () => {
+    const statePath = path.join(tmpDir, 'pending-diagnostics-state.json');
+    const content = Buffer.from('rename me');
+    fs.writeFileSync(path.join(tmpDir, 'old-name.md'), content);
+    adapter.addRemoteFile('old-name.md', content);
+
+    const firstCoordinator = new DriveSyncCoordinator(adapter, tmpDir, statePath);
+    await firstCoordinator.reconcile();
+    fs.renameSync(path.join(tmpDir, 'old-name.md'), path.join(tmpDir, 'new-name.md'));
+    firstCoordinator.queueRename('old-name.md', 'new-name.md');
+    await new Promise(resolve => setTimeout(resolve, 5));
+
+    const restoredAdapter = new FakeDriveAdapter();
+    const restoredCoordinator = new DriveSyncCoordinator(restoredAdapter, tmpDir, statePath);
+    await restoredCoordinator.hydratePersistedState();
+    const snapshot = await restoredCoordinator.getSyncStatusSnapshot();
+
+    expect(snapshot.pendingDiagnostics).toContainEqual({
+      path: 'old-name.md',
+      reason: 'pending_rename',
+      relatedPath: 'new-name.md',
+    });
+    expect(snapshot.pendingDiagnostics).toContainEqual({
+      path: 'new-name.md',
+      reason: 'pending_rename',
+      relatedPath: 'old-name.md',
+    });
+    expect(restoredAdapter.listFilesCalls).toBe(0);
+    expect(restoredAdapter.listChangesCalls).toBe(0);
+    expect(restoredAdapter.downloadCalls).toBe(0);
+    expect(restoredAdapter.uploadCalls).toBe(0);
+  });
+
+  it('49: pending diagnostics clear after successful sync resolution', async () => {
+    const content = Buffer.from('initial');
+    fs.writeFileSync(path.join(tmpDir, 'dirty.md'), content);
+    adapter.addRemoteFile('dirty.md', content);
+    await coordinator.reconcile();
+    adapter.pendingChanges.length = 0;
+
+    fs.writeFileSync(path.join(tmpDir, 'dirty.md'), 'edited');
+    expect((await coordinator.getSyncStatusSnapshot()).pendingDiagnostics).toContainEqual({
+      path: 'dirty.md',
+      reason: 'local_modify',
+    });
+
+    const result = await coordinator.reconcile();
+    expect(result.errors).toEqual([]);
+    const snapshot = await coordinator.getSyncStatusSnapshot();
+    expect(snapshot.pendingLocalChanges).toBe(0);
+    expect(snapshot.pendingDiagnostics).toEqual([]);
+    expect(snapshot.status).toBe('synced');
   });
 
 });
