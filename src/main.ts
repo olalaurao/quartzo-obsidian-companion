@@ -1825,13 +1825,102 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
       const heading = document.createElement('h3');
       heading.textContent = `Divergent paths (${summary.divergent.length})`;
       modalContent.appendChild(heading);
-      const list = document.createElement('ul');
+
+      // Track per-file user choices before applying.
+      const pendingResolutions = new Map<string, 'keep_local' | 'keep_drive'>();
+
+      // Helper to apply all chosen resolutions and re-render.
+      const applyResolutions = async () => {
+        if (!this.driveSyncCoordinator) return;
+        const coordinator = this.driveSyncCoordinator;
+        try {
+          const pairingResult = await coordinator.applyPairingDecisions(
+            summary,
+            { autoAdopt: true, autoPull: true, divergentResolutions: pendingResolutions }
+          );
+          if (pairingResult.errors.length > 0) {
+            new Notice(pairingResult.errors.join('; '));
+            return;
+          }
+          this.settings.isPaired = true;
+          this.settings.firstRunCompleted = true;
+          this.authState = 'paired';
+          await this.saveSettings();
+          this.startAutoSync();
+          this.closePairingWorkflowSurface(modal);
+          await this.refreshQuartzoView();
+          new Notice('Pairing complete.');
+        } catch (error) {
+          new Notice(error instanceof Error ? error.message : String(error));
+        }
+      };
+
+      // Bulk actions bar.
+      const bulkBar = document.createElement('div');
+      bulkBar.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;';
+
+      const bulkLocal = document.createElement('button');
+      bulkLocal.textContent = '📱 Keep all local';
+      bulkLocal.addEventListener('click', async () => {
+        for (const item of summary.divergent) pendingResolutions.set(item.path, 'keep_local');
+        await applyResolutions();
+      });
+      bulkBar.appendChild(bulkLocal);
+
+      const bulkDrive = document.createElement('button');
+      bulkDrive.textContent = '☁️ Keep all Drive';
+      bulkDrive.addEventListener('click', async () => {
+        for (const item of summary.divergent) pendingResolutions.set(item.path, 'keep_drive');
+        await applyResolutions();
+      });
+      bulkBar.appendChild(bulkDrive);
+      modalContent.appendChild(bulkBar);
+
+      // Per-file cards.
       for (const item of summary.divergent) {
-        const li = document.createElement('li');
-        li.textContent = item.path;
-        list.appendChild(li);
+        const card = document.createElement('div');
+        card.style.cssText = 'border:1px solid var(--background-modifier-border);border-radius:6px;padding:10px;margin-bottom:8px;';
+
+        const pathEl = document.createElement('p');
+        pathEl.style.cssText = 'font-weight:600;margin-bottom:6px;word-break:break-all;';
+        pathEl.textContent = item.path;
+        card.appendChild(pathEl);
+
+        const hashes = document.createElement('p');
+        hashes.style.cssText = 'font-size:0.85em;color:var(--text-muted);margin-bottom:8px;';
+        hashes.textContent = `Local ${item.localHash?.slice(0, 12) ?? 'n/a'} · Drive ${item.remoteHash?.slice(0, 12) ?? 'n/a'}`;
+        card.appendChild(hashes);
+
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex;gap:8px;';
+
+        const keepLocal = document.createElement('button');
+        keepLocal.textContent = 'Keep local';
+        keepLocal.addEventListener('click', async () => {
+          pendingResolutions.set(item.path, 'keep_local');
+          if (pendingResolutions.size === summary.divergent.length) await applyResolutions();
+          else { keepLocal.disabled = true; keepDrive.disabled = true; keepLocal.textContent = '✓ Keep local'; }
+        });
+
+        const keepDrive = document.createElement('button');
+        keepDrive.textContent = 'Keep Drive';
+        keepDrive.className = 'mod-cta';
+        keepDrive.addEventListener('click', async () => {
+          pendingResolutions.set(item.path, 'keep_drive');
+          if (pendingResolutions.size === summary.divergent.length) await applyResolutions();
+          else { keepLocal.disabled = true; keepDrive.disabled = true; keepDrive.textContent = '✓ Keep Drive'; }
+        });
+
+        btnRow.appendChild(keepLocal);
+        btnRow.appendChild(keepDrive);
+        card.appendChild(btnRow);
+        modalContent.appendChild(card);
       }
-      modalContent.appendChild(list);
+
+      const hint = document.createElement('p');
+      hint.style.cssText = 'font-size:0.85em;color:var(--text-muted);margin-bottom:12px;';
+      hint.textContent = 'Keep local uploads the vault copy to Drive. Keep Drive replaces the local file. Resolve all files to complete pairing.';
+      modalContent.appendChild(hint);
     }
 
     const safeTrashPlan = this.driveSyncCoordinator?.buildSafeDuplicateTrashPlan(summary) ?? {
