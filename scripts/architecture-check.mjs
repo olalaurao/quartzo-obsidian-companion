@@ -1476,8 +1476,8 @@ function checkProductionAuditGateResilience() {
   const ci = workflows[0];
   const ciAuditUses = ci.split('npm run audit:prod').length - 1;
   const ciPinnedClientUses = ci.split('npm install --global npm@11.19.1').length - 1;
-  if (ciAuditUses < 2 || ciPinnedClientUses < 2) {
-    console.error('FAIL: Linux and Windows CI must both use the canonical production audit gate');
+  if (ciAuditUses < 3 || ciPinnedClientUses < 3) {
+    console.error('FAIL: Linux, Windows and macOS CI must all use the canonical production audit gate');
     return false;
   }
 
@@ -1493,6 +1493,46 @@ function checkProductionAuditGateResilience() {
   }
 
   console.log('PASS: CI, preflight and release share one fail-closed modern production dependency audit gate');
+  return true;
+}
+
+function checkMacosCiParity() {
+  const ci = fs.readFileSync(path.join(rootDir, '.github/workflows/ci.yml'), 'utf8');
+  const jobStart = ci.indexOf('  test-macos:');
+  if (jobStart < 0) {
+    console.error('FAIL: CI must include a macOS job');
+    return false;
+  }
+
+  const nextJob = ci.indexOf('\n  test-', jobStart + 1);
+  const job = ci.slice(jobStart, nextJob > jobStart ? nextJob : ci.length);
+  const required = [
+    'runs-on: macos-latest',
+    'npm ci --audit=false',
+    'npm install --global npm@11.19.1',
+    'npm run audit:prod',
+    'npm run contracts:verify',
+    'GITHUB_TOKEN: ${{ secrets.QUARTZO_UPSTREAM_TOKEN }}',
+    'npm run typecheck',
+    'npm run lint',
+    'npm test',
+    'npm run test:contracts',
+    'npm run test:sync',
+    'npm run architecture:check',
+    'npm run build',
+    'npm run release:validate',
+    'npm run smoke:clean-artifact',
+    'npm run release:package',
+  ];
+
+  for (const snippet of required) {
+    if (!job.includes(snippet)) {
+      console.error(`FAIL: macOS CI is missing required gate: ${snippet}`);
+      return false;
+    }
+  }
+
+  console.log('PASS: macOS CI runs the V1 release gate parity set');
   return true;
 }
 
@@ -1519,6 +1559,7 @@ function main() {
   if (!checkOAuthDesktopPlatformBoundary()) allPassed = false;
   if (!checkReleasePipelineHardening()) allPassed = false;
   if (!checkProductionAuditGateResilience()) allPassed = false;
+  if (!checkMacosCiParity()) allPassed = false;
   if (!checkPairingDuplicateCleanupIsReversible()) allPassed = false;
   if (!checkPostPairingDuplicateRecovery()) allPassed = false;
   if (!checkDriveQuotaResilience()) allPassed = false;

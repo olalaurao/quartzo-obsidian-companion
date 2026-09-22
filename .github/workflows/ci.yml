@@ -53,3 +53,31 @@ jobs:
     - run: npm run build
     - run: npm run smoke:clean-artifact
     - run: npm run release:package
+
+  test-macos:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    - run: npm ci --audit=false
+    - name: Pin modern npm audit client
+      run: npm install --global npm@11.19.1
+    - run: npm run audit:prod
+    - name: Verify canonical contracts
+      run: npm run contracts:verify
+      env:
+        GITHUB_TOKEN: ${{ secrets.QUARTZO_UPSTREAM_TOKEN }}
+    - run: npm run typecheck
+    - run: npm run lint
+    - run: npm test
+    - run: npm run test:contracts
+    - run: npm run test:sync
+    - run: npm run architecture:check
+    - run: npm run build
+    - run: npm run release:validate
+    - run: npm run smoke:clean-artifact
+    - run: npm run release:package

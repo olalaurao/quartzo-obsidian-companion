@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-21T23:22:30-03:00
+Last update: 2026-09-21T23:24:08-03:00
 Current milestone: C3 macOS CI
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
-Current branch: main
-Current HEAD: 863b359ee0b4d37b9ecac1de4921778920b52d45 plus local issue-link progress update
+Current branch: `codex/c3-macos-ci-release-gates`
+Current HEAD: 41096a1d5d9c16b2d5a8dada53b687b456c319c5 plus local C3 implementation
 Upstream main HEAD: d9302f0860fa1a4e33c1c611f2b448bec167e51f
 Companion main HEAD: 6ccb085aaf3cfe5331ca05ac47e56ef7c480b825
 Open PR: none for current milestone yet
 CI status: PR #54 final run `35679013301` green on Linux and Windows for head `bdd4ec3147ce13ab589ce504aad0805cb6742c4d`; merged as `6ccb085aaf3cfe5331ca05ac47e56ef7c480b825`.
 Blocker: OAuth contract/runtime divergence remains later C3.5 blocker, not C3.
-Exact next action: commit/push this issue-link progress update, then start C3 macOS CI from updated main.
+Exact next action: commit/push C3 branch, open PR, then verify Linux/Windows/macOS CI before merge.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -1013,3 +1013,42 @@ Next:
 - Closeout docs commit pushed to main: `863b359ee0b4d37b9ecac1de4921778920b52d45`.
 - Issue #45 progress comment added: https://github.com/olalaurao/quartzo-obsidian-companion/issues/45#issuecomment-5770312955
 - Start C3 from updated main unless redirected.
+
+## 2026-09-21 - C3 macOS CI implementation checkpoint
+
+Repo: Companion
+Branch: `codex/c3-macos-ci-release-gates`
+Base HEAD: 41096a1d5d9c16b2d5a8dada53b687b456c319c5
+Changed:
+- `.github/workflows/ci.yml`
+- `scripts/architecture-check.mjs`
+- `tests/contracts/ci-workflows.test.ts`
+- `docs/v1/CODEX_V1_PROGRESS.md`
+Implemented:
+- Added `test-macos` job on `macos-latest`.
+- macOS job runs npm install, pinned audit client, production audit, contract verify with upstream token, typecheck, lint, full tests, contract tests, sync tests, architecture, build, release validate, clean artifact smoke and package.
+- Architecture check now requires macOS CI parity and all three CI platforms using the canonical audit gate.
+- Contract test added for the macOS workflow gates.
+Boundary:
+- Release/preflight OAuth behavior intentionally unchanged; OAuth contract/runtime/release divergence remains C3.5.
+Tests run:
+- `npx vitest run tests/contracts/ci-workflows.test.ts` - green, 1 test.
+- `npm run test:contracts` - green, 259 tests.
+- `npm run typecheck` - green.
+- `npm run architecture:check` - green.
+- `npm run lint` - green.
+- `npm run test:sync` - green, 226 tests.
+- `npm test` - green, 598 tests.
+- `npm run build` - green.
+- `$env:GITHUB_TOKEN = gh auth token; npm run contracts:verify` - green, 22 contracts verified.
+- `npm run audit:prod` - green, zero vulnerabilities.
+- `npm run release:validate` - green.
+- `npm run smoke:clean-artifact` - green.
+- `npm run release:package` - green.
+Still open:
+- Remote PR CI, especially first macOS run.
+- C3.5 OAuth contract/runtime/release divergence.
+- C4 stale docs/capability matrix, including P0 `.agents/AGENTS.md` link.
+Next:
+- Commit/push C3 branch and open PR.
+- Wait for Linux/Windows/macOS CI on the pushed head.
