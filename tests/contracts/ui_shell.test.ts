@@ -129,4 +129,38 @@ folder_paths:
     expect(main).not.toContain('this.settings.syncOnFocus');
   });
 
+  it('keeps C1 accessibility labels and status semantics on core UI surfaces', () => {
+    const shell = fs.readFileSync(path.join(process.cwd(), 'src/ui/shell/view.ts'), 'utf8');
+    const quickAdd = fs.readFileSync(path.join(process.cwd(), 'src/ui/quick-add/modal.ts'), 'utf8');
+    const dayDial = fs.readFileSync(path.join(process.cwd(), 'src/ui/day-dial/view.ts'), 'utf8');
+    const styles = fs.readFileSync(path.join(process.cwd(), 'styles.css'), 'utf8');
+
+    expect(shell).toContain("button.setAttribute('aria-current', 'page')");
+    expect(shell).toContain("focusButton.setAttribute('aria-pressed', 'true')");
+    expect(shell).toContain("previous.setAttribute('aria-label', `Previous ${this.plannerMode}`)");
+    expect(shell).toContain("dateInput.setAttribute('aria-label', 'Planner date')");
+    expect(shell).toContain("date.setAttribute('aria-label', 'Journal date')");
+    expect(shell).toContain("input.setAttribute('aria-label', 'Filter Quartzo objects')");
+    expect(shell).toContain("filter.setAttribute('aria-label', 'Filter by object type')");
+    expect(shell).toContain("input.setAttribute('aria-label', 'Search Quartzo objects')");
+    expect(shell).toContain("summary.setAttribute('role', 'status')");
+    expect(shell).toContain("lastError.setAttribute('role', 'alert')");
+    expect(shell).toContain("syncProgressLine.setAttribute('aria-live', 'polite')");
+    expect(shell).toContain("connect.title = 'Google Drive connection requires network access.'");
+    expect(shell).toContain("sync.title = offline ? 'Sync requires network access.' : 'A sync operation is already running.'");
+
+    expect(quickAdd).toContain("typeSelect.setAttribute('aria-label', 'Quick Add type')");
+    expect(quickAdd).toContain("titleInput.setAttribute('aria-label'");
+    expect(quickAdd).toContain("bodyInput.setAttribute('aria-label'");
+    expect(quickAdd).toContain("metadataStatus.setAttribute('role', 'status')");
+
+    expect(dayDial).toContain('function statusLabel(item: NormalizedItem): string');
+    expect(dayDial).toContain("element.setAttribute('aria-label', accessibleItemLabel(projected.item, projected.title))");
+    expect(dayDial).toContain("label.textContent = `${timeLabel(entry.item)} · ${entry.title}${status ? ` · ${status}` : ''}`");
+
+    expect(styles).toContain('.quartzo-shell button:focus-visible');
+    expect(styles).toContain('.quartzo-sync-pending-diagnostics');
+    expect(styles).toContain('overflow-wrap: anywhere');
+  });
+
 });

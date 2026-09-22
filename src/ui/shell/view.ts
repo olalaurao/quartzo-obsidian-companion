@@ -238,7 +238,10 @@ export class QuartzoView extends ItemView {
     for (const section of ['home', 'planner', 'journal', 'browse'] as QuartzoSection[]) {
       const button = document.createElement('button');
       button.textContent = labelForType(section);
-      if (section === this.section) button.classList.add('is-active');
+      if (section === this.section) {
+        button.classList.add('is-active');
+        button.setAttribute('aria-current', 'page');
+      }
       button.addEventListener('click', () => { void this.setSection(section); });
       nav.appendChild(button);
     }
@@ -254,7 +257,10 @@ export class QuartzoView extends ItemView {
         ? 'Focus · Active'
         : 'Focus · Read-only'
       : 'Focus';
-    if (this.action === 'focus') focusButton.classList.add('is-active');
+    if (this.action === 'focus') {
+      focusButton.classList.add('is-active');
+      focusButton.setAttribute('aria-pressed', 'true');
+    }
     focusButton.addEventListener('click', () => {
       void this.handleAction('focus');
     });
@@ -263,6 +269,10 @@ export class QuartzoView extends ItemView {
     for (const [action, label] of [['search', 'Search'], ['add', 'Add'], ['sync', 'Sync'], ['settings', 'Settings']] as Array<[QuartzoAction, string]>) {
       const button = document.createElement('button');
       button.textContent = label;
+      if (this.action === action) {
+        button.classList.add('is-active');
+        button.setAttribute('aria-pressed', 'true');
+      }
       button.addEventListener('click', () => { void this.handleAction(action); });
       actions.appendChild(button);
     }
@@ -277,6 +287,8 @@ export class QuartzoView extends ItemView {
     if (sharedSettingsState === 'loading') {
       const loading = document.createElement('p');
       loading.className = 'quartzo-empty-state';
+      loading.setAttribute('role', 'status');
+      loading.setAttribute('aria-live', 'polite');
       loading.textContent = 'Loading Quartzo vault index…';
       content.appendChild(loading);
       return;
@@ -284,6 +296,7 @@ export class QuartzoView extends ItemView {
     if (sharedSettingsState === 'missing') {
       const warning = document.createElement('p');
       warning.className = 'quartzo-warning-state';
+      warning.setAttribute('role', 'alert');
       warning.textContent = 'Shared Quartzo settings are missing (app/quartzo_shared_settings.md). Objects with explicit canonical type metadata remain available, but Object Identification-dependent files may be unavailable until Quartzo materializes the shared settings file.';
       content.appendChild(warning);
     }
@@ -462,6 +475,8 @@ export class QuartzoView extends ItemView {
     controls.className = 'quartzo-planner-controls';
     const previous = document.createElement('button');
     previous.textContent = '‹';
+    previous.setAttribute('aria-label', `Previous ${this.plannerMode}`);
+    previous.title = `Previous ${this.plannerMode}`;
     previous.addEventListener('click', () => {
       if (this.plannerMode === 'month') {
         this.selectedDate = shiftLocalMonth(this.selectedDate, -1);
@@ -475,6 +490,7 @@ export class QuartzoView extends ItemView {
 
     const dateInput = document.createElement('input');
     dateInput.type = 'date';
+    dateInput.setAttribute('aria-label', 'Planner date');
     dateInput.value = this.selectedDate;
     dateInput.addEventListener('change', () => {
       this.selectedDate = dateInput.value || isoDate(new Date());
@@ -484,6 +500,8 @@ export class QuartzoView extends ItemView {
 
     const next = document.createElement('button');
     next.textContent = '›';
+    next.setAttribute('aria-label', `Next ${this.plannerMode}`);
+    next.title = `Next ${this.plannerMode}`;
     next.addEventListener('click', () => {
       if (this.plannerMode === 'month') {
         this.selectedDate = shiftLocalMonth(this.selectedDate, 1);
@@ -498,7 +516,10 @@ export class QuartzoView extends ItemView {
     for (const mode of ['day', 'week', 'month'] as const) {
       const button = document.createElement('button');
       button.textContent = labelForType(mode);
-      if (mode === this.plannerMode) button.classList.add('is-active');
+      if (mode === this.plannerMode) {
+        button.classList.add('is-active');
+        button.setAttribute('aria-pressed', 'true');
+      }
       button.addEventListener('click', () => {
         this.plannerMode = mode;
         void this.render();
@@ -573,6 +594,8 @@ export class QuartzoView extends ItemView {
     navigation.className = 'quartzo-journal-navigation';
     const previous = document.createElement('button');
     previous.textContent = '‹';
+    previous.setAttribute('aria-label', 'Previous journal day');
+    previous.title = 'Previous journal day';
     previous.addEventListener('click', () => {
       this.selectedDate = isoDate(addDays(parseIsoDate(this.selectedDate), -1));
       void this.render();
@@ -581,6 +604,7 @@ export class QuartzoView extends ItemView {
 
     const date = document.createElement('input');
     date.type = 'date';
+    date.setAttribute('aria-label', 'Journal date');
     date.value = this.selectedDate;
     date.addEventListener('change', () => {
       this.selectedDate = date.value || isoDate(new Date());
@@ -598,6 +622,8 @@ export class QuartzoView extends ItemView {
 
     const next = document.createElement('button');
     next.textContent = '›';
+    next.setAttribute('aria-label', 'Next journal day');
+    next.title = 'Next journal day';
     next.addEventListener('click', () => {
       this.selectedDate = isoDate(addDays(parseIsoDate(this.selectedDate), 1));
       void this.render();
@@ -748,11 +774,13 @@ export class QuartzoView extends ItemView {
     const input = document.createElement('input');
     input.type = 'search';
     input.placeholder = 'Filter Quartzo objects';
+    input.setAttribute('aria-label', 'Filter Quartzo objects');
     input.className = 'quartzo-input';
     controls.appendChild(input);
 
     const filter = document.createElement('select');
     filter.className = 'quartzo-input';
+    filter.setAttribute('aria-label', 'Filter by object type');
     const all = document.createElement('option');
     all.value = '';
     all.textContent = 'All types';
@@ -800,6 +828,7 @@ export class QuartzoView extends ItemView {
     const input = document.createElement('input');
     input.type = 'search';
     input.placeholder = 'Search Quartzo objects';
+    input.setAttribute('aria-label', 'Search Quartzo objects');
     input.className = 'quartzo-input';
     container.appendChild(input);
     const results = document.createElement('div');
@@ -856,6 +885,8 @@ export class QuartzoView extends ItemView {
 
     const summary = document.createElement('section');
     summary.className = 'quartzo-sync-summary';
+    summary.setAttribute('role', 'status');
+    summary.setAttribute('aria-live', 'polite');
     const summaryLines = [
       `Status: ${statusLabel}`,
       `Last successful sync: ${snapshot?.lastSuccessfulSyncAt ? new Date(snapshot.lastSuccessfulSyncAt).toLocaleString() : 'Never'}`,
@@ -873,6 +904,7 @@ export class QuartzoView extends ItemView {
     }
     if (snapshot?.lastError) {
       const lastError = document.createElement('p');
+      lastError.setAttribute('role', 'alert');
       lastError.textContent = `Last error: ${snapshot.lastError}`;
       summary.appendChild(lastError);
     }
@@ -918,6 +950,8 @@ export class QuartzoView extends ItemView {
         syncProgressLine = document.createElement('p');
         syncProgressLine.className = 'quartzo-sync-progress';
         syncProgressLine.style.cssText = 'font-weight: 600; word-break: break-word;';
+        syncProgressLine.setAttribute('role', 'status');
+        syncProgressLine.setAttribute('aria-live', 'polite');
         summary.appendChild(syncProgressLine);
       }
       return syncProgressLine;
@@ -933,6 +967,7 @@ export class QuartzoView extends ItemView {
       const canReconnect = Boolean(plugin.settings.googleDriveFolderId);
       connect.textContent = canReconnect ? 'Reconnect Google' : 'Connect Google Drive';
       connect.disabled = offline;
+      if (offline) connect.title = 'Google Drive connection requires network access.';
       connect.addEventListener('click', async () => {
         if (canReconnect) await plugin.reconnectGoogle();
         else await plugin.startPairingFlow();
@@ -975,6 +1010,7 @@ export class QuartzoView extends ItemView {
         const blocked = document.createElement('button');
         blocked.textContent = 'Pairing in progress…';
         blocked.disabled = true;
+        blocked.title = 'Pairing is already running. Keep Obsidian open until it completes.';
         container.appendChild(blocked);
         return;
       }
@@ -1064,10 +1100,12 @@ export class QuartzoView extends ItemView {
       const sync = document.createElement('button');
       sync.textContent = 'Sync now';
       sync.disabled = offline || snapshot?.status === 'syncing';
+      if (sync.disabled) sync.title = offline ? 'Sync requires network access.' : 'A sync operation is already running.';
 
       const full = document.createElement('button');
       full.textContent = 'Run full reconciliation';
       full.disabled = offline || snapshot?.status === 'syncing';
+      if (full.disabled) full.title = offline ? 'Full reconciliation requires network access.' : 'A sync operation is already running.';
 
       const runWithVisibleProgress = async (
         operation: 'incremental' | 'full'
@@ -1116,6 +1154,7 @@ export class QuartzoView extends ItemView {
         const repairDuplicates = document.createElement('button');
         repairDuplicates.textContent = `Review Drive duplicates (${ambiguityPaths.length})`;
         repairDuplicates.disabled = offline || snapshot?.status === 'syncing';
+        if (repairDuplicates.disabled) repairDuplicates.title = offline ? 'Duplicate review requires network access.' : 'Finish the active sync before reviewing duplicates.';
         repairDuplicates.addEventListener('click', async () => {
           await plugin.reviewSyncRemoteDuplicates();
           await this.render();
@@ -1131,6 +1170,7 @@ export class QuartzoView extends ItemView {
       const reconnect = document.createElement('button');
       reconnect.textContent = 'Reconnect Google';
       reconnect.disabled = offline;
+      if (offline) reconnect.title = 'Reconnect requires network access.';
       reconnect.addEventListener('click', async () => { await plugin.reconnectGoogle(); await this.render(); });
       actions.appendChild(reconnect);
 
