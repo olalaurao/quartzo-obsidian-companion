@@ -49,7 +49,7 @@ A V1 só é considerada pronta quando todos os quatro marcos abaixo estiverem co
 - [x] pending-sync path + reason diagnostics.
 - [x] macOS CI.
 - [x] OAuth contract/runtime/release divergence.
-- [ ] docs/capability matrix final.
+- [x] docs/capability matrix final.
 
 ### Marco D — prova e release
 - [ ] E2E app ↔ Drive ↔ Obsidian.
@@ -421,6 +421,33 @@ Companion:
 - [x] CI #35680269632 Windows: audit, typecheck, sync regression, build, clean artifact e package verdes.
 - [x] CI #35680269632 macOS: audit, contracts verify, typecheck, lint, full tests, contract vectors, sync regressions, architecture check, build, release validate, clean artifact e package verdes.
 - [x] merge canônico Companion: `5c96485a91be1a20243dce32f38fbcaa89ac2f2b`.
+
+---
+
+## Milestone fechado — C4 docs/capability matrix final
+
+**Status: ✅ fechado upstream + Companion. Quartzo `e0bfa986`; Companion PR #57 → `cd4acf3`.**
+
+Upstream Quartzo:
+- [x] PR #48 certificado no head `6abb27dd235a0d493a2d5df29b8f506d7a2bc4f9`.
+- [x] Agent Contract Gate verde.
+- [x] Flutter CI Analyze verde.
+- [x] Flutter CI Test verde.
+- [x] merge canônico: `e0bfa98611138512f916be9cf10f5395b78c10ed`.
+- [x] `P0_COMPLIANCE_MATRIX.md` usa paths literais portáveis, removendo link vendorizado quebrado para `.agents/AGENTS.md`.
+
+Companion:
+- [x] Branch `codex/c4-v1-docs-capability-matrix`.
+- [x] repin byte-for-byte contra upstream `e0bfa98611138512f916be9cf10f5395b78c10ed`.
+- [x] `docs/v1/COMPANION_V1_CAPABILITY_MATRIX.md` criado com status Full / Read-only / Unsupported, owner, contrato/vector, teste/gate, plataforma e limitações V1.
+- [x] `docs/INSTALL_BRAT.md` deixou de fixar `0.1.0-beta.1` e `feature/companion-v1-beta`; instalação passa a apontar para prerelease validada.
+- [x] README e runbook beta linkam a matriz de capacidade final.
+- [x] Architecture gate cobre matriz C4, docs BRAT sem texto stale, P0 vendorizado sem link quebrado e fronteira OAuth sem Client Secret.
+- [x] PR #57 final head certificado: `8c7802c0515413d11cd1c696b2cac37c611e888a`.
+- [x] CI #35682290980 Linux: audit, contracts verify, typecheck, lint, full tests, contract vectors, sync regressions, architecture check, build, release validate, clean artifact e package verdes.
+- [x] CI #35682290980 Windows: audit, typecheck, sync regression, build, clean artifact e package verdes.
+- [x] CI #35682290980 macOS: audit, contracts verify, typecheck, lint, full tests, contract vectors, sync regressions, architecture check, build, release validate, clean artifact e package verdes.
+- [x] merge canônico Companion: `cd4acf3926b880f62b8da1c15f96e3fef356ae1c`.
 
 ---
 

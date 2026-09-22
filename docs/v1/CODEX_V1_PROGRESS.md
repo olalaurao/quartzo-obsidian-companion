@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-22T00:13:00-03:00
-Current milestone: C4 docs/capability matrix final
+Last update: 2026-09-22T00:17:00-03:00
+Current milestone: D1 E2E app <-> Drive <-> Obsidian
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
-Current branch: `codex/c4-v1-docs-capability-matrix`
-Current HEAD: 12513f162a64439452b461ed28c82b8d7e10f1a8 plus local progress update
+Current branch: main
+Current HEAD: cd4acf3926b880f62b8da1c15f96e3fef356ae1c plus local C4 closeout progress update
 Upstream main HEAD: e0bfa98611138512f916be9cf10f5395b78c10ed
-Companion main HEAD: 800f3394df0fb74dc551c6ed8f9d8b5307ade1b5
-Open PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/57
-CI status: PR #57 first run `35682167304` green on Linux, Windows and macOS for head `12513f162a64439452b461ed28c82b8d7e10f1a8`.
-Blocker: C4 still needs progress checkpoint CI rerun and merge certification.
-Exact next action: commit/push this progress checkpoint, wait for rerun, merge PR #57 if green.
+Companion main HEAD: cd4acf3926b880f62b8da1c15f96e3fef356ae1c
+Open PR: none
+CI status: PR #57 final run `35682290980` green on Linux, Windows and macOS for head `8c7802c0515413d11cd1c696b2cac37c611e888a`; merged as `cd4acf3926b880f62b8da1c15f96e3fef356ae1c`.
+Blocker: C4 closed; D1 E2E app <-> Drive <-> Obsidian remains.
+Exact next action: commit/push this closeout progress update, comment issue #45, then start D1 E2E proof unless redirected.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -1372,3 +1372,38 @@ Next:
 - Commit/push this progress checkpoint.
 - Wait for the progress-only CI rerun.
 - Merge PR #57 if the rerun remains green.
+
+## 2026-09-22 - C4 Companion merged
+
+Repo: Companion
+PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/57
+Final PR head: 8c7802c0515413d11cd1c696b2cac37c611e888a
+Merge SHA: cd4acf3926b880f62b8da1c15f96e3fef356ae1c
+Merged at: 2026-09-22T03:14:39Z
+Final CI run: 35682290980
+Result:
+- `test-linux`: success.
+- `test-windows`: success.
+- `test-macos`: success.
+Closed C4 evidence:
+- Upstream PR #48 corrected the P0 matrix stale `.agents/AGENTS.md` link at the canonical source.
+- Companion contracts repinned byte-for-byte to upstream `e0bfa98611138512f916be9cf10f5395b78c10ed`.
+- `docs/v1/COMPANION_V1_CAPABILITY_MATRIX.md` now records V1 Full / Read-only / Unsupported support by feature/object, owner, contract/vector, test/gate, platform and limitation.
+- BRAT install docs no longer pin stale `0.1.0-beta.1` or `feature/companion-v1-beta`.
+- README and beta runbook link the V1 capability matrix.
+- Architecture gate permanently checks C4 docs/matrix freshness and no-secret OAuth release docs.
+Tracker updates:
+- C4 docs/capability matrix final marked closed.
+Still open:
+- D1 E2E app <-> Drive <-> Obsidian.
+- D2 feature-specific E2E.
+- D3 BRAT clean install.
+- D4 BRAT update.
+- D5 Release Preflight.
+- D6 Release Candidate.
+- D7 feature freeze.
+- D8 V1.
+Next:
+- Push this closeout docs commit to main.
+- Add issue #45 progress comment for C4.
+- Start D1 from updated main unless redirected.
