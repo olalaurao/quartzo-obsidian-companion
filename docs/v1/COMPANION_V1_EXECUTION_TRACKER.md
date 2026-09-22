@@ -39,7 +39,7 @@ A V1 só é considerada pronta quando todos os quatro marcos abaixo estiverem co
 - [x] System manual Run no Companion.
 - [x] Routine manual execution no Companion.
 - [x] Focus/Pomodoro parity.
-- [ ] Home/Planner/Dial/Detail/Search/Browse/Journal polish final.
+- [x] Home/Planner/Dial/Detail/Search/Browse/Journal polish final.
 - [ ] Reminder/Calendar edge-case closure.
 - [ ] Sync Center diagnostics finais sem reescrever o sync.
 
@@ -284,6 +284,23 @@ Companion:
 
 Tracker reconciliation:
 - [x] Focus/Pomodoro parity checkbox reconciled as closed by certified A5 (`a8ec975c` upstream, `16c2b616` Companion). No Focus reimplementation was done for A7.
+
+---
+
+## Milestone fechado — B1 surface acceptance/polish
+
+**Status: ✅ fechado no Companion. PR #50 → `c6ea577`.**
+
+Companion:
+- [x] Branch `codex/b1-surface-acceptance-polish`.
+- [x] Home Quick Actions expõe todos os Quick Add suportados pelo core: Task, Entry, Note, Reminder, Record e Resource.
+- [x] Quick Add contract prova roundtrip de Task/Entry/Note/Reminder/Record/Resource sem ampliar mutation support por heurística.
+- [x] Home/Planner/Day Dial/Detail/Search/Browse/Journal auditados contra o B1 handoff e UI spec; gaps restantes foram classificados fora de B1.
+- [x] `UPSTREAM.lock.json` repinado no mesmo SHA A7 `d9302f0860fa1a4e33c1c611f2b448bec167e51f` depois de `contracts:verify` expor manifest stale; contratos continuam byte-for-byte.
+- [x] PR #50 final head certificado: `4eea8a27684b576e52099281de5962f73c653f70`.
+- [x] CI #35675821273 Linux: audit, contracts verify, typecheck, lint, full tests, contract vectors, sync regressions, architecture check, build, release validate, clean artifact e package verdes.
+- [x] CI #35675821273 Windows: audit, typecheck, sync regression, build, clean artifact e package verdes.
+- [x] merge canônico Companion: `c6ea5773a261a73b65bb085970054c154c443234`.
 
 ---
 

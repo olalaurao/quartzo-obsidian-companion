@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-21T22:26:48-03:00
-Current milestone: B1 surface acceptance/polish audit
+Last update: 2026-09-21T22:29:36-03:00
+Current milestone: B1 closed; B2 Reminder + Calendar edge-case closure next
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
-Current branch: codex/b1-surface-acceptance-polish
-Current HEAD: 6a13f6f79966899ae92bafad2c7fadae0fc00f4f plus local progress update
+Current branch: main
+Current HEAD: c6ea5773a261a73b65bb085970054c154c443234 plus local B1 tracker/progress closeout
 Upstream main HEAD: d9302f0860fa1a4e33c1c611f2b448bec167e51f
-Companion main HEAD: e2007cfccecc50cf57c7e1e1885464c8f2641460
-Open PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/50
-CI status: PR #50 run `35675702249` green on Linux and Windows for head `6a13f6f79966899ae92bafad2c7fadae0fc00f4f`.
+Companion main HEAD: c6ea5773a261a73b65bb085970054c154c443234
+Open PR: none for B1; PR #50 merged.
+CI status: PR #50 CI passed on final head `4eea8a27684b576e52099281de5962f73c653f70`; PR merged to `c6ea5773a261a73b65bb085970054c154c443234`.
 Blocker: OAuth contract/runtime divergence remains later C3.5 blocker, not A7/B0.
-Exact next action: commit/push this progress checkpoint, wait for the resulting PR #50 CI rerun, then merge if it remains green.
+Exact next action: commit/push B1 tracker + progress closeout on main, comment issue #45, then start B2 Reminder/Calendar edge-case closure unless redirected.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -552,3 +552,27 @@ Next:
 - Commit/push this progress checkpoint.
 - Wait for the progress-only CI rerun.
 - Merge PR #50 if the rerun remains green.
+
+## 2026-09-21 - B1 Companion merged
+
+Repo: Companion
+PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/50
+Final PR head: 4eea8a27684b576e52099281de5962f73c653f70
+Merge SHA: c6ea5773a261a73b65bb085970054c154c443234
+Merged at: 2026-09-22T01:28:53Z
+Final CI run: 35675821273
+Result:
+- `test-linux`: success.
+- `test-windows`: success.
+Tracker updates:
+- B1 Home/Planner/Dial/Detail/Search/Browse/Journal polish final marked closed.
+- Added B1 closed section with PR #50, final head, merge SHA and CI evidence.
+Still open:
+- B2 Reminder/Calendar edge-case closure.
+- B3 Sync Center diagnostics.
+- C3.5 OAuth contract/runtime/release divergence.
+- C4 stale docs/capability matrix, including P0 `.agents/AGENTS.md` link.
+Next:
+- Commit/push tracker and progress closeout.
+- Add issue #45 progress comment.
+- Start B2 unless redirected.
