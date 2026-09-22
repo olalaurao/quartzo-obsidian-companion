@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-21T22:22:47-03:00
+Last update: 2026-09-21T22:26:48-03:00
 Current milestone: B1 surface acceptance/polish audit
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
 Current branch: codex/b1-surface-acceptance-polish
-Current HEAD: e2007cfccecc50cf57c7e1e1885464c8f2641460 plus local B1 surface/lock/progress changes
+Current HEAD: 6a13f6f79966899ae92bafad2c7fadae0fc00f4f plus local progress update
 Upstream main HEAD: d9302f0860fa1a4e33c1c611f2b448bec167e51f
 Companion main HEAD: e2007cfccecc50cf57c7e1e1885464c8f2641460
-Open PR: none yet for B1
-CI status: Local B1 gates green; PR/remote CI not opened yet.
+Open PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/50
+CI status: PR #50 run `35675702249` green on Linux and Windows for head `6a13f6f79966899ae92bafad2c7fadae0fc00f4f`.
 Blocker: OAuth contract/runtime divergence remains later C3.5 blocker, not A7/B0.
-Exact next action: stage B1 changes, commit, push `codex/b1-surface-acceptance-polish`, open PR, and monitor Linux/Windows CI.
+Exact next action: commit/push this progress checkpoint, wait for the resulting PR #50 CI rerun, then merge if it remains green.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -515,3 +515,40 @@ Still open:
 Next:
 - Stage only the B1 source/tests/lock/progress changes and leave `COMPANION_V1_CODEX_HANDOFF.md` untracked.
 - Commit, push, open PR B1 and monitor remote CI.
+
+## 2026-09-21 - B1 PR opened and first CI green
+
+Repo: Companion
+Branch: `codex/b1-surface-acceptance-polish`
+Commit: 6a13f6f79966899ae92bafad2c7fadae0fc00f4f (`Polish B1 surface quick add acceptance`)
+PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/50
+CI run: 35675702249
+Result:
+- `test-linux`: success.
+- `test-windows`: success.
+Remote Linux covered:
+- `npm ci --audit=false`
+- production audit
+- contract verify
+- typecheck
+- lint
+- `npm test`
+- `npm run test:contracts`
+- `npm run test:sync`
+- architecture
+- build
+- release validate
+- clean artifact smoke
+- package
+Remote Windows covered:
+- `npm ci --audit=false`
+- production audit
+- typecheck
+- sync tests
+- build
+- clean artifact smoke
+- package
+Next:
+- Commit/push this progress checkpoint.
+- Wait for the progress-only CI rerun.
+- Merge PR #50 if the rerun remains green.
