@@ -48,7 +48,7 @@ A V1 só é considerada pronta quando todos os quatro marcos abaixo estiverem co
 - [x] performance/lifecycle/race pass.
 - [x] pending-sync path + reason diagnostics.
 - [x] macOS CI.
-- [ ] OAuth contract/runtime/release divergence.
+- [x] OAuth contract/runtime/release divergence.
 - [ ] docs/capability matrix final.
 
 ### Marco D — prova e release
@@ -398,6 +398,29 @@ Companion:
 - [x] CI #35679476172 Windows: audit, typecheck, sync regression, build, clean artifact e package verdes.
 - [x] CI #35679476172 macOS: audit, contracts verify, typecheck, lint, full tests, contract vectors, sync regressions, architecture check, build, release validate, clean artifact e package verdes.
 - [x] merge canônico Companion: `49b27e02878ae1f2c5348ebefd845d989e0f5d7f`.
+
+---
+
+## Milestone fechado — C3.5 OAuth contract/runtime/release divergence
+
+**Status: ✅ fechado no Companion. PR #56 → `5c96485`.**
+
+Companion:
+- [x] Branch `codex/c35-oauth-no-client-secret`.
+- [x] Upstream Quartzo app verificado em `C:\Users\lauri\Documents\aplicativo_v11_1_antigravity`.
+- [x] Upstream main verificado no SHA canônico `d9302f0860fa1a4e33c1c611f2b448bec167e51f`.
+- [x] Contrato vendorizado já dizia que o Desktop OAuth client não deve conter client secret; não houve patch upstream necessário.
+- [x] Runtime OAuth usa Client ID + loopback `127.0.0.1` + PKCE, sem enviar `client_secret` no authorization-code exchange ou refresh-token exchange.
+- [x] `SecretStorage` guarda somente refresh token; Client Secret removido de IDs, Settings UI e configuração OAuth.
+- [x] Release/preflight exigem somente `QUARTZO_GOOGLE_DESKTOP_CLIENT_ID`.
+- [x] `release:validate` rejeita artefato que contenha `QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET`.
+- [x] Architecture gate e regressões cobrem ausência de secret em runtime, workflows e SecretStorage.
+- [x] README, runbook beta e OAuth setup documentam o fluxo sem Client Secret.
+- [x] PR #56 final head certificado: `9b912ca2b0f91e742313e82cf545e8d8bd399d9a`.
+- [x] CI #35680269632 Linux: audit, contracts verify, typecheck, lint, full tests, contract vectors, sync regressions, architecture check, build, release validate, clean artifact e package verdes.
+- [x] CI #35680269632 Windows: audit, typecheck, sync regression, build, clean artifact e package verdes.
+- [x] CI #35680269632 macOS: audit, contracts verify, typecheck, lint, full tests, contract vectors, sync regressions, architecture check, build, release validate, clean artifact e package verdes.
+- [x] merge canônico Companion: `5c96485a91be1a20243dce32f38fbcaa89ac2f2b`.
 
 ---
 

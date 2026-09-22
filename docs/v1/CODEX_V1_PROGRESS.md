@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-21T23:45:00-03:00
-Current milestone: C3.5 OAuth contract/runtime/release divergence
+Last update: 2026-09-21T23:48:00-03:00
+Current milestone: C4 docs/capability matrix final
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
-Current branch: `codex/c35-oauth-no-client-secret`
-Current HEAD: 495d3e3046748ded43d67edbf0ec105f8c93897d plus local progress update
+Current branch: main
+Current HEAD: 5c96485a91be1a20243dce32f38fbcaa89ac2f2b plus local C3.5 closeout progress update
 Upstream main HEAD: d9302f0860fa1a4e33c1c611f2b448bec167e51f
-Companion main HEAD: 09cd76cdaa538a522a9d37f3afe580b4592d4d57
-Open PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/56
-CI status: PR #56 first run `35680157336` green on Linux, Windows and macOS for head `495d3e3046748ded43d67edbf0ec105f8c93897d`.
-Blocker: C3.5 still needs progress checkpoint CI rerun and merge certification.
-Exact next action: commit/push this progress checkpoint, wait for rerun, merge PR #56 if green.
+Companion main HEAD: 5c96485a91be1a20243dce32f38fbcaa89ac2f2b
+Open PR: none
+CI status: PR #56 final run `35680269632` green on Linux, Windows and macOS for head `9b912ca2b0f91e742313e82cf545e8d8bd399d9a`; merged as `5c96485a91be1a20243dce32f38fbcaa89ac2f2b`.
+Blocker: C3.5 closed; C4 docs/capability matrix remains.
+Exact next action: commit/push this closeout progress update, comment issue #45, then start C4 unless redirected.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -1229,3 +1229,33 @@ Next:
 - Commit/push this progress checkpoint.
 - Wait for the progress-only CI rerun.
 - Merge PR #56 if the rerun remains green.
+
+## 2026-09-21 - C3.5 Companion merged
+
+Repo: Companion
+PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/56
+Final PR head: 9b912ca2b0f91e742313e82cf545e8d8bd399d9a
+Merge SHA: 5c96485a91be1a20243dce32f38fbcaa89ac2f2b
+Merged at: 2026-09-22T02:41:32Z
+Final CI run: 35680269632
+Result:
+- `test-linux`: success.
+- `test-windows`: success.
+- `test-macos`: success.
+Closed C3.5 evidence:
+- Desktop OAuth runtime now uses Client ID + loopback PKCE only.
+- Authorization-code exchange and refresh-token exchange no longer send `client_secret`.
+- Obsidian SecretStorage stores only the refresh token; no Desktop OAuth Client Secret ID remains.
+- Settings UI no longer asks for or stores a Desktop OAuth Client Secret.
+- Release and preflight workflows require only `QUARTZO_GOOGLE_DESKTOP_CLIENT_ID`.
+- `release:validate` rejects a built artifact containing `QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET`.
+- Architecture and regression tests enforce no secret in runtime, release workflows or SecretStorage.
+- README, beta release runbook and OAuth setup docs now document the no-secret desktop flow.
+Tracker updates:
+- C3.5 OAuth contract/runtime/release divergence marked closed.
+Still open:
+- C4 stale docs/capability matrix, including P0 `.agents/AGENTS.md` link.
+Next:
+- Push this closeout docs commit to main.
+- Add issue #45 progress comment for C3.5.
+- Start C4 from updated main unless redirected.
