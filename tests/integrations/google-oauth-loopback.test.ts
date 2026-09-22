@@ -7,7 +7,6 @@ import {
   type TokenResponse,
 } from '../../src/integrations/google/auth/loopback';
 import {
-  GOOGLE_OAUTH_CLIENT_SECRET_ID,
   GOOGLE_REFRESH_TOKEN_SECRET_ID,
 } from '../../src/platform/secret-ids';
 
@@ -68,7 +67,7 @@ const config: OAuthConfig = {
 
 describe('Google OAuth desktop loopback', () => {
   it('uses Obsidian-compatible SecretStorage IDs', () => {
-    for (const id of [GOOGLE_REFRESH_TOKEN_SECRET_ID, GOOGLE_OAUTH_CLIENT_SECRET_ID]) {
+    for (const id of [GOOGLE_REFRESH_TOKEN_SECRET_ID]) {
       expect(id).toMatch(/^[a-z0-9-]{1,64}$/);
     }
   });
@@ -118,7 +117,7 @@ describe('Google OAuth desktop loopback', () => {
     const client = new GoogleOAuthDesktop(config, new MemorySecretStorage(), opener);
     await expect(client.startAuthLoopback()).rejects.toThrow('State mismatch');
   });
-  it('sends the Desktop client credential for authorization-code and refresh-token exchanges', async () => {
+  it('uses Client ID and PKCE without a Desktop client secret for authorization-code and refresh-token exchanges', async () => {
     const requestBodies: string[] = [];
     const tokenServer = http.createServer((req, res) => {
       let body = '';
@@ -147,7 +146,6 @@ describe('Google OAuth desktop loopback', () => {
       await storage.set(GOOGLE_REFRESH_TOKEN_SECRET_ID, 'stored_refresh_token');
       const client = new GoogleOAuthDesktop({
         ...config,
-        clientSecret: 'desktop_client_credential',
         tokenUrl: `http://127.0.0.1:${address.port}/token`,
       }, storage);
 
@@ -158,13 +156,13 @@ describe('Google OAuth desktop loopback', () => {
       expect(requestBodies).toHaveLength(2);
       const authorizationCodeRequest = new URLSearchParams(requestBodies[0]);
       expect(authorizationCodeRequest.get('client_id')).toBe(config.clientId);
-      expect(authorizationCodeRequest.get('client_secret')).toBe('desktop_client_credential');
+      expect(authorizationCodeRequest.has('client_secret')).toBe(false);
       expect(authorizationCodeRequest.get('code')).toBe('authorization_code');
       expect(authorizationCodeRequest.get('code_verifier')).toBeTruthy();
 
       const refreshRequest = new URLSearchParams(requestBodies[1]);
       expect(refreshRequest.get('client_id')).toBe(config.clientId);
-      expect(refreshRequest.get('client_secret')).toBe('desktop_client_credential');
+      expect(refreshRequest.has('client_secret')).toBe(false);
       expect(refreshRequest.get('refresh_token')).toBe('stored_refresh_token');
       expect(refreshRequest.get('grant_type')).toBe('refresh_token');
     } finally {

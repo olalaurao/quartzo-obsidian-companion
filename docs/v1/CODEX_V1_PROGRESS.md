@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-21T23:30:00-03:00
+Last update: 2026-09-21T23:42:00-03:00
 Current milestone: C3.5 OAuth contract/runtime/release divergence
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
-Current branch: main
-Current HEAD: 367deac0c36f5d5197355fc657a40fe1ce9867ee plus local issue-link progress update
+Current branch: `codex/c35-oauth-no-client-secret`
+Current HEAD: 09cd76cdaa538a522a9d37f3afe580b4592d4d57 plus local C3.5 changes
 Upstream main HEAD: d9302f0860fa1a4e33c1c611f2b448bec167e51f
-Companion main HEAD: 6ccb085aaf3cfe5331ca05ac47e56ef7c480b825
+Companion main HEAD: 09cd76cdaa538a522a9d37f3afe580b4592d4d57
 Open PR: none for current milestone yet
-CI status: PR #55 final run `35679476172` green on Linux, Windows and macOS for head `3a6e2f3a45b6a185b86f344c13e7c49586420128`; merged as `49b27e02878ae1f2c5348ebefd845d989e0f5d7f`.
-Blocker: OAuth contract/runtime/release divergence is now the active C3.5 blocker.
-Exact next action: commit/push this issue-link progress update, then start C3.5 upstream-first OAuth reconciliation unless redirected.
+CI status: local C3.5 gates green; remote PR not opened yet.
+Blocker: C3.5 implementation is local and still needs PR CI/merge certification.
+Exact next action: commit/push C3.5 branch, open PR, monitor Linux/Windows/macOS CI.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -69,7 +69,7 @@ Status:
 - Runs still red: Dial Focus CI `35665104681`, Agent Contract Gate `35665104678`, Flutter CI `35665104719`.
 - Companion has no open PRs.
 Discovered/confirmed gaps:
-- OAuth contract/runtime/release divergence remains real: vendored parent contract says no Desktop client secret, while Companion `agents.md`, runbook and release workflows require one. This is C3.5 blocker, not A7 work.
+- OAuth contract/runtime/release divergence was identified: vendored parent contract says no Desktop client secret, while Companion runtime/release/docs still required one at that point. This was classified as C3.5 blocker, not A7 work.
 - `P0_COMPLIANCE_MATRIX.md` still links `.agents/AGENTS.md`; handoff says correct upstream-first later if vendored ownership applies.
 Tests run:
 - Not yet.
@@ -1133,3 +1133,47 @@ Next:
 - Closeout docs commit pushed to main: `367deac0c36f5d5197355fc657a40fe1ce9867ee`.
 - Issue #45 progress comment added: https://github.com/olalaurao/quartzo-obsidian-companion/issues/45#issuecomment-5770363499
 - Start C3.5 upstream-first unless redirected.
+
+## 2026-09-21 - C3.5 OAuth no-secret implementation checkpoint
+
+Repo: Companion
+Branch: `codex/c35-oauth-no-client-secret`
+Base HEAD: 09cd76cdaa538a522a9d37f3afe580b4592d4d57
+Upstream Quartzo app path verified:
+- `C:\Users\lauri\Documents\aplicativo_v11_1_antigravity`
+Upstream main HEAD verified:
+- `d9302f0860fa1a4e33c1c611f2b448bec167e51f`
+Google source consultation:
+- Google installed/native app guidance says installed apps cannot keep secrets and desktop app authorization uses PKCE.
+- Google token exchange documentation lists `client_secret` as optional and not applicable to public native client cases.
+- Google OAuth best practices say client credentials should not be hardcoded or published.
+Inference:
+- Upstream contract already matches the secure public-client boundary: Desktop OAuth uses Client ID + loopback PKCE and must not contain a client secret.
+- No upstream contract patch was needed for C3.5; Companion runtime, release workflows, validator, docs and tests were the divergent downstream surfaces.
+Changed:
+- Removed `clientSecret` from OAuth config types and Google loopback token/refresh requests.
+- Removed Desktop OAuth Client Secret from Obsidian SecretStorage IDs and Settings UI.
+- Removed `QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET` from esbuild injection, release workflow and release preflight.
+- Release validator now rejects any built artifact containing `QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET`.
+- Architecture gate now enforces Client ID + PKCE only, no SecretStorage ID, no runtime parameter and no release workflow secret.
+- Tests now assert authorization-code and refresh-token exchanges do not send `client_secret`.
+- README, beta runbook and OAuth setup docs now document only `QUARTZO_GOOGLE_DESKTOP_CLIENT_ID`.
+Tests run:
+- `npx vitest run tests/integrations/google-oauth-loopback.test.ts tests/sync/regression.test.ts` - green, 96 tests.
+- `npm run typecheck` - green.
+- `npm run architecture:check` - green.
+- `npm run build` - green.
+- `npm run release:validate` - green.
+- `RELEASE_MODE=true QUARTZO_GOOGLE_DESKTOP_CLIENT_ID=test-client.apps.googleusercontent.com` with no `QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET`: `npm run build` + `npm run release:validate` - green.
+- `npm run lint` - green.
+- `npm run test:contracts` - green, 259 tests.
+- `npm run test:sync` - green, 226 tests.
+- `npm test` - green, 598 tests.
+- `$env:GITHUB_TOKEN = gh auth token; npm run contracts:verify` - green, 22 contracts verified byte-for-byte against upstream `d9302f0860fa1a4e33c1c611f2b448bec167e51f`.
+- `npm run audit:prod` - green, zero vulnerabilities.
+- `npm run smoke:clean-artifact` - green.
+- `npm run release:package` - green.
+Still open:
+- Commit/push C3.5 branch.
+- Open PR and wait for Linux/Windows/macOS CI.
+- Merge only after remote CI is green, then update tracker and issue #45.

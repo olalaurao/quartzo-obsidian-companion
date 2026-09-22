@@ -12,6 +12,8 @@ Para configurar a credencial no Google Cloud Platform:
 7. Clique em Create.
 8. Copie o Client ID.
 
+Não configure Client Secret para o Companion. O fluxo desktop usa Client ID + loopback `127.0.0.1` + PKCE, e o build não deve enviar nem empacotar segredo de cliente.
+
 Configure a build exportando a variável:
 `export QUARTZO_GOOGLE_DESKTOP_CLIENT_ID="seu-client-id"`
 

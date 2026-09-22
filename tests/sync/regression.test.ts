@@ -7,7 +7,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { tmpdir } from 'os';
-import { GOOGLE_OAUTH_CLIENT_SECRET_ID, GOOGLE_REFRESH_TOKEN_SECRET_ID } from '../../src/platform/secret-ids';
+import { GOOGLE_REFRESH_TOKEN_SECRET_ID } from '../../src/platform/secret-ids';
 
 class MockDriveAdapter implements DriveAdapter {
   async assertInsideSelectedVault(remoteFileId: string): Promise<void> { return Promise.resolve(); }
@@ -1089,12 +1089,14 @@ describe('Sync Regression Tests', () => {
       const releaseSrc = fs.readFileSync(path.join(__dirname, '../../.github/workflows/release.yml'), 'utf-8');
       expect(releaseSrc).toContain('QUARTZO_GOOGLE_DESKTOP_CLIENT_ID');
       expect(releaseSrc).toContain('secrets.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID');
+      expect(releaseSrc).not.toContain('QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET');
     });
 
     it('release validator checks built main.js for placeholder', () => {
       const validatorSrc = fs.readFileSync(path.join(__dirname, '../../scripts/release-validate.mjs'), 'utf-8');
       expect(validatorSrc).toContain('main.js');
       expect(validatorSrc).toContain('PLACEHOLDER_CLIENT_ID');
+      expect(validatorSrc).toContain('must not contain QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET');
     });
   });
 
@@ -1193,8 +1195,7 @@ describe('Sync Regression Tests', () => {
   describe('Reviewer additional: SecretStorage namespace', () => {
     it('canonical SecretStorage IDs are plugin-specific and Obsidian-compatible', () => {
       expect(GOOGLE_REFRESH_TOKEN_SECRET_ID).toBe('quartzo-companion-refresh-token');
-      expect(GOOGLE_OAUTH_CLIENT_SECRET_ID).toBe('quartzo-companion-oauth-client-secret');
-      for (const id of [GOOGLE_REFRESH_TOKEN_SECRET_ID, GOOGLE_OAUTH_CLIENT_SECRET_ID]) {
+      for (const id of [GOOGLE_REFRESH_TOKEN_SECRET_ID]) {
         expect(id).toMatch(/^[a-z0-9-]{1,64}$/);
       }
     });
@@ -1204,7 +1205,7 @@ describe('Sync Regression Tests', () => {
       const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/main.ts'), 'utf-8');
       expect(loopbackSrc).toContain('GOOGLE_REFRESH_TOKEN_SECRET_ID');
       expect(mainSrc).toContain('GOOGLE_REFRESH_TOKEN_SECRET_ID');
-      expect(mainSrc).toContain('GOOGLE_OAUTH_CLIENT_SECRET_ID');
+      expect(mainSrc).not.toContain('GOOGLE_OAUTH_CLIENT_SECRET_ID');
       expect(loopbackSrc).not.toContain('quartzo_companion/');
       expect(mainSrc).not.toContain('quartzo_companion/');
     });

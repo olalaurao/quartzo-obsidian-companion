@@ -6,7 +6,7 @@ This runbook covers the first installable beta of the Quartzo Obsidian Companion
 
 - Desktop only.
 - OAuth uses a Google **Desktop app** client with loopback `127.0.0.1` and PKCE.
-- The release build embeds the Google Desktop OAuth **Client ID** and its generated **client credential** because Google's token endpoint requires that value for this client. Desktop/native apps are public clients and cannot keep this credential confidential; PKCE remains mandatory and user tokens remain device-secret.
+- The release build embeds only the Google Desktop OAuth **Client ID**. Desktop/native apps are public clients; Companion must not configure, send, require, or bundle a Client Secret for this flow.
 - User refresh tokens remain in Obsidian `SecretStorage`.
 - Release tags must point to commits contained in `main`.
 - `package.json`, `manifest.json`, `versions.json`, and the Git tag must describe the same release version.
@@ -24,10 +24,10 @@ This runbook covers the first installable beta of the Quartzo Obsidian Companion
    - `https://www.googleapis.com/auth/drive`
    - `https://www.googleapis.com/auth/calendar.readonly`
 6. In **Clients**, create a client with application type **Desktop app**.
-7. Copy the generated **Client ID** ending in `.apps.googleusercontent.com` and the **Client secret** generated for that same Desktop app client.
-   - Do not commit either credential to the repository source tree.
-   - Store both values only as GitHub Actions repository secrets for release builds.
-   - The Desktop client credential is bundled into the distributed desktop artifact and therefore is not a confidentiality boundary; authorization-code PKCE and per-user tokens remain the security boundary.
+7. Copy the generated **Client ID** ending in `.apps.googleusercontent.com`.
+   - Do not commit the Client ID to the repository source tree.
+   - Store it only as a GitHub Actions repository secret for release builds.
+   - Ignore or delete any generated Client Secret for Companion. The desktop loopback flow uses Client ID + PKCE only; authorization-code PKCE and per-user tokens remain the security boundary.
    - Do not create a Web application client for the desktop loopback flow.
 
 ## GitHub repository setup
@@ -35,9 +35,8 @@ This runbook covers the first installable beta of the Quartzo Obsidian Companion
 Create these repository secrets:
 
 - `QUARTZO_GOOGLE_DESKTOP_CLIENT_ID` — the Desktop OAuth Client ID from Google Cloud.
-- `QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET` — the Client secret generated for that same Desktop OAuth client.
 
-Never paste either value into committed source files or release notes.
+Never paste the Client ID into committed source files or release notes. Do not create a `QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET` repository secret for Companion.
 
 The existing `QUARTZO_UPSTREAM_TOKEN` remains responsible only for reading the private canonical upstream contracts during CI/release.
 
@@ -48,7 +47,8 @@ After the release changes are on `main`:
 1. Open GitHub Actions.
 2. Run **Release Preflight** manually.
 3. The workflow must pass:
-   - OAuth secret presence/shape
+   - OAuth Client ID presence/shape
+   - release validation rejecting bundled Desktop OAuth Client Secrets
    - canonical contract verification
    - typecheck/lint/tests
    - sync tests
