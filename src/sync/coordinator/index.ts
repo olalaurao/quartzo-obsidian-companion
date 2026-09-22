@@ -2153,14 +2153,14 @@ export class DriveSyncCoordinator implements ConflictRegistry {
             const quartzoHash = this.calculateHash(content);
             if (remoteEntry) {
               // Overwrite the existing Drive file with local content.
-              await this.driveAdapter.updateFileContent(remoteEntry.id, content, quartzoHash);
+              const updatedMeta = await this.driveAdapter.updateFile(remoteEntry.id, content, quartzoHash);
               const syncFile = this.createSyncFile(normalized, { hash: quartzoHash, exists: true });
               syncFile.baseHash = quartzoHash;
               syncFile.localHash = quartzoHash;
               syncFile.remoteHash = quartzoHash;
-              syncFile.remoteFileId = remoteEntry.id;
+              syncFile.remoteFileId = updatedMeta.id;
               syncFile.remoteExists = true;
-              syncFile.remoteModifiedAt = remoteEntry.modifiedTime || null;
+              syncFile.remoteModifiedAt = updatedMeta.modifiedTime || null;
               this.syncState.files.set(normalized, syncFile);
             } else {
               const metadata = await this.driveAdapter.uploadFile({ folderId: driveFolderId, name: normalized, content, quartzoHash });
