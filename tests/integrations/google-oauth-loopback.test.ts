@@ -59,6 +59,7 @@ function getStatus(target: string): Promise<number> {
 
 const config: OAuthConfig = {
   clientId: 'test-client-id.apps.googleusercontent.com',
+  clientSecret: 'test-client-secret',
   redirectUri: '',
   scopes: ['https://www.googleapis.com/auth/drive'],
   authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
@@ -117,7 +118,7 @@ describe('Google OAuth desktop loopback', () => {
     const client = new GoogleOAuthDesktop(config, new MemorySecretStorage(), opener);
     await expect(client.startAuthLoopback()).rejects.toThrow('State mismatch');
   });
-  it('uses Client ID and PKCE without a Desktop client secret for authorization-code and refresh-token exchanges', async () => {
+  it('sends Client ID, PKCE code_verifier, and client_secret for authorization-code and refresh-token exchanges', async () => {
     const requestBodies: string[] = [];
     const tokenServer = http.createServer((req, res) => {
       let body = '';
@@ -156,13 +157,13 @@ describe('Google OAuth desktop loopback', () => {
       expect(requestBodies).toHaveLength(2);
       const authorizationCodeRequest = new URLSearchParams(requestBodies[0]);
       expect(authorizationCodeRequest.get('client_id')).toBe(config.clientId);
-      expect(authorizationCodeRequest.has('client_secret')).toBe(false);
+      expect(authorizationCodeRequest.get('client_secret')).toBe('test-client-secret');
       expect(authorizationCodeRequest.get('code')).toBe('authorization_code');
       expect(authorizationCodeRequest.get('code_verifier')).toBeTruthy();
 
       const refreshRequest = new URLSearchParams(requestBodies[1]);
       expect(refreshRequest.get('client_id')).toBe(config.clientId);
-      expect(refreshRequest.has('client_secret')).toBe(false);
+      expect(refreshRequest.get('client_secret')).toBe('test-client-secret');
       expect(refreshRequest.get('refresh_token')).toBe('stored_refresh_token');
       expect(refreshRequest.get('grant_type')).toBe('refresh_token');
     } finally {

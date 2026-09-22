@@ -71,8 +71,11 @@ function validateRelease() {
       if (clientIdEnv && clientIdEnv !== 'PLACEHOLDER_CLIENT_ID' && !mainJsContent.includes(clientIdEnv)) {
         errors.push('Built main.js does not contain QUARTZO_GOOGLE_DESKTOP_CLIENT_ID value. Build must inject the env var.');
       }
-      if (mainJsContent.includes('QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET')) {
-        errors.push('Built main.js must not contain QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET. Desktop OAuth uses Client ID + PKCE only.');
+      const clientSecretEnv = process.env.QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET;
+      if (!clientSecretEnv) {
+        errors.push('OAuth Client Secret is missing. Set QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET for release. Google Desktop app OAuth requires client_secret for token exchange.');
+      } else if (clientSecretEnv && !mainJsContent.includes(clientSecretEnv)) {
+        errors.push('Built main.js does not contain QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET value. Build must inject the env var.');
       }
       if (mainJsContent.includes("require('googleapis')") && !mainJsContent.includes('const GoogleApis = require')) {
         errors.push('Built main.js contains unresolved runtime require("googleapis"). googleapis must be bundled.');

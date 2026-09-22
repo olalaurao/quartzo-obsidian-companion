@@ -136,9 +136,11 @@ const DEFAULT_SETTINGS: QuartzoCompanionSettings = {
 
 
 const BUILD_CLIENT_ID: string = (typeof process !== 'undefined' && process.env && process.env.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID) || '';
+const BUILD_CLIENT_SECRET: string = (typeof process !== 'undefined' && process.env && process.env.QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET) || '';
 
 const OAUTH_CONFIG: OAuthConfig = {
   clientId: '',
+  clientSecret: BUILD_CLIENT_SECRET || undefined,
   redirectUri: '',
   scopes: [...GOOGLE_COMPANION_SCOPES],
   authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',

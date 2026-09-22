@@ -408,11 +408,11 @@ function checkOAuthDesktopPlatformBoundary() {
     console.error('FAIL: OAuth desktop loopback/PKCE contract regressed');
     return false;
   }
-  if (loopback.includes("params.append('client_secret'") || main.includes('QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET')) {
-    console.error('FAIL: Desktop OAuth must use Client ID + PKCE only and must not send or bundle a client secret');
+  if (!loopback.includes("params.append('client_secret'") || !main.includes('QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET')) {
+    console.error('FAIL: Desktop OAuth must send client_secret in token exchange. Google Desktop app clients require client_secret even with PKCE.');
     return false;
   }
-  console.log('PASS: OAuth desktop browser launch stays inside Obsidian/Electron with loopback PKCE and no client secret');
+  console.log('PASS: OAuth desktop browser launch stays inside Obsidian/Electron with loopback PKCE and client secret');
   return true;
 }
 function checkReleasePipelineHardening() {
@@ -438,12 +438,12 @@ function checkReleasePipelineHardening() {
     console.error('FAIL: Release/preflight do not require the production OAuth Client ID');
     return false;
   }
-  if (release.includes('QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET') || preflight.includes('QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET')) {
-    console.error('FAIL: Release/preflight must not require or inject a Google Desktop OAuth client secret');
+  if (!release.includes('QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET') || !preflight.includes('QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET')) {
+    console.error('FAIL: Release/preflight do not inject the production OAuth Client Secret required by Google Desktop app token exchange');
     return false;
   }
-  if (!validate.includes('must not contain QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET')) {
-    console.error('FAIL: Release validator must reject bundled Google Desktop OAuth client secrets');
+  if (!validate.includes('OAuth Client Secret is missing')) {
+    console.error('FAIL: Release validator must require the Google Desktop OAuth client secret');
     return false;
   }
   if (!release.includes('npm run release:package') || !preflight.includes('npm run release:package')) {
