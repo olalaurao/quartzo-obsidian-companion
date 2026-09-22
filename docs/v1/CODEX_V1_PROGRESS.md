@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-21T23:00:00-03:00
-Current milestone: A7 closed; B0 tracker reconciliation in progress
+Last update: 2026-09-21T22:22:47-03:00
+Current milestone: B1 surface acceptance/polish audit
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
-Current branch: main
-Current HEAD: bbd285f1b94ddbfd6ab44fb17254d12ca3198209 plus local tracker/progress update
+Current branch: codex/b1-surface-acceptance-polish
+Current HEAD: e2007cfccecc50cf57c7e1e1885464c8f2641460 plus local B1 surface/lock/progress changes
 Upstream main HEAD: d9302f0860fa1a4e33c1c611f2b448bec167e51f
-Companion main HEAD: bbd285f1b94ddbfd6ab44fb17254d12ca3198209
-Open PR: none for A7; PR #49 merged.
-CI status: Companion PR #49 CI passed on final head `7776ad7b274ecf5d2c733aaf8b0b9c051ab79128`; PR merged to `bbd285f1b94ddbfd6ab44fb17254d12ca3198209`.
+Companion main HEAD: e2007cfccecc50cf57c7e1e1885464c8f2641460
+Open PR: none yet for B1
+CI status: Local B1 gates green; PR/remote CI not opened yet.
 Blocker: OAuth contract/runtime divergence remains later C3.5 blocker, not A7/B0.
-Exact next action: commit/push tracker + progress closeout on main, comment issue #45, then continue B1.
+Exact next action: stage B1 changes, commit, push `codex/b1-surface-acceptance-polish`, open PR, and monitor Linux/Windows CI.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -457,3 +457,61 @@ Next:
 - Commit/push tracker and progress closeout.
 - Add issue #45 progress comment.
 - Continue with B1 unless redirected.
+
+## 2026-09-21 - A7/B0 closeout pushed, B1 branch started
+
+Repo: Companion
+Main closeout commit: e2007cfccecc50cf57c7e1e1885464c8f2641460 (`docs: close A7 overdue adaptive milestone`)
+Issue comment: https://github.com/olalaurao/quartzo-obsidian-companion/issues/45#issuecomment-5769841890
+Created branch:
+- `codex/b1-surface-acceptance-polish`
+Scope:
+- B1 Home / Planner / Day Dial / Detail / Search / Browse / Journal acceptance and polish final.
+- No redesign.
+- No new product rule without upstream/contract backing.
+- No mutation expansion beyond coverage matrix.
+Next:
+- Audit existing surfaces and tests.
+- Implement only real gaps found.
+
+## 2026-09-21 - B1 surface acceptance audit and local fixes
+
+Repo: Companion
+Branch: `codex/b1-surface-acceptance-polish`
+Base HEAD: e2007cfccecc50cf57c7e1e1885464c8f2641460
+Changed:
+- `src/ui/home/quick-actions.ts`
+- `src/ui/home/view.ts`
+- `tests/ui/home-quick-actions.test.ts`
+- `tests/contracts/ui_shell.test.ts`
+- `contracts/UPSTREAM.lock.json`
+- `docs/v1/CODEX_V1_PROGRESS.md`
+Audit:
+- Home/Planner/Day Dial/Detail/Search/Browse/Journal reviewed against B1 handoff and UI contract.
+- Search/Browse/pickers continue to use `src/core/object-query/index.ts`; no second search cache found.
+- Universal Detail edit controls remain gated by vendored full mutation coverage; limited/daily_note stay read-only/Open Markdown.
+- Planner Day/Week/Month and Day Dial use canonical schedule inputs and presentation-only projections.
+- Journal uses indexed Daily Note/Entry/Record objects plus canonical timeline and Overdue projection.
+- Focus surface review only: foreign owner is read-only, controls disable via `canControl`, ticker clears when root disconnects.
+Concrete B1 gaps fixed:
+- Home quick actions now expose every Quick Add type currently supported by the creation core: Task, Entry, Note, Reminder, Record and Resource.
+- Quick Add contract test now proves Record and Resource roundtrip alongside Task/Entry/Note/Reminder.
+Gate repair:
+- Initial `npm run contracts:verify` failed without token (`HTTP 404`), then with token exposed a stale `UPSTREAM.lock.json` manifest mismatch for existing vendored A7 files.
+- Ran official repin on the same upstream SHA `d9302f0860fa1a4e33c1c611f2b448bec167e51f`; vendored file bytes stayed aligned, and the only contract diff is the lock `syncTimestamp`.
+Tests run:
+- `npx vitest run tests/ui/home-quick-actions.test.ts tests/ui/home-projection.test.ts` — green, 7 tests.
+- `npm run typecheck` — green.
+- `npx vitest run tests/contracts/ui_shell.test.ts tests/ui/home-quick-actions.test.ts tests/core/object-creation.test.ts` — green, 16 tests.
+- `npm run test:contracts` — green, 254 tests.
+- `npm run lint` — green.
+- `npm run architecture:check` — green.
+- `npm test` — green, 584 tests.
+- `npm run build` — green.
+- `$env:GITHUB_TOKEN = gh auth token; npm run contracts:verify` — green after same-SHA repin, 22 contracts verified.
+Still open:
+- OAuth contract/runtime divergence remains C3.5 blocker.
+- P0 matrix `.agents/AGENTS.md` stale link remains later C4/upstream-owned, not B1.
+Next:
+- Stage only the B1 source/tests/lock/progress changes and leave `COMPANION_V1_CODEX_HANDOFF.md` untracked.
+- Commit, push, open PR B1 and monitor remote CI.

@@ -30,6 +30,8 @@ folder_paths:
   task: tasks/custom
   entry: journal/custom
   reminder: reminders/custom
+  tracker_record: trackers/records/custom
+  resource: resources/custom
 ---
 `)!;
 
@@ -38,6 +40,21 @@ folder_paths:
     ['entry', { title: 'Reflection', body: 'Text', date: '2026-09-16', time: '20:00' }],
     ['note', { title: 'Idea', body: 'Text' }],
     ['reminder', { title: 'Call', body: '', date: '2026-09-17', time: '09:45' }],
+    ['tracker_record', {
+      title: '',
+      body: '',
+      record: {
+        trackerId: 'tracker-energy',
+        trackerTitle: 'Energy',
+        date: '2026-09-17',
+        fieldValues: { score: 4 },
+      },
+    }],
+    ['resource', {
+      title: 'Reference Book',
+      body: 'Notes',
+      resource: { mediaType: 'Book', sourceUrl: 'https://example.test/book' },
+    }],
   ] as const)('creates %s through canonical settings and roundtrips', (type, input) => {
     const built = buildQuickAddDocument(settings, type, input, `${type}-fixture`);
     const parsed = ObjectParser.parse(built.content);

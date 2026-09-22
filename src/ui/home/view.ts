@@ -13,8 +13,7 @@ import { renderDayDial } from '../day-dial/view';
 import { renderScheduleList, type ScheduleListOptions } from '../daily/schedule-list';
 import { projectHomeSchedule, type HomeProgress } from './home-projection';
 import type { ManualExecutionRunCapability } from '../../core/manual-execution';
-
-export type HomeQuickAddType = 'task' | 'entry' | 'note' | 'tracker_record';
+import { HOME_QUICK_ACTIONS, type HomeQuickAddType } from './quick-actions';
 
 export interface HomeViewOptions {
   app: App;
@@ -173,13 +172,7 @@ export function renderHomeView(container: HTMLElement, options: HomeViewOptions)
   sectionHeading(quickActions, 'Quick actions');
   const actions = document.createElement('div');
   actions.className = 'quartzo-home-quick-actions';
-  const definitions: Array<[HomeQuickAddType, string]> = [
-    ['task', '+ Task'],
-    ['entry', '+ Entry'],
-    ['note', '+ Note'],
-    ['tracker_record', '+ Record'],
-  ];
-  for (const [type, label] of definitions) {
+  for (const { type, label } of HOME_QUICK_ACTIONS) {
     const button = document.createElement('button');
     button.type = 'button';
     button.textContent = label;
