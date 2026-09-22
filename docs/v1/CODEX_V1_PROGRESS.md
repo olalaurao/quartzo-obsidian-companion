@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-21T22:53:00-03:00
-Current milestone: A7 downstream - Companion Overdue + Adaptive Planning port
+Last update: 2026-09-21T23:00:00-03:00
+Current milestone: A7 closed; B0 tracker reconciliation in progress
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
-Current branch: codex/a7-overdue-adaptive-planning
-Current HEAD: branch commit pending final `git rev-parse HEAD` after progress checkpoint
+Current branch: main
+Current HEAD: bbd285f1b94ddbfd6ab44fb17254d12ca3198209 plus local tracker/progress update
 Upstream main HEAD: d9302f0860fa1a4e33c1c611f2b448bec167e51f
-Companion main HEAD: 36c88af14587134d05a7fdcd12901a0b2a4e37af
-Open PR: Companion https://github.com/olalaurao/quartzo-obsidian-companion/pull/49
-CI status: Companion PR #49 CI passed on head `47a1750281271f4573a29114d9a5cb68251962dd`; progress-only update pending.
-Blocker: none for starting Companion A7; OAuth contract/runtime divergence remains later C3.5 blocker, not A7.
-Exact next action: push progress-only update, wait for rerun, then merge PR #49 and update tracker/issue.
+Companion main HEAD: bbd285f1b94ddbfd6ab44fb17254d12ca3198209
+Open PR: none for A7; PR #49 merged.
+CI status: Companion PR #49 CI passed on final head `7776ad7b274ecf5d2c733aaf8b0b9c051ab79128`; PR merged to `bbd285f1b94ddbfd6ab44fb17254d12ca3198209`.
+Blocker: OAuth contract/runtime divergence remains later C3.5 blocker, not A7/B0.
+Exact next action: commit/push tracker + progress closeout on main, comment issue #45, then continue B1.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -438,3 +438,22 @@ Next:
 - Push this progress checkpoint.
 - Wait for the progress-only CI rerun.
 - Merge PR #49 if the rerun remains green.
+
+## 2026-09-21 - A7 Companion merged
+
+Repo: Companion
+PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/49
+Final PR head: 7776ad7b274ecf5d2c733aaf8b0b9c051ab79128
+Merge SHA: bbd285f1b94ddbfd6ab44fb17254d12ca3198209
+Merged at: 2026-09-22T01:11:49Z
+Final CI run: 35674749253
+Result:
+- `test-linux`: success.
+- `test-windows`: success.
+Tracker updates:
+- A7 marked closed.
+- Focus/Pomodoro parity stale checkbox reconciled to closed based on certified A5.
+Next:
+- Commit/push tracker and progress closeout.
+- Add issue #45 progress comment.
+- Continue with B1 unless redirected.

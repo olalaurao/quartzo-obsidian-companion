@@ -33,12 +33,12 @@ A V1 só é considerada pronta quando todos os quatro marcos abaixo estiverem co
 - [x] **A5 Focus/Pomodoro runtime contract upstream.**
 - [x] **A5 Companion Focus/Pomodoro runtime.**
 - [x] **A6 conclusão cross-client de ocorrência agendada de System.**
-- [ ] Resolver/documentar boundary V1 de Overdue + Adaptive Essentials/Capacity.
+- [x] **A7 Overdue + Adaptive Essentials/Capacity boundary.**
 
 ### Marco B — comportamento restante da V1
 - [x] System manual Run no Companion.
 - [x] Routine manual execution no Companion.
-- [ ] Focus/Pomodoro parity.
+- [x] Focus/Pomodoro parity.
 - [ ] Home/Planner/Dial/Detail/Search/Browse/Journal polish final.
 - [ ] Reminder/Calendar edge-case closure.
 - [ ] Sync Center diagnostics finais sem reescrever o sync.
@@ -255,6 +255,38 @@ Companion:
 
 ---
 
+## Milestone fechado — A7 Overdue + Adaptive Essentials/Capacity
+
+**Status: ✅ fechado upstream + Companion. Quartzo `d9302f08`; Companion PR #49 → `bbd285f`.**
+
+Upstream Quartzo:
+- [x] PR #47 certificado no head `98076a65f9aab11f9e307d5553432d442bc60255`.
+- [x] Agent Contract Gate, Dial Focus CI e Flutter CI verdes no mesmo head.
+- [x] merge canônico: `d9302f0860fa1a4e33c1c611f2b448bec167e51f`.
+- [x] `dailyScheduleContractVersion = 1.1.0`.
+- [x] `overdueProjectionContractVersion = 1.0.0`.
+- [x] `adaptivePlanningContractVersion = 1.0.0`.
+- [x] Daily Schedule deixa de carregar Reminder vencido como item normal de hoje.
+- [x] Overdue é projeção separada, só por deadline/due real.
+- [x] DailyPlanningState carrega exact essential/parked IDs e `capacity_mode`; numeric capacity não é persistido/compartilhado.
+
+Companion:
+- [x] branch `codex/a7-overdue-adaptive-planning`.
+- [x] repin byte-for-byte contra o merge SHA upstream `d9302f0860fa1a4e33c1c611f2b448bec167e51f`.
+- [x] `SharedPlanningStateRepository` permanece o único owner de `sessions/shared_planning_state_v1.md`.
+- [x] Adaptive consome exact essential/parked IDs, remove completed essentials da projeção visível e mantém numeric capacity `null`.
+- [x] Overdue core puro único consumido por Home e Journal.
+- [x] Home/Journal mantêm Overdue separado de `today`.
+- [x] PR #49 final head certificado: `7776ad7b274ecf5d2c733aaf8b0b9c051ab79128`.
+- [x] CI #35674749253 Linux: audit, contracts verify, typecheck, lint, full tests, contract vectors, sync regressions, architecture check, build, release validate, clean artifact e package verdes.
+- [x] CI #35674749253 Windows: audit, typecheck, sync regression, build, clean artifact e package verdes.
+- [x] merge canônico Companion: `bbd285f1b94ddbfd6ab44fb17254d12ca3198209`.
+
+Tracker reconciliation:
+- [x] Focus/Pomodoro parity checkbox reconciled as closed by certified A5 (`a8ec975c` upstream, `16c2b616` Companion). No Focus reimplementation was done for A7.
+
+---
+
 ## Descobertas / scope growth log
 
 Adicionar aqui qualquer coisa nova encontrada durante implementação. Não expandir automaticamente o milestone atual; primeiro classificar.
@@ -270,6 +302,8 @@ Adicionar aqui qualquer coisa nova encontrada durante implementação. Não expa
 | 2026-09-21 | Provider-level foreign Focus blocking alone is insufficient: mutation controls must visibly project read-only state instead of remaining tappable and failing. | permanent UX/integration invariant; architecture-gated | A5 |
 | 2026-09-21 | `focusControllerId` é claim observada, não lease distribuído. Dois clientes offline podem iniciar do mesmo idle antes de ver a claim alheia. | V1 deve deixar `sessions/current.md` cair no conflito three-way normal; nunca auto-merge/takeover | A5 / sync boundary |
 | 2026-09-21 | Runtime actions/notifications também podem iniciar Focus, então read-only não pode ser tratado só na PomodoroScreen. | `RuntimeInteractionDispatcher` deve consultar o mesmo owner canônico e abrir a tela read-only sem mutar | A5 |
+| 2026-09-21 | Overdue não pode ser misturado no Daily Schedule de hoje; Reminder vencido fica fora do snapshot date-canonical e entra apenas na projeção Overdue separada. | contrato cross-client certificado | A7 |
+| 2026-09-21 | DailyPlanningState é o único owner de Essentials/Parked/capacity mode no Companion; numeric capacity segue indisponível no V1. | contrato cross-client certificado | A7 |
 
 ---
 
@@ -277,8 +311,6 @@ Adicionar aqui qualquer coisa nova encontrada durante implementação. Não expa
 
 Itens reais, mas que não devem entrar no PR corrente sem necessidade de correctness:
 
-- Overdue cross-client boundary;
-- Adaptive Essentials / Capacity / parked-items boundary;
 - full public multi-client focus takeover protocol;
 - background auto-run de Systems/Routines;
 - series-wide / thisAndFuture Reschedule;
