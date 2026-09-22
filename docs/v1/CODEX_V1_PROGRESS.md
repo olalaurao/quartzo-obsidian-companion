@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-21T22:37:53-03:00
-Current milestone: B2 Reminder + Calendar edge-case closure
+Last update: 2026-09-21T22:41:18-03:00
+Current milestone: B3 Sync Center diagnostics
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
-Current branch: codex/b2-reminder-calendar-edge-closure
-Current HEAD: d3d2ebff79d4c30a39146d1ac74cbef15d2f620c plus local progress update
+Current branch: main
+Current HEAD: 6e340fed9380820f768baa089dd2aa5547a5220f plus local B2 closeout docs
 Upstream main HEAD: d9302f0860fa1a4e33c1c611f2b448bec167e51f
-Companion main HEAD: f21c1385fe23d8aa7aba4fa36e8c0b24d42d7fe8
-Open PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/51
-CI status: PR #51 run `35676397856` green on Linux and Windows for head `d3d2ebff79d4c30a39146d1ac74cbef15d2f620c`.
+Companion main HEAD: 6e340fed9380820f768baa089dd2aa5547a5220f
+Open PR: none for current milestone yet
+CI status: PR #51 run `35676498790` green on Linux and Windows for head `f85cbf782c61bce67a10f1f8ad7e14473e62ffe0`; merged as `6e340fed9380820f768baa089dd2aa5547a5220f`.
 Blocker: OAuth contract/runtime divergence remains later C3.5 blocker, not A7/B0.
-Exact next action: commit/push this progress checkpoint, wait for the resulting PR #51 CI rerun, then merge if it remains green.
+Exact next action: commit/push B2 closeout docs on main, comment issue #45, then start B3 Sync Center pending path+reason diagnostics from main.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -647,3 +647,35 @@ Next:
 - Commit/push this progress checkpoint.
 - Wait for the progress-only CI rerun.
 - Merge PR #51 if the rerun remains green.
+
+## 2026-09-21 - B2 Companion merged
+
+Repo: Companion
+PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/51
+Final PR head: f85cbf782c61bce67a10f1f8ad7e14473e62ffe0
+Merge SHA: 6e340fed9380820f768baa089dd2aa5547a5220f
+Merged at: 2026-09-22T01:39Z
+Final CI run: 35676498790
+Result:
+- `test-linux`: success.
+- `test-windows`: success.
+Closed B2 evidence:
+- Reminder `minutes_before` crossing previous local day.
+- Reminder `escalation_level` and notification body preservation.
+- Reminder `Dismiss` through canonical occurrence action owner, idempotent by action ID.
+- Google Calendar calendar-list pagination and event pagination.
+- Google Calendar non-auth API/network error propagation.
+Tracker updates:
+- B2 Reminder/Calendar edge-case closure marked closed.
+- Added B2 closed section with PR #51, final head, merge SHA and CI evidence.
+Still open:
+- B3 Sync Center diagnostics finais sem reescrever o sync.
+- C1 UI/UX + accessibility pass.
+- C2 performance/lifecycle/race pass.
+- C3 macOS CI.
+- C3.5 OAuth contract/runtime/release divergence.
+- C4 stale docs/capability matrix, including P0 `.agents/AGENTS.md` link.
+Next:
+- Commit/push this B2 closeout docs update on main.
+- Add issue #45 progress comment with B2 evidence.
+- Start B3 from updated main unless redirected.

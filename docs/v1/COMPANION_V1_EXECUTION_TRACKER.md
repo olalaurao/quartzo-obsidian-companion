@@ -40,7 +40,7 @@ A V1 só é considerada pronta quando todos os quatro marcos abaixo estiverem co
 - [x] Routine manual execution no Companion.
 - [x] Focus/Pomodoro parity.
 - [x] Home/Planner/Dial/Detail/Search/Browse/Journal polish final.
-- [ ] Reminder/Calendar edge-case closure.
+- [x] Reminder/Calendar edge-case closure.
 - [ ] Sync Center diagnostics finais sem reescrever o sync.
 
 ### Marco C — qualidade/release gates
@@ -301,6 +301,24 @@ Companion:
 - [x] CI #35675821273 Linux: audit, contracts verify, typecheck, lint, full tests, contract vectors, sync regressions, architecture check, build, release validate, clean artifact e package verdes.
 - [x] CI #35675821273 Windows: audit, typecheck, sync regression, build, clean artifact e package verdes.
 - [x] merge canônico Companion: `c6ea5773a261a73b65bb085970054c154c443234`.
+
+---
+
+## Milestone fechado — B2 Reminder/Calendar edge-case closure
+
+**Status: ✅ fechado no Companion. PR #51 → `6e340fe`.**
+
+Companion:
+- [x] Branch `codex/b2-reminder-calendar-edge-closure`.
+- [x] Reminder `minutes_before` cobrindo trigger no dia local anterior.
+- [x] Reminder delivery preserva `escalation_level` válido e `notification_body`.
+- [x] `dismissDelivery` passa pelo owner canônico de occurrence action, idempotente por `actionId`, sem incrementar `ignoredCount` em replay.
+- [x] Google Calendar cobre paginação de calendar list e paginação de eventos por calendário.
+- [x] Google Calendar propaga erros API/network não-autorização para a camada chamadora tratar fail-closed.
+- [x] PR #51 final head certificado: `f85cbf782c61bce67a10f1f8ad7e14473e62ffe0`.
+- [x] CI #35676498790 Linux: audit, contracts verify, typecheck, lint, full tests, contract vectors, sync regressions, architecture check, build, release validate, clean artifact e package verdes.
+- [x] CI #35676498790 Windows: audit, typecheck, sync regression, build, clean artifact e package verdes.
+- [x] merge canônico Companion: `6e340fed9380820f768baa089dd2aa5547a5220f`.
 
 ---
 
