@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-21T22:53:03-03:00
+Last update: 2026-09-21T22:54:13-03:00
 Current milestone: C1 UI/UX + accessibility pass
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
 Current branch: main
-Current HEAD: 7598ec7d7df86537447eb329b25567a93e1567a5 plus local B3 closeout docs
+Current HEAD: cf0922c82f000532b97e907ffbb2b313654273dc plus local issue-link progress update
 Upstream main HEAD: d9302f0860fa1a4e33c1c611f2b448bec167e51f
-Companion main HEAD: 7598ec7d7df86537447eb329b25567a93e1567a5
+Companion main HEAD: cf0922c82f000532b97e907ffbb2b313654273dc
 Open PR: none for current milestone yet
 CI status: PR #52 run `35677272561` green on Linux and Windows for head `68453db5f0143fa5cb50c285721c81cac200a08c`; merged as `7598ec7d7df86537447eb329b25567a93e1567a5`.
 Blocker: OAuth contract/runtime divergence remains later C3.5 blocker, not A7/B0.
-Exact next action: commit/push B3 closeout docs on main, comment issue #45, then start C1 UI/UX + accessibility pass from main.
+Exact next action: commit/push this issue-link progress update on main, then start C1 UI/UX + accessibility pass from main.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -784,6 +784,6 @@ Still open:
 - C3.5 OAuth contract/runtime/release divergence.
 - C4 stale docs/capability matrix, including P0 `.agents/AGENTS.md` link.
 Next:
-- Commit/push this B3 closeout docs update on main.
-- Add issue #45 progress comment with B3 evidence.
+- Closeout docs commit pushed to main: `cf0922c82f000532b97e907ffbb2b313654273dc`.
+- Issue #45 progress comment added: https://github.com/olalaurao/quartzo-obsidian-companion/issues/45#issuecomment-5770120459
 - Start C1 from updated main unless redirected.
