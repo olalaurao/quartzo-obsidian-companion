@@ -15,7 +15,7 @@
 >
 > Quando este tracker descobrir uma regra permanente nova, a regra deve ser promovida ao documento/contract canônico correspondente no mesmo milestone.
 
-Última atualização operacional: **2026-09-21**.
+Última atualização operacional: **2026-09-22**.
 
 ---
 

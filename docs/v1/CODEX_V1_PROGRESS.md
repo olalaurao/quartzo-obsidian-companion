@@ -4,13 +4,13 @@ Last update: 2026-09-22T00:17:00-03:00
 Current milestone: D1 E2E app <-> Drive <-> Obsidian
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
 Current branch: main
-Current HEAD: cd4acf3926b880f62b8da1c15f96e3fef356ae1c plus local C4 closeout progress update
+Current HEAD: b0210d981e29857a47669814094687b41fe2beee
 Upstream main HEAD: e0bfa98611138512f916be9cf10f5395b78c10ed
-Companion main HEAD: cd4acf3926b880f62b8da1c15f96e3fef356ae1c
+Companion main HEAD: b0210d981e29857a47669814094687b41fe2beee
 Open PR: none
 CI status: PR #57 final run `35682290980` green on Linux, Windows and macOS for head `8c7802c0515413d11cd1c696b2cac37c611e888a`; merged as `cd4acf3926b880f62b8da1c15f96e3fef356ae1c`.
 Blocker: C4 closed; D1 E2E app <-> Drive <-> Obsidian remains.
-Exact next action: commit/push this closeout progress update, comment issue #45, then start D1 E2E proof unless redirected.
+Exact next action: start D1 E2E proof in a real Quartzo app + Google Drive + Obsidian Companion environment unless redirected.
 
 ## 2026-09-21 - Initial handoff sync
 
