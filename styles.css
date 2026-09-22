@@ -1,125 +1,291 @@
-/* Quartzo Companion V1 CSS */
+/* ============================================================
+   Quartzo Companion — Design System
+   All color/accent tokens delegate to Obsidian CSS variables so
+   the plugin automatically respects the user's active theme.
+   ============================================================ */
 
-.theme-dark {
-  --quartzo-accent: #8b5cf6;
-  --quartzo-bg: #1e1e1e;
-  --quartzo-text: #e0e0e0;
+/* ----------------------------------------------------------
+   1. TOKEN LAYER
+      Re-exports Obsidian vars under predictable qz-* names so
+      component classes never reference Obsidian vars directly.
+   ---------------------------------------------------------- */
+.quartzo-shell,
+.quartzo-first-run-modal,
+.quartzo-pairing-summary-modal,
+.modal-container {
+  /* Accent — follows Obsidian theme */
+  --qz-accent:          var(--interactive-accent);
+  --qz-accent-hover:    var(--interactive-accent-hover);
+
+  /* Semantic colours (no hues hardcoded — use Obsidian where possible) */
+  --qz-success:         #22c55e;
+  --qz-warning:         #f59e0b;
+  --qz-error:           #ef4444;
+  --qz-info:            var(--interactive-accent);
+
+  /* Surfaces */
+  --qz-bg:              var(--background-primary);
+  --qz-surface:         var(--background-secondary);
+  --qz-surface-alt:     var(--background-modifier-hover);
+  --qz-divider:         var(--background-modifier-border);
+
+  /* Text */
+  --qz-text:            var(--text-normal);
+  --qz-text-secondary:  var(--text-muted);
+  --qz-text-faint:      var(--text-faint);
+  --qz-text-accent:     var(--text-accent);
+
+  /* Border radius scale */
+  --qz-r-xs:  4px;
+  --qz-r-sm:  8px;
+  --qz-r-md:  12px;
+  --qz-r-lg:  16px;
+  --qz-r-xl:  20px;
+
+  /* Spacing scale */
+  --qz-sp-xs: 4px;
+  --qz-sp-sm: 8px;
+  --qz-sp-md: 12px;
+  --qz-sp-lg: 16px;
+  --qz-sp-xl: 24px;
+
+  /* Typography */
+  --qz-font-xs:  var(--font-ui-smaller);
+  --qz-font-sm:  var(--font-ui-small);
+  --qz-font-md:  var(--font-ui-medium);
+  --qz-font-lg:  var(--font-ui-large);
+
+  /* Shadows — light only; dark theme auto-suppresses via Obsidian vars */
+  --qz-shadow-sm: 0 1px 4px rgba(0,0,0,.06);
+  --qz-shadow-md: 0 2px 8px rgba(0,0,0,.08);
 }
 
-.theme-light {
-  --quartzo-accent: #7c3aed;
-  --quartzo-bg: #ffffff;
-  --quartzo-text: #1a1a1a;
-}
+/* ----------------------------------------------------------
+   2. BUTTONS
+      Three semantic variants: primary / secondary / ghost
+   ---------------------------------------------------------- */
 
-.quartzo-ribbon-icon {
-  color: var(--quartzo-accent);
-}
-
-/* Home View */
-.quartzo-home {
-  padding: 20px;
-}
-
-.quartzo-home h2 {
-  color: var(--quartzo-accent);
-  margin-bottom: 10px;
-}
-
-.quartzo-home #daily-schedule-preview {
-  margin-top: 20px;
-  padding: 15px;
-  background: var(--quartzo-bg);
-  border-radius: 8px;
-  border: 1px solid var(--quartzo-accent);
-}
-
-/* Planner View */
-.quartzo-planner {
-  padding: 20px;
-}
-
-.quartzo-planner h2 {
-  color: var(--quartzo-accent);
-  margin-bottom: 10px;
-}
-
-/* Sync Center View */
-.quartzo-sync-center {
-  padding: 20px;
-}
-
-.quartzo-sync-center h2 {
-  color: var(--quartzo-accent);
-  margin-bottom: 10px;
-}
-
-.quartzo-sync-center button#sync-now-btn {
-  background: var(--quartzo-accent);
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 4px;
-  cursor: pointer;
-  margin-top: 10px;
-}
-
-.quartzo-sync-center button#sync-now-btn:hover {
-  opacity: 0.9;
-}
-
-/* First Run Modal */
-.quartzo-first-run-modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  justify-content: center;
+/* Base */
+.qz-btn {
+  display: inline-flex;
   align-items: center;
-  z-index: 1000;
-}
-
-.quartzo-first-run-modal .modal-content {
-  background: var(--quartzo-bg);
-  color: var(--quartzo-text);
-  padding: 30px;
-  border-radius: 8px;
-  max-width: 400px;
-  text-align: center;
-}
-
-.quartzo-first-run-modal h2 {
-  color: var(--quartzo-accent);
-  margin-bottom: 15px;
-}
-
-.quartzo-first-run-modal button {
-  margin: 10px;
-  padding: 10px 20px;
-  border-radius: 4px;
+  gap: var(--qz-sp-xs);
+  padding: 6px var(--qz-sp-md);
+  border-radius: var(--qz-r-sm);
+  font-size: var(--qz-font-sm);
+  font-weight: 500;
   cursor: pointer;
+  border: 1px solid transparent;
+  line-height: 1.4;
+  white-space: nowrap;
+  transition: background 120ms, border-color 120ms, color 120ms, box-shadow 120ms;
 }
 
-.quartzo-first-run-modal button#setup-now {
-  background: var(--quartzo-accent);
-  color: white;
-  border: none;
+.qz-btn:focus-visible {
+  outline: 2px solid var(--qz-accent);
+  outline-offset: 2px;
 }
 
-.quartzo-first-run-modal button#setup-later {
+.qz-btn:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* Primary */
+.qz-btn-primary {
+  background: var(--qz-accent);
+  color: var(--text-on-accent);
+  border-color: var(--qz-accent);
+}
+
+.qz-btn-primary:hover {
+  background: var(--qz-accent-hover);
+  border-color: var(--qz-accent-hover);
+}
+
+/* Secondary (outline) */
+.qz-btn-secondary {
   background: transparent;
-  color: var(--quartzo-text);
-  border: 1px solid var(--quartzo-text);
+  color: var(--qz-accent);
+  border-color: var(--qz-accent);
 }
 
-/* Canonical daily occurrence rows */
+.qz-btn-secondary:hover {
+  background: var(--qz-surface);
+}
+
+/* Ghost */
+.qz-btn-ghost {
+  background: transparent;
+  color: var(--qz-text);
+  border-color: transparent;
+}
+
+.qz-btn-ghost:hover {
+  background: var(--qz-surface-alt);
+}
+
+/* Danger */
+.qz-btn-danger {
+  background: transparent;
+  color: var(--qz-error);
+  border-color: var(--qz-error);
+}
+
+.qz-btn-danger:hover {
+  background: color-mix(in srgb, var(--qz-error) 10%, transparent);
+}
+
+/* Size modifier */
+.qz-btn-sm {
+  padding: 3px var(--qz-sp-sm);
+  font-size: var(--qz-font-xs);
+  border-radius: var(--qz-r-xs);
+}
+
+.qz-btn-lg {
+  padding: 9px var(--qz-sp-lg);
+  font-size: var(--qz-font-md);
+  border-radius: var(--qz-r-md);
+}
+
+/* Icon-only button */
+.qz-btn-icon {
+  padding: 5px;
+  border-radius: var(--qz-r-xs);
+  aspect-ratio: 1;
+  justify-content: center;
+}
+
+/* ----------------------------------------------------------
+   3. CHIPS & BADGES
+   ---------------------------------------------------------- */
+
+/* Chip (filter/choice) */
+.qz-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--qz-sp-xs);
+  padding: 3px var(--qz-sp-sm);
+  border-radius: var(--qz-r-xl);
+  font-size: var(--qz-font-xs);
+  font-weight: 500;
+  color: var(--qz-text-secondary);
+  background: var(--qz-surface);
+  border: 1px solid var(--qz-divider);
+  cursor: default;
+  white-space: nowrap;
+}
+
+.qz-chip.is-selected,
+.qz-chip:is(button):hover {
+  background: color-mix(in srgb, var(--qz-accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--qz-accent) 30%, transparent);
+  color: var(--qz-accent);
+}
+
+button.qz-chip { cursor: pointer; }
+
+/* Badge (semantic pill — conflicts, pending counts) */
+.qz-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: var(--qz-font-xs);
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.qz-badge-success {
+  background: color-mix(in srgb, var(--qz-success) 14%, transparent);
+  color: var(--qz-success);
+}
+.qz-badge-warning {
+  background: color-mix(in srgb, var(--qz-warning) 14%, transparent);
+  color: var(--qz-warning);
+}
+.qz-badge-error {
+  background: color-mix(in srgb, var(--qz-error) 14%, transparent);
+  color: var(--qz-error);
+}
+.qz-badge-info {
+  background: color-mix(in srgb, var(--qz-info) 12%, transparent);
+  color: var(--qz-info);
+}
+.qz-badge-neutral {
+  background: var(--qz-surface);
+  color: var(--qz-text-secondary);
+  border: 1px solid var(--qz-divider);
+}
+
+/* ----------------------------------------------------------
+   4. SECTION HEADERS
+   ---------------------------------------------------------- */
+
+.qz-section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--qz-sp-sm);
+  margin-block: var(--qz-sp-lg) var(--qz-sp-sm);
+}
+
+.qz-section-header-icon {
+  display: flex;
+  align-items: center;
+  color: var(--qz-accent);
+  flex-shrink: 0;
+}
+
+.qz-section-header-title {
+  font-size: var(--qz-font-md);
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: var(--qz-text);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qz-section-header-trailing {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.qz-section-divider {
+  border: none;
+  border-top: 1px solid var(--qz-divider);
+  margin-block: var(--qz-sp-sm) var(--qz-sp-md);
+}
+
+/* ----------------------------------------------------------
+   5. CARDS
+   ---------------------------------------------------------- */
+
+.qz-card {
+  background: var(--qz-surface);
+  border: 1px solid var(--qz-divider);
+  border-radius: var(--qz-r-md);
+  padding: var(--qz-sp-md);
+  box-shadow: var(--qz-shadow-sm);
+}
+
+.qz-card + .qz-card {
+  margin-top: var(--qz-sp-sm);
+}
+
+/* ----------------------------------------------------------
+   6. OCCURRENCE / SCHEDULE ROWS
+   ---------------------------------------------------------- */
+
 .quartzo-schedule-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--qz-sp-xs);
   padding-inline-start: 0;
   list-style: none;
 }
@@ -128,93 +294,320 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--qz-sp-md);
   flex-wrap: wrap;
+  padding: var(--qz-sp-sm) var(--qz-sp-md);
+  border-radius: var(--qz-r-sm);
+  background: var(--qz-surface);
+  border: 1px solid var(--qz-divider);
+}
+
+.quartzo-schedule-row:hover {
+  background: var(--qz-surface-alt);
+}
+
+.quartzo-schedule-row.is-overdue {
+  border-left: 3px solid var(--qz-error);
+  padding-left: calc(var(--qz-sp-md) - 2px);
+}
+
+.quartzo-schedule-row.is-completed {
+  opacity: 0.55;
+  color: var(--qz-text-secondary);
+}
+
+.quartzo-schedule-row.is-skipped {
+  opacity: 0.40;
+  text-decoration: line-through;
 }
 
 .quartzo-schedule-label {
   min-width: 0;
   overflow-wrap: anywhere;
+  flex: 1;
 }
 
 .quartzo-occurrence-actions,
 .quartzo-modal-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--qz-sp-xs);
   flex-wrap: wrap;
 }
 
 .quartzo-occurrence-status {
   font-weight: 600;
+  font-size: var(--qz-font-xs);
 }
 
-/* Home / canonical daily surfaces */
+/* ----------------------------------------------------------
+   7. NAVIGATION TABS
+   ---------------------------------------------------------- */
+
+.qz-nav-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-bottom: 1px solid var(--qz-divider);
+  margin-bottom: var(--qz-sp-md);
+  padding-bottom: 0;
+  flex-wrap: wrap;
+}
+
+.qz-nav-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--qz-sp-xs);
+  padding: var(--qz-sp-xs) var(--qz-sp-md);
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--qz-text-secondary);
+  font-size: var(--qz-font-sm);
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: var(--qz-r-xs) var(--qz-r-xs) 0 0;
+  margin-bottom: -1px;
+  white-space: nowrap;
+}
+
+.qz-nav-tab:hover {
+  color: var(--qz-text);
+  background: var(--qz-surface-alt);
+}
+
+.qz-nav-tab.is-active {
+  color: var(--qz-accent);
+  border-bottom-color: var(--qz-accent);
+  font-weight: 600;
+}
+
+.qz-nav-tab:focus-visible {
+  outline: 2px solid var(--qz-accent);
+  outline-offset: -2px;
+}
+
+/* ----------------------------------------------------------
+   8. SYNC CENTER
+   ---------------------------------------------------------- */
+
+.quartzo-sync-center {
+  padding: var(--qz-sp-lg) var(--qz-sp-lg) var(--qz-sp-xl);
+}
+
+.qz-sync-status-row {
+  display: flex;
+  align-items: center;
+  gap: var(--qz-sp-sm);
+  flex-wrap: wrap;
+  margin-bottom: var(--qz-sp-md);
+}
+
+.qz-sync-status-row .qz-section-header {
+  margin-block: 0;
+  flex: 1;
+}
+
+/* Progress bar */
+.qz-progress-bar-wrap {
+  height: 3px;
+  background: var(--qz-divider);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-block: var(--qz-sp-sm);
+}
+
+.qz-progress-bar {
+  height: 100%;
+  background: var(--qz-accent);
+  border-radius: 999px;
+  transition: width 300ms ease;
+}
+
+.qz-progress-bar.is-indeterminate {
+  width: 40%;
+  animation: qz-indeterminate 1.4s linear infinite;
+}
+
+@keyframes qz-indeterminate {
+  0%   { transform: translateX(-150%); }
+  100% { transform: translateX(350%); }
+}
+
+/* Pending diagnostics */
+.quartzo-sync-pending-diagnostics {
+  display: flex;
+  flex-direction: column;
+  gap: var(--qz-sp-xs);
+}
+
+.qz-diagnostic-row {
+  display: flex;
+  align-items: center;
+  gap: var(--qz-sp-sm);
+  padding: var(--qz-sp-xs) var(--qz-sp-sm);
+  border-radius: var(--qz-r-sm);
+  background: var(--qz-surface);
+  border: 1px solid var(--qz-divider);
+  font-size: var(--qz-font-xs);
+  overflow-wrap: anywhere;
+}
+
+.qz-diagnostic-row .qz-badge {
+  flex-shrink: 0;
+}
+
+/* Conflict cards */
+.quartzo-conflict-card {
+  overflow-wrap: anywhere;
+  border: 1px solid var(--qz-divider);
+  border-radius: var(--qz-r-md);
+  padding: var(--qz-sp-md);
+  background: var(--qz-surface);
+  box-shadow: var(--qz-shadow-sm);
+  margin-bottom: var(--qz-sp-sm);
+}
+
+.qz-conflict-header {
+  display: flex;
+  align-items: center;
+  gap: var(--qz-sp-sm);
+  margin-bottom: var(--qz-sp-sm);
+}
+
+.qz-conflict-path {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--qz-font-xs);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--qz-text);
+}
+
+.qz-conflict-versions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--qz-sp-sm);
+  margin-bottom: var(--qz-sp-md);
+}
+
+@media (max-width: 480px) {
+  .qz-conflict-versions {
+    grid-template-columns: 1fr;
+  }
+}
+
+.qz-conflict-version-block {
+  background: var(--qz-bg);
+  border: 1px solid var(--qz-divider);
+  border-radius: var(--qz-r-sm);
+  padding: var(--qz-sp-sm);
+  font-size: var(--qz-font-xs);
+}
+
+.qz-conflict-version-label {
+  font-weight: 700;
+  font-size: var(--qz-font-xs);
+  margin-bottom: 4px;
+  color: var(--qz-text-secondary);
+}
+
+.qz-conflict-actions {
+  display: flex;
+  gap: var(--qz-sp-sm);
+  flex-wrap: wrap;
+}
+
+/* ----------------------------------------------------------
+   9. HOME
+   ---------------------------------------------------------- */
+
+.quartzo-home {
+  padding: var(--qz-sp-lg);
+}
+
 .quartzo-home-heading {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--qz-sp-md);
   flex-wrap: wrap;
+  margin-bottom: var(--qz-sp-sm);
 }
 
 .quartzo-home-date {
-  color: var(--text-muted);
+  color: var(--qz-text-secondary);
+  font-size: var(--qz-font-sm);
   text-transform: capitalize;
 }
 
 .quartzo-home-section {
-  margin-block: 18px;
+  margin-block: var(--qz-sp-lg);
 }
 
 .quartzo-home-progress {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 8px;
-  margin-block: 8px 12px;
+  gap: var(--qz-sp-sm);
+  margin-block: var(--qz-sp-sm) var(--qz-sp-md);
 }
 
 .quartzo-home-progress-card {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
-  background: var(--background-secondary);
+  gap: var(--qz-sp-md);
+  padding: var(--qz-sp-sm) var(--qz-sp-md);
+  border: 1px solid var(--qz-divider);
+  border-radius: var(--qz-r-sm);
+  background: var(--qz-surface);
+  font-size: var(--qz-font-xs);
 }
 
 .quartzo-home-quick-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--qz-sp-sm);
 }
 
+/* ----------------------------------------------------------
+   10. EMPTY STATES
+   ---------------------------------------------------------- */
+
+.qz-empty-state,
 .quartzo-empty-state {
-  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--qz-sp-sm);
+  padding: var(--qz-sp-xl) var(--qz-sp-lg);
+  text-align: center;
+  color: var(--qz-text-secondary);
 }
 
-.quartzo-shell button:focus-visible,
-.quartzo-shell input:focus-visible,
-.quartzo-shell select:focus-visible,
-.quartzo-shell textarea:focus-visible,
-.quartzo-first-run-modal button:focus-visible,
-.quartzo-pairing-summary-modal button:focus-visible,
-.quartzo-detail-editor .quartzo-input:focus-visible {
-  outline: 2px solid var(--interactive-accent);
-  outline-offset: 2px;
+.qz-empty-state-icon {
+  font-size: 28px;
+  color: var(--qz-text-faint);
+  margin-bottom: var(--qz-sp-xs);
 }
 
-.quartzo-warning-state,
-.quartzo-sync-summary,
-.quartzo-sync-pending-diagnostics,
-.quartzo-sync-progress,
-.quartzo-conflict-card,
-.quartzo-conflict-card pre {
-  overflow-wrap: anywhere;
+.qz-empty-state-title {
+  font-weight: 600;
+  font-size: var(--qz-font-md);
+  color: var(--qz-text);
 }
 
-/* Canonical 24-hour Day Dial */
+.qz-empty-state-body {
+  font-size: var(--qz-font-sm);
+  color: var(--qz-text-secondary);
+  max-width: 320px;
+}
+
+/* ----------------------------------------------------------
+   11. CANONICAL DAY DIAL
+   ---------------------------------------------------------- */
+
 .quartzo-day-dial {
   min-width: 0;
 }
@@ -260,14 +653,12 @@
   stroke: var(--interactive-accent);
   stroke-width: 8;
   stroke-linecap: round;
-  transition: opacity 120ms ease, stroke-width 120ms ease;
 }
 
 .quartzo-day-dial-marker {
   stroke: var(--interactive-accent);
   stroke-width: 6;
   stroke-linecap: round;
-  transition: opacity 120ms ease, stroke-width 120ms ease;
 }
 
 .quartzo-day-dial-now {
@@ -276,9 +667,7 @@
   pointer-events: none;
 }
 
-.quartzo-day-dial-interactive {
-  cursor: pointer;
-}
+.quartzo-day-dial-interactive { cursor: pointer; }
 
 .quartzo-day-dial-interactive:hover,
 .quartzo-day-dial-interactive:focus {
@@ -294,8 +683,8 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-block: 6px;
+  gap: var(--qz-sp-xs);
+  margin-block: var(--qz-sp-xs);
 }
 
 .quartzo-day-dial-chip {
@@ -309,7 +698,7 @@
   display: grid;
   gap: 4px;
   padding-inline-start: 0;
-  margin-block: 8px 0;
+  margin-block: var(--qz-sp-sm) 0;
   list-style: none;
 }
 
@@ -317,9 +706,9 @@
   display: grid;
   grid-template-columns: 10px minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
+  gap: var(--qz-sp-sm);
   padding: 4px 2px;
-  border-radius: var(--radius-s);
+  border-radius: var(--qz-r-xs);
 }
 
 .quartzo-day-dial-legend-row.quartzo-clickable:hover,
@@ -344,7 +733,7 @@
 .quartzo-day-dial-chip.is-completed,
 .quartzo-day-dial-arc.is-completed,
 .quartzo-day-dial-marker.is-completed {
-  opacity: 0.58;
+  opacity: 0.55;
 }
 
 .quartzo-schedule-row.is-skipped,
@@ -352,38 +741,32 @@
 .quartzo-day-dial-chip.is-skipped,
 .quartzo-day-dial-arc.is-skipped,
 .quartzo-day-dial-marker.is-skipped {
-  opacity: 0.45;
+  opacity: 0.40;
   text-decoration: line-through;
 }
 
-@media (max-width: 520px) {
-  .quartzo-day-dial-viewport {
-    width: 100%;
-  }
+/* ----------------------------------------------------------
+   12. PLANNER
+   ---------------------------------------------------------- */
 
-  .quartzo-home-progress {
-    grid-template-columns: 1fr;
-  }
+.quartzo-planner {
+  padding: var(--qz-sp-lg);
 }
 
-
-/* Canonical Planner surfaces */
 .quartzo-planner-controls,
 .quartzo-planner-day-lens {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--qz-sp-xs);
   flex-wrap: wrap;
-  margin-block: 8px 12px;
+  margin-block: var(--qz-sp-sm) var(--qz-sp-md);
 }
 
-.quartzo-planner-section {
-  margin-block: 16px;
-}
+.quartzo-planner-section { margin-block: var(--qz-sp-lg); }
 
 .quartzo-planner-adaptive-note {
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  color: var(--qz-text-secondary);
+  font-size: var(--qz-font-xs);
 }
 
 .quartzo-planner-week-all-day {
@@ -391,7 +774,7 @@
   grid-template-columns: minmax(58px, 0.55fr) repeat(7, minmax(88px, 1fr));
   gap: 4px;
   align-items: start;
-  margin-block: 10px 6px;
+  margin-block: var(--qz-sp-sm);
   overflow-x: auto;
 }
 
@@ -416,8 +799,8 @@
   min-width: 760px;
   height: 960px;
   overflow: hidden;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
+  border: 1px solid var(--qz-divider);
+  border-radius: var(--qz-r-sm);
 }
 
 .quartzo-planner-week-hours,
@@ -428,8 +811,8 @@
     to bottom,
     transparent 0,
     transparent calc(100% / 24 - 1px),
-    var(--background-modifier-border) calc(100% / 24 - 1px),
-    var(--background-modifier-border) calc(100% / 24)
+    var(--qz-divider) calc(100% / 24 - 1px),
+    var(--qz-divider) calc(100% / 24)
   );
 }
 
@@ -437,12 +820,12 @@
   position: absolute;
   right: 6px;
   transform: translateY(-50%);
-  color: var(--text-muted);
+  color: var(--qz-text-secondary);
   font-size: 10px;
 }
 
 .quartzo-planner-week-day {
-  border-inline-start: 1px solid var(--background-modifier-border);
+  border-inline-start: 1px solid var(--qz-divider);
 }
 
 .quartzo-planner-week-item {
@@ -450,23 +833,21 @@
   min-height: 18px;
   padding: 2px 4px;
   overflow: hidden;
-  border-radius: var(--radius-s);
-  border: 1px solid var(--background-modifier-border-hover);
-  background: var(--background-secondary);
-  color: var(--text-normal);
+  border-radius: var(--qz-r-xs);
+  border: 1px solid var(--qz-divider);
+  background: var(--qz-surface);
+  color: var(--qz-text);
   font-size: 10px;
   text-align: start;
   line-height: 1.15;
 }
 
 .quartzo-planner-week-item.is-completed,
-.quartzo-planner-week-chip.is-completed {
-  opacity: 0.58;
-}
+.quartzo-planner-week-chip.is-completed { opacity: 0.55; }
 
 .quartzo-planner-week-item.is-skipped,
 .quartzo-planner-week-chip.is-skipped {
-  opacity: 0.45;
+  opacity: 0.40;
   text-decoration: line-through;
 }
 
@@ -478,14 +859,16 @@
 }
 
 .quartzo-planner-month-weekdays {
-  color: var(--text-muted);
+  color: var(--qz-text-secondary);
   text-align: center;
-  margin-top: 10px;
+  margin-top: var(--qz-sp-sm);
+  font-size: var(--qz-font-xs);
+  font-weight: 600;
 }
 
 .quartzo-planner-month-grid {
-  border-top: 1px solid var(--background-modifier-border);
-  border-inline-start: 1px solid var(--background-modifier-border);
+  border-top: 1px solid var(--qz-divider);
+  border-inline-start: 1px solid var(--qz-divider);
 }
 
 .quartzo-planner-month-cell {
@@ -496,30 +879,30 @@
   align-items: flex-start;
   padding: 7px;
   border: 0;
-  border-inline-end: 1px solid var(--background-modifier-border);
-  border-bottom: 1px solid var(--background-modifier-border);
+  border-inline-end: 1px solid var(--qz-divider);
+  border-bottom: 1px solid var(--qz-divider);
   border-radius: 0;
-  background: var(--background-primary);
-  color: var(--text-normal);
+  background: var(--qz-bg);
+  color: var(--qz-text);
   text-align: start;
 }
 
 .quartzo-planner-month-cell:hover,
 .quartzo-planner-month-cell:focus {
-  background: var(--background-modifier-hover);
+  background: var(--qz-surface-alt);
 }
 
 .quartzo-planner-month-cell.is-outside-month {
-  color: var(--text-faint);
-  background: var(--background-secondary);
+  color: var(--qz-text-faint);
+  background: var(--qz-surface);
 }
 
 .quartzo-planner-month-cell.is-today > strong {
-  color: var(--text-accent);
+  color: var(--qz-accent);
 }
 
 .quartzo-planner-month-cell.is-selected {
-  box-shadow: inset 0 0 0 2px var(--interactive-accent);
+  box-shadow: inset 0 0 0 2px var(--qz-accent);
 }
 
 .quartzo-planner-month-count,
@@ -533,99 +916,182 @@
 }
 
 .quartzo-planner-month-count,
-.quartzo-planner-month-more {
-  color: var(--text-muted);
-}
+.quartzo-planner-month-more { color: var(--qz-text-secondary); }
 
-@media (max-width: 780px) {
-  .quartzo-shell-content {
-    overflow-x: auto;
-  }
-}
+/* ----------------------------------------------------------
+   13. UNIVERSAL DETAIL
+   ---------------------------------------------------------- */
 
-/* Universal Detail safe editor */
 .quartzo-detail-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--qz-sp-sm);
   flex-wrap: wrap;
-  margin-bottom: 12px;
+  margin-bottom: var(--qz-sp-md);
 }
 
-.quartzo-detail-section {
-  margin-block: 16px;
-}
+.quartzo-detail-section { margin-block: var(--qz-sp-lg); }
 
 .quartzo-detail-section dl {
   display: grid;
   grid-template-columns: minmax(110px, 0.35fr) minmax(0, 1fr);
-  gap: 6px 12px;
+  gap: 6px var(--qz-sp-md);
 }
 
 .quartzo-detail-section dt {
-  color: var(--text-muted);
+  color: var(--qz-text-secondary);
   font-weight: 600;
+  font-size: var(--qz-font-xs);
 }
 
 .quartzo-detail-section dd {
   margin: 0;
   overflow-wrap: anywhere;
+  font-size: var(--qz-font-sm);
 }
 
 .quartzo-detail-edit-safety {
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  color: var(--qz-text-secondary);
+  font-size: var(--qz-font-xs);
 }
 
-.quartzo-detail-editor {
-  display: grid;
-  gap: 12px;
-}
+.quartzo-detail-editor { display: grid; gap: var(--qz-sp-md); }
 
-.quartzo-detail-editor-field {
-  display: grid;
-  gap: 5px;
-}
+.quartzo-detail-editor-field { display: grid; gap: 5px; }
 
 .quartzo-detail-editor-field > span {
   font-weight: 600;
+  font-size: var(--qz-font-xs);
+  color: var(--qz-text-secondary);
 }
 
-.quartzo-detail-editor .quartzo-input {
-  width: 100%;
-}
+.quartzo-detail-editor .quartzo-input { width: 100%; }
 
 .quartzo-detail-editor textarea {
   min-height: 84px;
   resize: vertical;
 }
 
-.quartzo-detail-editor-body {
-  min-height: 180px !important;
-}
+.quartzo-detail-editor-body { min-height: 180px !important; }
 
-/* Shared object query surfaces */
+/* ----------------------------------------------------------
+   14. BROWSE / SEARCH
+   ---------------------------------------------------------- */
+
 .quartzo-browse-controls {
   display: grid;
   grid-template-columns: minmax(180px, 1fr) minmax(130px, auto);
-  gap: 8px;
-  margin-block: 10px 14px;
+  gap: var(--qz-sp-sm);
+  margin-block: var(--qz-sp-sm) var(--qz-sp-md);
 }
 
 .quartzo-object-results {
   display: grid;
-  gap: 6px;
-  margin-top: 10px;
+  gap: var(--qz-sp-xs);
+  margin-top: var(--qz-sp-sm);
 }
 
 .quartzo-object-row {
   width: 100%;
   text-align: start;
   overflow-wrap: anywhere;
+  padding: var(--qz-sp-xs) var(--qz-sp-sm);
+  border-radius: var(--qz-r-xs);
+}
+
+.quartzo-object-row:hover {
+  background: var(--qz-surface-alt);
+}
+
+/* ----------------------------------------------------------
+   15. MODALS & PAIRING
+   ---------------------------------------------------------- */
+
+.quartzo-first-run-modal,
+.quartzo-pairing-summary-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.46);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.quartzo-first-run-modal .modal-content,
+.quartzo-pairing-summary-modal .modal-content {
+  background: var(--qz-bg);
+  color: var(--qz-text);
+  padding: var(--qz-sp-xl);
+  border-radius: var(--qz-r-lg);
+  max-width: 460px;
+  width: calc(100% - 32px);
+  box-shadow: var(--qz-shadow-md);
+}
+
+.quartzo-first-run-modal h2,
+.quartzo-pairing-summary-modal h2 {
+  font-size: var(--qz-font-lg);
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  margin-bottom: var(--qz-sp-sm);
+}
+
+.quartzo-first-run-modal .qz-modal-actions {
+  display: flex;
+  gap: var(--qz-sp-sm);
+  flex-wrap: wrap;
+  margin-top: var(--qz-sp-lg);
+  justify-content: flex-end;
+}
+
+/* ----------------------------------------------------------
+   16. MISC / SHELL UTILITIES
+   ---------------------------------------------------------- */
+
+.quartzo-sync-summary,
+.quartzo-sync-progress,
+.quartzo-conflict-card pre {
+  overflow-wrap: anywhere;
+}
+
+.quartzo-warning-state {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--qz-sp-sm);
+  padding: var(--qz-sp-sm) var(--qz-sp-md);
+  border-radius: var(--qz-r-sm);
+  border: 1px solid color-mix(in srgb, var(--qz-warning) 40%, transparent);
+  background: color-mix(in srgb, var(--qz-warning) 8%, transparent);
+  color: var(--qz-text);
+  font-size: var(--qz-font-sm);
+  overflow-wrap: anywhere;
+}
+
+.quartzo-ribbon-icon { color: var(--interactive-accent); }
+
+/* Focus rings (accessibility) */
+.quartzo-shell button:focus-visible,
+.quartzo-shell input:focus-visible,
+.quartzo-shell select:focus-visible,
+.quartzo-shell textarea:focus-visible,
+.quartzo-first-run-modal button:focus-visible,
+.quartzo-pairing-summary-modal button:focus-visible,
+.quartzo-detail-editor .quartzo-input:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
+
+/* ----------------------------------------------------------
+   17. RESPONSIVE
+   ---------------------------------------------------------- */
+
+@media (max-width: 780px) {
+  .quartzo-shell-content { overflow-x: auto; }
 }
 
 @media (max-width: 520px) {
-  .quartzo-browse-controls {
-    grid-template-columns: 1fr;
-  }
+  .quartzo-day-dial-viewport { width: 100%; }
+  .quartzo-home-progress { grid-template-columns: 1fr; }
+  .quartzo-browse-controls { grid-template-columns: 1fr; }
 }

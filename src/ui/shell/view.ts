@@ -240,10 +240,16 @@ export class QuartzoView extends ItemView {
     brand.textContent = 'Quartzo';
     header.appendChild(brand);
 
+    // Navigation tabs
     const nav = document.createElement('nav');
+    nav.className = 'qz-nav-tabs';
+    const sectionIcons: Record<QuartzoSection, string> = {
+      home: '🏠', planner: '📅', journal: '📓', browse: '🔍',
+    };
     for (const section of ['home', 'planner', 'journal', 'browse'] as QuartzoSection[]) {
       const button = document.createElement('button');
-      button.textContent = labelForType(section);
+      button.className = 'qz-nav-tab';
+      button.textContent = `${sectionIcons[section]} ${labelForType(section)}`;
       if (section === this.section) {
         button.classList.add('is-active');
         button.setAttribute('aria-current', 'page');
@@ -258,11 +264,14 @@ export class QuartzoView extends ItemView {
 
     const focusSnapshot = this.context.plugin.getFocusRuntimeViewState(new Date());
     const focusButton = document.createElement('button');
+    focusButton.className = focusSnapshot.runtime.currentSessionId
+      ? 'qz-btn qz-btn-secondary'
+      : 'qz-btn qz-btn-ghost';
     focusButton.textContent = focusSnapshot.runtime.currentSessionId
       ? focusSnapshot.canControl
-        ? 'Focus · Active'
-        : 'Focus · Read-only'
-      : 'Focus';
+        ? '⏱ Focus · Active'
+        : '⏱ Focus · Read-only'
+      : '⏱ Focus';
     if (this.action === 'focus') {
       focusButton.classList.add('is-active');
       focusButton.setAttribute('aria-pressed', 'true');
@@ -272,9 +281,16 @@ export class QuartzoView extends ItemView {
     });
     actions.appendChild(focusButton);
 
-    for (const [action, label] of [['search', 'Search'], ['add', 'Add'], ['sync', 'Sync'], ['settings', 'Settings']] as Array<[QuartzoAction, string]>) {
+    const actionDefs: Array<[QuartzoAction, string, string]> = [
+      ['search', '🔍', 'Search'],
+      ['add', '＋', 'Add'],
+      ['sync', '☁', 'Sync'],
+      ['settings', '⚙', 'Settings'],
+    ];
+    for (const [action, icon, label] of actionDefs) {
       const button = document.createElement('button');
-      button.textContent = label;
+      button.className = action === 'add' ? 'qz-btn qz-btn-primary qz-btn-sm' : 'qz-btn qz-btn-ghost qz-btn-sm';
+      button.textContent = `${icon} ${label}`;
       if (this.action === action) {
         button.classList.add('is-active');
         button.setAttribute('aria-pressed', 'true');
@@ -291,19 +307,32 @@ export class QuartzoView extends ItemView {
 
     const sharedSettingsState = this.context.plugin.getSharedSettingsState();
     if (sharedSettingsState === 'loading') {
-      const loading = document.createElement('p');
-      loading.className = 'quartzo-empty-state';
+      const loading = document.createElement('div');
+      loading.className = 'qz-empty-state';
       loading.setAttribute('role', 'status');
       loading.setAttribute('aria-live', 'polite');
-      loading.textContent = 'Loading Quartzo vault index…';
+      const icon = document.createElement('div');
+      icon.className = 'qz-empty-state-icon';
+      icon.textContent = '⏳';
+      const title = document.createElement('div');
+      title.className = 'qz-empty-state-title';
+      title.textContent = 'Loading vault index…';
+      loading.appendChild(icon);
+      loading.appendChild(title);
       content.appendChild(loading);
       return;
     }
     if (sharedSettingsState === 'missing') {
-      const warning = document.createElement('p');
+      const warning = document.createElement('div');
       warning.className = 'quartzo-warning-state';
       warning.setAttribute('role', 'alert');
-      warning.textContent = 'Shared Quartzo settings are missing (app/quartzo_shared_settings.md). Objects with explicit canonical type metadata remain available, but Object Identification-dependent files may be unavailable until Quartzo materializes the shared settings file.';
+      const badge = document.createElement('span');
+      badge.className = 'qz-badge qz-badge-warning';
+      badge.textContent = '⚠ Settings missing';
+      warning.appendChild(badge);
+      const msg = document.createElement('span');
+      msg.textContent = ' app/quartzo_shared_settings.md not found. Explicitly typed objects remain available; Object Identification-dependent files may be unavailable until Quartzo creates the shared settings file.';
+      warning.appendChild(msg);
       content.appendChild(warning);
     }
 
@@ -878,9 +907,17 @@ export class QuartzoView extends ItemView {
   }
 
   private async renderSync(container: HTMLElement, conflictsOnly: boolean, generation: number): Promise<void> {
-    const title = document.createElement('h2');
-    title.textContent = conflictsOnly ? 'Conflicts' : 'Sync';
-    container.appendChild(title);
+    const headerRow = document.createElement('div');
+    headerRow.className = 'qz-section-header';
+    const headerIcon = document.createElement('span');
+    headerIcon.className = 'qz-section-header-icon';
+    headerIcon.textContent = conflictsOnly ? '⚡' : '☁';
+    const headerTitle = document.createElement('span');
+    headerTitle.className = 'qz-section-header-title';
+    headerTitle.textContent = conflictsOnly ? 'Conflicts' : 'Sync Center';
+    headerRow.appendChild(headerIcon);
+    headerRow.appendChild(headerTitle);
+    container.appendChild(headerRow);
 
     const plugin = this.context.plugin;
     const coordinator = plugin.driveSyncCoordinator;
@@ -897,54 +934,132 @@ export class QuartzoView extends ItemView {
           : ({
               synced: 'Synced',
               local_changes: 'Local changes',
-              syncing: 'Syncing',
+              syncing: 'Syncing…',
               conflict: 'Conflict',
               error: 'Error',
             } as const)[snapshot.status];
+    const statusBadgeClass = requiresAuth || snapshot?.status === 'error'
+      ? 'qz-badge qz-badge-error'
+      : offline
+        ? 'qz-badge qz-badge-warning'
+        : snapshot?.status === 'synced'
+          ? 'qz-badge qz-badge-success'
+          : snapshot?.status === 'syncing'
+            ? 'qz-badge qz-badge-info'
+            : snapshot?.status === 'conflict'
+              ? 'qz-badge qz-badge-warning'
+              : 'qz-badge qz-badge-neutral';
 
     const summary = document.createElement('section');
     summary.className = 'quartzo-sync-summary';
     summary.setAttribute('role', 'status');
     summary.setAttribute('aria-live', 'polite');
-    const summaryLines = [
-      `Status: ${statusLabel}`,
-      `Last successful sync: ${snapshot?.lastSuccessfulSyncAt ? new Date(snapshot.lastSuccessfulSyncAt).toLocaleString() : 'Never'}`,
-      `Pending local changes: ${snapshot?.pendingLocalChanges ?? 0}`,
-      `Sync mode: ${plugin.settings.syncMode === 'automatic' ? 'Automatic' : 'Manual'}`,
-      `Current Google Drive vault: ${plugin.settings.googleDriveFolderName ?? 'Not paired'}`,
-      `Google account: ${plugin.authState.replace(/_/g, ' ')}`,
-      `Companion version: ${plugin.manifest.version}`,
-      `Conflicts: ${snapshot?.conflictCount ?? coordinator?.getConflicts().length ?? 0}`,
-    ];
-    for (const lineText of summaryLines) {
-      const line = document.createElement('p');
-      line.textContent = lineText;
-      summary.appendChild(line);
+
+    // Status row with badge
+    const statusRow = document.createElement('div');
+    statusRow.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;';
+    const statusBadge = document.createElement('span');
+    statusBadge.className = statusBadgeClass;
+    statusBadge.textContent = statusLabel;
+    statusRow.appendChild(statusBadge);
+    const conflictCount = snapshot?.conflictCount ?? coordinator?.getConflicts().length ?? 0;
+    if (conflictCount > 0) {
+      const conflictBadge = document.createElement('span');
+      conflictBadge.className = 'qz-badge qz-badge-warning';
+      conflictBadge.textContent = `⚡ ${conflictCount} conflict${conflictCount !== 1 ? 's' : ''}`;
+      statusRow.appendChild(conflictBadge);
     }
+    const pendingCount = snapshot?.pendingLocalChanges ?? 0;
+    if (pendingCount > 0) {
+      const pendingBadge = document.createElement('span');
+      pendingBadge.className = 'qz-badge qz-badge-neutral';
+      pendingBadge.textContent = `${pendingCount} pending`;
+      statusRow.appendChild(pendingBadge);
+    }
+    summary.appendChild(statusRow);
+
+    // Info grid
+    const infoGrid = document.createElement('dl');
+    infoGrid.style.cssText = 'display:grid;grid-template-columns:auto 1fr;gap:2px 12px;font-size:var(--qz-font-xs);margin-bottom:8px;';
+    const infoRows: Array<[string, string]> = [
+      ['Last sync', snapshot?.lastSuccessfulSyncAt ? new Date(snapshot.lastSuccessfulSyncAt).toLocaleString() : 'Never'],
+      ['Sync mode', `Sync mode: ${plugin.settings.syncMode === 'automatic' ? 'Automatic' : 'Manual'}`],
+      ['Drive vault', plugin.settings.googleDriveFolderName ?? 'Not paired'],
+      ['Account', plugin.authState.replace(/_/g, ' ')],
+      ['Version', plugin.manifest.version],
+    ];
+    for (const [k, v] of infoRows) {
+      const dt = document.createElement('dt');
+      dt.style.cssText = 'color:var(--qz-text-secondary);font-weight:600;';
+      dt.textContent = k;
+      const dd = document.createElement('dd');
+      dd.style.cssText = 'margin:0;overflow-wrap:anywhere;';
+      // For the sync mode row, strip the redundant label prefix so only the value shows
+      dd.textContent = k === 'Sync mode' ? v.replace('Sync mode: ', '') : v;
+      infoGrid.appendChild(dt);
+      infoGrid.appendChild(dd);
+    }
+    summary.appendChild(infoGrid);
+
     if (snapshot?.lastError) {
-      const lastError = document.createElement('p');
+      const lastError = document.createElement('div');
+      lastError.className = 'quartzo-warning-state';
       lastError.setAttribute('role', 'alert');
-      lastError.textContent = `Last error: ${snapshot.lastError}`;
+      const errBadge = document.createElement('span');
+      errBadge.className = 'qz-badge qz-badge-error';
+      errBadge.textContent = 'Error';
+      lastError.appendChild(errBadge);
+      const errMsg = document.createElement('span');
+      errMsg.textContent = ` ${snapshot.lastError}`;
+      lastError.appendChild(errMsg);
       summary.appendChild(lastError);
     }
-    if (snapshot && snapshot.pendingDiagnostics.length > 0) {
-      const pendingTitle = document.createElement('h3');
-      pendingTitle.textContent = 'Pending diagnostics';
-      summary.appendChild(pendingTitle);
 
-      const pendingList = document.createElement('ul');
+    if (snapshot && snapshot.pendingDiagnostics.length > 0) {
+      const pendingHeader = document.createElement('div');
+      pendingHeader.className = 'qz-section-header';
+      pendingHeader.style.marginTop = '12px';
+      const ph_icon = document.createElement('span');
+      ph_icon.className = 'qz-section-header-icon';
+      ph_icon.textContent = '📋';
+      const ph_title = document.createElement('span');
+      ph_title.className = 'qz-section-header-title';
+      ph_title.textContent = `Pending (${snapshot.pendingDiagnostics.length})`;
+      pendingHeader.appendChild(ph_icon);
+      pendingHeader.appendChild(ph_title);
+      summary.appendChild(pendingHeader);
+
+      const reasonBadgeClass: Record<SyncPendingDiagnostic['reason'], string> = {
+        local_create: 'qz-badge qz-badge-info',
+        local_modify: 'qz-badge qz-badge-info',
+        pending_delete: 'qz-badge qz-badge-error',
+        pending_rename: 'qz-badge qz-badge-neutral',
+        adoption_required: 'qz-badge qz-badge-warning',
+        conflict: 'qz-badge qz-badge-warning',
+        quarantined_duplicate_identity: 'qz-badge qz-badge-error',
+      };
+      const pendingList = document.createElement('div');
       pendingList.className = 'quartzo-sync-pending-diagnostics';
       for (const diagnostic of snapshot.pendingDiagnostics) {
-        const item = document.createElement('li');
-        item.textContent = formatPendingDiagnostic(diagnostic);
-        pendingList.appendChild(item);
+        const row = document.createElement('div');
+        row.className = 'qz-diagnostic-row';
+        const badge = document.createElement('span');
+        badge.className = reasonBadgeClass[diagnostic.reason];
+        badge.textContent = diagnostic.reason.replace(/_/g, ' ');
+        const pathSpan = document.createElement('span');
+        pathSpan.textContent = formatPendingDiagnostic(diagnostic).split(': ').slice(1).join(': ') || diagnostic.path;
+        row.appendChild(badge);
+        row.appendChild(pathSpan);
+        pendingList.appendChild(row);
       }
       summary.appendChild(pendingList);
     }
 
     if (snapshot) {
       const copyDiagnostics = document.createElement('button');
-      copyDiagnostics.textContent = 'Copy sync diagnostics';
+      copyDiagnostics.className = 'qz-btn qz-btn-ghost qz-btn-sm';
+      copyDiagnostics.style.marginTop = '8px';
+      copyDiagnostics.textContent = '📋 Copy diagnostics';
       copyDiagnostics.addEventListener('click', async () => {
         try {
           await navigator.clipboard.writeText(formatSyncDiagnosticsText({
@@ -984,7 +1099,8 @@ export class QuartzoView extends ItemView {
     if (requiresAuth) {
       const connect = document.createElement('button');
       const canReconnect = Boolean(plugin.settings.googleDriveFolderId);
-      connect.textContent = canReconnect ? 'Reconnect Google' : 'Connect Google Drive';
+      connect.className = 'qz-btn qz-btn-primary';
+      connect.textContent = canReconnect ? '🔗 Reconnect Google' : '🔗 Connect Google Drive';
       connect.disabled = offline;
       if (offline) connect.title = 'Google Drive connection requires network access.';
       connect.addEventListener('click', async () => {
@@ -1115,15 +1231,20 @@ export class QuartzoView extends ItemView {
     if (!conflictsOnly && coordinator) {
       const actions = document.createElement('div');
       actions.className = 'quartzo-sync-actions';
+      actions.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-block:12px;';
+
+      const isSyncing = offline || snapshot?.status === 'syncing';
 
       const sync = document.createElement('button');
-      sync.textContent = 'Sync now';
-      sync.disabled = offline || snapshot?.status === 'syncing';
+      sync.className = 'qz-btn qz-btn-primary';
+      sync.textContent = '☁ Sync now';
+      sync.disabled = isSyncing;
       if (sync.disabled) sync.title = offline ? 'Sync requires network access.' : 'A sync operation is already running.';
 
       const full = document.createElement('button');
-      full.textContent = 'Run full reconciliation';
-      full.disabled = offline || snapshot?.status === 'syncing';
+      full.className = 'qz-btn qz-btn-secondary';
+      full.textContent = '🔄 Full reconciliation';
+      full.disabled = isSyncing;
       if (full.disabled) full.title = offline ? 'Full reconciliation requires network access.' : 'A sync operation is already running.';
 
       const runWithVisibleProgress = async (
@@ -1162,21 +1283,18 @@ export class QuartzoView extends ItemView {
         }
       };
 
-      sync.addEventListener('click', () => {
-        void runWithVisibleProgress('incremental');
-      });
+      sync.addEventListener('click', () => { void runWithVisibleProgress('incremental'); });
       actions.appendChild(sync);
 
-      full.addEventListener('click', () => {
-        void runWithVisibleProgress('full');
-      });
+      full.addEventListener('click', () => { void runWithVisibleProgress('full'); });
       actions.appendChild(full);
 
       const ambiguityPaths = coordinator.getRemoteIdentityAmbiguityPaths();
       if (ambiguityPaths.length > 0) {
         const repairDuplicates = document.createElement('button');
-        repairDuplicates.textContent = `Review Drive duplicates (${ambiguityPaths.length})`;
-        repairDuplicates.disabled = offline || snapshot?.status === 'syncing';
+        repairDuplicates.className = 'qz-btn qz-btn-secondary';
+        repairDuplicates.textContent = `🔍 Drive duplicates (${ambiguityPaths.length})`;
+        repairDuplicates.disabled = isSyncing;
         if (repairDuplicates.disabled) repairDuplicates.title = offline ? 'Duplicate review requires network access.' : 'Finish the active sync before reviewing duplicates.';
         repairDuplicates.addEventListener('click', async () => {
           await plugin.reviewSyncRemoteDuplicates();
@@ -1185,12 +1303,17 @@ export class QuartzoView extends ItemView {
         actions.appendChild(repairDuplicates);
       }
 
-      const showConflicts = document.createElement('button');
-      showConflicts.textContent = `View conflicts (${coordinator.getConflicts().length})`;
-      showConflicts.addEventListener('click', () => { void this.handleAction('conflicts'); });
-      actions.appendChild(showConflicts);
+      const numConflicts = coordinator.getConflicts().length;
+      if (numConflicts > 0) {
+        const showConflicts = document.createElement('button');
+        showConflicts.className = 'qz-btn qz-btn-secondary';
+        showConflicts.textContent = `⚡ Conflicts (${numConflicts})`;
+        showConflicts.addEventListener('click', () => { void this.handleAction('conflicts'); });
+        actions.appendChild(showConflicts);
+      }
 
       const reconnect = document.createElement('button');
+      reconnect.className = 'qz-btn qz-btn-ghost qz-btn-sm';
       reconnect.textContent = 'Reconnect Google';
       reconnect.disabled = offline;
       if (offline) reconnect.title = 'Reconnect requires network access.';
@@ -1198,7 +1321,8 @@ export class QuartzoView extends ItemView {
       actions.appendChild(reconnect);
 
       const disconnect = document.createElement('button');
-      disconnect.textContent = 'Disconnect this device';
+      disconnect.className = 'qz-btn qz-btn-danger qz-btn-sm';
+      disconnect.textContent = 'Disconnect';
       disconnect.addEventListener('click', async () => { await plugin.disconnectDrive(); await this.render(); });
       actions.appendChild(disconnect);
       container.appendChild(actions);
@@ -1206,82 +1330,128 @@ export class QuartzoView extends ItemView {
 
     const conflicts = coordinator?.getConflicts() ?? [];
     if (conflicts.length === 0) {
-      const empty = document.createElement('p');
-      empty.textContent = 'No conflicts.';
+      const empty = document.createElement('div');
+      empty.className = 'qz-empty-state';
+      const emIcon = document.createElement('div');
+      emIcon.className = 'qz-empty-state-icon';
+      emIcon.textContent = '✅';
+      const emTitle = document.createElement('div');
+      emTitle.className = 'qz-empty-state-title';
+      emTitle.textContent = 'No conflicts';
+      const emBody = document.createElement('div');
+      emBody.className = 'qz-empty-state-body';
+      emBody.textContent = 'All files are in sync between local vault and Google Drive.';
+      empty.appendChild(emIcon);
+      empty.appendChild(emTitle);
+      empty.appendChild(emBody);
       container.appendChild(empty);
       return;
     }
+
+    const conflictsHeader = document.createElement('div');
+    conflictsHeader.className = 'qz-section-header';
+    const ch_icon = document.createElement('span');
+    ch_icon.className = 'qz-section-header-icon';
+    ch_icon.textContent = '⚡';
+    const ch_title = document.createElement('span');
+    ch_title.className = 'qz-section-header-title';
+    ch_title.textContent = `Conflicts (${conflicts.length})`;
+    conflictsHeader.appendChild(ch_icon);
+    conflictsHeader.appendChild(ch_title);
+    container.appendChild(conflictsHeader);
 
     const decoder = new TextDecoder();
     for (const conflict of conflicts) {
       const card = document.createElement('section');
       card.className = 'quartzo-conflict-card';
 
-      const heading = document.createElement('h3');
-      heading.textContent = conflict.originalPath;
-      card.appendChild(heading);
+      // Card header: path + newest badge
+      const cardHeader = document.createElement('div');
+      cardHeader.className = 'qz-conflict-header';
+      const pathSpan = document.createElement('span');
+      pathSpan.className = 'qz-conflict-path';
+      pathSpan.textContent = conflict.originalPath;
+      pathSpan.title = conflict.originalPath;
+      cardHeader.appendChild(pathSpan);
+      const newest = chooseNewestConflictResolution(conflict);
+      const newestBadge = document.createElement('span');
+      newestBadge.className = 'qz-badge qz-badge-neutral';
+      newestBadge.textContent = newest === 'keep_local' ? '📱 Local newer' : newest === 'keep_drive' ? '☁ Drive newer' : '≡ Same age';
+      cardHeader.appendChild(newestBadge);
+      card.appendChild(cardHeader);
 
-      const metadata = document.createElement('p');
+      // Metadata row
+      const meta = document.createElement('p');
+      meta.style.cssText = 'font-size:var(--qz-font-xs);color:var(--qz-text-secondary);margin-bottom:8px;';
       const localModified = conflict.localModifiedAt ? new Date(conflict.localModifiedAt).toLocaleString() : 'Unknown';
       const driveModified = conflict.remoteModifiedAt ? new Date(conflict.remoteModifiedAt).toLocaleString() : 'Unknown';
-      metadata.textContent = `Local modified: ${localModified} · Drive modified: ${driveModified}`;
-      card.appendChild(metadata);
+      meta.textContent = `Local: ${localModified}  ·  Drive: ${driveModified}  ·  Hashes: ${conflict.localSha256.slice(0, 8)}… vs ${conflict.remoteSha256.slice(0, 8)}…`;
+      card.appendChild(meta);
 
-      const hashes = document.createElement('p');
-      hashes.textContent = `Local ${conflict.localSha256.slice(0, 12)} · Drive ${conflict.remoteSha256.slice(0, 12)}`;
-      card.appendChild(hashes);
-
-      const newest = chooseNewestConflictResolution(conflict);
-      const newestInfo = document.createElement('p');
-      newestInfo.textContent = newest === 'keep_local'
-        ? 'Newest by modification time: Local'
-        : newest === 'keep_drive'
-          ? 'Newest by modification time: Drive'
-          : 'Newest by modification time: unavailable; choose a side explicitly.';
-      card.appendChild(newestInfo);
-
+      // Two-column content preview
       if (plugin.settings.hideSensitivePreviews) {
         const hidden = document.createElement('p');
-        hidden.textContent = 'Conflict content hidden by Privacy settings.';
+        hidden.style.cssText = 'font-size:var(--qz-font-xs);color:var(--qz-text-secondary);';
+        hidden.textContent = 'Content hidden by Privacy settings.';
         card.appendChild(hidden);
       } else if (conflict.isBinary) {
         const binary = document.createElement('p');
-        binary.textContent = `Binary conflict. Local bytes: ${conflict.localContent.length}; Drive bytes: ${conflict.remoteContent.length}.`;
+        binary.style.cssText = 'font-size:var(--qz-font-xs);';
+        binary.textContent = `Binary file — Local: ${conflict.localContent.length} bytes · Drive: ${conflict.remoteContent.length} bytes`;
         card.appendChild(binary);
       } else {
         const localText = conflict.localExists ? decoder.decode(conflict.localContent) : '';
         const driveText = conflict.remoteExists ? decoder.decode(conflict.remoteContent) : '';
+        const versions = document.createElement('div');
+        versions.className = 'qz-conflict-versions';
 
-        const local = document.createElement('pre');
-        local.textContent = conflict.localExists ? `Local:\n${localText}` : 'Local: deleted';
-        card.appendChild(local);
-
-        const remote = document.createElement('pre');
-        remote.textContent = conflict.remoteExists ? `Drive:\n${driveText}` : 'Drive: deleted';
-        card.appendChild(remote);
+        for (const [side, text, exists] of [
+          ['📱 Local', localText, conflict.localExists],
+          ['☁ Drive', driveText, conflict.remoteExists],
+        ] as const) {
+          const block = document.createElement('div');
+          block.className = 'qz-conflict-version-block';
+          const label = document.createElement('div');
+          label.className = 'qz-conflict-version-label';
+          label.textContent = side;
+          block.appendChild(label);
+          const pre = document.createElement('pre');
+          pre.style.cssText = 'font-size:10px;overflow:auto;max-height:120px;margin:0;';
+          pre.textContent = exists ? text.slice(0, 500) + (text.length > 500 ? '…' : '') : '(deleted)';
+          block.appendChild(pre);
+          versions.appendChild(block);
+        }
+        card.appendChild(versions);
 
         if (conflict.localExists && conflict.remoteExists) {
-          const diffTitle = document.createElement('strong');
-          diffTitle.textContent = 'Diff';
-          card.appendChild(diffTitle);
           const diff = buildConflictDiff(localText, driveText);
-          const diffView = document.createElement('pre');
-          diffView.textContent = diff == null
-            ? 'Diff unavailable for this file size.'
-            : formatConflictDiff(diff);
-          card.appendChild(diffView);
+          if (diff != null) {
+            const diffWrap = document.createElement('details');
+            diffWrap.style.cssText = 'font-size:var(--qz-font-xs);';
+            const diffSummary = document.createElement('summary');
+            diffSummary.textContent = 'Show diff';
+            diffSummary.style.cursor = 'pointer';
+            diffWrap.appendChild(diffSummary);
+            const diffView = document.createElement('pre');
+            diffView.style.cssText = 'font-size:10px;overflow:auto;max-height:180px;margin-top:4px;';
+            diffView.textContent = formatConflictDiff(diff);
+            diffWrap.appendChild(diffView);
+            card.appendChild(diffWrap);
+          }
         }
       }
 
+      // Action row
       const actionRow = document.createElement('div');
-      actionRow.className = 'quartzo-conflict-actions';
+      actionRow.className = 'qz-conflict-actions';
       const choices = [
-        ['keep_local', 'Keep local'],
-        ['keep_drive', 'Keep Drive'],
-        ['keep_newest', 'Keep newest'],
+        ['keep_local', '📱 Keep local', 'qz-btn qz-btn-secondary'],
+        ['keep_drive', '☁ Keep Drive', 'qz-btn qz-btn-secondary'],
+        ['keep_newest', '⚡ Keep newest', 'qz-btn qz-btn-primary'],
       ] as const;
-      for (const [resolution, label] of choices) {
+      for (const [resolution, label, cls] of choices) {
         const button = document.createElement('button');
+        button.className = cls;
         button.textContent = label;
         if (resolution === 'keep_newest' && newest == null) {
           button.disabled = true;
