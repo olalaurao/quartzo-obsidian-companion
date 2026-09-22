@@ -41,12 +41,12 @@ A V1 só é considerada pronta quando todos os quatro marcos abaixo estiverem co
 - [x] Focus/Pomodoro parity.
 - [x] Home/Planner/Dial/Detail/Search/Browse/Journal polish final.
 - [x] Reminder/Calendar edge-case closure.
-- [ ] Sync Center diagnostics finais sem reescrever o sync.
+- [x] Sync Center diagnostics finais sem reescrever o sync.
 
 ### Marco C — qualidade/release gates
 - [ ] UI/UX + accessibility pass.
 - [ ] performance/lifecycle/race pass.
-- [ ] pending-sync path + reason diagnostics.
+- [x] pending-sync path + reason diagnostics.
 - [ ] macOS CI.
 - [ ] docs/capability matrix final.
 
@@ -319,6 +319,24 @@ Companion:
 - [x] CI #35676498790 Linux: audit, contracts verify, typecheck, lint, full tests, contract vectors, sync regressions, architecture check, build, release validate, clean artifact e package verdes.
 - [x] CI #35676498790 Windows: audit, typecheck, sync regression, build, clean artifact e package verdes.
 - [x] merge canônico Companion: `6e340fed9380820f768baa089dd2aa5547a5220f`.
+
+---
+
+## Milestone fechado — B3 Sync Center diagnostics
+
+**Status: ✅ fechado no Companion. PR #52 → `7598ec7`.**
+
+Companion:
+- [x] Branch `codex/b3-sync-center-diagnostics`.
+- [x] `SyncStatusSnapshot` expõe `pendingDiagnostics` tipado, derivado pelo `DriveSyncCoordinator`.
+- [x] `pendingLocalChanges` é derivado da lista de diagnostics, preservando a projeção read-only do coordinator.
+- [x] Razões cobertas por fontes reais do motor: local create, local modify, pending delete, pending rename, adoption required, conflict e quarantined duplicate identity.
+- [x] Sync Center mostra lista path/reason e permite copiar o diagnóstico, preservando status, last sync, vault, account, version, conflicts e last error.
+- [x] Sem segunda sync queue, sem novo reconciliation engine, sem persistência canônica nova e sem inferência de reason por texto de erro na UI.
+- [x] PR #52 final head certificado: `68453db5f0143fa5cb50c285721c81cac200a08c`.
+- [x] CI #35677272561 Linux: audit, contracts verify, typecheck, lint, full tests, contract vectors, sync regressions, architecture check, build, release validate, clean artifact e package verdes.
+- [x] CI #35677272561 Windows: audit, typecheck, sync regression, build, clean artifact e package verdes.
+- [x] merge canônico Companion: `7598ec7d7df86537447eb329b25567a93e1567a5`.
 
 ---
 

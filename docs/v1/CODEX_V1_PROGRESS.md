@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-21T22:50:22-03:00
-Current milestone: B3 Sync Center diagnostics
+Last update: 2026-09-21T22:53:03-03:00
+Current milestone: C1 UI/UX + accessibility pass
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
-Current branch: codex/b3-sync-center-diagnostics
-Current HEAD: c2bbfa333514c4de86eec05b12a16aabb1e520e2 plus local B3 PR progress update
+Current branch: main
+Current HEAD: 7598ec7d7df86537447eb329b25567a93e1567a5 plus local B3 closeout docs
 Upstream main HEAD: d9302f0860fa1a4e33c1c611f2b448bec167e51f
-Companion main HEAD: 77560da1c9239918acaf9a1f526931fbce98fa58
-Open PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/52
-CI status: PR #52 run `35677137335` green on Linux and Windows for head `c2bbfa333514c4de86eec05b12a16aabb1e520e2`.
+Companion main HEAD: 7598ec7d7df86537447eb329b25567a93e1567a5
+Open PR: none for current milestone yet
+CI status: PR #52 run `35677272561` green on Linux and Windows for head `68453db5f0143fa5cb50c285721c81cac200a08c`; merged as `7598ec7d7df86537447eb329b25567a93e1567a5`.
 Blocker: OAuth contract/runtime divergence remains later C3.5 blocker, not A7/B0.
-Exact next action: commit/push this progress checkpoint, wait for the resulting PR #52 CI rerun, then merge if it remains green.
+Exact next action: commit/push B3 closeout docs on main, comment issue #45, then start C1 UI/UX + accessibility pass from main.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -755,3 +755,35 @@ Next:
 - Commit/push this progress checkpoint.
 - Wait for the progress-only CI rerun.
 - Merge PR #52 if the rerun remains green.
+
+## 2026-09-21 - B3 Companion merged
+
+Repo: Companion
+PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/52
+Final PR head: 68453db5f0143fa5cb50c285721c81cac200a08c
+Merge SHA: 7598ec7d7df86537447eb329b25567a93e1567a5
+Merged at: 2026-09-22T01:52Z
+Final CI run: 35677272561
+Result:
+- `test-linux`: success.
+- `test-windows`: success.
+Closed B3 evidence:
+- `SyncStatusSnapshot.pendingDiagnostics` is typed and coordinator-owned.
+- `pendingLocalChanges` is derived from the diagnostics list.
+- Diagnostics cover local create/modify, pending delete/rename, adoption required, conflict and quarantined duplicate identity.
+- Sync Center renders and copies pending path/reason diagnostics.
+- No second sync queue, reconciliation engine, canonical persistence, or UI error-text parsing was added.
+Tracker updates:
+- B3 Sync Center diagnostics finais sem reescrever o sync marked closed.
+- C pending-sync path + reason diagnostics marked closed.
+- Added B3 closed section with PR #52, final head, merge SHA and CI evidence.
+Still open:
+- C1 UI/UX + accessibility pass.
+- C2 performance/lifecycle/race pass.
+- C3 macOS CI.
+- C3.5 OAuth contract/runtime/release divergence.
+- C4 stale docs/capability matrix, including P0 `.agents/AGENTS.md` link.
+Next:
+- Commit/push this B3 closeout docs update on main.
+- Add issue #45 progress comment with B3 evidence.
+- Start C1 from updated main unless redirected.
