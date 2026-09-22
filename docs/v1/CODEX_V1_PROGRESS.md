@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-22T10:56:15-03:00
+Last update: 2026-09-22T11:54:31-03:00
 Current milestone: D1 E2E app <-> Drive <-> Obsidian
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
 Current branch: main
-Current HEAD: fa889f1564f1d2be9299025756322bb26b2be191
+Current HEAD: a56c377d7af90fc5f6ad9752401040e7afd8d93b
 Upstream main HEAD: e0bfa98611138512f916be9cf10f5395b78c10ed
-Companion main HEAD: fa889f1564f1d2be9299025756322bb26b2be191
+Companion main HEAD: a56c377d7af90fc5f6ad9752401040e7afd8d93b
 Open PR: none
-CI status: PR #58 merged. Remote CI run 35736427247 completed successfully on `test-linux`, `test-windows`, and `test-macos`; merge SHA `fa889f1564f1d2be9299025756322bb26b2be191`.
-Blocker: D1 Android -> Drive -> local vault is proven; Obsidian Companion bundle updated and vault reopened, but Codex cannot visually click the Obsidian Done button from this session. Need user/UI confirmation for Home/Planner/Day Dial and Done click, or another accessible control surface.
-Exact next action: verify Companion UI in Obsidian shows `Prepare campaign` on 2026-09-23 at 10:00 and Day Dial; click Done in Companion, then sync/adopt as needed on Android and verify the Task becomes completed with no duplicate/conflict.
+CI status: PR #58 merged. Remote CI run 35736427247 completed successfully on `test-linux`, `test-windows`, and `test-macos`; merge SHA `fa889f1564f1d2be9299025756322bb26b2be191`. Progress-only main run 35736918805 also completed successfully on `test-linux`, `test-windows`, and `test-macos` for `a56c377d7af90fc5f6ad9752401040e7afd8d93b`.
+Blocker: D1 Android -> Drive -> local vault and Companion projection are proven, including user confirmation that Companion shows `Prepare campaign` on 2026-09-23 at `10:00` in Home/Planner. Obsidian completion mutation was written and Google Drive Desktop upload activity was observed, but the Android app still did not pull that external Drive Desktop edit. User authorized mass resolution of old conflicts; 515 `social/...` conflicts were resolved newest-wins with backups/evidence, leaving `sync_conflicts = 0`, but Android full sync still stalled around 34-35% and the D1 Task remained `stage: "todo"`.
+Exact next action: stop spending quota on D1 in this session. Treat Companion-side V1/D1 work as ready, but do not mark the full E2E green until Quartzo app sync is fixed. Use `docs/v1/QUARTZO_SYNC_FAILURES_POST_D1.md` as the upstream sync repair handoff.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -1505,3 +1505,91 @@ Exact next action:
 1. User or an accessible Obsidian control surface clicks `Done` for `Prepare campaign` in Companion.
 2. Codex re-enables/runs Android sync.
 3. Codex verifies Android completion state, no duplicate `Prepare campaign`, and no new conflict for `tasks/prepare-campaign.md`.
+
+## 2026-09-22 - D1 app pull bug discovered during Obsidian -> Drive -> Android leg
+
+Repo: Companion (`C:\Users\lauri\Documents\companion`)
+Companion branch: `main`
+Companion HEAD: `a56c377d7af90fc5f6ad9752401040e7afd8d93b`
+Upstream app repo: `C:\Users\lauri\Documents\aplicativo_v11_1_antigravity`
+Upstream app branch: `main`
+Upstream app HEAD: `e0bfa98611138512f916be9cf10f5395b78c10ed` plus local uncommitted D1 fix
+
+D1 evidence now proven:
+- Android-created Task `Prepare campaign` (`945edb91-f00b-469e-beca-586e6dd968d3`) reached Google Drive Desktop and the PC vault at `C:\Users\lauri\My Drive (obslauri@gmail.com)\os\tasks\prepare-campaign.md`.
+- Companion PR #58 fixed projection of app-created one-off Tasks that use `end_date + scheduled_time`.
+- Updated Companion bundle was installed into the Obsidian vault plugin folder and Obsidian was restarted.
+- Visual Obsidian evidence showed Planner rendering `10:00 · Prepare campaign`.
+- User confirmed Companion shows `Prepare campaign` on 2026-09-23 at `10:00` in Home/Planner.
+- Obsidian-side completion was written through Companion core helpers for occurrence `task:945edb91-f00b-469e-beca-586e6dd968d3@2026-09-23`.
+- PC vault file was updated to `stage: finalized`, with reflection `Completed from occurrence action.`
+- `sessions/shared_occurrence_state_v1.md` contains the completed occurrence response.
+- Google Drive Desktop logs showed upload activity for both `tasks/prepare-campaign.md` and `sessions/shared_occurrence_state_v1.md`.
+
+Android/app sync finding:
+- Android local file stayed at `stage: "todo"` after the Drive Desktop/Obsidian mutation reached the PC vault.
+- Android `file_sync_state` for `tasks/prepare-campaign.md` still had local/remote/base hash `c1e9dedf7a2d532ff9c9f171f187bc9358824ba493452b7614e39d7c1a90c022`, the original Android-created content hash.
+- PC vault content hash after Obsidian completion was `887c843c0383e67ca36c896f75c018ea2d14b0612d1fff23987108be9efdbc17`.
+- No duplicate or new conflict was found for `tasks/prepare-campaign.md`.
+- Root cause: Drive Desktop/Obsidian changes update Drive file content and modified time, but do not update the app-owned public `Quartzo_hash` custom property. The app trusted that stale `Quartzo_hash` as remote truth and skipped downloading/verifying the remote bytes, so external edits could be missed.
+
+Local upstream app fix:
+- Changed `lib/services/sync_manager.dart` to verify/download remote bytes when the remote file modified time is newer than the stored sync state, even if `Quartzo_hash` is present.
+- Added `test/drive_sync_safety_contract_test.dart` coverage: `Drive Desktop edits force remote hash verification before reconciliation`.
+- Left these upstream app changes uncommitted on `main` pending final D1 decision/PR packaging.
+
+Verification of local app fix:
+- `flutter test test/drive_sync_safety_contract_test.dart` - green, 20 tests.
+- `flutter analyze` - green, no issues found.
+- `flutter build apk --debug` - green.
+- `adb install -r build\app\outputs\flutter-apk\app-debug.apk` - success on device `RQCW303AG1Z`.
+- Android Auto-Sync was turned back on in the app UI after reinstall.
+
+Current blocker:
+- After reinstall, the app started full Drive sync and logged the startup guard, Drive preparation, queue processing, and full sync.
+- The app is currently processing many pre-existing `social/...` conflicts before it reaches/verifies the D1 Task path.
+- As of the last Android check, `tasks/prepare-campaign.md` on the phone still showed `stage: "todo"`.
+- Mass-resolving conflicts with `Conflicts: Keep Most Recent` could unblock the queue faster, but it can mutate many unrelated historical vault files. Do not do this without explicit user authorization.
+
+Exact next action:
+1. Ask user for permission to either wait naturally or allow bulk conflict resolution / `Conflicts: Keep Most Recent` for the old unrelated conflicts.
+2. If waiting, continue monitoring until the full sync reaches `tasks/prepare-campaign.md`, then verify Android shows completion and no duplicate/conflict for the D1 Task.
+3. If bulk resolution is authorized, enable the chosen conflict strategy, run sync, and verify only after recording the risk and result.
+
+## 2026-09-22 - D1 stopped and sync failure handoff created
+
+User instruction:
+- Stop spending quota and create a document with Quartzo sync failures for later repair.
+
+Created:
+- `docs/v1/QUARTZO_SYNC_FAILURES_POST_D1.md`
+
+Mass conflict resolution performed with explicit user authorization:
+- Frozen Android DB before intervention: `515` `sync_conflicts`, all under `social/...`.
+- `tasks/prepare-campaign.md` conflict rows: `0`.
+- Pulled Android `_conflicts` artifacts: `2203` files.
+- Prepared deterministic newest-wins resolution from `sync_conflicts`.
+- Result: `515/515` resolved, `0` missing artifacts.
+- Selection result: `515` kept local, `0` kept remote, because local modified timestamps were newer.
+- PC overwritten files were backed up under `C:\Users\lauri\Documents\companion\d1_mass_resolve_20260922_1139\pc_backup_before_overwrite`.
+- Manifest: `C:\Users\lauri\Documents\companion\d1_mass_resolve_20260922_1139\resolution_manifest.csv`.
+- Android DB after push: `sync_conflicts = 0`, `tasks/prepare-campaign.md` conflicts `0`.
+
+Post-resolution D1 verification:
+- PC vault `tasks/prepare-campaign.md` remains the completed Obsidian/Companion version with hash `887c843c0383e67ca36c896f75c018ea2d14b0612d1fff23987108be9efdbc17`.
+- Android `tasks/prepare-campaign.md` still remained the original app-created version with `stage: "todo"`.
+- Android `file_sync_state` for `tasks/prepare-campaign.md` still held old hash `c1e9dedf7a2d532ff9c9f171f187bc9358824ba493452b7614e39d7c1a90c022`.
+- App was force-stopped at the end of the run to avoid additional background mutation.
+- `autoSync` was restored to `true` before force-stop.
+
+Additional sync failures captured:
+- `Quartzo_hash` stale metadata hides Drive Desktop / Obsidian external edits unless remote bytes are verified by modified time. Local upstream fix exists but is uncommitted.
+- Conflict resolution UI raced with Auto-Sync and showed impossible progress such as `1988/508`.
+- Full sync reached Drive preparation/fetch/full sync, then stalled around 34-35% without pulling the D1 Task.
+- Startup/full sync repeatedly logged legacy Resource parse errors for invalid `year`, `priority`, and `status` values.
+- Android MediaProvider logged `SQLiteException: Expression tree is too large` after the 515-file batch.
+- `/sync-conflicts` route/deep link was unreliable after cold restart.
+
+Closeout decision:
+- Companion-side D1 is ready enough for V1 Companion work.
+- Full D1 app <-> Drive <-> Obsidian E2E is not green and should not be claimed green until Quartzo sync repair is done and rerun without manual copying/DB intervention.
