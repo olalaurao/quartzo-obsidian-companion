@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-21T23:01:42-03:00
-Current milestone: C1 UI/UX + accessibility pass
+Last update: 2026-09-21T23:04:21-03:00
+Current milestone: C2 performance/lifecycle/race pass
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
-Current branch: codex/c1-ui-accessibility-pass
-Current HEAD: 32e717027b93177f3ed7da6368674208cb52709d plus local C1 PR progress update
+Current branch: main
+Current HEAD: 49ba27c6784e4732804d7eceacf7214996680532 plus local C1 closeout docs
 Upstream main HEAD: d9302f0860fa1a4e33c1c611f2b448bec167e51f
-Companion main HEAD: cf0922c82f000532b97e907ffbb2b313654273dc
-Open PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/53
-CI status: PR #53 run `35677820693` green on Linux and Windows for head `32e717027b93177f3ed7da6368674208cb52709d`.
+Companion main HEAD: 49ba27c6784e4732804d7eceacf7214996680532
+Open PR: none for current milestone yet
+CI status: PR #53 run `35677969176` green on Linux and Windows for head `82ec36acaa19a5e16c3bf26fe21905dad32f7b14`; merged as `49ba27c6784e4732804d7eceacf7214996680532`.
 Blocker: OAuth contract/runtime divergence remains later C3.5 blocker, not A7/B0.
-Exact next action: commit/push this progress checkpoint, wait for the resulting PR #53 CI rerun, then merge if it remains green.
+Exact next action: commit/push C1 closeout docs on main, comment issue #45, then start C2 performance/lifecycle/race pass from main.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -868,3 +868,33 @@ Next:
 - Commit/push this progress checkpoint.
 - Wait for the progress-only CI rerun.
 - Merge PR #53 if the rerun remains green.
+
+## 2026-09-21 - C1 Companion merged
+
+Repo: Companion
+PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/53
+Final PR head: 82ec36acaa19a5e16c3bf26fe21905dad32f7b14
+Merge SHA: 49ba27c6784e4732804d7eceacf7214996680532
+Merged at: 2026-09-22T02:03Z
+Final CI run: 35677969176
+Result:
+- `test-linux`: success.
+- `test-windows`: success.
+Closed C1 evidence:
+- Shell, Planner, Journal, Browse/Search and Quick Add controls have accessible names/current/pressed state where needed.
+- Loading/warning/sync/error/progress/metadata states use status/alert/live-region semantics.
+- Disabled sync/pairing controls expose context.
+- Day Dial no longer depends only on color/opacity for Done/Skipped.
+- CSS covers keyboard focus visibility and long diagnostics/error/conflict wrapping.
+Tracker updates:
+- C1 UI/UX + accessibility pass marked closed.
+- Added C1 closed section with PR #53, final head, merge SHA and CI evidence.
+Still open:
+- C2 performance/lifecycle/race pass.
+- C3 macOS CI.
+- C3.5 OAuth contract/runtime/release divergence.
+- C4 stale docs/capability matrix, including P0 `.agents/AGENTS.md` link.
+Next:
+- Commit/push this C1 closeout docs update on main.
+- Add issue #45 progress comment with C1 evidence.
+- Start C2 from updated main unless redirected.

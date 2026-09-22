@@ -44,7 +44,7 @@ A V1 só é considerada pronta quando todos os quatro marcos abaixo estiverem co
 - [x] Sync Center diagnostics finais sem reescrever o sync.
 
 ### Marco C — qualidade/release gates
-- [ ] UI/UX + accessibility pass.
+- [x] UI/UX + accessibility pass.
 - [ ] performance/lifecycle/race pass.
 - [x] pending-sync path + reason diagnostics.
 - [ ] macOS CI.
@@ -337,6 +337,26 @@ Companion:
 - [x] CI #35677272561 Linux: audit, contracts verify, typecheck, lint, full tests, contract vectors, sync regressions, architecture check, build, release validate, clean artifact e package verdes.
 - [x] CI #35677272561 Windows: audit, typecheck, sync regression, build, clean artifact e package verdes.
 - [x] merge canônico Companion: `7598ec7d7df86537447eb329b25567a93e1567a5`.
+
+---
+
+## Milestone fechado — C1 UI/UX + accessibility pass
+
+**Status: ✅ fechado no Companion. PR #53 → `49ba27c`.**
+
+Companion:
+- [x] Branch `codex/c1-ui-accessibility-pass`.
+- [x] Shell navigation/actions expõem current/pressed state.
+- [x] Planner e Journal têm accessible names em setas e inputs de data.
+- [x] Browse/Search e Quick Add têm labels programáticos em inputs/selects.
+- [x] Loading, warning, Sync summary, last error, progress e metadata status usam status/alert/live-region.
+- [x] Controles disabled de sync/pairing explicam por que estão indisponíveis.
+- [x] Day Dial expõe Done/Skipped em labels acessíveis e texto visível de legend/chips, não só cor/opacidade.
+- [x] CSS adiciona foco visível de teclado e quebra de texto longo em diagnostics/errors/conflicts.
+- [x] PR #53 final head certificado: `82ec36acaa19a5e16c3bf26fe21905dad32f7b14`.
+- [x] CI #35677969176 Linux: audit, contracts verify, typecheck, lint, full tests, contract vectors, sync regressions, architecture check, build, release validate, clean artifact e package verdes.
+- [x] CI #35677969176 Windows: audit, typecheck, sync regression, build, clean artifact e package verdes.
+- [x] merge canônico Companion: `49ba27c6784e4732804d7eceacf7214996680532`.
 
 ---
 
