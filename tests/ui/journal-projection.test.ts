@@ -24,6 +24,27 @@ describe('Journal day projection', () => {
     expect(projected.dailyNotes.map(item => item.id)).toEqual(['daily']);
     expect(projected.entries.map(item => item.id)).toEqual(['entry']);
     expect(projected.trackingRecords.map(item => item.id)).toEqual(['record']);
+    expect(projected.overdue).toEqual([]);
     expect(projected.moodEntryCount).toBe(2);
+  });
+
+  it('includes the canonical Overdue projection supplied for today', () => {
+    const overdueObject = object('deadline', 'task', { deadline: '2026-09-16', title: 'Deadline' });
+    const projected = projectJournalDay(null, '2026-09-17', [{
+      object: overdueObject,
+      decision: {
+        candidate: {
+          sourceId: 'deadline',
+          sourceType: 'task',
+          deadline: '2026-09-16',
+          deadlineMode: 'calendarDay',
+          completed: false,
+          archived: false,
+        },
+        daysLate: 1,
+        severity: 'light',
+      },
+    }]);
+    expect(projected.overdue.map(item => item.object.id)).toEqual(['deadline']);
   });
 });

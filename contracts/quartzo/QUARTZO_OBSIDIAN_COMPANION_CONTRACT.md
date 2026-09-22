@@ -1000,7 +1000,7 @@ Negative Habits follow the canonical Quartzo rule and are not injected into norm
 
 ---
 
-## 12.2 Reminder boundary rule
+## 12.2 Reminder and Overdue boundary rule
 
 A Reminder scheduled on date `D` belongs to `D`.
 
@@ -1013,7 +1013,27 @@ D+3
 ...
 ```
 
-Overdue is a separate **today projection**.
+Overdue is a separate **today projection**. It may surface an unresolved source
+today without changing that source's canonical date or occurrence identity.
+Only a real source deadline/due-time breach qualifies. A planned slot that
+merely passed without a real deadline is Adaptive `fellBehind`, not Overdue.
+Home, Planner and Journal may render the shared overdue projection, but they
+must not calculate membership independently.
+
+## 12.2.1 Adaptive DailyPlanningState boundary
+
+`sessions/shared_planning_state_v1.md` is the shared owner for day-level
+Adaptive state. Companion V1 may consume and mutate exact
+`essential_occurrence_ids` and reads `parked_occurrence_ids`,
+`capacity_mode`, Minimum Plan metadata and leave-space reserve from the same
+date-keyed `DailyPlanningState`.
+
+`DayCapacitySummary` is deliberately not persisted in that shard. It is
+derived in Quartzo from availability plus optional energy/sleep evidence.
+Until those inputs are separately contracted cross-client, Companion must
+expose the canonical capacity mode/state but keep numeric capacity unavailable;
+it must not infer a number from free clock time or build a second capacity
+engine.
 
 ---
 

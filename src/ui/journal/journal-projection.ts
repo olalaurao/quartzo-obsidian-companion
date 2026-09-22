@@ -1,9 +1,11 @@
 import type { IndexedObject, VaultIndex } from '../../vault/index/types';
+import type { OverdueObjectProjection } from '../../core/overdue_projection';
 
 export interface JournalDayProjection {
   dailyNotes: IndexedObject[];
   entries: IndexedObject[];
   trackingRecords: IndexedObject[];
+  overdue: OverdueObjectProjection[];
   moodEntryCount: number;
 }
 
@@ -11,7 +13,11 @@ function isOnDate(object: IndexedObject, date: string): boolean {
   return String(object.frontmatter.date ?? '').startsWith(date);
 }
 
-export function projectJournalDay(index: VaultIndex | null, date: string): JournalDayProjection {
+export function projectJournalDay(
+  index: VaultIndex | null,
+  date: string,
+  overdue: OverdueObjectProjection[] = [],
+): JournalDayProjection {
   const objects = index ? Array.from(index.objects.values()) : [];
   const dailyNotes = objects.filter(object => object.type === 'daily_note' && isOnDate(object, date));
   const entries = objects.filter(object => object.type === 'entry' && isOnDate(object, date));
@@ -20,5 +26,5 @@ export function projectJournalDay(index: VaultIndex | null, date: string): Journ
     const entries = note.frontmatter.mood_entries;
     return sum + (Array.isArray(entries) ? entries.length : 0);
   }, 0);
-  return { dailyNotes, entries, trackingRecords, moodEntryCount };
+  return { dailyNotes, entries, trackingRecords, overdue, moodEntryCount };
 }

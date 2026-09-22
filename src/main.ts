@@ -67,6 +67,7 @@ import {
 } from './core/occurrence_actions';
 import type { NormalizedItem } from './core/daily_schedule/types';
 import { planOccurrenceReschedule, type OccurrenceTimeOverride } from './core/occurrence_reschedule';
+import { defaultDailyPlanningState, type DailyPlanningState } from './core/adaptive_planning';
 import { FileNotificationDeliveryRegistry } from './local-state/notification-delivery-registry';
 import { ObsidianReminderDeliveryGateway } from './platform/notifications';
 import { ElectronBrowserOpener } from './platform/browser-opener';
@@ -175,6 +176,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
   private focusPhaseCompletionInFlight = false;
   private occurrenceResponses: Record<string, OccurrenceResponseState> = {};
   private occurrenceOverrides: Record<string, OccurrenceTimeOverride> = {};
+  private dailyPlanningStates: Record<string, DailyPlanningState> = {};
   private googleAccessRefreshInFlight: Promise<string | null> | null = null;
   private pairingWorkflowModal: HTMLDivElement | null = null;
   private vaultRuntimeReady = false;
@@ -218,9 +220,11 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     }
     try {
       this.occurrenceOverrides = await this.planningStateRepository.loadOverrides();
+      this.dailyPlanningStates = await this.planningStateRepository.loadDailyPlanningStates();
     } catch (error) {
       console.error('Failed to load shared planning state:', error);
       this.occurrenceOverrides = {};
+      this.dailyPlanningStates = {};
     }
     this.occurrenceActionService = new OccurrenceActionService({
       store: this.occurrenceStateRepository,
@@ -513,10 +517,15 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     return this.occurrenceOverrides;
   }
 
+  getDailyPlanningState(date: string): DailyPlanningState {
+    return this.dailyPlanningStates[date] ?? defaultDailyPlanningState(date);
+  }
+
   private async reloadOccurrenceOverrides(refreshView = true): Promise<void> {
     if (!this.planningStateRepository) return;
     try {
       this.occurrenceOverrides = await this.planningStateRepository.loadOverrides();
+      this.dailyPlanningStates = await this.planningStateRepository.loadDailyPlanningStates();
       if (refreshView) await this.refreshQuartzoView();
     } catch (error) {
       console.error('Shared planning state reload failed:', error);
@@ -1368,6 +1377,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
       }
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_PLANNING_STATE_PATH) {
         this.occurrenceOverrides = {};
+        this.dailyPlanningStates = {};
         void this.refreshQuartzoView();
         return;
       }

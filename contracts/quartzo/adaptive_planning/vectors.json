@@ -1,0 +1,118 @@
+[
+  {
+    "id": "exact_essentials_and_parked_ids",
+    "input": {
+      "now": "2026-09-06T08:00:00",
+      "state": {
+        "date": "2026-09-06",
+        "capacity_mode": "low",
+        "minimum_plan_active": false,
+        "essential_occurrence_ids": [
+          "task:essential@2026-09-06"
+        ],
+        "parked_occurrence_ids": [
+          "task:parked@2026-09-06"
+        ],
+        "acknowledged_fell_behind_ids": [],
+        "minimum_plan_deferred_ids": [],
+        "leave_space_reserve_minutes": 30,
+        "updated_at": "2026-09-06T07:00:00"
+      },
+      "occurrences": [
+        {
+          "occurrence_id": "task:essential@2026-09-06",
+          "source_type": "task",
+          "start_at": "2026-09-06T09:00:00",
+          "end_at": "2026-09-06T10:00:00",
+          "completable": true
+        },
+        {
+          "occurrence_id": "task:parked@2026-09-06",
+          "source_type": "task",
+          "start_at": "2026-09-06T10:00:00",
+          "end_at": "2026-09-06T11:00:00",
+          "completable": true
+        },
+        {
+          "occurrence_id": "task:normal@2026-09-06",
+          "source_type": "task",
+          "start_at": "2026-09-06T11:00:00",
+          "end_at": "2026-09-06T12:00:00",
+          "completable": true
+        }
+      ]
+    },
+    "expected": {
+      "capacity_mode": "low",
+      "essential_occurrence_ids": [
+        "task:essential@2026-09-06"
+      ],
+      "parked_occurrence_ids": [
+        "task:parked@2026-09-06"
+      ],
+      "visible_occurrence_ids": [
+        "task:essential@2026-09-06",
+        "task:normal@2026-09-06"
+      ],
+      "essential_projection_ids": [
+        "task:essential@2026-09-06"
+      ],
+      "numeric_capacity_shared": false
+    }
+  },
+  {
+    "id": "completed_essential_drops_from_essential_projection",
+    "input": {
+      "now": "2026-09-06T08:00:00",
+      "state": {
+        "date": "2026-09-06",
+        "capacity_mode": "auto",
+        "minimum_plan_active": false,
+        "essential_occurrence_ids": [
+          "task:done@2026-09-06"
+        ],
+        "parked_occurrence_ids": [],
+        "updated_at": "2026-09-06T07:00:00"
+      },
+      "occurrences": [
+        {
+          "occurrence_id": "task:done@2026-09-06",
+          "source_type": "task",
+          "start_at": "2026-09-06T09:00:00",
+          "end_at": "2026-09-06T10:00:00",
+          "completable": true,
+          "completed": true
+        }
+      ]
+    },
+    "expected": {
+      "capacity_mode": "auto",
+      "essential_occurrence_ids": [
+        "task:done@2026-09-06"
+      ],
+      "parked_occurrence_ids": [],
+      "visible_occurrence_ids": [],
+      "essential_projection_ids": [],
+      "numeric_capacity_shared": false
+    }
+  },
+  {
+    "id": "legacy_missing_optional_sets_loads_closed_defaults",
+    "input": {
+      "now": "2026-09-06T08:00:00",
+      "state": {
+        "date": "2026-09-06",
+        "updated_at": "2026-09-06T07:00:00"
+      },
+      "occurrences": []
+    },
+    "expected": {
+      "capacity_mode": "auto",
+      "essential_occurrence_ids": [],
+      "parked_occurrence_ids": [],
+      "visible_occurrence_ids": [],
+      "essential_projection_ids": [],
+      "numeric_capacity_shared": false
+    }
+  }
+]

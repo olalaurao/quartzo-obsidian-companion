@@ -1,4 +1,5 @@
 import type { NormalizedItem, NormalizedSchedule } from '../../core/daily_schedule/types';
+import type { OverdueObjectProjection } from '../../core/overdue_projection';
 import { localIsoDate } from '../../core/local-date';
 
 export interface HomeProgress {
@@ -10,6 +11,7 @@ export interface HomeScheduleProjection {
   now: NormalizedItem[];
   upNext: NormalizedItem[];
   today: NormalizedItem[];
+  overdue: OverdueObjectProjection[];
   taskProgress: HomeProgress;
   habitProgress: HomeProgress;
 }
@@ -42,13 +44,14 @@ export function projectHomeSchedule(
   schedule: NormalizedSchedule,
   selectedDate: string,
   now: Date,
+  overdue: OverdueObjectProjection[] = [],
 ): HomeScheduleProjection {
   const today = [...schedule.items];
   const taskProgress = progressFor(today, 'task');
   const habitProgress = progressFor(today, 'habit');
 
   if (selectedDate !== localIsoDate(now)) {
-    return { now: [], upNext: [], today, taskProgress, habitProgress };
+    return { now: [], upNext: [], today, overdue: [], taskProgress, habitProgress };
   }
 
   const currentMinute = now.getHours() * 60 + now.getMinutes();
@@ -69,5 +72,5 @@ export function projectHomeSchedule(
   future.sort((a, b) => a.start - b.start || a.item.id.localeCompare(b.item.id));
   const upNext = future.slice(0, 3).map(candidate => candidate.item);
 
-  return { now: active, upNext, today, taskProgress, habitProgress };
+  return { now: active, upNext, today, overdue, taskProgress, habitProgress };
 }

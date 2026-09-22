@@ -5,6 +5,7 @@ import type {
   CanonicalOccurrenceActionResult,
 } from '../../core/occurrence_actions';
 import { localIsoDate, parseLocalIsoDate } from '../../core/local-date';
+import type { DailyPlanningState } from '../../core/adaptive_planning';
 import type { QuartzoSharedSettings } from '../../core/shared-settings';
 import { renderScheduleList, type ScheduleListOptions } from '../daily/schedule-list';
 import { projectAdaptivePlanner } from './adaptive-projection';
@@ -22,6 +23,7 @@ export interface PlannerViewOptions {
   now: Date;
   schedule?: NormalizedSchedule;
   schedulesByDate?: Map<string, NormalizedSchedule>;
+  dailyPlanningState?: DailyPlanningState;
   sharedSettings?: QuartzoSharedSettings | null;
   titleForItem(item: NormalizedItem): string;
   performOccurrenceAction(
@@ -93,16 +95,17 @@ function renderDay(container: HTMLElement, options: PlannerViewOptions): void {
     return;
   }
 
-  const projection = projectAdaptivePlanner(schedule, options.selectedDate, options.now);
+  const projection = projectAdaptivePlanner(schedule, options.selectedDate, options.now, options.dailyPlanningState);
   section(container, 'Now', projection.now.map(entry => entry.item), 'Nothing needs your attention right now.', options);
+  section(container, 'Essentials', projection.essentials.map(entry => entry.item), 'No essentials pinned for this day.', options);
   section(container, 'Next', projection.next.map(entry => entry.item), 'No next items.', options);
   section(container, 'Fell Behind', projection.fellBehind.map(entry => entry.item), 'Nothing fell behind.', options);
   section(container, 'Later', projection.later.map(entry => entry.item), 'Nothing later today.', options);
 
-  const unavailable = document.createElement('p');
-  unavailable.className = 'quartzo-planner-adaptive-note';
-  unavailable.textContent = 'Essentials and capacity will appear when the canonical DailyPlanningState contract is available to Companion.';
-  container.appendChild(unavailable);
+  const capacity = document.createElement('p');
+  capacity.className = 'quartzo-planner-adaptive-note';
+  capacity.textContent = `Capacity mode: ${projection.capacityMode}. Numeric capacity is not shared in Companion V1.`;
+  container.appendChild(capacity);
 }
 
 function weekdayLabel(date: string): string {

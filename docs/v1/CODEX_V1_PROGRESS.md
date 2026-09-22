@@ -1,0 +1,440 @@
+# Codex V1 Progress
+
+Last update: 2026-09-21T22:53:00-03:00
+Current milestone: A7 downstream - Companion Overdue + Adaptive Planning port
+Current repo: Companion (`C:\Users\lauri\Documents\companion`)
+Current branch: codex/a7-overdue-adaptive-planning
+Current HEAD: branch commit pending final `git rev-parse HEAD` after progress checkpoint
+Upstream main HEAD: d9302f0860fa1a4e33c1c611f2b448bec167e51f
+Companion main HEAD: 36c88af14587134d05a7fdcd12901a0b2a4e37af
+Open PR: Companion https://github.com/olalaurao/quartzo-obsidian-companion/pull/49
+CI status: Companion PR #49 CI passed on head `47a1750281271f4573a29114d9a5cb68251962dd`; progress-only update pending.
+Blocker: none for starting Companion A7; OAuth contract/runtime divergence remains later C3.5 blocker, not A7.
+Exact next action: push progress-only update, wait for rerun, then merge PR #49 and update tracker/issue.
+
+## 2026-09-21 - Initial handoff sync
+
+Repo: Companion and upstream Quartzo app
+Branch:
+- Companion: `main`
+- Upstream: `main`
+HEAD:
+- Companion main: 36c88af14587134d05a7fdcd12901a0b2a4e37af
+- Upstream main: fb6747ac17fc67efe81964f402f7c9c492793422
+Changed:
+- Created this progress log only.
+Local untracked/preserved:
+- Companion: `COMPANION_V1_CODEX_HANDOFF.md`
+- Upstream: `lib/services/aplicativo_v11_1_antigravity.code-workspace`
+Existing local branch state preserved:
+- Companion `feature/companion-v1-beta` is ahead of its origin by commit `149fdfecb6b26e5ac130c149f5a05a35fc94d018` (`Fix P0 bugs: SHA256 vs MD5, binary conflicts, adoption, paths, Drive Changes, file policy, baseline persistence`).
+Rule/bug treated:
+- Followed handoff Rule 0 before edits: fetched, switched to `main`, pulled `--ff-only`, and recorded dirty/untracked local files without discarding them.
+Tests executed:
+- Not yet. This was repository synchronization and checkpoint creation only.
+CI:
+- Upstream PR #47: `UNSTABLE`; checks red on head `2e2917545c51ab69778abd7a2cd7d84e611d2a4d`.
+- Companion: no open PRs found.
+Open failure:
+- Upstream A7 concrete failures from PR #47 checks must be reproduced/fixed before downstream work.
+Next:
+- Checkout upstream branch `contracts/overdue-adaptive-planning-v1`, inspect diff, and fix only concrete A7 failures.
+
+## 2026-09-21 - Companion bootstrap and status consultation
+
+Repo: Companion
+Branch: `main`
+HEAD: 36c88af14587134d05a7fdcd12901a0b2a4e37af
+Changed:
+- `docs/v1/CODEX_V1_PROGRESS.md`
+Read/consulted:
+- `AGENT_BOOTSTRAP.md`
+- `contracts/UPSTREAM.lock.json`
+- `contracts/quartzo/README.md`
+- `contracts/quartzo/QUARTZO_OBSIDIAN_COMPANION_CONTRACT.md`
+- `contracts/quartzo/QUARTZO_VAULT_INTEROP_CONTRACT_V1.md`
+- `contracts/quartzo/QUARTZO_SYNC_PROTOCOL_V1.md`
+- `contracts/quartzo/QUARTZO_COMPANION_UI_SPEC_V1.md`
+- `contracts/quartzo/P0_COMPLIANCE_MATRIX.md`
+- `guidelines.md`
+- `agents.md`
+- `docs/v1/COMPANION_V1_EXECUTION_TRACKER.md`
+- `docs/BETA_RELEASE_RUNBOOK.md`
+- Companion workflows: `ci.yml`, `release-preflight.yml`, `release.yml`
+- Upstream workflows: `agent-contract-gate.yml`, `dial_focus_ci.yml`, `flutter-ci.yml`
+- Companion issue #45
+Status:
+- Issue #45 confirms A6 closed and A7 started upstream-first.
+- Upstream PR #47 remains open on head `2e2917545c51ab69778abd7a2cd7d84e611d2a4d`, merge state `UNSTABLE`.
+- Runs still red: Dial Focus CI `35665104681`, Agent Contract Gate `35665104678`, Flutter CI `35665104719`.
+- Companion has no open PRs.
+Discovered/confirmed gaps:
+- OAuth contract/runtime/release divergence remains real: vendored parent contract says no Desktop client secret, while Companion `agents.md`, runbook and release workflows require one. This is C3.5 blocker, not A7 work.
+- `P0_COMPLIANCE_MATRIX.md` still links `.agents/AGENTS.md`; handoff says correct upstream-first later if vendored ownership applies.
+Tests run:
+- Not yet.
+Next:
+- Switch upstream to existing A7 branch.
+- Read upstream bootstrap/guidelines/agents/specs from the checked-out branch.
+- Inspect PR #47 diff and reproduce the concrete failures.
+
+## 2026-09-21 - A7 upstream compile/analyze repair
+
+Repo: upstream Quartzo app
+Branch: `contracts/overdue-adaptive-planning-v1`
+Base SHA: fb6747ac17fc67efe81964f402f7c9c492793422
+Current HEAD: 2e2917545c51ab69778abd7a2cd7d84e611d2a4d
+PR: olalaurao/aplicativo#47
+Changed:
+- `lib/services/timeline_aggregator_service.dart`
+- `lib/services/overdue_projection_service.dart`
+Rule/bug treated:
+- Fixed concrete syntax failure from empty named parameter block in `TimelineAggregatorService.aggregateForDate`.
+- Fixed concrete model name failure by using real upstream type `IdeaDefinition` instead of nonexistent `Idea`.
+- No product semantics changed.
+Tests run:
+- `dart format lib/services/timeline_aggregator_service.dart lib/services/overdue_projection_service.dart`
+- `dart analyze lib/services/timeline_aggregator_service.dart lib/services/daily_schedule_service.dart lib/services/overdue_projection_service.dart test/obsidian_companion_contracts_test.dart test/architecture/architecture_gate_test.dart`
+- `dart run tool/agent_preflight.dart`
+- `flutter test test/architecture/agent_contract_bootstrap_test.dart test/architecture/architecture_gate_test.dart`
+- `flutter test test/occurrence_action_policy_test.dart test/occurrence_action_coordinator_test.dart`
+- `flutter test test/temporal_state_resolver_test.dart test/occurrence_engine_test.dart`
+- `flutter test test/adaptive_day_projection_test.dart`
+- `flutter test test/obsidian_companion_contracts_test.dart`
+- `flutter analyze --no-fatal-warnings --no-fatal-infos`
+- Dial Focus CI local test set from `.github/workflows/dial_focus_ci.yml`
+Results:
+- Targeted Dart analyze: green, no issues found.
+- Agent preflight: green.
+- Architecture/bootstrap tests: green.
+- Occurrence action tests: green.
+- Temporal/occurrence engine tests: green.
+- Adaptive day projection test: green.
+- Companion contract vectors, including A7 overdue/adaptive vectors: green.
+- Full Flutter analyze: green (`No issues found`, 46.2s).
+- Dial Focus local test set: green (`166` tests passed in that command).
+- Full `flutter test`: green (`1947` tests passed).
+Open local state:
+- Upstream worktree has uncommitted edits in the two files above.
+- Preserved untracked upstream file: `lib/services/aplicativo_v11_1_antigravity.code-workspace`.
+Next:
+- Commit and push the minimal upstream fix.
+- Monitor PR #47 required workflows on the new pushed head before merging.
+
+## 2026-09-21 - A7 upstream full test gate
+
+Repo: upstream Quartzo app
+Branch: `contracts/overdue-adaptive-planning-v1`
+Current HEAD: 2e2917545c51ab69778abd7a2cd7d84e611d2a4d plus local uncommitted fix
+PR: olalaurao/aplicativo#47
+Changed:
+- No additional code changes in this checkpoint.
+Tests run:
+- `flutter test`
+Result:
+- Green: all `1947` tests passed.
+Next:
+- Commit/push only `lib/services/timeline_aggregator_service.dart` and `lib/services/overdue_projection_service.dart`.
+- Re-check PR #47 CI on the pushed head.
+
+## 2026-09-21 - A7 upstream fix commit
+
+Repo: upstream Quartzo app
+Branch: `contracts/overdue-adaptive-planning-v1`
+Commit: 98076a65f9aab11f9e307d5553432d442bc60255 (`Fix A7 overdue adaptive compile errors`)
+PR: olalaurao/aplicativo#47
+Committed:
+- `lib/services/timeline_aggregator_service.dart`
+- `lib/services/overdue_projection_service.dart`
+Not committed / preserved:
+- `lib/services/aplicativo_v11_1_antigravity.code-workspace` remains untracked.
+- Flutter generated registrant files appear modified in status due line-ending/index noise but have no actual `git diff` content and were not staged.
+Local verification before commit:
+- Agent Contract Gate local equivalent: green.
+- Companion A7 contract vectors: green.
+- Flutter analyze: green.
+- Dial Focus local test set: green.
+- Full `flutter test`: green (`1947` tests passed).
+Next:
+- Push commit `98076a65f9aab11f9e307d5553432d442bc60255` to PR #47.
+- Monitor Agent Contract Gate, Dial Focus CI and Flutter CI on the pushed head.
+
+## 2026-09-21 - A7 upstream push and remote checks queued
+
+Repo: upstream Quartzo app
+Branch: `contracts/overdue-adaptive-planning-v1`
+Pushed commit: 98076a65f9aab11f9e307d5553432d442bc60255
+PR: https://github.com/olalaurao/aplicativo/pull/47
+Remote status after push:
+- PR #47 is open, not draft, merge state `UNSTABLE` while checks run.
+- Agent Contract Gate run `35671288563`: queued on head `98076a65f9aab11f9e307d5553432d442bc60255`.
+- Dial Focus CI run `35671288562`: queued on head `98076a65f9aab11f9e307d5553432d442bc60255`.
+- Flutter CI run `35671288567`: queued on head `98076a65f9aab11f9e307d5553432d442bc60255`.
+Next:
+- Wait for the three runs to finish.
+- If any run fails, inspect the concrete failure and fix only that.
+- If all required runs pass, merge upstream PR #47 before starting downstream Companion A7 work.
+
+## 2026-09-21 - A7 upstream remote checks progress
+
+Repo: upstream Quartzo app
+Branch: `contracts/overdue-adaptive-planning-v1`
+Head: 98076a65f9aab11f9e307d5553432d442bc60255
+PR: https://github.com/olalaurao/aplicativo/pull/47
+Remote checks:
+- Agent Contract Gate run `35671288563`: success.
+- Dial Focus CI run `35671288562`: in progress.
+- Flutter CI run `35671288567`: queued.
+Next:
+- Continue monitoring Dial Focus CI and Flutter CI.
+
+## 2026-09-21 - A7 upstream Dial Focus passed
+
+Repo: upstream Quartzo app
+Branch: `contracts/overdue-adaptive-planning-v1`
+Head: 98076a65f9aab11f9e307d5553432d442bc60255
+PR: https://github.com/olalaurao/aplicativo/pull/47
+Remote checks:
+- Agent Contract Gate run `35671288563`: success.
+- Dial Focus CI run `35671288562`: success.
+- Flutter CI run `35671288567`: queued.
+Next:
+- Continue monitoring Flutter CI.
+- Merge PR #47 only after Flutter CI also passes.
+
+## 2026-09-21 - Local Quartzo app path correction
+
+User correction:
+- When referring to the Quartzo app locally, use `C:\Users\lauri\Documents\aplicativo_v11_1_antigravity`.
+Verified:
+- `C:\Users\lauri\Documents\aplicativo_v11_1_antigravity` is a git repo on `main...origin/main` with a clean status.
+Context:
+- The already-pushed upstream PR #47 fix remains on remote head `98076a65f9aab11f9e307d5553432d442bc60255`.
+- Continue certification/merge against PR #47, then use the corrected local Quartzo path for future local app references.
+Remote checks:
+- Flutter CI Analyze job: success.
+- Flutter CI Test job: in progress.
+Next:
+- Continue monitoring Flutter CI Test.
+
+## 2026-09-21 - A7 upstream remote checks green
+
+Repo: upstream Quartzo app
+Head: 98076a65f9aab11f9e307d5553432d442bc60255
+PR: https://github.com/olalaurao/aplicativo/pull/47
+Remote checks:
+- Agent Contract Gate run `35671288563`: success.
+- Dial Focus CI run `35671288562`: success.
+- Flutter CI run `35671288567`: success.
+Next:
+- Validate PR #47 merge state.
+- Merge PR #47 upstream if GitHub reports it mergeable.
+- After merge, sync Companion vendored upstream lock/contracts before starting downstream A7 implementation.
+
+## 2026-09-21 - A7 upstream PR merged and downstream branch started
+
+Upstream repo: Quartzo app (`C:\Users\lauri\Documents\aplicativo_v11_1_antigravity`)
+Upstream PR: https://github.com/olalaurao/aplicativo/pull/47
+Upstream merge SHA: d9302f0860fa1a4e33c1c611f2b448bec167e51f
+Upstream merge time: 2026-09-22T00:46:58Z
+Verified:
+- PR #47 state: `MERGED`.
+- Merge method produced canonical main commit `d9302f0860fa1a4e33c1c611f2b448bec167e51f`.
+- Local Quartzo app main fast-forwarded to `d9302f0860fa1a4e33c1c611f2b448bec167e51f`.
+
+Companion repo: `C:\Users\lauri\Documents\companion`
+Companion base branch: `main`
+Companion base HEAD: 36c88af14587134d05a7fdcd12901a0b2a4e37af
+Created branch:
+- `codex/a7-overdue-adaptive-planning`
+Local preserved files:
+- `COMPANION_V1_CODEX_HANDOFF.md` remains untracked.
+- `docs/v1/CODEX_V1_PROGRESS.md` is the active progress log.
+Next:
+- Run `node scripts/sync-contracts.mjs sync d9302f0860fa1a4e33c1c611f2b448bec167e51f`.
+- Run `npm run contracts:verify`.
+- Inspect vendored A7 contract/vector changes before implementing downstream owners.
+
+## 2026-09-21 - A7 Companion repin first attempt blocked
+
+Repo: Companion
+Branch: `codex/a7-overdue-adaptive-planning`
+Command:
+- `node scripts/sync-contracts.mjs sync d9302f0860fa1a4e33c1c611f2b448bec167e51f`
+- `npm run contracts:verify`
+Result:
+- Failed before vendoring because GitHub API returned `HTTP 404` for private upstream commits.
+- Existing `contracts:verify` also failed with `HTTP 404` against the previously pinned commit, confirming this is token/env access rather than an A7 content mismatch.
+- Node additionally printed `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file src\win\async.c, line 76` after the failed fetch.
+Next:
+- Set `GITHUB_TOKEN` from `gh auth token` for this process and rerun the same sync/verify commands.
+
+## 2026-09-21 - A7 Companion repin verified
+
+Repo: Companion
+Branch: `codex/a7-overdue-adaptive-planning`
+Upstream pin: d9302f0860fa1a4e33c1c611f2b448bec167e51f
+Changed:
+- `contracts/UPSTREAM.lock.json`
+- `contracts/quartzo/contract_manifest.json`
+- `contracts/quartzo/QUARTZO_OBSIDIAN_COMPANION_CONTRACT.md`
+- `contracts/quartzo/daily_schedule/vectors.json`
+- `contracts/quartzo/adaptive_planning/vectors.json`
+- `contracts/quartzo/overdue_projection/vectors.json`
+Contract versions after repin:
+- `dailyScheduleContractVersion = 1.1.0`
+- `overdueProjectionContractVersion = 1.0.0`
+- `adaptivePlanningContractVersion = 1.0.0`
+Commands:
+- `$env:GITHUB_TOKEN = gh auth token; node scripts/sync-contracts.mjs sync d9302f0860fa1a4e33c1c611f2b448bec167e51f`
+- `npm run contracts:verify`
+Result:
+- Sync: `PASS: vendored 22 files from olalaurao/aplicativo@d9302f0860fa1a4e33c1c611f2b448bec167e51f`.
+- Verify: `PASS: 22 contracts verified byte-for-byte against olalaurao/aplicativo@d9302f0860fa1a4e33c1c611f2b448bec167e51f`.
+Next:
+- Inspect existing owners before editing: Daily Schedule, SharedPlanningStateRepository, Adaptive projection, Home, Journal and architecture gate.
+
+## 2026-09-21 - A7 Companion downstream implementation first pass
+
+Repo: Companion
+Branch: `codex/a7-overdue-adaptive-planning`
+Changed:
+- `src/core/daily_schedule/engine.ts`
+- `src/core/adaptive_planning.ts`
+- `src/core/overdue_projection.ts`
+- `src/vault/planning-state.ts`
+- `src/ui/planner/adaptive-projection.ts`
+- `src/ui/planner/view.ts`
+- `src/ui/home/home-projection.ts`
+- `src/ui/home/view.ts`
+- `src/ui/journal/journal-projection.ts`
+- `src/ui/shell/view.ts`
+- `src/ui/types.ts`
+- `src/main.ts`
+- `scripts/architecture-check.mjs`
+- focused tests for Daily Schedule, Overdue, Adaptive, Home and Journal
+Rules/bugs treated:
+- Daily Schedule no longer carries an overdue Reminder into today's normal date snapshot.
+- Overdue is a separate pure core projection driven only by real deadlines/due times.
+- Home and Journal consume the same Overdue projection; they do not mix it into `today`.
+- `SharedPlanningStateRepository` remains the single owner of `sessions/shared_planning_state_v1.md`, now loading DailyPlanningState as well as A6/A3 occurrence time overrides.
+- Adaptive consumes exact essential/parked occurrence IDs from DailyPlanningState.
+- Completed essentials drop from the visible Essentials projection.
+- Parked occurrence IDs are filtered out of visible Adaptive buckets.
+- `capacity_mode` is surfaced; numeric capacity remains `null` / unavailable and is not computed locally.
+- Fixed existing date-only parsing drift in person contact Daily Schedule vector by using `parseLocalIsoDate`.
+Tests run:
+- `npx vitest run tests/contracts/daily_schedule.test.ts tests/contracts/overdue_projection.test.ts tests/core/adaptive-planning-state.test.ts tests/ui/planner-adaptive-projection.test.ts tests/ui/home-projection.test.ts tests/ui/journal-projection.test.ts`
+- `npm run typecheck`
+- `npm run architecture:check`
+Results:
+- Focused A7 tests: green (`54` tests passed).
+- Typecheck: green.
+- Architecture gate: green.
+Next:
+- Run broader Companion contract/full test/lint/build gates.
+
+## 2026-09-21 - A7 Companion local gates green
+
+Repo: Companion
+Branch: `codex/a7-overdue-adaptive-planning`
+Upstream pin: d9302f0860fa1a4e33c1c611f2b448bec167e51f
+Gates run:
+- `npm ci --audit=false`
+- `$env:GITHUB_TOKEN = gh auth token; npm run contracts:verify`
+- `npm run test:contracts`
+- `npm test`
+- `npm run lint`
+- `npm run test:sync`
+- `npm run typecheck`
+- `npm run architecture:check`
+- `npm run build`
+- `npm run release:validate`
+- `npm run smoke:clean-artifact`
+- `npm run release:package`
+- `npm run audit:prod`
+Results:
+- Contract verify: green (`22` contracts verified byte-for-byte).
+- Contract suite: green (`252` tests passed).
+- Full test suite: green on rerun (`581` tests passed). First full run had one unrelated `tests/sync/regression.test.ts` timeout in `GoogleDriveAdapter exposes withRetry via unknown cast`; the isolated rerun passed in `102ms`, and the full rerun passed cleanly.
+- Lint: green.
+- Sync suite: green (`223` tests passed).
+- Typecheck: green, including after `npm ci`.
+- Architecture gate: green.
+- Build/release validate/smoke/package: green; release artifact staged at `.release-artifact`.
+- Production audit: green, `0` vulnerabilities.
+Notes:
+- `COMPANION_V1_CODEX_HANDOFF.md` remains untracked and should not be committed.
+- `.release-artifact` is generated output and remains outside the tracked diff.
+Next:
+- Stage A7-C source/contracts/tests/progress only.
+- Commit, push, open Companion PR.
+
+## 2026-09-21 - A7 Companion commit created
+
+Repo: Companion
+Branch: `codex/a7-overdue-adaptive-planning`
+Commit: `Port A7 overdue adaptive planning` on branch `codex/a7-overdue-adaptive-planning`
+Committed:
+- Upstream repin to `d9302f0860fa1a4e33c1c611f2b448bec167e51f`.
+- A7 Daily Schedule, Overdue and Adaptive downstream implementation.
+- A7 contract/vector tests and architecture gate updates.
+- `docs/v1/CODEX_V1_PROGRESS.md`.
+Not committed:
+- `COMPANION_V1_CODEX_HANDOFF.md` remains untracked by design.
+Next:
+- Amend this progress entry into the commit.
+- Push branch and open Companion A7 PR.
+
+## 2026-09-21 - A7 Companion PR opened
+
+Repo: Companion
+Branch: `codex/a7-overdue-adaptive-planning`
+Head: 47a1750281271f4573a29114d9a5cb68251962dd
+PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/49
+Status:
+- PR #49 open, not draft.
+- Merge state: `UNSTABLE` while checks run.
+- CI run `35674638638` started on head `47a1750281271f4573a29114d9a5cb68251962dd`.
+- `test-linux`: in progress.
+- `test-windows`: in progress.
+Next:
+- Wait for CI run `35674638638`.
+- If any job fails, inspect the concrete failure and fix only that.
+- If CI passes, merge PR #49, then update tracker and issue #45.
+
+## 2026-09-21 - A7 Companion PR CI green
+
+Repo: Companion
+PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/49
+Head checked: 47a1750281271f4573a29114d9a5cb68251962dd
+CI run: 35674638638
+Result:
+- `test-linux`: success.
+- `test-windows`: success.
+Linux job covered:
+- `npm ci --audit=false`
+- production audit
+- contract verify
+- typecheck
+- lint
+- `npm test`
+- `npm run test:contracts`
+- `npm run test:sync`
+- architecture
+- build
+- release validate
+- clean artifact smoke
+- package
+Windows job covered:
+- `npm ci --audit=false`
+- production audit
+- typecheck
+- sync tests
+- build
+- clean artifact smoke
+- package
+Next:
+- Push this progress checkpoint.
+- Wait for the progress-only CI rerun.
+- Merge PR #49 if the rerun remains green.

@@ -6,6 +6,7 @@ import type { GoogleCalendarProjection } from '../integrations/google/calendar';
 import type { ReminderMode } from '../core/reminders';
 import type { NormalizedItem } from '../core/daily_schedule/types';
 import type { OccurrenceTimeOverride } from '../core/occurrence_reschedule';
+import type { DailyPlanningState } from '../core/adaptive_planning';
 import type { SafeObjectMutation } from '../core/object-mutation';
 import type { ManualExecutionRunCapability } from '../core/manual-execution';
 import type { FocusRuntimeUiController, FocusRuntimeViewState } from './focus/view';
@@ -67,6 +68,7 @@ export interface ViewContext {
     setReminderDelivery(mode: ReminderMode): Promise<void>;
     getOccurrenceResponses(): Record<string, OccurrenceResponseState>;
     getOccurrenceOverrides(): Record<string, OccurrenceTimeOverride>;
+    getDailyPlanningState(date: string): DailyPlanningState;
     getSharedSettingsState(): 'loading' | 'ready' | 'missing';
     performOccurrenceAction(
       item: NormalizedItem,

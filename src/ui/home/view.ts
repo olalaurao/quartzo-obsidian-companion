@@ -1,5 +1,6 @@
 import type { App } from 'obsidian';
 import type { NormalizedItem, NormalizedSchedule } from '../../core/daily_schedule/types';
+import type { OverdueObjectProjection } from '../../core/overdue_projection';
 import { parseLocalIsoDate } from '../../core/local-date';
 import type { QuartzoSharedSettings } from '../../core/shared-settings';
 import type {
@@ -19,6 +20,7 @@ export interface HomeViewOptions {
   app: App;
   selectedDate: string;
   schedule: NormalizedSchedule;
+  overdue?: OverdueObjectProjection[];
   index: VaultIndex | null;
   googleEvents?: GoogleCalendarProjection[];
   sharedSettings?: QuartzoSharedSettings | null;
@@ -34,6 +36,7 @@ export interface HomeViewOptions {
   startManualExecution?(item: NormalizedItem): Promise<void>;
   canOpenItem?(item: NormalizedItem): boolean;
   onOpenItem?(item: NormalizedItem): void;
+  onOpenOverdue?(projection: OverdueObjectProjection): void;
   onQuickAdd(type: HomeQuickAddType): void;
 }
 
@@ -89,7 +92,7 @@ function formatHomeDate(value: string): string {
 
 export function renderHomeView(container: HTMLElement, options: HomeViewOptions): void {
   const now = options.now ?? new Date();
-  const projection = projectHomeSchedule(options.schedule, options.selectedDate, now);
+  const projection = projectHomeSchedule(options.schedule, options.selectedDate, now, options.overdue ?? []);
 
   const header = document.createElement('div');
   header.className = 'quartzo-home-heading';
@@ -144,6 +147,26 @@ export function renderHomeView(container: HTMLElement, options: HomeViewOptions)
     renderScheduleList(progress, projection.today, listOptions);
   }
   container.appendChild(progress);
+
+  const overdue = document.createElement('section');
+  overdue.className = 'quartzo-home-section';
+  sectionHeading(overdue, 'Overdue');
+  if (projection.overdue.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'quartzo-empty-state';
+    empty.textContent = 'Nothing overdue.';
+    overdue.appendChild(empty);
+  } else {
+    for (const item of projection.overdue) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'quartzo-home-overdue-item';
+      button.textContent = String(item.object.frontmatter.title ?? item.object.id);
+      button.addEventListener('click', () => options.onOpenOverdue?.(item));
+      overdue.appendChild(button);
+    }
+  }
+  container.appendChild(overdue);
 
   const quickActions = document.createElement('section');
   quickActions.className = 'quartzo-home-section';

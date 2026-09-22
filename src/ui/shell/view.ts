@@ -12,6 +12,7 @@ import { renderPlannerSurface, type PlannerDayLens } from '../planner/view';
 import { monthGridDates, weekDates } from '../planner/calendar-projection';
 import { renderScheduleList as renderDailyScheduleList } from '../daily/schedule-list';
 import { projectJournalDay } from '../journal/journal-projection';
+import { projectOverdueObjects } from '../../core/overdue_projection';
 import {
   SharedSettingsRepository,
 } from '../../vault/shared-settings';
@@ -318,6 +319,10 @@ export class QuartzoView extends ItemView {
     });
   }
 
+  private buildOverdue(now: Date = new Date()) {
+    return projectOverdueObjects(this.getIndex()?.objects.values() ?? [], now);
+  }
+
   private titleForSource(sourceId: string): string {
     const object = this.getIndex()?.objects.get(sourceId);
     return String(object?.frontmatter.title ?? object?.type ?? sourceId);
@@ -376,6 +381,7 @@ export class QuartzoView extends ItemView {
 
   private async renderHome(container: HTMLElement): Promise<void> {
     const googleEvents = await this.context.plugin.listGoogleCalendarEvents(this.selectedDate, 1);
+    const now = new Date();
     const schedule = this.buildSchedule(this.selectedDate, googleEvents);
     const sharedSettings = await this.sharedSettingsRepository.load();
 
@@ -383,12 +389,15 @@ export class QuartzoView extends ItemView {
       app: this.context.app,
       selectedDate: this.selectedDate,
       schedule,
+      overdue: this.selectedDate === isoDate(now) ? this.buildOverdue(now) : [],
       index: this.getIndex(),
       googleEvents,
       sharedSettings,
+      now,
       titleForItem: item => this.titleForScheduleItem(item, googleEvents),
       canOpenItem: item => this.canOpenScheduleItem(item, googleEvents),
       onOpenItem: item => this.openScheduleItem(item, googleEvents),
+      onOpenOverdue: projection => this.openObjectDetail(projection.object),
       performOccurrenceAction: (item, action, options) =>
         this.context.plugin.performOccurrenceAction(item, action, options),
       performOccurrenceReschedule: (item, start, end) =>
@@ -487,6 +496,7 @@ export class QuartzoView extends ItemView {
       now: new Date(),
       schedule,
       schedulesByDate,
+      dailyPlanningState: this.context.plugin.getDailyPlanningState(this.selectedDate),
       sharedSettings: settings,
       titleForItem: item => this.titleForScheduleItem(item, googleEvents),
       canOpenItem: item => this.canOpenScheduleItem(item, googleEvents),
@@ -564,7 +574,12 @@ export class QuartzoView extends ItemView {
     quickActions.appendChild(addRecord);
     container.appendChild(quickActions);
 
-    const projection = projectJournalDay(this.getIndex(), this.selectedDate);
+    const now = new Date();
+    const projection = projectJournalDay(
+      this.getIndex(),
+      this.selectedDate,
+      this.selectedDate === isoDate(now) ? this.buildOverdue(now) : [],
+    );
 
     const dailySection = document.createElement('section');
     const dailyHeading = document.createElement('h3');
@@ -643,6 +658,26 @@ export class QuartzoView extends ItemView {
       moods.appendChild(summary);
       container.appendChild(moods);
     }
+
+    const overdue = document.createElement('section');
+    const overdueHeading = document.createElement('h3');
+    overdueHeading.textContent = 'Overdue';
+    overdue.appendChild(overdueHeading);
+    if (projection.overdue.length === 0) {
+      const empty = document.createElement('p');
+      empty.textContent = 'Nothing overdue for today.';
+      overdue.appendChild(empty);
+    } else {
+      for (const item of projection.overdue) {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'quartzo-journal-overdue-row';
+        row.textContent = String(item.object.frontmatter.title ?? item.object.id);
+        row.addEventListener('click', () => this.openObjectDetail(item.object));
+        overdue.appendChild(row);
+      }
+    }
+    container.appendChild(overdue);
 
     const timeline = document.createElement('section');
     const timelineHeading = document.createElement('h3');

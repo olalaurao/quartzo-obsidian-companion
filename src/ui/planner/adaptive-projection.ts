@@ -1,4 +1,5 @@
 import type { NormalizedItem, NormalizedSchedule } from '../../core/daily_schedule/types';
+import { defaultDailyPlanningState, type DailyPlanningState, type DayCapacityMode } from '../../core/adaptive_planning';
 import { localIsoDate } from '../../core/local-date';
 import { OccurrenceActionPolicy } from '../../core/occurrence_actions';
 
@@ -19,12 +20,12 @@ export interface AdaptivePlannerProjection {
   next: AdaptivePlannerItem[];
   later: AdaptivePlannerItem[];
   fellBehind: AdaptivePlannerItem[];
-  /**
-   * Companion does not yet receive the upstream DailyPlanningState shard.
-   * Keep this empty instead of inventing an Essentials source of truth.
-   */
   essentials: AdaptivePlannerItem[];
+  capacityMode: DayCapacityMode;
   capacity: null;
+  essentialOccurrenceIds: string[];
+  parkedOccurrenceIds: string[];
+  numericCapacityShared: false;
 }
 
 const NEXT_COUNT = 3;
@@ -102,19 +103,22 @@ function nextScore(entry: AdaptivePlannerItem): number {
  * by Timeline/Home/Day Dial. It ports the upstream Now/Next/Later/Fell Behind
  * ordering that can be proven from Companion inputs.
  *
- * DailyPlanningState (Essentials/Capacity/Parked/Overrides) is intentionally
- * not reconstructed here. Until that canonical state is available in the
- * Companion contract those fields remain absent rather than guessed.
+ * DailyPlanningState is the sole source for Essentials/Parked/Capacity mode.
+ * Numeric capacity is not shared in V1, so it remains unavailable/null.
  */
 export function projectAdaptivePlanner(
   schedule: NormalizedSchedule,
   selectedDate: string,
   now: Date,
+  planningState: DailyPlanningState = defaultDailyPlanningState(selectedDate),
 ): AdaptivePlannerProjection {
+  const parkedIds = new Set(planningState.parkedOccurrenceIds);
   const resolved: AdaptivePlannerItem[] = [];
   for (const item of schedule.items) {
     const capabilities = OccurrenceActionPolicy.resolve(policyInput(item));
     if (capabilities.isEvidence) continue;
+    const occurrenceId = item.actionOccurrenceId ?? item.occurrenceId ?? item.id;
+    if (parkedIds.has(occurrenceId)) continue;
     resolved.push({ item, temporalState: temporalState(item, selectedDate, now) });
   }
 
@@ -153,13 +157,24 @@ export function projectAdaptivePlanner(
     .slice(0, NEXT_COUNT);
   const nextIds = new Set(next.map(entry => entry.item.id));
   const later = nextCandidates.filter(entry => !nextIds.has(entry.item.id));
+  const visible = [...nowItems, ...next, ...later, ...fellBehind];
+  const visibleByOccurrenceId = new Map(visible.map(entry => [
+    entry.item.actionOccurrenceId ?? entry.item.occurrenceId ?? entry.item.id,
+    entry,
+  ]));
 
   return {
     now: nowItems,
     next,
     later,
     fellBehind,
-    essentials: [],
+    essentials: planningState.essentialOccurrenceIds
+      .map(id => visibleByOccurrenceId.get(id))
+      .filter((entry): entry is AdaptivePlannerItem => entry != null),
+    capacityMode: planningState.capacityMode,
     capacity: null,
+    essentialOccurrenceIds: planningState.essentialOccurrenceIds,
+    parkedOccurrenceIds: planningState.parkedOccurrenceIds,
+    numericCapacityShared: false,
   };
 }
