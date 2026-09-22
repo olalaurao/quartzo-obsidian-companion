@@ -2,8 +2,10 @@
   "vaultInteropVersion": "1.0.0",
   "syncProtocolVersion": "1.0.0",
   "schedulerContractVersion": "1.0.0",
-  "dailyScheduleContractVersion": "1.0.0",
+  "dailyScheduleContractVersion": "1.1.0",
   "sharedSettingsContractVersion": "1.0.0",
   "systemRoutineExecutionContractVersion": "1.1.0",
-  "focusRuntimeContractVersion": "1.0.0"
+  "focusRuntimeContractVersion": "1.0.0",
+  "overdueProjectionContractVersion": "1.0.0",
+  "adaptivePlanningContractVersion": "1.0.0"
 }

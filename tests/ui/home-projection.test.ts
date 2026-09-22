@@ -89,4 +89,25 @@ describe('projectHomeSchedule', () => {
     expect(result.now).toEqual([]);
     expect(result.upNext).toEqual([]);
   });
+
+  it('keeps Overdue as a separate today projection outside Today', () => {
+    const overdue = [{
+      object: { id: 'deadline', type: 'task', path: 'tasks/deadline.md', frontmatter: { id: 'deadline', type: 'task', title: 'Deadline' }, body: '' },
+      decision: {
+        candidate: {
+          sourceId: 'deadline',
+          sourceType: 'task',
+          deadline: '2026-09-16',
+          deadlineMode: 'calendarDay' as const,
+          completed: false,
+          archived: false,
+        },
+        daysLate: 1,
+        severity: 'light' as const,
+      },
+    }];
+    const result = projectHomeSchedule(schedule, '2026-09-17', new Date(2026, 8, 17, 10, 30), overdue);
+    expect(result.today.map(entry => entry.id)).not.toContain('deadline');
+    expect(result.overdue.map(entry => entry.object.id)).toEqual(['deadline']);
+  });
 });

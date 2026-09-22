@@ -1152,10 +1152,18 @@ function checkCanonicalPlannerProjection() {
     return false;
   }
 
-  if (!adaptive.includes('essentials: []') ||
+  if (!adaptive.includes('planningState: DailyPlanningState') ||
+      !adaptive.includes('planningState.essentialOccurrenceIds') ||
+      !adaptive.includes('planningState.parkedOccurrenceIds') ||
+      !adaptive.includes('capacityMode: planningState.capacityMode') ||
       !adaptive.includes('capacity: null') ||
-      !adaptive.includes('DailyPlanningState')) {
-    console.error('FAIL: Planner Adaptive can invent Essentials/Capacity without canonical DailyPlanningState input');
+      !adaptive.includes('numericCapacityShared: false')) {
+    console.error('FAIL: Planner Adaptive does not consume canonical DailyPlanningState IDs/capacity mode with numeric capacity unavailable');
+    return false;
+  }
+
+  if (adaptive.includes('CompanionCapacityEngine') || adaptive.includes('capacitySummary')) {
+    console.error('FAIL: Planner Adaptive can invent numeric capacity locally');
     return false;
   }
 

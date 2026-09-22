@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { NormalizedItem, NormalizedSchedule } from '../../src/core/daily_schedule/types';
+import { defaultDailyPlanningState } from '../../src/core/adaptive_planning';
 import { projectAdaptivePlanner } from '../../src/ui/planner/adaptive-projection';
 
 function item(value: Pick<NormalizedItem, 'id' | 'sourceId' | 'date' | 'isTimed'> & Partial<NormalizedItem>): NormalizedItem {
@@ -66,7 +67,7 @@ describe('projectAdaptivePlanner', () => {
     expect(result.fellBehind).toEqual([]);
   });
 
-  it('excludes completed/skipped items and does not invent Essentials or Capacity', () => {
+  it('excludes completed/skipped items and exposes closed planning defaults without numeric capacity', () => {
     const result = projectAdaptivePlanner(schedule([
       item({ id: 'done', sourceId: 'done', date: '2026-09-19', isTimed: false, isCompleted: true, outcome: 'done' }),
       item({ id: 'skip', sourceId: 'skip', date: '2026-09-19', isTimed: false, isSkipped: true, outcome: 'skipped' }),
@@ -76,6 +77,50 @@ describe('projectAdaptivePlanner', () => {
     expect(result.later).toEqual([]);
     expect(result.fellBehind).toEqual([]);
     expect(result.essentials).toEqual([]);
+    expect(result.capacityMode).toBe('auto');
     expect(result.capacity).toBeNull();
+    expect(result.numericCapacityShared).toBe(false);
+  });
+
+  it('uses exact DailyPlanningState IDs for Essentials and Parked filtering', () => {
+    const state = {
+      ...defaultDailyPlanningState('2026-09-19'),
+      capacityMode: 'low' as const,
+      essentialOccurrenceIds: ['task:essential@2026-09-19'],
+      parkedOccurrenceIds: ['task:parked@2026-09-19'],
+    };
+    const result = projectAdaptivePlanner(schedule([
+      item({ id: 'essential', sourceId: 'essential', occurrenceId: 'task:essential@2026-09-19', actionOccurrenceId: 'task:essential@2026-09-19', date: '2026-09-19', start: '11:00', end: '12:00', isTimed: true }),
+      item({ id: 'parked', sourceId: 'parked', occurrenceId: 'task:parked@2026-09-19', actionOccurrenceId: 'task:parked@2026-09-19', date: '2026-09-19', start: '12:00', end: '13:00', isTimed: true }),
+      item({ id: 'normal', sourceId: 'normal', occurrenceId: 'task:normal@2026-09-19', actionOccurrenceId: 'task:normal@2026-09-19', date: '2026-09-19', start: '13:00', end: '14:00', isTimed: true }),
+    ]), '2026-09-19', now, state);
+
+    const visible = [...result.now, ...result.next, ...result.later, ...result.fellBehind]
+      .map(entry => entry.item.id);
+    expect(visible).not.toContain('parked');
+    expect(result.essentials.map(entry => entry.item.id)).toEqual(['essential']);
+    expect(result.capacityMode).toBe('low');
+    expect(result.capacity).toBeNull();
+  });
+
+  it('drops completed essential IDs from the visible Essentials projection', () => {
+    const result = projectAdaptivePlanner(schedule([
+      item({
+        id: 'done',
+        sourceId: 'done',
+        occurrenceId: 'task:done@2026-09-19',
+        actionOccurrenceId: 'task:done@2026-09-19',
+        date: '2026-09-19',
+        isTimed: false,
+        isCompleted: true,
+        outcome: 'done',
+      }),
+    ]), '2026-09-19', now, {
+      ...defaultDailyPlanningState('2026-09-19'),
+      essentialOccurrenceIds: ['task:done@2026-09-19'],
+    });
+
+    expect(result.essentialOccurrenceIds).toEqual(['task:done@2026-09-19']);
+    expect(result.essentials).toEqual([]);
   });
 });

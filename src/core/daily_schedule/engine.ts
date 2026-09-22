@@ -1,5 +1,5 @@
 import { DailyScheduleInput, NormalizedSchedule, NormalizedItem } from './types';
-import { localIsoDate } from '../local-date';
+import { localIsoDate, parseLocalIsoDate } from '../local-date';
 import { occurrenceResponseIdForDailyItem } from '../occurrence_actions';
 import { isScheduledSystemOccurrenceCompleted } from '../manual-execution';
 
@@ -8,7 +8,7 @@ type RawNormalizedItem = Omit<NormalizedItem, PresentationField>;
 
 export class DailyScheduleEngine {
   static normalize(input: DailyScheduleInput): NormalizedSchedule {
-    const { date, today, objects = [], googleEvents = [] } = input;
+    const { date, objects = [], googleEvents = [] } = input;
     const items: RawNormalizedItem[] = [];
 
     // Process regular objects
@@ -23,7 +23,7 @@ export class DailyScheduleEngine {
 
       switch (type) {
         case 'reminder':
-          this.processReminder(obj, date, today, items);
+          this.processReminder(obj, date, items);
           break;
         case 'habit':
           this.processHabit(obj, date, items);
@@ -91,21 +91,14 @@ export class DailyScheduleEngine {
     };
   }
 
-  private static processReminder(obj: Record<string, unknown>, date: string, today: string | undefined, items: RawNormalizedItem[]): void {
+  private static processReminder(obj: Record<string, unknown>, date: string, items: RawNormalizedItem[]): void {
     const scheduledDate = obj.scheduled_date as string;
     const time = obj.time as string;
     const reminderId = obj.reminder_id as string;
     const id = obj.id as string;
 
-    // Check if reminder is on the date
     if (scheduledDate !== date) {
-      // Check overdue projection for today
-      if (today && scheduledDate < today && date === today) {
-        // Overdue reminders should show on today
-        // Continue processing
-      } else {
-        return;
-      }
+      return;
     }
 
     if (time) {
@@ -379,7 +372,7 @@ export class DailyScheduleEngine {
     }
 
     // Calculate next contact date
-    const lastContactDate = new Date(lastContact);
+    const lastContactDate = parseLocalIsoDate(lastContact.slice(0, 10));
     const nextContactDate = new Date(lastContactDate);
     nextContactDate.setDate(nextContactDate.getDate() + frequencyDays);
 

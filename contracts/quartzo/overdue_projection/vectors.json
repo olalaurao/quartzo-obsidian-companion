@@ -1,0 +1,144 @@
+[
+  {
+    "id": "planned_start_without_deadline_is_not_overdue",
+    "input": {
+      "now": "2026-09-06T10:00:00",
+      "candidate": {
+        "source_id": "task-planned",
+        "source_type": "task",
+        "deadline": null,
+        "deadline_mode": "calendarDay",
+        "completed": false,
+        "archived": false
+      }
+    },
+    "expected": {
+      "is_overdue": false
+    }
+  },
+  {
+    "id": "real_task_deadline_before_today_is_overdue",
+    "input": {
+      "now": "2026-09-06T10:00:00",
+      "candidate": {
+        "source_id": "task-deadline",
+        "source_type": "task",
+        "deadline": "2026-09-05T00:00:00",
+        "deadline_mode": "calendarDay",
+        "completed": false,
+        "archived": false
+      }
+    },
+    "expected": {
+      "is_overdue": true,
+      "days_late": 1,
+      "severity": "light"
+    }
+  },
+  {
+    "id": "calendar_deadline_today_is_not_overdue",
+    "input": {
+      "now": "2026-09-06T23:00:00",
+      "candidate": {
+        "source_id": "task-today",
+        "source_type": "task",
+        "deadline": "2026-09-06T00:00:00",
+        "deadline_mode": "calendarDay",
+        "completed": false,
+        "archived": false
+      }
+    },
+    "expected": {
+      "is_overdue": false
+    }
+  },
+  {
+    "id": "reminder_past_due_time_today_is_overdue",
+    "input": {
+      "now": "2026-09-06T10:00:00",
+      "candidate": {
+        "source_id": "reminder-past",
+        "source_type": "reminder",
+        "deadline": "2026-09-06T09:30:00",
+        "deadline_mode": "instant",
+        "completed": false,
+        "archived": false
+      }
+    },
+    "expected": {
+      "is_overdue": true,
+      "days_late": 0,
+      "severity": "none"
+    }
+  },
+  {
+    "id": "reminder_future_due_time_today_is_not_overdue",
+    "input": {
+      "now": "2026-09-06T10:00:00",
+      "candidate": {
+        "source_id": "reminder-future",
+        "source_type": "reminder",
+        "deadline": "2026-09-06T10:30:00",
+        "deadline_mode": "instant",
+        "completed": false,
+        "archived": false
+      }
+    },
+    "expected": {
+      "is_overdue": false
+    }
+  },
+  {
+    "id": "completed_deadline_is_not_overdue",
+    "input": {
+      "now": "2026-09-10T10:00:00",
+      "candidate": {
+        "source_id": "task-done",
+        "source_type": "task",
+        "deadline": "2026-09-01T00:00:00",
+        "deadline_mode": "calendarDay",
+        "completed": true,
+        "archived": false
+      }
+    },
+    "expected": {
+      "is_overdue": false
+    }
+  },
+  {
+    "id": "archived_deadline_is_not_overdue",
+    "input": {
+      "now": "2026-09-10T10:00:00",
+      "candidate": {
+        "source_id": "task-archived",
+        "source_type": "task",
+        "deadline": "2026-09-01T00:00:00",
+        "deadline_mode": "calendarDay",
+        "completed": false,
+        "archived": true
+      }
+    },
+    "expected": {
+      "is_overdue": false
+    }
+  },
+  {
+    "id": "old_deadline_escalates_severity",
+    "input": {
+      "now": "2026-09-10T10:00:00",
+      "candidate": {
+        "source_id": "goal-old",
+        "source_type": "goal",
+        "deadline": "2026-09-01T00:00:00",
+        "deadline_mode": "calendarDay",
+        "completed": false,
+        "archived": false
+      }
+    },
+    "expected": {
+      "is_overdue": true,
+      "days_late": 9,
+      "severity": "severe"
+    }
+  }
+]

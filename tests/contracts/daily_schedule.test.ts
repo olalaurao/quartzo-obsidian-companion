@@ -44,6 +44,39 @@ describe('Daily Schedule Contract Vectors', () => {
       }
     });
   }
+  it('does not carry an overdue Reminder into today as a normal Daily Schedule item', () => {
+    const result = DailyScheduleEngine.normalize({
+      date: '2026-09-06',
+      today: '2026-09-06',
+      objects: [{
+        type: 'reminder',
+        id: 'reminder-overdue',
+        title: 'Call clinic',
+        scheduled_date: '2026-09-05',
+        time: '09:30',
+        reminder_id: 'reminder-overdue-primary',
+      }],
+    });
+
+    expect(result.items).toEqual([]);
+  });
+
+  it('keeps same-day Reminder occurrences on the Daily Schedule', () => {
+    const result = DailyScheduleEngine.normalize({
+      date: '2026-09-06',
+      today: '2026-09-06',
+      objects: [{
+        type: 'reminder',
+        id: 'reminder-today',
+        title: 'Call clinic',
+        scheduled_date: '2026-09-06',
+        time: '09:30',
+        reminder_id: 'reminder-today-primary',
+      }],
+    });
+
+    expect(result.items.map(item => item.id)).toEqual(['reminder:reminder-today']);
+  });
   it('manual same-day System execution and legacy Done do not close scheduled occurrence', () => {
     const occurrenceId = 'system:system-morning@2026-09-21';
     const result = DailyScheduleEngine.normalize({
