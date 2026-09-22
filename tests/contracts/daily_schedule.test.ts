@@ -77,6 +77,35 @@ describe('Daily Schedule Contract Vectors', () => {
 
     expect(result.items.map(item => item.id)).toEqual(['reminder:reminder-today']);
   });
+
+  it('projects app-created one-off Tasks that carry their scheduled date in end_date', () => {
+    const result = DailyScheduleEngine.normalize({
+      date: '2026-09-23',
+      today: '2026-09-22',
+      objects: [{
+        type: 'task',
+        id: 'task-end-date',
+        title: 'Prepare campaign',
+        end_date: '2026-09-23T00:00:00.000',
+        all_day: false,
+        scheduled_time: '10:00',
+        duration: 15,
+      }],
+    });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({
+      id: 'task:task-end-date',
+      sourceId: 'task-end-date',
+      sourceType: 'task',
+      start: '10:00',
+      end: '10:15',
+      isTimed: true,
+      isAllDay: false,
+      outcome: 'pending',
+    });
+  });
+
   it('manual same-day System execution and legacy Done do not close scheduled occurrence', () => {
     const occurrenceId = 'system:system-morning@2026-09-21';
     const result = DailyScheduleEngine.normalize({

@@ -152,7 +152,7 @@ export class DailyScheduleEngine {
     const scheduler = obj.scheduler && typeof obj.scheduler === 'object' && !Array.isArray(obj.scheduler)
       ? obj.scheduler as Record<string, unknown>
       : undefined;
-    const rawStartDate = String(obj.start_date ?? scheduler?.start_date ?? '');
+    const rawStartDate = String(obj.start_date ?? scheduler?.start_date ?? obj.end_date ?? '');
     const startDate = rawStartDate.includes('T') ? rawStartDate.split('T')[0] ?? '' : rawStartDate;
     const time = String(obj.scheduled_time ?? obj.time ?? '');
     const duration = Number(obj.duration ?? 0);
@@ -170,7 +170,8 @@ export class DailyScheduleEngine {
         date,
         start: time,
         end: this.calculateEndTime(time, duration > 0 ? duration : 60),
-        isTimed: true
+        isTimed: true,
+        isAllDay: false
       });
     } else {
       items.push({

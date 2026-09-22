@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-22T00:17:00-03:00
+Last update: 2026-09-22T10:51:37-03:00
 Current milestone: D1 E2E app <-> Drive <-> Obsidian
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
-Current branch: main
-Current HEAD: b0210d981e29857a47669814094687b41fe2beee
+Current branch: codex/d1-task-end-date-schedule
+Current HEAD: eca714e9b6a58db153db5045b0810e146569f7e3 plus local D1 fix
 Upstream main HEAD: e0bfa98611138512f916be9cf10f5395b78c10ed
-Companion main HEAD: b0210d981e29857a47669814094687b41fe2beee
+Companion main HEAD: eca714e9b6a58db153db5045b0810e146569f7e3
 Open PR: none
-CI status: PR #57 final run `35682290980` green on Linux, Windows and macOS for head `8c7802c0515413d11cd1c696b2cac37c611e888a`; merged as `cd4acf3926b880f62b8da1c15f96e3fef356ae1c`.
-Blocker: C4 closed; D1 E2E app <-> Drive <-> Obsidian remains.
-Exact next action: start D1 E2E proof in a real Quartzo app + Google Drive + Obsidian Companion environment unless redirected.
+CI status: Local D1 fix gates green: focused Daily Schedule/Home/Day Dial/Reminder tests, typecheck, architecture, build, release validation, clean artifact smoke, full `npm test` (600), `npm run test:contracts` (260). No remote PR yet.
+Blocker: D1 Android -> Drive -> local vault is proven; Obsidian Companion bundle updated and vault reopened, but Codex cannot visually click the Obsidian Done button from this session. Need user/UI confirmation for Home/Planner/Day Dial and Done click, or another accessible control surface.
+Exact next action: verify Companion UI in Obsidian shows `Prepare campaign` on 2026-09-23 at 10:00 and Day Dial; click Done in Companion, then sync/adopt as needed on Android and verify the Task becomes completed with no duplicate/conflict.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -1407,3 +1407,71 @@ Next:
 - Push this closeout docs commit to main.
 - Add issue #45 progress comment for C4.
 - Start D1 from updated main unless redirected.
+
+## 2026-09-22 - D1 Android -> Drive -> Companion projection checkpoint
+
+Repo: Companion (`C:\Users\lauri\Documents\companion`)
+Branch: `codex/d1-task-end-date-schedule`
+Base HEAD: `eca714e9b6a58db153db5045b0810e146569f7e3`
+Upstream app HEAD: `e0bfa98611138512f916be9cf10f5395b78c10ed`
+
+Real D1 object created on Android:
+- Title: `Prepare campaign`
+- ID: `945edb91-f00b-469e-beca-586e6dd968d3`
+- Android local path: `/storage/emulated/0/Documents/garden/tasks/prepare-campaign.md`
+- Pulled evidence: `C:\Users\lauri\Documents\companion\prepare-campaign.android.md`
+- Schedule: `end_date: "2026-09-23T00:00:00.000"`, `all_day: false`, `scheduled_time: "10:00"`, `duration: 15`
+- Reminders: auto popup at `2026-09-23T10:00:00.000`; manual popup `days_before: 0`, `time_of_day: "09:45"`
+
+Android sync finding:
+- Normal manual sync refused automatic publish with log: `Adoption required for unpaired local file tasks/prepare-campaign.md; refusing automatic publish.`
+- Used Quartzo Settings -> Sync & Backup -> `Adopt Local-Only Files`.
+- Because an existing full sync was processing many pre-existing `social/...` conflicts, Auto-Sync was temporarily turned off and the app was restarted so adoption could run as a single explicit sync.
+- Adoption log confirmed: `[SyncManager] Adopted local-only file tasks/prepare-campaign.md.`
+- Android `sync_actions` no longer contains object `945edb91-f00b-469e-beca-586e6dd968d3`.
+- Android `file_sync_state` contains `tasks/prepare-campaign.md` with matching local/remote/base hash `c1e9dedf7a2d532ff9c9f171f187bc9358824ba493452b7614e39d7c1a90c022` and remote file id `1xo1KH9l34H2faX5OYaBzyb-K8WTpxFGt`.
+
+Drive/local vault evidence:
+- File arrived at `C:\Users\lauri\My Drive (obslauri@gmail.com)\os\tasks\prepare-campaign.md`.
+- `rg` found the D1 title/id in that vault file.
+
+Companion bug discovered and fixed:
+- The real Quartzo Android Task used `end_date` for the scheduled date.
+- Companion `DailyScheduleEngine.processTask()` only consumed `start_date` / `scheduler.start_date`, so the Task would not appear in Home/Planner/Day Dial despite being present in the vault.
+- Fixed Daily Schedule to fall back to `end_date` for one-off app-created Tasks and to explicitly set timed Tasks as `isAllDay: false`.
+- Added regression for app-created Tasks with `end_date + scheduled_time`.
+- Added Reminder regression for app-created Task reminders with `end_date + scheduled_time + days_before/time_of_day`.
+
+Changed:
+- `src/core/daily_schedule/engine.ts`
+- `tests/contracts/daily_schedule.test.ts`
+- `tests/core/reminder-projection.test.ts`
+- `docs/v1/CODEX_V1_PROGRESS.md`
+
+Companion install/update:
+- Built with `QUARTZO_GOOGLE_DESKTOP_CLIENT_ID=986854614882-2bhoeca0ph278pibfm3nmhqjp6nue6km.apps.googleusercontent.com`.
+- Copied release artifact into `C:\Users\lauri\My Drive (obslauri@gmail.com)\os\.obsidian\plugins\quartzo-obsidian-companion`.
+- Preserved `data.json` and `quartzo-sync-state.json`.
+- Restarted Obsidian and reopened vault `os`; workspace has `quartzo-view`.
+
+Tests run:
+- `npx vitest run tests/contracts/daily_schedule.test.ts tests/core/reminder-projection.test.ts tests/ui/day-dial-projection.test.ts tests/ui/home-projection.test.ts` - green, 48 tests.
+- `npm run typecheck` - green.
+- `npm run architecture:check` - green.
+- `npm run build` with production Client ID - green.
+- `npm run release:validate` - green.
+- `npm run smoke:clean-artifact` - green.
+- `npm test` - green, 600 tests.
+- `npm run test:contracts` - green, 260 tests.
+
+Still open:
+- Android Auto-Sync was turned off during isolation and should be restored after the D1 sync/conflict state is under control.
+- Android sync has 45 pre-existing `sync_conflicts` from older vault files, unrelated to `Prepare campaign`.
+- Companion `data.json` still has `isPaired: false`; local vault projections work, but Drive sync from Companion remains unpaired/manual until pairing is confirmed.
+- Codex cannot visually inspect/click the Obsidian DOM in this session. Need user/UI confirmation for Home/Planner/Day Dial and Done click, or another accessible control surface.
+
+Exact next action:
+1. In Obsidian Companion, confirm `Prepare campaign` appears on 2026-09-23 in Home/Planner at `10:00` and Day Dial as a marker.
+2. Click `Done` for that occurrence in Companion.
+3. Re-enable Android Auto-Sync or run explicit sync after the Done mutation.
+4. Verify Android shows the Task completed, Planner/Day Dial agree, no duplicate `Prepare campaign`, and no new conflict for `tasks/prepare-campaign.md`.
