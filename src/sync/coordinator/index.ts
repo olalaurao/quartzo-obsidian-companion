@@ -62,8 +62,24 @@ export interface SyncStatusSnapshot {
   status: SyncCenterStatus;
   lastSuccessfulSyncAt: string | null;
   pendingLocalChanges: number;
+  pendingDiagnostics: SyncPendingDiagnostic[];
   conflictCount: number;
   lastError: string | null;
+}
+
+export type SyncPendingDiagnosticReason =
+  | 'local_create'
+  | 'local_modify'
+  | 'pending_delete'
+  | 'pending_rename'
+  | 'adoption_required'
+  | 'conflict'
+  | 'quarantined_duplicate_identity';
+
+export interface SyncPendingDiagnostic {
+  path: string;
+  reason: SyncPendingDiagnosticReason;
+  relatedPath?: string;
 }
 
 export type SyncProgressPhase =
@@ -1541,7 +1557,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
   }
 
   async getSyncStatusSnapshot(): Promise<SyncStatusSnapshot> {
-    const pendingLocalChanges = await this.countPendingLocalChanges();
+    const pendingDiagnostics = await this.buildPendingDiagnostics();
     const conflictCount = this.conflicts.size;
     const status: SyncCenterStatus = this.syncMutex || this.pairingApplyInProgress
       ? 'syncing'
@@ -1549,35 +1565,74 @@ export class DriveSyncCoordinator implements ConflictRegistry {
         ? 'conflict'
         : this.lastError
           ? 'error'
-          : pendingLocalChanges > 0
+          : pendingDiagnostics.length > 0
             ? 'local_changes'
             : 'synced';
     return {
       status,
       lastSuccessfulSyncAt: this.syncState.lastSyncTime > 0 ? new Date(this.syncState.lastSyncTime).toISOString() : null,
-      pendingLocalChanges,
+      pendingLocalChanges: pendingDiagnostics.length,
+      pendingDiagnostics,
       conflictCount,
       lastError: this.lastError,
     };
   }
 
-  private async countPendingLocalChanges(): Promise<number> {
-    const changed = new Set<string>();
+  private async buildPendingDiagnostics(): Promise<SyncPendingDiagnostic[]> {
+    const diagnostics = new Map<string, SyncPendingDiagnostic>();
+    const queuedIntentPaths = new Set<string>();
+    const addDiagnostic = (diagnostic: SyncPendingDiagnostic) => {
+      const normalized = normalizeVaultPath(diagnostic.path);
+      const relatedPath = diagnostic.relatedPath ? normalizeVaultPath(diagnostic.relatedPath) : undefined;
+      const key = `${diagnostic.reason}\0${normalized}\0${relatedPath ?? ''}`;
+      diagnostics.set(key, {
+        path: normalized,
+        reason: diagnostic.reason,
+        ...(relatedPath ? { relatedPath } : {}),
+      });
+    };
+
     for (const rename of this.pendingRenames) {
-      changed.add(rename.oldPath);
-      changed.add(rename.newPath);
+      queuedIntentPaths.add(normalizeVaultPath(rename.oldPath));
+      queuedIntentPaths.add(normalizeVaultPath(rename.newPath));
+      addDiagnostic({ path: rename.oldPath, reason: 'pending_rename', relatedPath: rename.newPath });
+      addDiagnostic({ path: rename.newPath, reason: 'pending_rename', relatedPath: rename.oldPath });
     }
-    for (const deleted of this.pendingDeletes) changed.add(deleted);
+    for (const deleted of this.pendingDeletes) {
+      queuedIntentPaths.add(normalizeVaultPath(deleted));
+      addDiagnostic({ path: deleted, reason: 'pending_delete' });
+    }
+    for (const conflict of this.conflicts.values()) {
+      addDiagnostic({ path: conflict.originalPath, reason: 'conflict' });
+    }
+    for (const quarantinedPath of this.quarantinedPaths) {
+      addDiagnostic({ path: quarantinedPath, reason: 'quarantined_duplicate_identity' });
+    }
 
     const localInventory = await this.buildLocalInventory();
     for (const [filePath, localFile] of localInventory) {
+      const normalizedLocal = normalizeVaultPath(filePath);
+      if (queuedIntentPaths.has(normalizedLocal)) continue;
       const syncFile = this.syncState.files.get(filePath);
-      if (!syncFile || !syncFile.remoteFileId || syncFile.localHash !== localFile.hash) changed.add(filePath);
+      if (!syncFile) {
+        addDiagnostic({ path: filePath, reason: 'local_create' });
+      } else if (!syncFile.remoteFileId) {
+        addDiagnostic({ path: filePath, reason: 'adoption_required' });
+      } else if (syncFile.localHash !== localFile.hash) {
+        addDiagnostic({ path: filePath, reason: 'local_modify' });
+      }
     }
     for (const [filePath, syncFile] of this.syncState.files) {
-      if (syncFile.localExists && !localInventory.has(filePath)) changed.add(filePath);
+      const normalizedSyncPath = normalizeVaultPath(filePath);
+      if (queuedIntentPaths.has(normalizedSyncPath)) continue;
+      if (syncFile.localExists && !localInventory.has(filePath)) {
+        addDiagnostic({ path: filePath, reason: 'pending_delete' });
+      }
     }
-    return changed.size;
+    return Array.from(diagnostics.values())
+      .sort((a, b) => a.path === b.path
+        ? a.reason.localeCompare(b.reason)
+        : a.path.localeCompare(b.path));
   }
 
   async setDriveFolderId(folderId: string): Promise<void> {
