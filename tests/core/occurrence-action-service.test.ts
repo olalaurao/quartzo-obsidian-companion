@@ -105,4 +105,22 @@ describe('OccurrenceActionService', () => {
       ),
     ).rejects.toThrow('future completion');
   });
+
+  it('records reminder delivery dismissals through the canonical occurrence owner', async () => {
+    const store = new MemoryStore();
+    const service = new OccurrenceActionService({ store });
+    const dismissedAt = new Date('2026-09-19T09:05:00.000Z');
+
+    const first = await service.dismissDelivery(target, 'dismiss-1', dismissedAt);
+    const replay = await service.dismissDelivery(target, 'dismiss-1', new Date('2026-09-19T09:06:00.000Z'));
+
+    expect(first.applied).toBe(true);
+    expect(first.responseState.dismissedAt).toBe(dismissedAt.toISOString());
+    expect(first.responseState.ignoredCount).toBe(1);
+    expect(first.responseState.sourceId).toBe(target.sourceId);
+    expect(first.responseState.reminderId).toBe(target.reminderId);
+    expect(replay.applied).toBe(false);
+    expect(replay.idempotentReplay).toBe(true);
+    expect(store.responses[target.occurrenceId].ignoredCount).toBe(1);
+  });
 });

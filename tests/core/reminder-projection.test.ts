@@ -58,6 +58,43 @@ describe('ReminderProjectionEngine', () => {
     expect([result[0].triggerAt.getDate(), result[0].triggerAt.getHours()]).toEqual([17, 9]);
   });
 
+  it('projects minutes_before across the previous local calendar day', () => {
+    const object: ReminderSourceObject = {
+      id: 'midnight-task', type: 'task', title: 'Late handoff',
+      start_date: '2026-09-18', time: '00:10',
+      reminders: [{ id: 'fifteen-before-midnight', minutes_before: 15, type: 'popup' }],
+    };
+    const result = ReminderProjectionEngine.projectWindow(
+      [object],
+      new Date(2026, 8, 17, 23, 54, 59),
+      new Date(2026, 8, 17, 23, 55),
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0].reminderId).toBe('fifteen-before-midnight');
+    expect([result[0].triggerAt.getDate(), result[0].triggerAt.getHours(), result[0].triggerAt.getMinutes()])
+      .toEqual([17, 23, 55]);
+  });
+
+  it('preserves valid escalation level and notification body on the delivery occurrence', () => {
+    const object: ReminderSourceObject = {
+      id: 'escalating-task', type: 'task', title: 'Follow up',
+      reminders: [{
+        id: 'urgent',
+        trigger_time: '2026-09-17T09:30:00.000',
+        type: 'alarm',
+        notification_body: 'Call now',
+        escalation_level: 2,
+      }],
+    };
+    const result = ReminderProjectionEngine.projectWindow([object], at(9, 29, 59), at(9, 30));
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      notificationType: 'alarm',
+      notificationBody: 'Call now',
+      escalationLevel: 2,
+    });
+  });
+
   it('combines legacy standalone local date plus clock instead of treating the date as UTC midnight', () => {
     const object: ReminderSourceObject = {
       id: 'legacy-reminder', type: 'reminder', title: 'Call clinic',

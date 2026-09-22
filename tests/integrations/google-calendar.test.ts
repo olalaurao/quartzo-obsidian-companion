@@ -108,6 +108,58 @@ describe('GoogleCalendarAdapter', () => {
     expect(requested.some(url => url.includes('/calendars/primary/events'))).toBe(true);
   });
 
+  it('follows calendar-list and event pagination deterministically', async () => {
+    const requested: string[] = [];
+    const requester: CalendarHttpRequester = async url => {
+      requested.push(url);
+      const parsed = new URL(url);
+      const pageToken = parsed.searchParams.get('pageToken');
+      if (url.includes('/users/me/calendarList')) {
+        if (pageToken === 'calendar-page-2') {
+          return response(200, { items: [{ id: 'team', selected: true, backgroundColor: '#0f9d58' }] });
+        }
+        return response(200, {
+          nextPageToken: 'calendar-page-2',
+          items: [{ id: 'primary', selected: true, backgroundColor: '#4285f4' }],
+        });
+      }
+      if (url.includes('/calendars/primary/events')) {
+        if (pageToken === 'events-page-2') {
+          return response(200, {
+            items: [{
+              id: 'event-b',
+              summary: 'Second page',
+              start: { dateTime: '2026-09-17T11:00:00-03:00' },
+              end: { dateTime: '2026-09-17T11:30:00-03:00' },
+            }],
+          });
+        }
+        return response(200, {
+          nextPageToken: 'events-page-2',
+          items: [{
+            id: 'event-a',
+            summary: 'First page',
+            start: { dateTime: '2026-09-17T09:00:00-03:00' },
+            end: { dateTime: '2026-09-17T09:30:00-03:00' },
+          }],
+        });
+      }
+      if (url.includes('/calendars/team/events')) return response(200, { items: [] });
+      throw new Error(`Unexpected request: ${url}`);
+    };
+    const adapter = new GoogleCalendarAdapter(requester);
+    adapter.setAccessToken('token');
+
+    const events = await adapter.listVisibleEvents(
+      new Date('2026-09-17T00:00:00Z'),
+      new Date('2026-09-18T00:00:00Z'),
+    );
+
+    expect(events.map(event => event.id)).toEqual(['primary::event-a', 'primary::event-b']);
+    expect(requested.some(url => url.includes('pageToken=calendar-page-2'))).toBe(true);
+    expect(requested.some(url => url.includes('pageToken=events-page-2'))).toBe(true);
+  });
+
   it('refreshes once for expired credentials and fails closed for missing Calendar scope', async () => {
     let calls = 0;
     const adapter = new GoogleCalendarAdapter(async () => {
@@ -123,5 +175,26 @@ describe('GoogleCalendarAdapter', () => {
       new Date('2026-09-18T00:00:00Z'),
     )).rejects.toBeInstanceOf(GoogleCalendarAuthorizationError);
     expect(calls).toBe(2);
+  });
+
+  it('surfaces non-authorization API and network errors to the caller', async () => {
+    const serverError = new GoogleCalendarAdapter(async url => {
+      if (url.includes('/users/me/calendarList')) return response(200, { items: [{ id: 'primary', selected: true }] });
+      return response(503, { error: { message: 'temporarily unavailable' } });
+    });
+    serverError.setAccessToken('token');
+    await expect(serverError.listVisibleEvents(
+      new Date('2026-09-17T00:00:00Z'),
+      new Date('2026-09-18T00:00:00Z'),
+    )).rejects.toThrow('Google Calendar request failed (503)');
+
+    const networkError = new GoogleCalendarAdapter(async () => {
+      throw new Error('network down');
+    });
+    networkError.setAccessToken('token');
+    await expect(networkError.listVisibleEvents(
+      new Date('2026-09-17T00:00:00Z'),
+      new Date('2026-09-18T00:00:00Z'),
+    )).rejects.toThrow('network down');
   });
 });

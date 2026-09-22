@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-21T22:30:50-03:00
-Current milestone: B1 closed; B2 Reminder + Calendar edge-case closure next
+Last update: 2026-09-21T22:37:53-03:00
+Current milestone: B2 Reminder + Calendar edge-case closure
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
-Current branch: main
-Current HEAD: 011115028700d76e873a34dfc8e785623fc3c9db
+Current branch: codex/b2-reminder-calendar-edge-closure
+Current HEAD: d3d2ebff79d4c30a39146d1ac74cbef15d2f620c plus local progress update
 Upstream main HEAD: d9302f0860fa1a4e33c1c611f2b448bec167e51f
-Companion main HEAD: 011115028700d76e873a34dfc8e785623fc3c9db
-Open PR: none for B1; PR #50 merged.
-CI status: PR #50 CI passed on final head `4eea8a27684b576e52099281de5962f73c653f70`; PR merged to `c6ea5773a261a73b65bb085970054c154c443234`.
+Companion main HEAD: f21c1385fe23d8aa7aba4fa36e8c0b24d42d7fe8
+Open PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/51
+CI status: PR #51 run `35676397856` green on Linux and Windows for head `d3d2ebff79d4c30a39146d1ac74cbef15d2f620c`.
 Blocker: OAuth contract/runtime divergence remains later C3.5 blocker, not A7/B0.
-Exact next action: start B2 Reminder/Calendar edge-case closure unless redirected.
+Exact next action: commit/push this progress checkpoint, wait for the resulting PR #51 CI rerun, then merge if it remains green.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -576,3 +576,74 @@ Next:
 - Closeout commit pushed to main: `011115028700d76e873a34dfc8e785623fc3c9db`.
 - Issue #45 progress comment added: https://github.com/olalaurao/quartzo-obsidian-companion/issues/45#issuecomment-5769959113
 - Start B2 unless redirected.
+
+## 2026-09-21 - B2 Reminder/Calendar edge audit started
+
+Repo: Companion
+Branch: `codex/b2-reminder-calendar-edge-closure`
+Base HEAD: f21c1385fe23d8aa7aba4fa36e8c0b24d42d7fe8
+Changed:
+- `tests/core/reminder-projection.test.ts`
+- `tests/core/occurrence-action-service.test.ts`
+- `tests/integrations/google-calendar.test.ts`
+- `docs/v1/CODEX_V1_PROGRESS.md`
+Audit:
+- Reminder owners reviewed: projection, service, device-local notification registry, notification gateway, occurrence action service and Settings permission/status surface.
+- Calendar owners reviewed: Google Calendar adapter, Daily Schedule Google projection, shell usage and HTTPS-only browser opener.
+Concrete B2 coverage added:
+- Reminder `minutes_before` crossing the previous local calendar day.
+- Reminder delivery occurrence preserves valid `escalation_level` and notification body.
+- Reminder dismiss is recorded through the canonical occurrence action owner and is idempotent by action ID.
+- Google Calendar follows calendar-list pagination and per-calendar event pagination.
+- Google Calendar surfaces non-authorization API and network errors to caller; plugin remains responsible for fail-closed UI status.
+Tests run:
+- `npx vitest run tests/core/reminder-projection.test.ts tests/core/reminder-service.test.ts tests/core/occurrence-action-service.test.ts tests/integrations/google-calendar.test.ts tests/core/google-calendar-schedule.test.ts tests/reminder-notifications.test.ts tests/local-state/notification-delivery-registry.test.ts` — green, 27 tests.
+- `npm run typecheck` — green.
+- `npm run test:contracts` — green, 254 tests.
+- `npm run lint` — green.
+- `npm run architecture:check` — green.
+- `npm test` — green, 589 tests.
+- `npm run build` — green.
+- `$env:GITHUB_TOKEN = gh auth token; npm run contracts:verify` — green, 22 contracts verified.
+Result:
+- No runtime owner changes were needed; B2 changes are executable acceptance coverage over existing Reminder/Calendar owners.
+Next:
+- Commit and push B2 branch.
+- Open PR B2 and monitor remote CI.
+
+## 2026-09-21 - B2 PR opened and first CI green
+
+Repo: Companion
+Branch: `codex/b2-reminder-calendar-edge-closure`
+Commit: d3d2ebff79d4c30a39146d1ac74cbef15d2f620c (`Add B2 reminder calendar edge coverage`)
+PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/51
+CI run: 35676397856
+Result:
+- `test-linux`: success.
+- `test-windows`: success.
+Remote Linux covered:
+- `npm ci --audit=false`
+- production audit
+- contract verify
+- typecheck
+- lint
+- `npm test`
+- `npm run test:contracts`
+- `npm run test:sync`
+- architecture
+- build
+- release validate
+- clean artifact smoke
+- package
+Remote Windows covered:
+- `npm ci --audit=false`
+- production audit
+- typecheck
+- sync tests
+- build
+- clean artifact smoke
+- package
+Next:
+- Commit/push this progress checkpoint.
+- Wait for the progress-only CI rerun.
+- Merge PR #51 if the rerun remains green.
