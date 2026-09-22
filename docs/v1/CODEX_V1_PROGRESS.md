@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-21T22:29:36-03:00
+Last update: 2026-09-21T22:30:50-03:00
 Current milestone: B1 closed; B2 Reminder + Calendar edge-case closure next
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
 Current branch: main
-Current HEAD: c6ea5773a261a73b65bb085970054c154c443234 plus local B1 tracker/progress closeout
+Current HEAD: 011115028700d76e873a34dfc8e785623fc3c9db
 Upstream main HEAD: d9302f0860fa1a4e33c1c611f2b448bec167e51f
-Companion main HEAD: c6ea5773a261a73b65bb085970054c154c443234
+Companion main HEAD: 011115028700d76e873a34dfc8e785623fc3c9db
 Open PR: none for B1; PR #50 merged.
 CI status: PR #50 CI passed on final head `4eea8a27684b576e52099281de5962f73c653f70`; PR merged to `c6ea5773a261a73b65bb085970054c154c443234`.
 Blocker: OAuth contract/runtime divergence remains later C3.5 blocker, not A7/B0.
-Exact next action: commit/push B1 tracker + progress closeout on main, comment issue #45, then start B2 Reminder/Calendar edge-case closure unless redirected.
+Exact next action: start B2 Reminder/Calendar edge-case closure unless redirected.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -573,6 +573,6 @@ Still open:
 - C3.5 OAuth contract/runtime/release divergence.
 - C4 stale docs/capability matrix, including P0 `.agents/AGENTS.md` link.
 Next:
-- Commit/push tracker and progress closeout.
-- Add issue #45 progress comment.
+- Closeout commit pushed to main: `011115028700d76e873a34dfc8e785623fc3c9db`.
+- Issue #45 progress comment added: https://github.com/olalaurao/quartzo-obsidian-companion/issues/45#issuecomment-5769959113
 - Start B2 unless redirected.
