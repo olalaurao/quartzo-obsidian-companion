@@ -181,12 +181,16 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
   private pairingWorkflowModal: HTMLDivElement | null = null;
   private vaultRuntimeReady = false;
   private vaultEventsRegistered = false;
+  private unloaded = false;
+  private sharedSettingsReloadInFlight = false;
+  private sharedSettingsReloadRequested = false;
   private readonly calendarCache = new Map<string, CalendarCacheEntry>();
   private readonly browserOpener = new ElectronBrowserOpener();
   calendarStatus: GoogleCalendarStatus = 'disconnected';
   authState: 'disconnected' | 'authenticating' | 'authenticated_unpaired' | 'paired' | 'authentication_required' = 'disconnected';
 
   async onload() {
+    this.unloaded = false;
     await this.loadSettings();
 
     this.vaultIndexEngine = new VaultIndexEngine();
@@ -396,6 +400,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
   }
 
   async listGoogleCalendarEvents(startDate: string, days: number): Promise<GoogleCalendarProjection[]> {
+    if (this.unloaded) return [];
     if (!this.googleCalendarAdapter || this.authState === 'disconnected' || this.authState === 'authentication_required') {
       this.calendarStatus = 'disconnected';
       return [];
@@ -409,10 +414,12 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
 
     try {
       const events = await this.googleCalendarAdapter.listVisibleEvents(start, end);
+      if (this.unloaded) return [];
       this.calendarCache.set(key, { expiresAt: Date.now() + 60_000, events });
       this.calendarStatus = 'ready';
       return events;
     } catch (error) {
+      if (this.unloaded) return [];
       this.calendarCache.delete(key);
       if (error instanceof GoogleCalendarAuthorizationError) {
         this.calendarStatus = 'authorization_required';
@@ -443,11 +450,13 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     this.oauthClient = new GoogleOAuthDesktop(config, secretStorage, this.browserOpener);
     try {
       const tokenResponse = await this.oauthClient.startAuthLoopback(true);
+      if (this.unloaded) return;
       this.configureGoogleAccessToken(tokenResponse.access_token);
       this.calendarStatus = 'ready';
       this.authState = this.settings.isPaired ? 'paired' : 'authenticated_unpaired';
       new Notice('Google Calendar read-only access authorized.');
     } catch (error) {
+      if (this.unloaded) return;
       this.authState = previousAuthState;
       this.calendarStatus = 'authorization_required';
       new Notice(`Google Calendar authorization failed: ${error}`);
@@ -522,10 +531,13 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
   }
 
   private async reloadOccurrenceOverrides(refreshView = true): Promise<void> {
-    if (!this.planningStateRepository) return;
+    if (this.unloaded || !this.planningStateRepository) return;
     try {
-      this.occurrenceOverrides = await this.planningStateRepository.loadOverrides();
-      this.dailyPlanningStates = await this.planningStateRepository.loadDailyPlanningStates();
+      const occurrenceOverrides = await this.planningStateRepository.loadOverrides();
+      const dailyPlanningStates = await this.planningStateRepository.loadDailyPlanningStates();
+      if (this.unloaded) return;
+      this.occurrenceOverrides = occurrenceOverrides;
+      this.dailyPlanningStates = dailyPlanningStates;
       if (refreshView) await this.refreshQuartzoView();
     } catch (error) {
       console.error('Shared planning state reload failed:', error);
@@ -533,9 +545,11 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
   }
 
   private async reloadOccurrenceResponses(refreshView = true): Promise<void> {
-    if (!this.occurrenceStateRepository) return;
+    if (this.unloaded || !this.occurrenceStateRepository) return;
     try {
-      this.occurrenceResponses = await this.occurrenceStateRepository.loadResponses();
+      const occurrenceResponses = await this.occurrenceStateRepository.loadResponses();
+      if (this.unloaded) return;
+      this.occurrenceResponses = occurrenceResponses;
       if (refreshView) await this.refreshQuartzoView();
     } catch (error) {
       console.error('Shared occurrence state reload failed:', error);
@@ -1084,7 +1098,10 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
   }
 
   private async reloadFocusRuntime(refreshView = true): Promise<void> {
-    this.focusRuntimeState = await this.requireFocusRuntimeRepository().load();
+    if (this.unloaded) return;
+    const focusRuntimeState = await this.requireFocusRuntimeRepository().load();
+    if (this.unloaded) return;
+    this.focusRuntimeState = focusRuntimeState;
     if (refreshView) await this.refreshQuartzoView();
   }
 
@@ -1253,11 +1270,14 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
   }
 
   private async initializeVaultRuntime(): Promise<void> {
-    if (this.vaultRuntimeReady) return;
+    if (this.unloaded || this.vaultRuntimeReady) return;
 
     this.sharedSettings = await this.sharedSettingsRepository?.load() ?? null;
+    if (this.unloaded) return;
     await this.reloadFocusRuntime(false);
+    if (this.unloaded) return;
     await this.initializeVaultIndex();
+    if (this.unloaded) return;
 
     if (!this.vaultEventsRegistered) {
       this.registerVaultEvents();
@@ -1275,7 +1295,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
   }
 
   private async initializeVaultIndex() {
-    if (!this.vaultIndexEngine) return;
+    if (this.unloaded || !this.vaultIndexEngine) return;
     const files = this.app.vault.getMarkdownFiles().filter(file => this.shouldIndexPath(file.path));
     const vaultFiles = await Promise.all(files.map(async file => ({
       path: file.path,
@@ -1283,6 +1303,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
       modified: file.stat.mtime,
       size: file.stat.size
     })));
+    if (this.unloaded || !this.vaultIndexEngine) return;
     const index = VaultIndexEngine.createInitialIndex(
       vaultFiles,
       (content, filePath) => parseObjectWithSharedSettings(content, filePath, this.sharedSettings),
@@ -1305,6 +1326,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
         const idx = this.vaultIndexEngine.getIndex();
         if (idx) {
           this.app.vault.read(file).then(content => {
+            if (this.unloaded || !this.vaultIndexEngine) return;
             try {
               const result = parseObjectWithSharedSettings(content, file.path, this.sharedSettings);
               const object = {
@@ -1342,6 +1364,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
         const idx = this.vaultIndexEngine.getIndex();
         if (idx) {
           this.app.vault.read(file).then(content => {
+            if (this.unloaded || !this.vaultIndexEngine) return;
             try {
               const result = parseObjectWithSharedSettings(content, file.path, this.sharedSettings);
               const object = {
@@ -1431,6 +1454,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
         return;
       }
       this.app.vault.read(file).then(content => {
+        if (this.unloaded || !this.vaultIndexEngine) return;
         try {
           const result = parseObjectWithSharedSettings(content, file.path, this.sharedSettings);
           changes.push({
@@ -1449,6 +1473,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
           if (changes.length > 0) this.vaultIndexEngine!.setIndex(VaultIndexEngine.updateIndex(idx, changes));
         }
       }).catch(() => {
+        if (this.unloaded || !this.vaultIndexEngine) return;
         if (changes.length > 0) this.vaultIndexEngine!.setIndex(VaultIndexEngine.updateIndex(idx, changes));
       });
     });
@@ -1457,6 +1482,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     const onchange = this.app.vault.on('create', (file: TAbstractFile) => {
       if (file instanceof TFile && VaultSyncFilePolicy.shouldSyncFile(file.path) && this.settings.isPaired && this.driveSyncCoordinator) {
         this.app.vault.readBinary(file).then(bytes => {
+          if (this.unloaded || !this.driveSyncCoordinator) return;
           if (this.driveSyncCoordinator?.consumeExpectedWatcherEvent(file.path, new Uint8Array(bytes))) return;
           if (this.settings.syncMode === 'automatic') this.driveSyncCoordinator?.triggerFocusSync().catch(() => {});
         }).catch(() => {});
@@ -1467,6 +1493,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     const onmodifySync = this.app.vault.on('modify', (file: TAbstractFile) => {
       if (file instanceof TFile && VaultSyncFilePolicy.shouldSyncFile(file.path) && this.settings.isPaired && this.driveSyncCoordinator) {
         this.app.vault.readBinary(file).then(bytes => {
+          if (this.unloaded || !this.driveSyncCoordinator) return;
           if (this.driveSyncCoordinator?.consumeExpectedWatcherEvent(file.path, new Uint8Array(bytes))) return;
           if (this.settings.syncMode === 'automatic') this.driveSyncCoordinator?.triggerFocusSync().catch(() => {});
         }).catch(() => {});
@@ -1497,6 +1524,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
       }
 
       this.app.vault.readBinary(file).then(bytes => {
+        if (this.unloaded || !this.driveSyncCoordinator) return;
         const content = new Uint8Array(bytes);
         if (!oldSyncable && newSyncable) {
           if (this.driveSyncCoordinator?.consumeExpectedWatcherEvent(file.path, content)) return;
@@ -1514,14 +1542,18 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
   }
 
   startAutoSync() {
+    if (this.unloaded) return;
     if (this.syncIntervalId) return;
     if (this.settings.syncMode !== 'automatic') return;
     const seconds = Math.max(15, Math.min(3600, Math.trunc(this.settings.syncPollingIntervalSeconds)));
     this.syncIntervalId = setInterval(async () => {
+      if (this.unloaded) return;
       if (this.driveSyncCoordinator && this.settings.isPaired && this.settings.syncMode === 'automatic') {
         try {
           await this.driveSyncCoordinator.triggerFocusSync();
+          if (this.unloaded) return;
         } catch (error) {
+          if (this.unloaded) return;
           console.error('Auto sync failed:', error);
         }
       }
@@ -1565,6 +1597,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
       if (!config) throw new Error('Google OAuth credentials are incomplete');
       this.oauthClient = new GoogleOAuthDesktop(config, secretStorage, this.browserOpener);
       const tokenResponse = await this.oauthClient.refreshAccessToken();
+      if (this.unloaded) return;
       this.configureGoogleAccessToken(tokenResponse.access_token);
       this.authState = this.settings.isPaired ? 'paired' : 'authenticated_unpaired';
 
@@ -1575,10 +1608,12 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
 
       if (this.settings.syncMode === 'automatic' && this.driveSyncCoordinator) {
         const result = await this.driveSyncCoordinator.triggerStartupSync();
+        if (this.unloaded) return;
         if (result.errors.length > 0) console.error('Startup sync failed:', result.errors[result.errors.length - 1]);
       }
       this.startAutoSync();
     } catch {
+      if (this.unloaded) return;
       this.settings.isPaired = false;
       this.authState = 'authentication_required';
       await this.saveSettings();
@@ -1600,8 +1635,10 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
 
     try {
       const storedRefresh = await secretStorage.get(GOOGLE_REFRESH_TOKEN_SECRET_ID);
+      if (this.unloaded) return;
       const forceConsent = !storedRefresh;
       const tokenResponse = await this.oauthClient.startAuthLoopback(forceConsent);
+      if (this.unloaded) return;
       this.configureGoogleAccessToken(tokenResponse.access_token);
 
       if (!tokenResponse.refresh_token) {
@@ -1618,6 +1655,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
       this.authState = 'authenticated_unpaired';
       new Notice('Google Drive authenticated. Select your vault folder.');
     } catch (error) {
+      if (this.unloaded) return;
       this.authState = 'disconnected';
       new Notice(`Authentication failed: ${error}`);
     }
@@ -1636,6 +1674,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     this.oauthClient = new GoogleOAuthDesktop(config, secretStorage, this.browserOpener);
     try {
       const tokenResponse = await this.oauthClient.startAuthLoopback(true);
+      if (this.unloaded) return;
       this.configureGoogleAccessToken(tokenResponse.access_token);
       if (wasPaired && this.settings.googleDriveFolderId) {
         await this.driveAdapter?.setFolderId(this.settings.googleDriveFolderId);
@@ -1650,6 +1689,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
         new Notice('Google Drive authenticated. Select your Quartzo vault.');
       }
     } catch (error) {
+      if (this.unloaded) return;
       this.authState = wasPaired ? 'authentication_required' : 'disconnected';
       new Notice(`Google Drive reconnect failed: ${error}`);
     }
@@ -2423,15 +2463,32 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
   }
 
   async refreshQuartzoView(): Promise<void> {
+    if (this.unloaded) return;
     const leaf = this.app.workspace.getLeavesOfType(QUARTZO_VIEW_TYPE)[0];
     if (leaf?.view instanceof QuartzoView) await leaf.view.refresh();
   }
 
   private async reloadSharedSettingsAndIndex(): Promise<void> {
-    this.sharedSettings = await this.sharedSettingsRepository?.load() ?? null;
-    await this.initializeVaultIndex();
-    const leaf = this.app.workspace.getLeavesOfType(QUARTZO_VIEW_TYPE)[0];
-    if (leaf?.view instanceof QuartzoView) await leaf.view.refresh();
+    if (this.unloaded) return;
+    if (this.sharedSettingsReloadInFlight) {
+      this.sharedSettingsReloadRequested = true;
+      return;
+    }
+
+    this.sharedSettingsReloadInFlight = true;
+    try {
+      do {
+        this.sharedSettingsReloadRequested = false;
+        const sharedSettings = await this.sharedSettingsRepository?.load() ?? null;
+        if (this.unloaded) return;
+        this.sharedSettings = sharedSettings;
+        await this.initializeVaultIndex();
+        if (this.unloaded) return;
+        await this.refreshQuartzoView();
+      } while (this.sharedSettingsReloadRequested && !this.unloaded);
+    } finally {
+      this.sharedSettingsReloadInFlight = false;
+    }
   }
 
   showFirstRunDialog() {
@@ -2439,6 +2496,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
   }
 
   onunload() {
+    this.unloaded = true;
     this.stopAutoSync();
     this.reminderService?.stop();
     this.oauthClient?.abort();

@@ -137,7 +137,7 @@ folder_paths:
 
     expect(shell).toContain("button.setAttribute('aria-current', 'page')");
     expect(shell).toContain("focusButton.setAttribute('aria-pressed', 'true')");
-    expect(shell).toContain("previous.setAttribute('aria-label', `Previous ${this.plannerMode}`)");
+    expect(shell).toContain("previous.setAttribute('aria-label', `Previous ${plannerMode}`)");
     expect(shell).toContain("dateInput.setAttribute('aria-label', 'Planner date')");
     expect(shell).toContain("date.setAttribute('aria-label', 'Journal date')");
     expect(shell).toContain("input.setAttribute('aria-label', 'Filter Quartzo objects')");
@@ -161,6 +161,45 @@ folder_paths:
     expect(styles).toContain('.quartzo-shell button:focus-visible');
     expect(styles).toContain('.quartzo-sync-pending-diagnostics');
     expect(styles).toContain('overflow-wrap: anywhere');
+  });
+
+  it('guards async UI renders against stale Calendar responses', () => {
+    const shell = fs.readFileSync(path.join(process.cwd(), 'src/ui/shell/view.ts'), 'utf8');
+
+    expect(shell).toContain('private renderGeneration = 0');
+    expect(shell).toContain('private isCurrentRender(container: HTMLElement, generation: number): boolean');
+    expect(shell).toContain('const generation = ++this.renderGeneration');
+    expect(shell).toContain('await this.renderHome(content, generation)');
+    expect(shell).toContain('await this.renderPlanner(content, generation)');
+    expect(shell).toContain('await this.renderJournal(content, generation)');
+    expect(shell).toContain("await this.renderSync(content, this.action === 'conflicts', generation)");
+    expect(shell).toContain('if (!this.isCurrentRender(container, generation)) return;');
+    expect(shell).toContain('if (this.isCurrentRender(container, generation)) {');
+  });
+
+  it('guards late vault callbacks after plugin unload', () => {
+    const main = fs.readFileSync(path.join(process.cwd(), 'src/main.ts'), 'utf8');
+
+    expect(main).toContain('private unloaded = false');
+    expect(main).toContain('this.unloaded = false');
+    expect(main).toContain('this.unloaded = true');
+    expect(main).toContain('if (this.unloaded || !this.vaultIndexEngine) return;');
+    expect(main).toContain('if (this.unloaded || !this.driveSyncCoordinator) return;');
+    expect(main).toContain('if (this.unloaded) return [];');
+    expect(main).toContain('if (this.unloaded) return;');
+    expect(main).toContain('this.oauthClient?.abort();');
+  });
+
+  it('coalesces shared-settings reindex and preserves one canonical index owner', () => {
+    const main = fs.readFileSync(path.join(process.cwd(), 'src/main.ts'), 'utf8');
+
+    expect(main).toContain('private sharedSettingsReloadInFlight = false');
+    expect(main).toContain('private sharedSettingsReloadRequested = false');
+    expect(main).toContain('if (this.sharedSettingsReloadInFlight) {');
+    expect(main).toContain('this.sharedSettingsReloadRequested = true');
+    expect(main).toContain('await this.initializeVaultIndex()');
+    expect(main).toContain('} while (this.sharedSettingsReloadRequested && !this.unloaded);');
+    expect((main.match(/VaultIndexEngine\.createInitialIndex/g) ?? []).length).toBe(1);
   });
 
 });

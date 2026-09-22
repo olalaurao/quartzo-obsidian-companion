@@ -1384,10 +1384,11 @@ function checkSharedSettingsReloadReindexesVault() {
   }
   const methodEnd = main.indexOf('\n  showFirstRunDialog()', methodStart);
   const method = main.slice(methodStart, methodEnd > methodStart ? methodEnd : methodStart + 1600);
-  const loadPos = method.indexOf('this.sharedSettings = await this.sharedSettingsRepository?.load() ?? null');
+  const loadPos = method.indexOf('const sharedSettings = await this.sharedSettingsRepository?.load() ?? null');
+  const assignPos = method.indexOf('this.sharedSettings = sharedSettings');
   const indexPos = method.indexOf('await this.initializeVaultIndex()');
-  const refreshPos = method.indexOf('await leaf.view.refresh()');
-  if (loadPos < 0 || indexPos < loadPos || refreshPos < indexPos) {
+  const refreshPos = method.indexOf('await this.refreshQuartzoView()');
+  if (loadPos < 0 || assignPos < loadPos || indexPos < assignPos || refreshPos < indexPos) {
     console.error('FAIL: Shared settings change must reload settings, rebuild canonical index, then refresh UI');
     return false;
   }
@@ -1401,6 +1402,47 @@ function checkSharedSettingsReloadReindexesVault() {
   }
 
   console.log('PASS: Shared settings create/modify/delete/rename reload the canonical settings projection and vault index');
+  return true;
+}
+
+function checkC2LifecycleRaceHardening() {
+  const main = fs.readFileSync(path.join(rootDir, 'src/main.ts'), 'utf8');
+  const shell = fs.readFileSync(path.join(rootDir, 'src/ui/shell/view.ts'), 'utf8');
+
+  if (!main.includes('private unloaded = false') ||
+      !main.includes('this.unloaded = false') ||
+      !main.includes('this.unloaded = true') ||
+      !main.includes('this.oauthClient?.abort();') ||
+      !main.includes('if (this.unloaded || !this.vaultIndexEngine) return;') ||
+      !main.includes('if (this.unloaded || !this.driveSyncCoordinator) return;') ||
+      !main.includes('if (this.unloaded) return [];')) {
+    console.error('FAIL: Plugin lifecycle must guard late OAuth, Calendar, Vault and Drive callbacks after unload');
+    return false;
+  }
+
+  if (!main.includes('private sharedSettingsReloadInFlight = false') ||
+      !main.includes('private sharedSettingsReloadRequested = false') ||
+      !main.includes('if (this.sharedSettingsReloadInFlight) {') ||
+      !main.includes('this.sharedSettingsReloadRequested = true') ||
+      !main.includes('} while (this.sharedSettingsReloadRequested && !this.unloaded);')) {
+    console.error('FAIL: Shared settings reloads must coalesce into one active reindex plus one requested rerun');
+    return false;
+  }
+
+  if (!shell.includes('private renderGeneration = 0') ||
+      !shell.includes('private isCurrentRender(container: HTMLElement, generation: number): boolean') ||
+      !shell.includes('const generation = ++this.renderGeneration') ||
+      !shell.includes('await this.renderHome(content, generation)') ||
+      !shell.includes('await this.renderPlanner(content, generation)') ||
+      !shell.includes('await this.renderJournal(content, generation)') ||
+      !shell.includes("await this.renderSync(content, this.action === 'conflicts', generation)") ||
+      !shell.includes('if (!this.isCurrentRender(container, generation)) return;') ||
+      !shell.includes('if (this.isCurrentRender(container, generation)) {')) {
+    console.error('FAIL: Quartzo shell async renders must reject stale Calendar/Sync callbacks before mutating UI');
+    return false;
+  }
+
+  console.log('PASS: C2 lifecycle/race hardening guards stale async callbacks, unload and shared-settings reindex coalescing');
   return true;
 }
 
@@ -1484,6 +1526,7 @@ function main() {
   if (!checkManualStartupStateHydration()) allPassed = false;
   if (!checkVaultIndexWaitsForWorkspaceReady()) allPassed = false;
   if (!checkSharedSettingsReloadReindexesVault()) allPassed = false;
+  if (!checkC2LifecycleRaceHardening()) allPassed = false;
   if (!checkCanonicalOccurrenceActions()) allPassed = false;
   if (!checkCanonicalManualExecution()) allPassed = false;
   if (!checkCanonicalFocusRuntime()) allPassed = false;
