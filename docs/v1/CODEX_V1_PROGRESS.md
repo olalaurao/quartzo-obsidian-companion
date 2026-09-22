@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-21T22:40:00-03:00
+Last update: 2026-09-21T22:53:00-03:00
 Current milestone: A7 downstream - Companion Overdue + Adaptive Planning port
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
 Current branch: codex/a7-overdue-adaptive-planning
 Current HEAD: branch commit pending final `git rev-parse HEAD` after progress checkpoint
 Upstream main HEAD: d9302f0860fa1a4e33c1c611f2b448bec167e51f
 Companion main HEAD: 36c88af14587134d05a7fdcd12901a0b2a4e37af
-Open PR: none yet for Companion A7 downstream
-CI status: upstream PR #47 merged after all required checks passed; Companion A7 local gates pass.
+Open PR: Companion https://github.com/olalaurao/quartzo-obsidian-companion/pull/49
+CI status: Companion PR #49 CI passed on head `47a1750281271f4573a29114d9a5cb68251962dd`; progress-only update pending.
 Blocker: none for starting Companion A7; OAuth contract/runtime divergence remains later C3.5 blocker, not A7.
-Exact next action: push branch `codex/a7-overdue-adaptive-planning`, open PR and wait for CI.
+Exact next action: push progress-only update, wait for rerun, then merge PR #49 and update tracker/issue.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -385,3 +385,56 @@ Not committed:
 Next:
 - Amend this progress entry into the commit.
 - Push branch and open Companion A7 PR.
+
+## 2026-09-21 - A7 Companion PR opened
+
+Repo: Companion
+Branch: `codex/a7-overdue-adaptive-planning`
+Head: 47a1750281271f4573a29114d9a5cb68251962dd
+PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/49
+Status:
+- PR #49 open, not draft.
+- Merge state: `UNSTABLE` while checks run.
+- CI run `35674638638` started on head `47a1750281271f4573a29114d9a5cb68251962dd`.
+- `test-linux`: in progress.
+- `test-windows`: in progress.
+Next:
+- Wait for CI run `35674638638`.
+- If any job fails, inspect the concrete failure and fix only that.
+- If CI passes, merge PR #49, then update tracker and issue #45.
+
+## 2026-09-21 - A7 Companion PR CI green
+
+Repo: Companion
+PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/49
+Head checked: 47a1750281271f4573a29114d9a5cb68251962dd
+CI run: 35674638638
+Result:
+- `test-linux`: success.
+- `test-windows`: success.
+Linux job covered:
+- `npm ci --audit=false`
+- production audit
+- contract verify
+- typecheck
+- lint
+- `npm test`
+- `npm run test:contracts`
+- `npm run test:sync`
+- architecture
+- build
+- release validate
+- clean artifact smoke
+- package
+Windows job covered:
+- `npm ci --audit=false`
+- production audit
+- typecheck
+- sync tests
+- build
+- clean artifact smoke
+- package
+Next:
+- Push this progress checkpoint.
+- Wait for the progress-only CI rerun.
+- Merge PR #49 if the rerun remains green.
