@@ -138,6 +138,7 @@ export class QuartzoView extends ItemView {
   private plannerDayLens: PlannerDayLens = 'timeline';
   private sharedSettingsRepository: SharedSettingsRepository;
   private syncProgressTickerId: number | null = null;
+  private renderGeneration = 0;
 
   constructor(leaf: WorkspaceLeaf, private readonly context: ViewContext) {
     super(leaf);
@@ -177,6 +178,10 @@ export class QuartzoView extends ItemView {
     };
     refresh();
     this.syncProgressTickerId = window.setInterval(refresh, 1000);
+  }
+
+  private isCurrentRender(container: HTMLElement, generation: number): boolean {
+    return generation === this.renderGeneration && container.isConnected;
   }
 
   async setSection(section: QuartzoSection): Promise<void> {
@@ -222,6 +227,7 @@ export class QuartzoView extends ItemView {
   }
 
   private async render(): Promise<void> {
+    const generation = ++this.renderGeneration;
     this.stopSyncProgressTicker();
     this.contentEl.empty();
     const shell = document.createElement('div');
@@ -345,13 +351,13 @@ export class QuartzoView extends ItemView {
       return;
     }
     if (this.action === 'sync' || this.action === 'conflicts') {
-      await this.renderSync(content, this.action === 'conflicts');
+      await this.renderSync(content, this.action === 'conflicts', generation);
       return;
     }
 
-    if (this.section === 'home') await this.renderHome(content);
-    if (this.section === 'planner') await this.renderPlanner(content);
-    if (this.section === 'journal') await this.renderJournal(content);
+    if (this.section === 'home') await this.renderHome(content, generation);
+    if (this.section === 'planner') await this.renderPlanner(content, generation);
+    if (this.section === 'journal') await this.renderJournal(content, generation);
     if (this.section === 'browse') this.renderBrowse(content);
   }
 
@@ -435,17 +441,20 @@ export class QuartzoView extends ItemView {
     });
   }
 
-  private async renderHome(container: HTMLElement): Promise<void> {
-    const googleEvents = await this.context.plugin.listGoogleCalendarEvents(this.selectedDate, 1);
+  private async renderHome(container: HTMLElement, generation: number): Promise<void> {
+    const selectedDate = this.selectedDate;
+    const googleEvents = await this.context.plugin.listGoogleCalendarEvents(selectedDate, 1);
+    if (!this.isCurrentRender(container, generation)) return;
     const now = new Date();
-    const schedule = this.buildSchedule(this.selectedDate, googleEvents);
+    const schedule = this.buildSchedule(selectedDate, googleEvents);
     const sharedSettings = await this.sharedSettingsRepository.load();
+    if (!this.isCurrentRender(container, generation)) return;
 
     renderHomeView(container, {
       app: this.context.app,
-      selectedDate: this.selectedDate,
+      selectedDate,
       schedule,
-      overdue: this.selectedDate === isoDate(now) ? this.buildOverdue(now) : [],
+      overdue: selectedDate === isoDate(now) ? this.buildOverdue(now) : [],
       index: this.getIndex(),
       googleEvents,
       sharedSettings,
@@ -466,7 +475,10 @@ export class QuartzoView extends ItemView {
     });
   }
 
-  private async renderPlanner(container: HTMLElement): Promise<void> {
+  private async renderPlanner(container: HTMLElement, generation: number): Promise<void> {
+    const selectedDate = this.selectedDate;
+    const plannerMode = this.plannerMode;
+    const plannerDayLens = this.plannerDayLens;
     const title = document.createElement('h2');
     title.textContent = 'Planner';
     container.appendChild(title);
@@ -475,8 +487,8 @@ export class QuartzoView extends ItemView {
     controls.className = 'quartzo-planner-controls';
     const previous = document.createElement('button');
     previous.textContent = '‹';
-    previous.setAttribute('aria-label', `Previous ${this.plannerMode}`);
-    previous.title = `Previous ${this.plannerMode}`;
+    previous.setAttribute('aria-label', `Previous ${plannerMode}`);
+    previous.title = `Previous ${plannerMode}`;
     previous.addEventListener('click', () => {
       if (this.plannerMode === 'month') {
         this.selectedDate = shiftLocalMonth(this.selectedDate, -1);
@@ -491,7 +503,7 @@ export class QuartzoView extends ItemView {
     const dateInput = document.createElement('input');
     dateInput.type = 'date';
     dateInput.setAttribute('aria-label', 'Planner date');
-    dateInput.value = this.selectedDate;
+    dateInput.value = selectedDate;
     dateInput.addEventListener('change', () => {
       this.selectedDate = dateInput.value || isoDate(new Date());
       void this.render();
@@ -500,8 +512,8 @@ export class QuartzoView extends ItemView {
 
     const next = document.createElement('button');
     next.textContent = '›';
-    next.setAttribute('aria-label', `Next ${this.plannerMode}`);
-    next.title = `Next ${this.plannerMode}`;
+    next.setAttribute('aria-label', `Next ${plannerMode}`);
+    next.title = `Next ${plannerMode}`;
     next.addEventListener('click', () => {
       if (this.plannerMode === 'month') {
         this.selectedDate = shiftLocalMonth(this.selectedDate, 1);
@@ -516,7 +528,7 @@ export class QuartzoView extends ItemView {
     for (const mode of ['day', 'week', 'month'] as const) {
       const button = document.createElement('button');
       button.textContent = labelForType(mode);
-      if (mode === this.plannerMode) {
+      if (mode === plannerMode) {
         button.classList.add('is-active');
         button.setAttribute('aria-pressed', 'true');
       }
@@ -529,24 +541,28 @@ export class QuartzoView extends ItemView {
     container.appendChild(controls);
 
     const settings = await this.sharedSettingsRepository.load();
+    if (!this.isCurrentRender(container, generation)) return;
     let googleEvents: GoogleCalendarProjection[] = [];
-    let schedule = this.buildSchedule(this.selectedDate);
+    let schedule = this.buildSchedule(selectedDate);
     const schedulesByDate = new Map<string, NormalizedSchedule>();
 
-    if (this.plannerMode === 'day') {
-      googleEvents = await this.context.plugin.listGoogleCalendarEvents(this.selectedDate, 1);
-      schedule = this.buildSchedule(this.selectedDate, googleEvents);
-    } else if (this.plannerMode === 'week') {
-      const dates = weekDates(this.selectedDate, settings?.startOfWeek ?? 1);
-      const start = dates[0] ?? this.selectedDate;
+    if (plannerMode === 'day') {
+      googleEvents = await this.context.plugin.listGoogleCalendarEvents(selectedDate, 1);
+      if (!this.isCurrentRender(container, generation)) return;
+      schedule = this.buildSchedule(selectedDate, googleEvents);
+    } else if (plannerMode === 'week') {
+      const dates = weekDates(selectedDate, settings?.startOfWeek ?? 1);
+      const start = dates[0] ?? selectedDate;
       googleEvents = await this.context.plugin.listGoogleCalendarEvents(start, dates.length);
+      if (!this.isCurrentRender(container, generation)) return;
       for (const date of dates) {
         schedulesByDate.set(date, this.buildSchedule(date, googleEvents));
       }
     } else {
-      const dates = monthGridDates(this.selectedDate, settings?.startOfWeek ?? 1);
-      const start = dates[0] ?? this.selectedDate;
+      const dates = monthGridDates(selectedDate, settings?.startOfWeek ?? 1);
+      const start = dates[0] ?? selectedDate;
       googleEvents = await this.context.plugin.listGoogleCalendarEvents(start, dates.length);
+      if (!this.isCurrentRender(container, generation)) return;
       for (const date of dates) {
         schedulesByDate.set(date, this.buildSchedule(date, googleEvents));
       }
@@ -554,13 +570,13 @@ export class QuartzoView extends ItemView {
 
     renderPlannerSurface(container, {
       app: this.context.app,
-      mode: this.plannerMode,
-      dayLens: this.plannerDayLens,
-      selectedDate: this.selectedDate,
+      mode: plannerMode,
+      dayLens: plannerDayLens,
+      selectedDate,
       now: new Date(),
       schedule,
       schedulesByDate,
-      dailyPlanningState: this.context.plugin.getDailyPlanningState(this.selectedDate),
+      dailyPlanningState: this.context.plugin.getDailyPlanningState(selectedDate),
       sharedSettings: settings,
       titleForItem: item => this.titleForScheduleItem(item, googleEvents),
       canOpenItem: item => this.canOpenScheduleItem(item, googleEvents),
@@ -585,7 +601,8 @@ export class QuartzoView extends ItemView {
     });
   }
 
-  private async renderJournal(container: HTMLElement): Promise<void> {
+  private async renderJournal(container: HTMLElement, generation: number): Promise<void> {
+    const selectedDate = this.selectedDate;
     const title = document.createElement('h2');
     title.textContent = 'Journal';
     container.appendChild(title);
@@ -605,7 +622,7 @@ export class QuartzoView extends ItemView {
     const date = document.createElement('input');
     date.type = 'date';
     date.setAttribute('aria-label', 'Journal date');
-    date.value = this.selectedDate;
+    date.value = selectedDate;
     date.addEventListener('change', () => {
       this.selectedDate = date.value || isoDate(new Date());
       void this.render();
@@ -646,8 +663,8 @@ export class QuartzoView extends ItemView {
     const now = new Date();
     const projection = projectJournalDay(
       this.getIndex(),
-      this.selectedDate,
-      this.selectedDate === isoDate(now) ? this.buildOverdue(now) : [],
+      selectedDate,
+      selectedDate === isoDate(now) ? this.buildOverdue(now) : [],
     );
 
     const dailySection = document.createElement('section');
@@ -752,8 +769,9 @@ export class QuartzoView extends ItemView {
     const timelineHeading = document.createElement('h3');
     timelineHeading.textContent = 'Timeline';
     timeline.appendChild(timelineHeading);
-    const googleEvents = await this.context.plugin.listGoogleCalendarEvents(this.selectedDate, 1);
-    const schedule = this.buildSchedule(this.selectedDate, googleEvents);
+    const googleEvents = await this.context.plugin.listGoogleCalendarEvents(selectedDate, 1);
+    if (!this.isCurrentRender(container, generation)) return;
+    const schedule = this.buildSchedule(selectedDate, googleEvents);
     if (schedule.items.length === 0) {
       const empty = document.createElement('p');
       empty.textContent = 'Nothing on the canonical Daily Schedule for this date.';
@@ -859,7 +877,7 @@ export class QuartzoView extends ItemView {
     input.focus();
   }
 
-  private async renderSync(container: HTMLElement, conflictsOnly: boolean): Promise<void> {
+  private async renderSync(container: HTMLElement, conflictsOnly: boolean, generation: number): Promise<void> {
     const title = document.createElement('h2');
     title.textContent = conflictsOnly ? 'Conflicts' : 'Sync';
     container.appendChild(title);
@@ -867,6 +885,7 @@ export class QuartzoView extends ItemView {
     const plugin = this.context.plugin;
     const coordinator = plugin.driveSyncCoordinator;
     const snapshot = coordinator ? await coordinator.getSyncStatusSnapshot() : null;
+    if (!this.isCurrentRender(container, generation)) return;
     const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
     const requiresAuth = plugin.authState === 'disconnected' || plugin.authState === 'authentication_required';
     const statusLabel = requiresAuth
@@ -1121,11 +1140,13 @@ export class QuartzoView extends ItemView {
 
         try {
           const onProgress = (progress: SyncProgress) => {
+            if (!this.isCurrentRender(container, generation)) return;
             progressLine.textContent = formatSyncProgress(progress);
           };
           const result = operation === 'full'
             ? await coordinator.triggerFullReconciliation(onProgress)
             : await coordinator.triggerManualSync(onProgress);
+          if (!this.isCurrentRender(container, generation)) return;
           if (result.errors.length > 0) {
             new Notice(result.errors[result.errors.length - 1]);
           } else if (operation === 'full') {
@@ -1135,7 +1156,9 @@ export class QuartzoView extends ItemView {
           }
         } finally {
           this.stopSyncProgressTicker();
-          await this.render();
+          if (this.isCurrentRender(container, generation)) {
+            await this.render();
+          }
         }
       };
 

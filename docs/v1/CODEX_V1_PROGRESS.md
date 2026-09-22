@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-21T23:05:22-03:00
+Last update: 2026-09-21T23:15:42-03:00
 Current milestone: C2 performance/lifecycle/race pass
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
-Current branch: main
-Current HEAD: c06ebf1ce68c07f732b4d68767e6113e96e9de78 plus local issue-link progress update
+Current branch: `codex/c2-lifecycle-race-hardening`
+Current HEAD: d7be18360f6defb496e63cc1d84b0d94af72fc16 plus local C2 implementation
 Upstream main HEAD: d9302f0860fa1a4e33c1c611f2b448bec167e51f
-Companion main HEAD: c06ebf1ce68c07f732b4d68767e6113e96e9de78
+Companion main HEAD: d7be18360f6defb496e63cc1d84b0d94af72fc16
 Open PR: none for current milestone yet
-CI status: PR #53 run `35677969176` green on Linux and Windows for head `82ec36acaa19a5e16c3bf26fe21905dad32f7b14`; merged as `49ba27c6784e4732804d7eceacf7214996680532`.
-Blocker: OAuth contract/runtime divergence remains later C3.5 blocker, not A7/B0.
-Exact next action: commit/push this issue-link progress update on main, then start C2 performance/lifecycle/race pass from main.
+CI status: C2 local full gates green; remote PR not opened yet.
+Blocker: OAuth contract/runtime divergence remains later C3.5 blocker, not C2.
+Exact next action: commit/push C2 branch, open PR, then monitor Linux/Windows CI before merge.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -898,3 +898,50 @@ Next:
 - Closeout docs commit pushed to main: `c06ebf1ce68c07f732b4d68767e6113e96e9de78`.
 - Issue #45 progress comment added: https://github.com/olalaurao/quartzo-obsidian-companion/issues/45#issuecomment-5770195551
 - Start C2 from updated main unless redirected.
+
+## 2026-09-21 - C2 lifecycle/race implementation checkpoint
+
+Repo: Companion
+Branch: `codex/c2-lifecycle-race-hardening`
+Base HEAD: d7be18360f6defb496e63cc1d84b0d94af72fc16
+Changed:
+- `src/main.ts`
+- `src/ui/shell/view.ts`
+- `scripts/architecture-check.mjs`
+- `tests/contracts/ui_shell.test.ts`
+- `docs/v1/CODEX_V1_PROGRESS.md`
+Implemented:
+- Shell renders now carry a generation token so stale Home/Planner/Journal/Sync async callbacks cannot mutate an older disconnected render.
+- Planner captures date/mode/lens per render; Week/Month continue fetching Calendar once per range, not per item.
+- Sync Center progress callbacks and final rerender check the same render generation.
+- Plugin unload now guards late Calendar/OAuth/Vault index/Drive watcher/shared-state callbacks before mutating state or UI.
+- OAuth loopback flows still abort on unload through the existing `oauthClient.abort()` path.
+- Initial VaultIndex remains a single startup build after workspace layout readiness; vault create/modify/delete/rename remain incremental event updates.
+- Shared settings changes are serialized: one active reload/reindex, with at most one requested rerun for concurrent file events.
+- Architecture gate now permanently checks the C2 lifecycle/race guards and shared-settings coalescing.
+Boundary preserved:
+- No sync protocol changes.
+- No new canonical cache or second index owner.
+- No Calendar mutation or per-item Calendar fetch.
+Tests run:
+- `npx vitest run tests/contracts/ui_shell.test.ts` - green, 15 tests.
+- `npm run typecheck` - green.
+- `npm run architecture:check` - green.
+- `npm run lint` - green.
+- `npm run test:contracts` - green, 258 tests.
+- `npm run test:sync` - green, 226 tests.
+- `npm test` - green, 597 tests.
+- `npm run build` - green.
+- `$env:GITHUB_TOKEN = gh auth token; npm run contracts:verify` - green, 22 contracts verified.
+- `npm run audit:prod` - green, zero vulnerabilities.
+- `npm run release:validate` - green.
+- `npm run smoke:clean-artifact` - green.
+- `npm run release:package` - green.
+Still open:
+- Remote PR CI.
+- C3 macOS CI.
+- C3.5 OAuth contract/runtime/release divergence.
+- C4 stale docs/capability matrix, including P0 `.agents/AGENTS.md` link.
+Next:
+- Commit/push C2 branch and open PR.
+- Wait for Linux/Windows CI on the pushed head.
