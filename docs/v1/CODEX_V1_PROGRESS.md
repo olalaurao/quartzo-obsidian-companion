@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-21T23:21:00-03:00
+Last update: 2026-09-21T23:22:30-03:00
 Current milestone: C3 macOS CI
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
 Current branch: main
-Current HEAD: 6ccb085aaf3cfe5331ca05ac47e56ef7c480b825 plus local C2 closeout docs
+Current HEAD: 863b359ee0b4d37b9ecac1de4921778920b52d45 plus local issue-link progress update
 Upstream main HEAD: d9302f0860fa1a4e33c1c611f2b448bec167e51f
 Companion main HEAD: 6ccb085aaf3cfe5331ca05ac47e56ef7c480b825
 Open PR: none for current milestone yet
 CI status: PR #54 final run `35679013301` green on Linux and Windows for head `bdd4ec3147ce13ab589ce504aad0805cb6742c4d`; merged as `6ccb085aaf3cfe5331ca05ac47e56ef7c480b825`.
 Blocker: OAuth contract/runtime divergence remains later C3.5 blocker, not C3.
-Exact next action: commit/push C2 tracker/progress closeout, add issue #45 comment, then start C3 macOS CI from updated main.
+Exact next action: commit/push this issue-link progress update, then start C3 macOS CI from updated main.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -1010,6 +1010,6 @@ Still open:
 - C3.5 OAuth contract/runtime/release divergence.
 - C4 stale docs/capability matrix, including P0 `.agents/AGENTS.md` link.
 Next:
-- Commit/push tracker and progress closeout.
-- Add issue #45 progress comment.
+- Closeout docs commit pushed to main: `863b359ee0b4d37b9ecac1de4921778920b52d45`.
+- Issue #45 progress comment added: https://github.com/olalaurao/quartzo-obsidian-companion/issues/45#issuecomment-5770312955
 - Start C3 from updated main unless redirected.
