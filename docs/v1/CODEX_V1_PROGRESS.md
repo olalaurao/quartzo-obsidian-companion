@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-21T23:24:08-03:00
+Last update: 2026-09-21T23:26:20-03:00
 Current milestone: C3 macOS CI
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
 Current branch: `codex/c3-macos-ci-release-gates`
-Current HEAD: 41096a1d5d9c16b2d5a8dada53b687b456c319c5 plus local C3 implementation
+Current HEAD: 1f4267cd4be35dcb2cc628a146b4bc62df7e4a44
 Upstream main HEAD: d9302f0860fa1a4e33c1c611f2b448bec167e51f
 Companion main HEAD: 6ccb085aaf3cfe5331ca05ac47e56ef7c480b825
-Open PR: none for current milestone yet
-CI status: PR #54 final run `35679013301` green on Linux and Windows for head `bdd4ec3147ce13ab589ce504aad0805cb6742c4d`; merged as `6ccb085aaf3cfe5331ca05ac47e56ef7c480b825`.
+Open PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/55
+CI status: PR #55 run `35679365316` green on Linux, Windows and macOS for head `1f4267cd4be35dcb2cc628a146b4bc62df7e4a44`.
 Blocker: OAuth contract/runtime divergence remains later C3.5 blocker, not C3.
-Exact next action: commit/push C3 branch, open PR, then verify Linux/Windows/macOS CI before merge.
+Exact next action: commit/push this progress checkpoint, wait for progress-only CI rerun, then merge PR #55 if still green.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -1052,3 +1052,55 @@ Still open:
 Next:
 - Commit/push C3 branch and open PR.
 - Wait for Linux/Windows/macOS CI on the pushed head.
+
+## 2026-09-21 - C3 PR opened and first CI green
+
+Repo: Companion
+Branch: `codex/c3-macos-ci-release-gates`
+Commit: 1f4267cd4be35dcb2cc628a146b4bc62df7e4a44 (`Add macOS CI release gate parity`)
+PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/55
+CI run: 35679365316
+Result:
+- `test-linux`: success.
+- `test-windows`: success.
+- `test-macos`: success.
+Remote Linux covered:
+- `npm ci --audit=false`
+- production audit
+- contract verify
+- typecheck
+- lint
+- `npm test`
+- `npm run test:contracts`
+- `npm run test:sync`
+- architecture
+- build
+- release validate
+- clean artifact smoke
+- package
+Remote Windows covered:
+- `npm ci --audit=false`
+- production audit
+- typecheck
+- sync tests
+- build
+- clean artifact smoke
+- package
+Remote macOS covered:
+- `npm ci --audit=false`
+- production audit
+- contract verify
+- typecheck
+- lint
+- `npm test`
+- `npm run test:contracts`
+- `npm run test:sync`
+- architecture
+- build
+- release validate
+- clean artifact smoke
+- package
+Next:
+- Commit/push this progress checkpoint.
+- Wait for the progress-only CI rerun.
+- Merge PR #55 if the rerun remains green.
