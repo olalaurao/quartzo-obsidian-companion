@@ -56,4 +56,6 @@ A tag da release, a versão do `package.json` e a versão do `manifest.json` dev
 
 O build de release exige apenas `QUARTZO_GOOGLE_DESKTOP_CLIENT_ID` configurado como GitHub Actions secret para o cliente OAuth do tipo Desktop app. O Companion usa loopback `127.0.0.1` com PKCE e não configura, envia nem empacota Client Secret para esse cliente público; tokens OAuth do usuário nunca são empacotados e permanecem no `SecretStorage` do Obsidian.
 
+O escopo completo de suporte V1 está em [`docs/v1/COMPANION_V1_CAPABILITY_MATRIX.md`](docs/v1/COMPANION_V1_CAPABILITY_MATRIX.md).
+
 Antes de criar uma tag, execute manualmente o workflow **Release Preflight** em `main`. O passo a passo completo de Google Cloud, preflight, publicação e BRAT está em [`docs/BETA_RELEASE_RUNBOOK.md`](docs/BETA_RELEASE_RUNBOOK.md).
