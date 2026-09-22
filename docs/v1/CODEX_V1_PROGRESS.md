@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-21T22:48:00-03:00
+Last update: 2026-09-21T22:50:22-03:00
 Current milestone: B3 Sync Center diagnostics
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
 Current branch: codex/b3-sync-center-diagnostics
-Current HEAD: 77560da1c9239918acaf9a1f526931fbce98fa58 plus local B3 implementation/progress
+Current HEAD: c2bbfa333514c4de86eec05b12a16aabb1e520e2 plus local B3 PR progress update
 Upstream main HEAD: d9302f0860fa1a4e33c1c611f2b448bec167e51f
 Companion main HEAD: 77560da1c9239918acaf9a1f526931fbce98fa58
-Open PR: none for current milestone yet
-CI status: no B3 PR yet; local full B3 gates green.
+Open PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/52
+CI status: PR #52 run `35677137335` green on Linux and Windows for head `c2bbfa333514c4de86eec05b12a16aabb1e520e2`.
 Blocker: OAuth contract/runtime divergence remains later C3.5 blocker, not A7/B0.
-Exact next action: commit/push B3 branch and open PR.
+Exact next action: commit/push this progress checkpoint, wait for the resulting PR #52 CI rerun, then merge if it remains green.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -718,3 +718,40 @@ Still open:
 - Commit/push B3 branch and open PR if green.
 Next:
 - Commit/push B3 branch and open PR.
+
+## 2026-09-21 - B3 PR opened and first CI green
+
+Repo: Companion
+Branch: `codex/b3-sync-center-diagnostics`
+Commit: c2bbfa333514c4de86eec05b12a16aabb1e520e2 (`Add Sync Center pending diagnostics`)
+PR: https://github.com/olalaurao/quartzo-obsidian-companion/pull/52
+CI run: 35677137335
+Result:
+- `test-linux`: success.
+- `test-windows`: success.
+Remote Linux covered:
+- `npm ci --audit=false`
+- production audit
+- contract verify
+- typecheck
+- lint
+- `npm test`
+- `npm run test:contracts`
+- `npm run test:sync`
+- architecture
+- build
+- release validate
+- clean artifact smoke
+- package
+Remote Windows covered:
+- `npm ci --audit=false`
+- production audit
+- typecheck
+- sync tests
+- build
+- clean artifact smoke
+- package
+Next:
+- Commit/push this progress checkpoint.
+- Wait for the progress-only CI rerun.
+- Merge PR #52 if the rerun remains green.
