@@ -146,8 +146,8 @@ describe('Day Dial accessibility DOM', () => {
           start: '09:00',
           end: '09:15',
           isCompletable: true,
-          isCompleted: false,
-          outcome: 'pending',
+          isCompleted: true,
+          outcome: 'done',
         })],
       };
 
@@ -174,8 +174,9 @@ describe('Day Dial accessibility DOM', () => {
       expect(markers).toHaveLength(1);
       expect(markers[0]?.getAttribute('role')).toBe('button');
       expect(markers[0]?.getAttribute('aria-label')).toBe(
-        '09:00–09:15 Short reminder',
+        '09:00–09:15 Short reminder, Done',
       );
+      expect(markers[0]?.classList.contains('is-completed')).toBe(true);
       const icons = findAll(root, element => element.getAttribute('data-icon') === 'bell');
       expect(icons.length).toBeGreaterThan(0);
     } finally {

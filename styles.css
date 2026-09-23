@@ -786,7 +786,8 @@ button.qz-chip { cursor: pointer; }
 .quartzo-day-dial-legend-row.is-completed,
 .quartzo-day-dial-chip.is-completed,
 .quartzo-day-dial-arc.is-completed,
-.quartzo-day-dial-marker.is-completed {
+.quartzo-day-dial-marker.is-completed,
+.quartzo-day-dial-icon-marker.is-completed {
   opacity: 0.55;
 }
 
@@ -794,7 +795,8 @@ button.qz-chip { cursor: pointer; }
 .quartzo-day-dial-legend-row.is-skipped,
 .quartzo-day-dial-chip.is-skipped,
 .quartzo-day-dial-arc.is-skipped,
-.quartzo-day-dial-marker.is-skipped {
+.quartzo-day-dial-marker.is-skipped,
+.quartzo-day-dial-icon-marker.is-skipped {
   opacity: 0.40;
   text-decoration: line-through;
 }
