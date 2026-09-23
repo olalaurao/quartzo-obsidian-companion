@@ -112,6 +112,14 @@ describe('Day Dial accessibility DOM', () => {
         index: null,
         now: new Date('2026-09-19T08:00:00'),
         onOpenItem: () => {},
+        iconFactory: (name: string) => {
+          const svg = fakeDocument.createElementNS(
+            'http://www.w3.org/2000/svg',
+            'svg',
+          ) as unknown as SVGSVGElement;
+          svg.setAttribute('data-icon', name);
+          return svg;
+        },
       });
 
       const root = container as unknown as FakeElement;
@@ -159,6 +167,14 @@ describe('Day Dial accessibility DOM', () => {
         index: null,
         now: new Date('2026-09-19T08:00:00'),
         onOpenItem: () => {},
+        iconFactory: (name: string) => {
+          const svg = fakeDocument.createElementNS(
+            'http://www.w3.org/2000/svg',
+            'svg',
+          ) as unknown as SVGSVGElement;
+          svg.setAttribute('data-icon', name);
+          return svg;
+        },
       });
 
       const root = container as unknown as FakeElement;

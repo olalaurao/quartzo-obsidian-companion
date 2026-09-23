@@ -1,4 +1,3 @@
-import { getIcon } from 'obsidian';
 import type { NormalizedItem, NormalizedSchedule } from '../../core/daily_schedule/types';
 import { localIsoDate } from '../../core/local-date';
 import type { QuartzoSharedSettings } from '../../core/shared-settings';
@@ -22,6 +21,7 @@ export interface DayDialViewOptions {
   now?: Date;
   onOpenItem?: (item: NormalizedItem) => void;
   canOpenItem?: (item: NormalizedItem) => boolean;
+  iconFactory?: (name: string) => SVGSVGElement | null;
 }
 
 function svgElement<K extends keyof SVGElementTagNameMap>(name: K): SVGElementTagNameMap[K] {
@@ -170,7 +170,7 @@ function renderProjectedItem(
   hitTarget.classList.add('quartzo-day-dial-marker-hit-target');
   group.appendChild(hitTarget);
 
-  const icon = getIcon(projected.iconName);
+  const icon = options.iconFactory?.(projected.iconName) ?? null;
   if (icon) {
     icon.setAttribute('x', String(point.x - 8));
     icon.setAttribute('y', String(point.y - 8));
@@ -241,7 +241,7 @@ function renderLegend(
     if (entry.visual === 'marker') {
       swatch.classList.add('is-icon');
       if (entry.color) swatch.style.color = entry.color;
-      const icon = getIcon(entry.iconName);
+      const icon = options.iconFactory?.(entry.iconName) ?? null;
       if (icon) {
         icon.setAttribute('width', '14');
         icon.setAttribute('height', '14');
