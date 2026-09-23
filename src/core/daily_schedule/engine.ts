@@ -177,7 +177,7 @@ export class DailyScheduleEngine {
       return;
     }
 
-    for (const anchorDate of this.relevantAnchorDates(date, duration)) {
+    for (const anchorDate of this.relevantAnchorDates(date, duration, time)) {
       if (!this.sourceOccursOnDate(scheduler, anchorDate, fallbackDate)) continue;
       const segment = this.projectIntervalSegment(anchorDate, date, time, duration);
       if (!segment) continue;
@@ -222,7 +222,7 @@ export class DailyScheduleEngine {
       return;
     }
 
-    for (const anchorDate of this.relevantAnchorDates(date, duration)) {
+    for (const anchorDate of this.relevantAnchorDates(date, duration, timeOfDay)) {
       if (!this.sourceOccursOnDate(scheduler, anchorDate, fallbackDate)) continue;
       const segment = this.projectIntervalSegment(anchorDate, date, timeOfDay, duration);
       if (!segment) continue;
@@ -314,7 +314,7 @@ export class DailyScheduleEngine {
     const ranges = this.timeBlockRanges(obj);
     for (const range of ranges) {
       const duration = this.rangeDurationMinutes(range.start, range.end);
-      for (const anchorDate of this.relevantAnchorDates(date, duration)) {
+      for (const anchorDate of this.relevantAnchorDates(date, duration, range.start)) {
         if (!this.sourceOccursOnDate(scheduler, anchorDate, null, true)) continue;
         const segment = this.projectIntervalSegment(anchorDate, date, range.start, duration);
         if (!segment) continue;
@@ -686,16 +686,16 @@ export class DailyScheduleEngine {
     return {
       start_date: start,
       ...(typeof raw.end_date === 'string' ? { end_date: raw.end_date } : {}),
-      rules: rules.map(rule => ({ ...(rule as Record<string, unknown>) })) as SchedulerDefinition['rules'],
+      rules: rules.map(rule => ({ ...(rule as Record<string, unknown>) })) as unknown as SchedulerDefinition['rules'],
       exclusions: Array.isArray(raw.exclusions)
         ? raw.exclusions
             .filter(rule => rule != null && typeof rule === 'object' && !Array.isArray(rule))
-            .map(rule => ({ ...(rule as Record<string, unknown>) })) as SchedulerDefinition['exclusions']
+            .map(rule => ({ ...(rule as Record<string, unknown>) })) as unknown as SchedulerDefinition['exclusions']
         : [],
       ...(Number.isInteger(raw.max_occurrences) ? { max_occurrences: Number(raw.max_occurrences) } : {}),
       ...(typeof raw.anchor_mode === 'string' ? { anchor_mode: raw.anchor_mode } : {}),
       ...(raw.active_window && typeof raw.active_window === 'object' && !Array.isArray(raw.active_window)
-        ? { active_window: { ...(raw.active_window as Record<string, unknown>) } as SchedulerDefinition['active_window'] }
+        ? { active_window: { ...(raw.active_window as Record<string, unknown>) } as unknown as SchedulerDefinition['active_window'] }
         : {}),
       ...(typeof raw.exact_time === 'string' ? { exact_time: raw.exact_time } : {}),
       ...(typeof raw.time_block === 'string' ? { time_block: raw.time_block } : {}),
@@ -766,8 +766,14 @@ export class DailyScheduleEngine {
       : (24 * 60 - startMinute) + endMinute;
   }
 
-  private static relevantAnchorDates(selectedDate: string, durationMinutes: number): string[] {
-    const daysBack = Math.max(0, Math.ceil(Math.max(1, durationMinutes) / (24 * 60)) - 1);
+  private static relevantAnchorDates(
+    selectedDate: string,
+    durationMinutes: number,
+    startClock: string,
+  ): string[] {
+    const startMinute = this.clockMinutes(startClock) ?? 0;
+    const totalSpan = startMinute + Math.max(1, durationMinutes);
+    const daysBack = Math.max(0, Math.ceil(totalSpan / (24 * 60)) - 1);
     const selected = parseLocalIsoDate(selectedDate);
     const dates: string[] = [];
     for (let offset = daysBack; offset >= 0; offset--) {
