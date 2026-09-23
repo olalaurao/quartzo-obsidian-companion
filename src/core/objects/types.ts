@@ -118,6 +118,9 @@ export interface Event extends BaseObject {
   date: string;
   time_of_day?: string;
   duration?: number;
+  end_time?: string;
+  multi_day?: boolean;
+  scheduler?: Record<string, unknown>;
 }
 
 export interface PomodoroSession extends BaseObject {
@@ -323,8 +326,16 @@ export interface DayTheme extends BaseObject {
 export interface TimeBlock extends BaseObject {
   type: 'time_block';
   organizer_type: 'time_block';
-  time_ranges?: Array<{id: string; start: string; end: string}>;
+  time_ranges?: Array<{
+    id: string;
+    start_hour: number;
+    start_minute: number;
+    end_hour: number;
+    end_minute: number;
+  }>;
+  /** Legacy cross-client fixture shape accepted read-only for compatibility. */
   ranges?: Array<{id: string; start: string; end: string}>;
+  scheduler?: Record<string, unknown>;
 }
 
 export interface Value extends BaseObject {
