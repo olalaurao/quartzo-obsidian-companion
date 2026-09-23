@@ -1,4 +1,4 @@
-import { localCivilDayDifference, parseLocalIsoDate } from '../local-date';
+import { daysInLocalMonth, localCivilDayDifference, parseLocalIsoDate } from '../local-date';
 import { parseISO, addDays, addWeeks, addMonths, addMinutes, addHours, isBefore, isAfter, isEqual, startOfDay, getDay, getDate, lastDayOfMonth, isSameDay, set, formatISO } from 'date-fns';
 
 export type RepeatType = 
@@ -140,7 +140,9 @@ export class SchedulerEngine {
         const monthDiff = (targetYear - startYear) * 12 + (targetMonth - startMonth);
         if (monthDiff < 0 || monthDiff % Math.max(1, rule.interval ?? 1) !== 0) return false;
         if (rule.days_of_month?.length) return rule.days_of_month.includes(targetDay);
-        const daysInTargetMonth = new Date(Date.UTC(targetYear, targetMonth, 0)).getUTCDate();
+        const daysInTargetMonth = daysInLocalMonth(
+          parseLocalIsoDate(`${targetYear}-${String(targetMonth).padStart(2, '0')}-01`),
+        );
         return targetDay === Math.min(startDay, daysInTargetMonth);
       }
       case 'number_of_minutes':
@@ -169,10 +171,16 @@ export class SchedulerEngine {
       case 'first_business_day_of_month': {
         const ordinal = rule.monthly_ordinal ?? 1;
         const businessDays: number[] = [];
-        const daysInMonth = new Date(Date.UTC(targetYear, targetMonth, 0)).getUTCDate();
+        const monthStart = parseLocalIsoDate(
+          `${targetYear}-${String(targetMonth).padStart(2, '0')}-01`,
+        );
+        const daysInMonth = daysInLocalMonth(monthStart);
         for (let day = 1; day <= daysInMonth; day++) {
-          const d = new Date(Date.UTC(targetYear, targetMonth - 1, day)).getUTCDay();
-          if (d !== 0 && d !== 6) businessDays.push(day);
+          const date = parseLocalIsoDate(
+            `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+          );
+          const weekday = date.getDay();
+          if (weekday !== 0 && weekday !== 6) businessDays.push(day);
         }
         const index = ordinal > 0 ? ordinal - 1 : businessDays.length + ordinal;
         return businessDays[index] === targetDay;
