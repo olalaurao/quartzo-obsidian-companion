@@ -1,5 +1,11 @@
 import { DailyScheduleInput, NormalizedSchedule, NormalizedItem } from './types';
-import { localIsoDate, parseLocalIsoDate } from '../local-date';
+import {
+  addLocalDays,
+  localCivilDayDifference,
+  localIsoDate,
+  parseLocalIsoDate,
+} from '../local-date';
+import { SchedulerEngine, type SchedulerDefinition } from '../scheduler';
 import { occurrenceResponseIdForDailyItem } from '../occurrence_actions';
 import { isScheduledSystemOccurrenceCompleted } from '../manual-execution';
 
@@ -149,31 +155,22 @@ export class DailyScheduleEngine {
 
   private static processTask(obj: Record<string, unknown>, date: string, items: RawNormalizedItem[]): void {
     const id = String(obj.id ?? '');
-    const scheduler = obj.scheduler && typeof obj.scheduler === 'object' && !Array.isArray(obj.scheduler)
-      ? obj.scheduler as Record<string, unknown>
-      : undefined;
+    if (!id) return;
+
+    const scheduler = this.schedulerDefinition(obj.scheduler);
     const rawStartDate = String(obj.start_date ?? scheduler?.start_date ?? obj.end_date ?? '');
-    const startDate = rawStartDate.includes('T') ? rawStartDate.split('T')[0] ?? '' : rawStartDate;
-    const time = String(obj.scheduled_time ?? obj.time ?? '');
-    const duration = Number(obj.duration ?? 0);
-    const rules = Array.isArray(scheduler?.rules) ? scheduler?.rules : [];
-    const seriesId = rules.length > 0 ? id : undefined;
+    const fallbackDate = this.dateOnly(rawStartDate);
+    const time = String(
+      obj.scheduled_time ??
+      obj.time ??
+      this.clockFromIso(scheduler?.exact_time) ??
+      ''
+    );
+    const duration = Math.max(1, Number(obj.duration ?? 0) || 60);
+    const seriesId = scheduler?.rules?.length ? id : undefined;
 
-    if (!id || startDate !== date) return;
-
-    if (time) {
-      items.push({
-        id: `task:${id}`,
-        sourceId: id,
-        occurrenceId: id,
-        seriesId,
-        date,
-        start: time,
-        end: this.calculateEndTime(time, duration > 0 ? duration : 60),
-        isTimed: true,
-        isAllDay: false
-      });
-    } else {
+    if (!time) {
+      if (!this.sourceOccursOnDate(scheduler, date, fallbackDate)) return;
       items.push({
         id: `task:${id}`,
         sourceId: id,
@@ -182,31 +179,43 @@ export class DailyScheduleEngine {
         date,
         isTimed: false
       });
+      return;
+    }
+
+    for (const anchorDate of this.relevantAnchorDates(date, duration, time)) {
+      if (!this.sourceOccursOnDate(scheduler, anchorDate, fallbackDate)) continue;
+      const segment = this.projectIntervalSegment(anchorDate, date, time, duration);
+      if (!segment) continue;
+      items.push({
+        id: `task:${id}`,
+        sourceId: id,
+        occurrenceId: id,
+        seriesId,
+        date,
+        start: segment.start,
+        end: segment.end,
+        isTimed: true,
+        isAllDay: false
+      });
     }
   }
 
   private static processEvent(obj: Record<string, unknown>, date: string, items: RawNormalizedItem[]): void {
-    const id = obj.id as string;
-    const eventDate = obj.date as string;
-    const timeOfDay = (obj.time_of_day as string) || (obj.time as string);
-    const duration = obj.duration as number;
+    const id = String(obj.id ?? '');
+    if (!id) return;
 
-    if (eventDate !== date) {
-      return;
-    }
+    const scheduler = this.schedulerDefinition(obj.scheduler);
+    const fallbackDate = this.dateOnly(String(obj.date ?? scheduler?.start_date ?? ''));
+    const timeOfDay = String(
+      obj.time_of_day ??
+      obj.time ??
+      this.clockFromIso(scheduler?.exact_time) ??
+      ''
+    );
+    const duration = this.eventDurationMinutes(obj, timeOfDay);
 
-    if (timeOfDay) {
-      items.push({
-        id: `event:${id}`,
-        sourceId: id,
-        occurrenceId: id,
-        date,
-        start: timeOfDay,
-        end: duration ? this.calculateEndTime(timeOfDay, duration) : this.calculateEndTime(timeOfDay, 60),
-        isTimed: true
-      });
-    } else {
-      // All-day event
+    if (!timeOfDay) {
+      if (!this.sourceOccursOnDate(scheduler, date, fallbackDate)) return;
       items.push({
         id: `event:${id}`,
         sourceId: id,
@@ -214,6 +223,23 @@ export class DailyScheduleEngine {
         date,
         isTimed: false,
         isAllDay: true
+      });
+      return;
+    }
+
+    for (const anchorDate of this.relevantAnchorDates(date, duration, timeOfDay)) {
+      if (!this.sourceOccursOnDate(scheduler, anchorDate, fallbackDate)) continue;
+      const segment = this.projectIntervalSegment(anchorDate, date, timeOfDay, duration);
+      if (!segment) continue;
+      items.push({
+        id: `event:${id}`,
+        sourceId: id,
+        occurrenceId: id,
+        date,
+        start: segment.start,
+        end: segment.end,
+        isTimed: true,
+        isAllDay: false
       });
     }
   }
@@ -287,56 +313,100 @@ export class DailyScheduleEngine {
   }
 
   private static processTimeBlock(obj: Record<string, unknown>, date: string, items: RawNormalizedItem[]): void {
-    const id = obj.id as string;
-    const ranges = obj.ranges as Array<{id: string; start: string; end: string}>;
-
-    if (ranges && ranges.length > 0) {
-      for (const range of ranges) {
+    const id = String(obj.id ?? '');
+    if (!id) return;
+    const scheduler = this.schedulerDefinition(obj.scheduler);
+    const ranges = this.timeBlockRanges(obj);
+    for (const range of ranges) {
+      const duration = this.rangeDurationMinutes(range.start, range.end);
+      for (const anchorDate of this.relevantAnchorDates(date, duration, range.start)) {
+        if (!this.sourceOccursOnDate(scheduler, anchorDate, null, true)) continue;
+        const segment = this.projectIntervalSegment(anchorDate, date, range.start, duration);
+        if (!segment) continue;
+        const occurrenceId = `time_block:${id}:${range.id}@${anchorDate}`;
         items.push({
-          id: `time_block:${id}:${range.id}@${date}`,
+          id: occurrenceId,
           sourceId: id,
-          occurrenceId: `time_block:${id}:${range.id}@${date}`,
+          occurrenceId,
           date,
-          start: range.start,
-          end: range.end,
-          isTimed: true
+          start: segment.start,
+          end: segment.end,
+          isTimed: true,
+          isAllDay: false,
         });
       }
     }
   }
 
   private static processSystem(obj: Record<string, unknown>, date: string, items: RawNormalizedItem[]): void {
-    const id = obj.id as string;
-    const time = obj.time as string;
+    const id = String(obj.id ?? '');
+    if (!id) return;
+    const scheduler = this.schedulerDefinition(obj.scheduler);
+    const fallbackDate = scheduler ? this.dateOnly(scheduler.start_date) : null;
+    if (!this.sourceOccursOnDate(scheduler, date, fallbackDate, scheduler == null)) return;
 
-    if (time) {
-      items.push({
-        id: `system:${id}`,
-        sourceId: id,
-        occurrenceId: `system:${id}@${date}`,
-        date,
-        start: time,
-        isTimed: true
-      });
-    }
+    const time = String(
+      this.clockFromIso(scheduler?.exact_time) ??
+      obj.scheduled_time ??
+      obj.time ??
+      ''
+    );
+    if (!time) return;
+
+    items.push({
+      id: `system:${id}`,
+      sourceId: id,
+      occurrenceId: `system:${id}@${date}`,
+      date,
+      start: time,
+      isTimed: true
+    });
   }
 
   private static processRoutine(obj: Record<string, unknown>, date: string, items: RawNormalizedItem[]): void {
-    const id = obj.id as string;
-    const startDate = obj.start_date as string;
+    const id = String(obj.id ?? '');
+    if (!id || obj.show_in_planner === false) return;
 
-    if (startDate !== date) {
+    const scheduler = this.schedulerDefinition(obj.scheduler);
+    const fallbackDate = this.dateOnly(String(obj.start_date ?? scheduler?.start_date ?? ''));
+    const time = String(
+      this.clockFromIso(scheduler?.exact_time) ??
+      obj.scheduled_time ??
+      obj.time ??
+      this.clockFromIso(typeof obj.start_date === 'string' ? obj.start_date : undefined) ??
+      ''
+    );
+    const duration = Math.max(0, Number(obj.estimated_minutes ?? 0));
+
+    if (!time) {
+      if (!this.sourceOccursOnDate(scheduler, date, fallbackDate)) return;
+      items.push({
+        id: `routine:${id}`,
+        sourceId: id,
+        occurrenceId: `routine:${id}@${date}`,
+        date,
+        isTimed: false,
+        isAllDay: false
+      });
       return;
     }
 
-    items.push({
-      id: `routine:${id}`,
-      sourceId: id,
-      occurrenceId: `routine:${id}@${date}`,
-      date,
-      isTimed: false,
-      isAllDay: false
-    });
+    const visualDuration = duration > 0 ? duration : 1;
+    for (const anchorDate of this.relevantAnchorDates(date, visualDuration, time)) {
+      if (!this.sourceOccursOnDate(scheduler, anchorDate, fallbackDate)) continue;
+      const segment = this.projectIntervalSegment(anchorDate, date, time, visualDuration);
+      if (!segment) continue;
+      items.push({
+        id: `routine:${id}`,
+        sourceId: id,
+        occurrenceId: `routine:${id}@${anchorDate}`,
+        date,
+        start: segment.start,
+        ...(duration > 0 ? { end: segment.end } : {}),
+        isTimed: true,
+        isAllDay: false
+      });
+    }
   }
 
   private static processRotationZone(obj: Record<string, unknown>, date: string, allObjects: Record<string, unknown>[], items: RawNormalizedItem[]): void {
@@ -608,6 +678,175 @@ export class DailyScheduleEngine {
       if (right.start == null) return -1;
       return left.start.localeCompare(right.start) || left.id.localeCompare(right.id);
     });
+  }
+
+  private static schedulerDefinition(value: unknown): SchedulerDefinition | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const raw = value as Record<string, unknown>;
+    const start = String(raw.start_date ?? '');
+    const rules = Array.isArray(raw.rules) ? raw.rules : [];
+    if (!start || !rules.every(rule =>
+      rule != null &&
+      typeof rule === 'object' &&
+      !Array.isArray(rule) &&
+      typeof (rule as Record<string, unknown>).repeat_type === 'string'
+    )) {
+      return null;
+    }
+    return {
+      start_date: start,
+      ...(typeof raw.end_date === 'string' ? { end_date: raw.end_date } : {}),
+      rules: rules.map(rule => ({ ...(rule as Record<string, unknown>) })) as unknown as SchedulerDefinition['rules'],
+      exclusions: Array.isArray(raw.exclusions)
+        ? raw.exclusions
+            .filter(rule => rule != null && typeof rule === 'object' && !Array.isArray(rule))
+            .map(rule => ({ ...(rule as Record<string, unknown>) })) as unknown as SchedulerDefinition['exclusions']
+        : [],
+      ...(Number.isInteger(raw.max_occurrences) ? { max_occurrences: Number(raw.max_occurrences) } : {}),
+      ...(typeof raw.anchor_mode === 'string' ? { anchor_mode: raw.anchor_mode } : {}),
+      ...(raw.active_window && typeof raw.active_window === 'object' && !Array.isArray(raw.active_window)
+        ? { active_window: { ...(raw.active_window as Record<string, unknown>) } as unknown as SchedulerDefinition['active_window'] }
+        : {}),
+      ...(typeof raw.exact_time === 'string' ? { exact_time: raw.exact_time } : {}),
+      ...(typeof raw.time_block === 'string' ? { time_block: raw.time_block } : {}),
+      ...(typeof raw.time_block_range_id === 'string' ? { time_block_range_id: raw.time_block_range_id } : {}),
+    };
+  }
+
+  private static sourceOccursOnDate(
+    scheduler: SchedulerDefinition | null,
+    date: string,
+    fallbackDate: string | null,
+    defaultWhenUnscheduled = false,
+  ): boolean {
+    if (scheduler) return SchedulerEngine.occursOnDate(scheduler, date);
+    if (fallbackDate) return fallbackDate === date;
+    return defaultWhenUnscheduled;
+  }
+
+  private static timeBlockRanges(obj: Record<string, unknown>): Array<{ id: string; start: string; end: string }> {
+    const canonical = Array.isArray(obj.time_ranges) ? obj.time_ranges : [];
+    const parsedCanonical = canonical.flatMap((raw, index) => {
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return [];
+      const range = raw as Record<string, unknown>;
+      const sh = Number(range.start_hour);
+      const sm = Number(range.start_minute);
+      const eh = Number(range.end_hour);
+      const em = Number(range.end_minute);
+      if (![sh, sm, eh, em].every(Number.isInteger)) return [];
+      if (sh < 0 || sh > 23 || eh < 0 || eh > 23 || sm < 0 || sm > 59 || em < 0 || em > 59) return [];
+      return [{
+        id: String(range.id ?? `range-${index}`),
+        start: this.formatClock(sh * 60 + sm),
+        end: this.formatClock(eh * 60 + em),
+      }];
+    });
+    if (parsedCanonical.length > 0) return parsedCanonical;
+
+    const legacy = Array.isArray(obj.ranges) ? obj.ranges : [];
+    return legacy.flatMap((raw, index) => {
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return [];
+      const range = raw as Record<string, unknown>;
+      const start = typeof range.start === 'string' ? range.start : '';
+      const end = typeof range.end === 'string' ? range.end : '';
+      if (this.clockMinutes(start) == null || this.clockMinutes(end) == null) return [];
+      return [{ id: String(range.id ?? `range-${index}`), start, end }];
+    });
+  }
+
+  private static eventDurationMinutes(obj: Record<string, unknown>, start: string): number {
+    const explicit = Number(obj.duration ?? 0);
+    if (Number.isFinite(explicit) && explicit > 0) return Math.floor(explicit);
+    const end = typeof obj.end_time === 'string' ? obj.end_time : '';
+    const startMinute = this.clockMinutes(start);
+    const endMinute = this.clockMinutes(end);
+    if (startMinute == null || endMinute == null) return 60;
+    const duration = endMinute > startMinute
+      ? endMinute - startMinute
+      : (24 * 60 - startMinute) + endMinute;
+    return Math.max(1, duration);
+  }
+
+  private static rangeDurationMinutes(start: string, end: string): number {
+    const startMinute = this.clockMinutes(start);
+    const endMinute = this.clockMinutes(end);
+    if (startMinute == null || endMinute == null) return 0;
+    return endMinute > startMinute
+      ? endMinute - startMinute
+      : (24 * 60 - startMinute) + endMinute;
+  }
+
+  private static relevantAnchorDates(
+    selectedDate: string,
+    durationMinutes: number,
+    startClock: string,
+  ): string[] {
+    const startMinute = this.clockMinutes(startClock) ?? 0;
+    const totalSpan = startMinute + Math.max(1, durationMinutes);
+    const daysBack = Math.max(0, Math.ceil(totalSpan / (24 * 60)) - 1);
+    const selected = parseLocalIsoDate(selectedDate);
+    const dates: string[] = [];
+    for (let offset = daysBack; offset >= 0; offset--) {
+      dates.push(localIsoDate(addLocalDays(selected, -offset)));
+    }
+    return dates;
+  }
+
+  private static projectIntervalSegment(
+    anchorDate: string,
+    selectedDate: string,
+    startClock: string,
+    durationMinutes: number,
+  ): { start: string; end: string } | null {
+    const startMinute = this.clockMinutes(startClock);
+    if (startMinute == null || durationMinutes <= 0) return null;
+    const dayOffset = localCivilDayDifference(selectedDate, anchorDate);
+    if (!Number.isFinite(dayOffset) || dayOffset < 0) return null;
+    const selectedStart = dayOffset * 24 * 60;
+    const selectedEnd = selectedStart + 24 * 60;
+    const occurrenceStart = startMinute;
+    const occurrenceEnd = occurrenceStart + durationMinutes;
+    const visibleStart = Math.max(selectedStart, occurrenceStart);
+    const visibleEnd = Math.min(selectedEnd, occurrenceEnd);
+    if (visibleEnd <= visibleStart) return null;
+    return {
+      start: this.formatClock(visibleStart - selectedStart),
+      end: this.formatClock(visibleEnd - selectedStart, true),
+    };
+  }
+
+  private static clockMinutes(value: string): number | null {
+    const match = /^(\d{2}):(\d{2})$/.exec(value.trim());
+    if (!match) return null;
+    const hour = Number(match[1]);
+    const minute = Number(match[2]);
+    if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+      return null;
+    }
+    return hour * 60 + minute;
+  }
+
+  private static formatClock(minutes: number, allowDayEnd = false): string {
+    if (allowDayEnd && minutes === 24 * 60) return '24:00';
+    const bounded = Math.max(0, Math.min(24 * 60 - 1, Math.floor(minutes)));
+    return `${String(Math.floor(bounded / 60)).padStart(2, '0')}:${String(bounded % 60).padStart(2, '0')}`;
+  }
+
+  private static calculateEndTimeWithinDay(startTime: string, durationMinutes: number): string {
+    const start = this.clockMinutes(startTime);
+    if (start == null) return startTime;
+    return this.formatClock(Math.min(24 * 60, start + durationMinutes), true);
+  }
+
+  private static clockFromIso(value: string | undefined): string | null {
+    if (!value) return null;
+    const match = /T(\d{2}:\d{2})/.exec(value);
+    return match?.[1] ?? null;
+  }
+
+  private static dateOnly(value: string): string | null {
+    const match = /^(\d{4}-\d{2}-\d{2})/.exec(value.trim());
+    return match?.[1] ?? null;
   }
 
   private static overridePlacement(startIso: string, endIso: string): { date: string; start: string; end: string } {

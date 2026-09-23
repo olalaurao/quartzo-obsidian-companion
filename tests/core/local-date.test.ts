@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   addLocalDays,
   daysInLocalMonth,
+  localCivilDayDifference,
   localIsoDate,
   parseLocalIsoDate,
   shiftLocalMonth,
@@ -30,5 +31,12 @@ describe('local calendar date semantics', () => {
   it('reports the actual days in the selected local month', () => {
     expect(daysInLocalMonth(parseLocalIsoDate('2028-02-01'))).toBe(29);
     expect(daysInLocalMonth(parseLocalIsoDate('2026-04-01'))).toBe(30);
+  });
+
+  it('computes civil-day differences without DST-sensitive millisecond math', () => {
+    expect(localCivilDayDifference('2026-03-09', '2026-03-08')).toBe(1);
+    expect(localCivilDayDifference('2026-11-02', '2026-11-01')).toBe(1);
+    expect(localCivilDayDifference('2028-03-01', '2028-02-29')).toBe(1);
+    expect(localCivilDayDifference('2026-09-06', '2026-09-07')).toBe(-1);
   });
 });

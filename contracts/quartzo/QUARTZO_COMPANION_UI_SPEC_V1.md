@@ -23,6 +23,8 @@ Home, Planner, Day Dial, Journal day context, widgets and the future Companion a
 
 No UI surface may independently calculate recurrence, overdue, Habit slots, Reminder occurrences, rotation zones, archived filtering or `_deleted/` filtering.
 
+Day Dial presentation is derived only from those normalized items. Canonical timed occurrences of 24 minutes or less render as icon markers; occurrences of 25 minutes or more render as arcs. Overlaps are separated geometrically without changing occurrence identity. All-day/anytime facts stay outside the timed ring. A canonical timed item may not be silently dropped by the renderer: malformed temporal metadata must be surfaced by tests/diagnostics. Icon resolution follows explicit object metadata / shared TypeSignature first, then a canonical type fallback; color resolution remains explicit object/event color → shared TypeSignature color → theme fallback.
+
 ## Actions
 
 Rendered daily items preserve:

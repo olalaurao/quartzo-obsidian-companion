@@ -35,6 +35,7 @@ export interface HomeViewOptions {
   startManualExecution?(item: NormalizedItem): Promise<void>;
   canOpenItem?(item: NormalizedItem): boolean;
   onOpenItem?(item: NormalizedItem): void;
+  iconFactory?: (name: string) => SVGSVGElement | null;
   onOpenOverdue?(projection: OverdueObjectProjection): void;
   onQuickAdd(type: HomeQuickAddType): void;
 }
@@ -124,6 +125,7 @@ export function renderHomeView(container: HTMLElement, options: HomeViewOptions)
     now,
     canOpenItem: options.canOpenItem,
     onOpenItem: options.onOpenItem,
+    iconFactory: options.iconFactory,
   });
 
   renderBucket(container, 'Now', projection.now, 'Nothing active right now.', listOptions);

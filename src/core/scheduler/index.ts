@@ -1,3 +1,4 @@
+import { daysInLocalMonth, localCivilDayDifference, parseLocalIsoDate } from '../local-date';
 import { parseISO, addDays, addWeeks, addMonths, addMinutes, addHours, isBefore, isAfter, isEqual, startOfDay, getDay, getDate, lastDayOfMonth, isSameDay, set, formatISO } from 'date-fns';
 
 export type RepeatType = 
@@ -49,6 +50,9 @@ export interface SchedulerDefinition {
   max_occurrences?: number;
   anchor_mode?: string;
   active_window?: SchedulerActiveWindow;
+  exact_time?: string;
+  time_block?: string;
+  time_block_range_id?: string;
 }
 
 export interface SchedulerContext {
@@ -69,6 +73,138 @@ export interface SchedulerResult {
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export class SchedulerEngine {
+  /**
+   * Civil-date membership used by Daily Schedule projection.
+   *
+   * This deliberately lives in the scheduler owner so Home/Planner/Day Dial
+   * never reimplement recurrence. Context-dependent rules fail closed when the
+   * required context is unavailable.
+   */
+  static occursOnDate(
+    scheduler: SchedulerDefinition,
+    dateStr: string,
+    context?: SchedulerContext,
+  ): boolean {
+    const target = dateStr.slice(0, 10);
+    const start = scheduler.start_date.slice(0, 10);
+    const end = scheduler.end_date?.slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(target) || !/^\d{4}-\d{2}-\d{2}$/.test(start)) {
+      return false;
+    }
+    if (target < start || (end != null && target > end)) return false;
+
+    const matches = (rule: SchedulerRule) =>
+      this.ruleOccursOnDate(rule, start, target, context);
+
+    if ((scheduler.exclusions ?? []).some(matches)) return false;
+    if (scheduler.rules.length === 0) return target === start;
+    if (!scheduler.rules.some(matches)) return false;
+
+    const max = scheduler.max_occurrences;
+    const first = scheduler.rules[0];
+    if (max != null && max > 0 && first?.repeat_type === 'number_of_days') {
+      const interval = Math.max(1, first.interval ?? 1);
+      const diff = localCivilDayDifference(target, start);
+      const occurrenceIndex = Math.floor(diff / interval) + 1;
+      if (occurrenceIndex > max) return false;
+    }
+    return true;
+  }
+
+  private static ruleOccursOnDate(
+    rule: SchedulerRule,
+    start: string,
+    target: string,
+    context?: SchedulerContext,
+  ): boolean {
+    const diffDays = localCivilDayDifference(target, start);
+    if (diffDays < 0) return false;
+    const targetDate = parseLocalIsoDate(target);
+    const startDate = parseLocalIsoDate(start);
+    const targetYear = targetDate.getFullYear();
+    const targetMonth = targetDate.getMonth() + 1;
+    const targetDay = targetDate.getDate();
+    const startYear = startDate.getFullYear();
+    const startMonth = startDate.getMonth() + 1;
+    const startDay = startDate.getDate();
+    const weekday = WEEKDAYS[targetDate.getDay()];
+
+    switch (rule.repeat_type) {
+      case 'number_of_days':
+        return diffDays % Math.max(1, rule.interval ?? 1) === 0;
+      case 'days_of_week':
+        return rule.days_of_week?.includes(weekday) ?? false;
+      case 'number_of_weeks':
+        return diffDays % (7 * Math.max(1, rule.interval ?? 1)) === 0;
+      case 'number_of_months': {
+        const monthDiff = (targetYear - startYear) * 12 + (targetMonth - startMonth);
+        if (monthDiff < 0 || monthDiff % Math.max(1, rule.interval ?? 1) !== 0) return false;
+        if (rule.days_of_month?.length) return rule.days_of_month.includes(targetDay);
+        const daysInTargetMonth = daysInLocalMonth(
+          parseLocalIsoDate(`${targetYear}-${String(targetMonth).padStart(2, '0')}-01`),
+        );
+        return targetDay === Math.min(startDay, daysInTargetMonth);
+      }
+      case 'number_of_minutes':
+      case 'number_of_hours':
+        return true;
+      case 'days_after_last_start': {
+        if (!context?.lastStartDate) return false;
+        const base = context.lastStartDate.slice(0, 10);
+        return localCivilDayDifference(target, base) === (rule.interval ?? 1);
+      }
+      case 'days_after_last_end': {
+        if (!context?.lastEndDate) return false;
+        const base = context.lastEndDate.slice(0, 10);
+        return localCivilDayDifference(target, base) === (rule.interval ?? 1);
+      }
+      case 'linked_item_appears':
+        return rule.linked_item_id != null &&
+          (context?.scheduledItems?.[rule.linked_item_id]?.some(value => value.slice(0, 10) === target) ?? false);
+      case 'n_days_after_linked_item': {
+        if (!rule.linked_item_id) return false;
+        const bases = context?.scheduledItems?.[rule.linked_item_id] ?? [];
+        return bases.some(value =>
+          localCivilDayDifference(target, value.slice(0, 10)) === (rule.interval ?? 0)
+        );
+      }
+      case 'first_business_day_of_month': {
+        const ordinal = rule.monthly_ordinal ?? 1;
+        const businessDays: number[] = [];
+        const monthStart = parseLocalIsoDate(
+          `${targetYear}-${String(targetMonth).padStart(2, '0')}-01`,
+        );
+        const daysInMonth = daysInLocalMonth(monthStart);
+        for (let day = 1; day <= daysInMonth; day++) {
+          const date = parseLocalIsoDate(
+            `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+          );
+          const weekday = date.getDay();
+          if (weekday !== 0 && weekday !== 6) businessDays.push(day);
+        }
+        const index = ordinal > 0 ? ordinal - 1 : businessDays.length + ordinal;
+        return businessDays[index] === targetDay;
+      }
+      case 'days_after_reference_field': {
+        if (!rule.target_type || !rule.field_name) return false;
+        const base = context?.referenceFields?.[`${rule.target_type}.${rule.field_name}`];
+        return base != null &&
+          localCivilDayDifference(target, base.slice(0, 10)) === (rule.interval ?? 0);
+      }
+      case 'days_of_theme':
+        return rule.theme_id != null &&
+          (context?.themes?.[rule.theme_id]?.some(value => value.slice(0, 10) === target) ?? false);
+      case 'days_with_block':
+        return rule.block_id != null &&
+          (context?.blocks?.[rule.block_id]?.some(value => value.slice(0, 10) === target) ?? false);
+      case 'days_per_period':
+        // Requires period accounting/history that Companion V1 does not own.
+        return false;
+      default:
+        return false;
+    }
+  }
+
   static evaluate(
     scheduler: SchedulerDefinition,
     afterStr: string,

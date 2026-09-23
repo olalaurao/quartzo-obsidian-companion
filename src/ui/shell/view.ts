@@ -1,4 +1,4 @@
-import { ItemView, Notice, WorkspaceLeaf } from 'obsidian';
+import { getIcon, ItemView, Notice, WorkspaceLeaf } from 'obsidian';
 import { DailyScheduleEngine } from '../../core/daily_schedule';
 import type { NormalizedItem, NormalizedSchedule } from '../../core/daily_schedule/types';
 import type { GoogleCalendarProjection } from '../../integrations/google/calendar';
@@ -491,6 +491,7 @@ export class QuartzoView extends ItemView {
       titleForItem: item => this.titleForScheduleItem(item, googleEvents),
       canOpenItem: item => this.canOpenScheduleItem(item, googleEvents),
       onOpenItem: item => this.openScheduleItem(item, googleEvents),
+      iconFactory: getIcon,
       onOpenOverdue: projection => this.openObjectDetail(projection.object),
       performOccurrenceAction: (item, action, options) =>
         this.context.plugin.performOccurrenceAction(item, action, options),

@@ -40,6 +40,32 @@ export function daysInLocalMonth(date: Date): number {
   return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
 }
 
+/**
+ * Stable Gregorian civil-day ordinal. This deliberately avoids UTC/millisecond
+ * arithmetic so calendar membership is independent of DST and timezone offset.
+ */
+export function localCivilDayNumber(value: string): number {
+  const date = parseLocalIsoDate(value);
+  let year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  year -= month <= 2 ? 1 : 0;
+  const era = Math.floor(year / 400);
+  const yearOfEra = year - era * 400;
+  const monthPrime = month + (month > 2 ? -3 : 9);
+  const dayOfYear = Math.floor((153 * monthPrime + 2) / 5) + day - 1;
+  const dayOfEra =
+    yearOfEra * 365 +
+    Math.floor(yearOfEra / 4) -
+    Math.floor(yearOfEra / 100) +
+    dayOfYear;
+  return era * 146097 + dayOfEra;
+}
+
+export function localCivilDayDifference(later: string, earlier: string): number {
+  return localCivilDayNumber(later) - localCivilDayNumber(earlier);
+}
+
 export function shiftLocalMonth(value: string, delta: number): string {
   const source = parseLocalIsoDate(value);
   const targetMonthStart = new Date(source.getFullYear(), source.getMonth() + delta, 1);

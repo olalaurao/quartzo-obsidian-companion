@@ -11,6 +11,7 @@ export interface DayDialProjectedItem {
   item: NormalizedItem;
   title: string;
   color: string | null;
+  iconName: string;
   startMinute: number;
   endMinute: number;
   durationMinutes: number;
@@ -19,9 +20,15 @@ export interface DayDialProjectedItem {
   laneCount: number;
 }
 
+export interface DayDialInvalidTimedItem {
+  item: NormalizedItem;
+  reason: 'missing-start' | 'invalid-start' | 'invalid-end';
+}
+
 export interface DayDialProjection {
   timed: DayDialProjectedItem[];
   allDay: NormalizedItem[];
+  invalidTimed: DayDialInvalidTimedItem[];
   maxOverlapLanes: number;
 }
 
@@ -90,16 +97,93 @@ export function colorForDayDialItem(
   return normalizeHex(signature?.colorHex);
 }
 
+const ICON_ALIASES: Record<string, string> = {
+  check_circle: 'circle-check',
+  check_circle_outline: 'circle-check',
+  calendar_today: 'calendar-days',
+  calendar_today_rounded: 'calendar-days',
+  access_time: 'clock-3',
+  refresh: 'refresh-cw',
+  notifications: 'bell',
+  notifications_none_rounded: 'bell',
+  timer: 'timer',
+  wb_sunny: 'sun',
+  bedtime: 'moon',
+  menu_book: 'book-open',
+  note: 'notebook',
+  rotate_right: 'rotate-cw',
+};
+
+const TYPE_ICONS: Record<string, string> = {
+  task: 'circle-check',
+  habit: 'refresh-cw',
+  reminder: 'bell',
+  event: 'calendar-days',
+  google_calendar: 'calendar-days',
+  pomodoro: 'timer',
+  pomodoro_session: 'timer',
+  time_block: 'clock-3',
+  system: 'workflow',
+  routine: 'list-checks',
+  project: 'rotate-cw',
+  entry: 'notebook-pen',
+  journal_entry: 'notebook-pen',
+  person: 'user-round',
+  goal: 'target',
+};
+
+function normalizeIconName(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const candidate = value.trim();
+  if (!candidate) return null;
+  return ICON_ALIASES[candidate] ?? candidate.replace(/_/g, '-');
+}
+
+export function iconForDayDialItem(
+  item: NormalizedItem,
+  context: DayDialProjectionContext,
+): string {
+  if (item.origin === 'externalEvent') return 'calendar-days';
+  const object = context.index?.objects.get(item.sourceId);
+  const explicit = normalizeIconName(
+    object?.frontmatter.icon ??
+    object?.frontmatter.icon_name ??
+    object?.frontmatter.iconName,
+  );
+  if (explicit) return explicit;
+
+  const signature = resolveTypeSignature(context.sharedSettings ?? null, item.sourceType);
+  const signatureIcon = normalizeIconName(signature?.iconName);
+  if (signatureIcon) return signatureIcon;
+
+  return TYPE_ICONS[item.sourceType] ?? 'circle';
+}
+
 function timedCandidates(
   items: NormalizedItem[],
   context: DayDialProjectionContext,
-): Array<Omit<DayDialProjectedItem, 'lane' | 'laneCount'>> {
+): {
+  projected: Array<Omit<DayDialProjectedItem, 'lane' | 'laneCount'>>;
+  invalidTimed: DayDialInvalidTimedItem[];
+} {
   const projected: Array<Omit<DayDialProjectedItem, 'lane' | 'laneCount'>> = [];
+  const invalidTimed: DayDialInvalidTimedItem[] = [];
   for (const item of items) {
     if (item.isAllDay || !item.isTimed) continue;
+    if (!item.start) {
+      invalidTimed.push({ item, reason: 'missing-start' });
+      continue;
+    }
     const start = clockMinutes(item.start);
-    if (start == null) continue;
+    if (start == null) {
+      invalidTimed.push({ item, reason: 'invalid-start' });
+      continue;
+    }
     const rawEnd = clockMinutes(item.end, true);
+    if (item.end && rawEnd == null) {
+      invalidTimed.push({ item, reason: 'invalid-end' });
+      continue;
+    }
     const end = rawEnd != null && rawEnd > start
       ? rawEnd
       : Math.min(MINUTES_PER_DAY, start + DEFAULT_MARKER_MINUTES);
@@ -108,6 +192,7 @@ function timedCandidates(
       item,
       title: titleForDayDialItem(item, context),
       color: colorForDayDialItem(item, context),
+      iconName: iconForDayDialItem(item, context),
       startMinute: start,
       endMinute: end,
       durationMinutes: duration,
@@ -121,14 +206,14 @@ function timedCandidates(
     left.endMinute - right.endMinute ||
     left.item.id.localeCompare(right.item.id)
   );
-  return projected;
+  return { projected, invalidTimed };
 }
 
 export function projectDayDial(
   items: NormalizedItem[],
   context: DayDialProjectionContext,
 ): DayDialProjection {
-  const candidates = timedCandidates(items, context);
+  const { projected: candidates, invalidTimed } = timedCandidates(items, context);
   const laneEnds: number[] = [];
   const lanes = new Map<string, number>();
 
@@ -151,6 +236,7 @@ export function projectDayDial(
       laneCount: candidate.visual === 'arc' ? laneCount : 1,
     })),
     allDay: items.filter(item => item.isAllDay),
+    invalidTimed,
     maxOverlapLanes: laneCount,
   };
 }
