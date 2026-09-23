@@ -1,4 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('obsidian', () => ({
+  getIcon: (name: string) => {
+    const document = globalThis.document;
+    if (!document) return null;
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('data-icon', name);
+    return svg;
+  },
+}));
 import type { NormalizedItem, NormalizedSchedule } from '../../src/core/daily_schedule/types';
 import { renderDayDial } from '../../src/ui/day-dial/view';
 
@@ -112,6 +122,56 @@ describe('Day Dial accessibility DOM', () => {
 
       const legendLabels = findAll(root, element => element.textContent.includes('Campaign task'));
       expect(legendLabels.some(element => element.textContent.includes('Done'))).toBe(true);
+    } finally {
+      (globalThis as typeof globalThis & { document: Document | undefined }).document = originalDocument;
+    }
+  });
+
+  it('renders short canonical occurrences as keyboard-accessible icon markers', () => {
+    const originalDocument = globalThis.document;
+    const fakeDocument = {
+      createElement: (tagName: string) => new FakeElement(tagName),
+      createElementNS: (_namespace: string, tagName: string) => new FakeElement(tagName),
+    } as unknown as Document;
+    (globalThis as typeof globalThis & { document: Document }).document = fakeDocument;
+
+    try {
+      const container = new FakeElement('div') as unknown as HTMLElement;
+      const schedule: NormalizedSchedule = {
+        kind: 'daily_schedule',
+        count: 1,
+        items: [item({
+          id: 'reminder:short',
+          sourceId: 'reminder-short',
+          sourceType: 'reminder',
+          sourceLabel: 'Short reminder',
+          start: '09:00',
+          end: '09:15',
+          isCompletable: true,
+          isCompleted: false,
+          outcome: 'pending',
+        })],
+      };
+
+      renderDayDial(container, {
+        selectedDate: '2026-09-19',
+        schedule,
+        index: null,
+        now: new Date('2026-09-19T08:00:00'),
+        onOpenItem: () => {},
+      });
+
+      const root = container as unknown as FakeElement;
+      const markers = findAll(root, element =>
+        element.classList.contains('quartzo-day-dial-icon-marker')
+      );
+      expect(markers).toHaveLength(1);
+      expect(markers[0]?.getAttribute('role')).toBe('button');
+      expect(markers[0]?.getAttribute('aria-label')).toBe(
+        '09:00–09:15 Short reminder',
+      );
+      const icons = findAll(root, element => element.getAttribute('data-icon') === 'bell');
+      expect(icons.length).toBeGreaterThan(0);
     } finally {
       (globalThis as typeof globalThis & { document: Document | undefined }).document = originalDocument;
     }
