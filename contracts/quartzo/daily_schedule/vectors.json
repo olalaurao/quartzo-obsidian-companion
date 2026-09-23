@@ -797,5 +797,85 @@
         }
       ]
     }
+  },
+  {
+    "id": "time_block_overnight_continuation",
+    "kind": "timeBlock",
+    "input": {
+      "date": "2026-09-07",
+      "objects": [
+        {
+          "type": "time_block",
+          "id": "block-overnight",
+          "title": "Sleep",
+          "time_ranges": [
+            {
+              "id": "sleep-range",
+              "start_hour": 22,
+              "start_minute": 0,
+              "end_hour": 7,
+              "end_minute": 0
+            }
+          ]
+        }
+      ]
+    },
+    "expectedNormalized": {
+      "kind": "timeBlock",
+      "count": 2,
+      "items": [
+        {
+          "id": "time_block:block-overnight:sleep-range@2026-09-06",
+          "sourceId": "block-overnight",
+          "occurrenceId": "time_block:block-overnight:sleep-range@2026-09-06",
+          "date": "2026-09-07",
+          "start": "00:00",
+          "end": "07:00",
+          "isTimed": true
+        },
+        {
+          "id": "time_block:block-overnight:sleep-range@2026-09-07",
+          "sourceId": "block-overnight",
+          "occurrenceId": "time_block:block-overnight:sleep-range@2026-09-07",
+          "date": "2026-09-07",
+          "start": "22:00",
+          "end": "24:00",
+          "isTimed": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "event_cross_day_continuation",
+    "kind": "event",
+    "input": {
+      "date": "2026-09-07",
+      "objects": [
+        {
+          "type": "event",
+          "id": "event-overnight",
+          "title": "Night event",
+          "date": "2026-09-06",
+          "time_of_day": "23:00",
+          "duration": 180,
+          "multi_day": true
+        }
+      ]
+    },
+    "expectedNormalized": {
+      "kind": "event",
+      "count": 1,
+      "items": [
+        {
+          "id": "event:event-overnight",
+          "sourceId": "event-overnight",
+          "occurrenceId": "event-overnight",
+          "date": "2026-09-07",
+          "start": "00:00",
+          "end": "02:00",
+          "isTimed": true
+        }
+      ]
+    }
   }
 ]
