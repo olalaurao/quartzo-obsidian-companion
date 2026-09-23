@@ -41,7 +41,7 @@ import {
 
 // Known field names for each object type
 const KNOWN_FIELDS: Record<ObjectType, Set<string>> = {
-  task: new Set(['id', 'type', 'title', 'archived', 'organizers', 'scheduler', 'reminders', 'body']),
+  task: new Set(['id', 'type', 'title', 'archived', 'organizers', 'scheduler', 'reminders', 'start_date', 'end_date', 'scheduled_time', 'time', 'duration', 'all_day', 'body']),
   habit: new Set(['id', 'type', 'title', 'color', 'status', 'slots', 'negative', 'body']),
   tracker_definition: new Set(['id', 'type', 'title', 'sections', 'section_count', 'field_count', 'body']),
   tracker_record: new Set(['id', 'type', 'title', 'tracker_id', 'date', 'field_values', 'body']),
@@ -49,7 +49,7 @@ const KNOWN_FIELDS: Record<ObjectType, Set<string>> = {
   note: new Set(['id', 'type', 'title', 'note_subtype', 'links', 'body']),
   reminder: new Set(['id', 'type', 'title', 'date', 'time', 'is_completed', 'is_completable', 'reminder_count', 'reminder_id', 'reminders', 'scheduled_date', 'scheduler', 'notes', 'time_block', 'time_block_id', 'checkboxes', 'habit_reminder', 'organizers', 'categories', 'tags', 'links', 'archived', 'pinned', 'created_at', 'updated_at', 'source_url', 'body']),
   goal: new Set(['id', 'type', 'title', 'state', 'start_date', 'deadline', 'description', 'body']),
-  event: new Set(['id', 'type', 'title', 'date', 'time_of_day', 'duration', 'body']),
+  event: new Set(['id', 'type', 'title', 'date', 'time_of_day', 'time', 'duration', 'end_time', 'multi_day', 'scheduler', 'body']),
   pomodoro_session: new Set(['id', 'type', 'title', 'date', 'work_duration', 'start', 'duration', 'state', 'body']),
   system: new Set([
     'id', 'type', 'title', 'time', 'trigger', 'scheduled_time', 'scheduler',
@@ -83,7 +83,7 @@ const KNOWN_FIELDS: Record<ObjectType, Set<string>> = {
   label: new Set(['id', 'type', 'title', 'organizer_type', 'body']),
   person: new Set(['id', 'type', 'title', 'organizer_type', 'last_contact_date', 'contact_frequency_days', 'contact_priority', 'last_contact', 'frequency_days', 'body']),
   day_theme: new Set(['id', 'type', 'title', 'organizer_type', 'body']),
-  time_block: new Set(['id', 'type', 'title', 'organizer_type', 'time_ranges', 'ranges', 'body']),
+  time_block: new Set(['id', 'type', 'title', 'organizer_type', 'time_ranges', 'ranges', 'scheduler', 'color', 'icon', 'body']),
   value: new Set(['id', 'type', 'title', 'organizer_type', 'body']),
   pillar: new Set(['id', 'type', 'title', 'why', 'touch_count', 'body']),
   action: new Set(['id', 'type', 'title', 'energy_level', 'energy_cost', 'priority', 'body']),
@@ -392,8 +392,13 @@ export class ObjectParser {
           ...baseObject,
           type: 'event',
           date: String(frontmatter.date || ''),
-          time_of_day: frontmatter.time_of_day as string,
+          time_of_day: (frontmatter.time_of_day ?? frontmatter.time) as string,
           duration: frontmatter.duration as number,
+          end_time: frontmatter.end_time as string,
+          multi_day: frontmatter.multi_day as boolean,
+          scheduler: frontmatter.scheduler && typeof frontmatter.scheduler === 'object' && !Array.isArray(frontmatter.scheduler)
+            ? { ...(frontmatter.scheduler as Record<string, unknown>) }
+            : undefined,
         } as Event;
         break;
       
@@ -584,6 +589,9 @@ export class ObjectParser {
           organizer_type: 'time_block',
           time_ranges: frontmatter.time_ranges as TimeBlock['time_ranges'] || [],
           ranges: frontmatter.ranges as TimeBlock['ranges'] || [],
+          scheduler: frontmatter.scheduler && typeof frontmatter.scheduler === 'object' && !Array.isArray(frontmatter.scheduler)
+            ? { ...(frontmatter.scheduler as Record<string, unknown>) }
+            : undefined,
         } as TimeBlock;
         break;
       
