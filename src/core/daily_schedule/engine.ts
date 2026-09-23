@@ -341,9 +341,9 @@ export class DailyScheduleEngine {
     if (!this.sourceOccursOnDate(scheduler, date, fallbackDate, scheduler == null)) return;
 
     const time = String(
+      this.clockFromIso(scheduler?.exact_time) ??
       obj.scheduled_time ??
       obj.time ??
-      this.clockFromIso(scheduler?.exact_time) ??
       ''
     );
     if (!time) return;
@@ -364,39 +364,44 @@ export class DailyScheduleEngine {
 
     const scheduler = this.schedulerDefinition(obj.scheduler);
     const fallbackDate = this.dateOnly(String(obj.start_date ?? scheduler?.start_date ?? ''));
-    if (!this.sourceOccursOnDate(scheduler, date, fallbackDate)) return;
-
     const time = String(
+      this.clockFromIso(scheduler?.exact_time) ??
       obj.scheduled_time ??
       obj.time ??
-      this.clockFromIso(scheduler?.exact_time) ??
+      this.clockFromIso(typeof obj.start_date === 'string' ? obj.start_date : undefined) ??
       ''
     );
     const duration = Math.max(0, Number(obj.estimated_minutes ?? 0));
-    const occurrenceId = `routine:${id}@${date}`;
 
-    if (time) {
+    if (!time) {
+      if (!this.sourceOccursOnDate(scheduler, date, fallbackDate)) return;
       items.push({
         id: `routine:${id}`,
         sourceId: id,
-        occurrenceId,
+        occurrenceId: `routine:${id}@${date}`,
         date,
-        start: time,
-        ...(duration > 0 ? { end: this.calculateEndTimeWithinDay(time, duration) } : {}),
-        isTimed: true,
+        isTimed: false,
         isAllDay: false
       });
       return;
     }
 
-    items.push({
-      id: `routine:${id}`,
-      sourceId: id,
-      occurrenceId,
-      date,
-      isTimed: false,
-      isAllDay: false
-    });
+    const visualDuration = duration > 0 ? duration : 1;
+    for (const anchorDate of this.relevantAnchorDates(date, visualDuration, time)) {
+      if (!this.sourceOccursOnDate(scheduler, anchorDate, fallbackDate)) continue;
+      const segment = this.projectIntervalSegment(anchorDate, date, time, visualDuration);
+      if (!segment) continue;
+      items.push({
+        id: `routine:${id}`,
+        sourceId: id,
+        occurrenceId: `routine:${id}@${anchorDate}`,
+        date,
+        start: segment.start,
+        ...(duration > 0 ? { end: segment.end } : {}),
+        isTimed: true,
+        isAllDay: false
+      });
+    }
   }
 
   private static processRotationZone(obj: Record<string, unknown>, date: string, allObjects: Record<string, unknown>[], items: RawNormalizedItem[]): void {

@@ -459,7 +459,6 @@ export class QuartzoView extends ItemView {
       titleForItem: item => this.titleForScheduleItem(item, googleEvents),
       canOpenItem: item => this.canOpenScheduleItem(item, googleEvents),
       onOpenItem: item => this.openScheduleItem(item, googleEvents),
-      iconFactory: getIcon,
       performOccurrenceAction: (item, action, options) =>
         this.context.plugin.performOccurrenceAction(item, action, options),
       performOccurrenceReschedule: (item, start, end) =>
@@ -492,6 +491,7 @@ export class QuartzoView extends ItemView {
       titleForItem: item => this.titleForScheduleItem(item, googleEvents),
       canOpenItem: item => this.canOpenScheduleItem(item, googleEvents),
       onOpenItem: item => this.openScheduleItem(item, googleEvents),
+      iconFactory: getIcon,
       onOpenOverdue: projection => this.openObjectDetail(projection.object),
       performOccurrenceAction: (item, action, options) =>
         this.context.plugin.performOccurrenceAction(item, action, options),
