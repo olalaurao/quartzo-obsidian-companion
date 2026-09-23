@@ -1,14 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
-
-vi.mock('obsidian', () => ({
-  getIcon: (name: string) => {
-    const document = globalThis.document;
-    if (!document) return null;
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('data-icon', name);
-    return svg;
-  },
-}));
+import { describe, expect, it } from 'vitest';
 import type { NormalizedItem, NormalizedSchedule } from '../../src/core/daily_schedule/types';
 import { renderDayDial } from '../../src/ui/day-dial/view';
 
