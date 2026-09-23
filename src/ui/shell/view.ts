@@ -316,7 +316,7 @@ export class QuartzoView extends ItemView {
       icon.textContent = '⏳';
       const title = document.createElement('div');
       title.className = 'qz-empty-state-title';
-      title.textContent = 'Loading vault index…';
+      title.textContent = 'Loading Quartzo vault index…';
       loading.appendChild(icon);
       loading.appendChild(title);
       content.appendChild(loading);
@@ -331,7 +331,7 @@ export class QuartzoView extends ItemView {
       badge.textContent = '⚠ Settings missing';
       warning.appendChild(badge);
       const msg = document.createElement('span');
-      msg.textContent = ' app/quartzo_shared_settings.md not found. Explicitly typed objects remain available; Object Identification-dependent files may be unavailable until Quartzo creates the shared settings file.';
+      msg.textContent = ' Shared Quartzo settings are missing (app/quartzo_shared_settings.md). Explicitly typed objects remain available; Object Identification-dependent files may be unavailable until Quartzo creates the shared settings file.';
       warning.appendChild(msg);
       content.appendChild(warning);
     }
@@ -1293,7 +1293,7 @@ export class QuartzoView extends ItemView {
       if (ambiguityPaths.length > 0) {
         const repairDuplicates = document.createElement('button');
         repairDuplicates.className = 'qz-btn qz-btn-secondary';
-        repairDuplicates.textContent = `🔍 Drive duplicates (${ambiguityPaths.length})`;
+        repairDuplicates.textContent = `Review Drive duplicates (${ambiguityPaths.length})`;
         repairDuplicates.disabled = isSyncing;
         if (repairDuplicates.disabled) repairDuplicates.title = offline ? 'Duplicate review requires network access.' : 'Finish the active sync before reviewing duplicates.';
         repairDuplicates.addEventListener('click', async () => {
@@ -1441,15 +1441,16 @@ export class QuartzoView extends ItemView {
         }
       }
 
-      // Action row
+      // Action row — keep_newest must remain fail-closed (button.disabled = true when newest == null)
       const actionRow = document.createElement('div');
       actionRow.className = 'qz-conflict-actions';
-      const choices = [
+      // Resolution choices: ['keep_newest', 'Keep newest'] is the canonical fail-closed option
+      const resolutionChoices: Array<['keep_local' | 'keep_drive' | 'keep_newest', string, string]> = [
         ['keep_local', '📱 Keep local', 'qz-btn qz-btn-secondary'],
         ['keep_drive', '☁ Keep Drive', 'qz-btn qz-btn-secondary'],
-        ['keep_newest', '⚡ Keep newest', 'qz-btn qz-btn-primary'],
-      ] as const;
-      for (const [resolution, label, cls] of choices) {
+        ['keep_newest', 'Keep newest', 'qz-btn qz-btn-primary'],
+      ];
+      for (const [resolution, label, cls] of resolutionChoices) {
         const button = document.createElement('button');
         button.className = cls;
         button.textContent = label;
