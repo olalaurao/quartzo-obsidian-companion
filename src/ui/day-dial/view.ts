@@ -1,3 +1,4 @@
+import { getIcon } from 'obsidian';
 import type { NormalizedItem, NormalizedSchedule } from '../../core/daily_schedule/types';
 import { localIsoDate } from '../../core/local-date';
 import type { QuartzoSharedSettings } from '../../core/shared-settings';
@@ -156,18 +157,39 @@ function renderProjectedItem(
     return;
   }
 
-  const inner = pointForMinute(projected.startMinute, ARC_BASE_RADIUS - 4);
-  const outer = pointForMinute(projected.startMinute, OUTER_RADIUS + 2);
-  const marker = svgElement('line');
-  marker.setAttribute('x1', String(inner.x));
-  marker.setAttribute('y1', String(inner.y));
-  marker.setAttribute('x2', String(outer.x));
-  marker.setAttribute('y2', String(outer.y));
-  marker.classList.add('quartzo-day-dial-marker');
-  if (classSuffix) marker.classList.add(classSuffix.trim());
-  if (projected.color) marker.setAttribute('stroke', projected.color);
-  makeInteractive(marker, projected, options);
-  svg.appendChild(marker);
+  const point = pointForMinute(projected.startMinute, ARC_BASE_RADIUS);
+  const group = svgElement('g');
+  group.classList.add('quartzo-day-dial-icon-marker');
+  if (classSuffix) group.classList.add(classSuffix.trim());
+  if (projected.color) group.setAttribute('color', projected.color);
+
+  const hitTarget = svgElement('circle');
+  hitTarget.setAttribute('cx', String(point.x));
+  hitTarget.setAttribute('cy', String(point.y));
+  hitTarget.setAttribute('r', '12');
+  hitTarget.classList.add('quartzo-day-dial-marker-hit-target');
+  group.appendChild(hitTarget);
+
+  const icon = getIcon(projected.iconName);
+  if (icon) {
+    icon.setAttribute('x', String(point.x - 8));
+    icon.setAttribute('y', String(point.y - 8));
+    icon.setAttribute('width', '16');
+    icon.setAttribute('height', '16');
+    icon.setAttribute('aria-hidden', 'true');
+    icon.classList.add('quartzo-day-dial-marker-icon');
+    group.appendChild(icon);
+  } else {
+    const fallback = svgElement('circle');
+    fallback.setAttribute('cx', String(point.x));
+    fallback.setAttribute('cy', String(point.y));
+    fallback.setAttribute('r', '4');
+    fallback.classList.add('quartzo-day-dial-marker-fallback');
+    group.appendChild(fallback);
+  }
+
+  makeInteractive(group, projected, options);
+  svg.appendChild(group);
 }
 
 function renderAllDay(
@@ -215,8 +237,19 @@ function renderLegend(
 
     const swatch = document.createElement('span');
     swatch.className = 'quartzo-day-dial-swatch';
-    if (entry.color) swatch.style.backgroundColor = entry.color;
     swatch.setAttribute('aria-hidden', 'true');
+    if (entry.visual === 'marker') {
+      swatch.classList.add('is-icon');
+      if (entry.color) swatch.style.color = entry.color;
+      const icon = getIcon(entry.iconName);
+      if (icon) {
+        icon.setAttribute('width', '14');
+        icon.setAttribute('height', '14');
+        swatch.appendChild(icon);
+      }
+    } else if (entry.color) {
+      swatch.style.backgroundColor = entry.color;
+    }
     row.appendChild(swatch);
 
     const label = document.createElement('span');
@@ -282,6 +315,14 @@ export function renderDayDial(container: HTMLElement, options: DayDialViewOption
     const empty = document.createElement('p');
     empty.textContent = 'Nothing scheduled on the canonical Daily Schedule.';
     section.appendChild(empty);
+  }
+
+  if (projection.invalidTimed.length > 0) {
+    const diagnostic = document.createElement('p');
+    diagnostic.className = 'quartzo-day-dial-diagnostic';
+    diagnostic.setAttribute('role', 'status');
+    diagnostic.textContent = `${projection.invalidTimed.length} timed item${projection.invalidTimed.length === 1 ? '' : 's'} could not be placed because the canonical time is invalid.`;
+    section.appendChild(diagnostic);
   }
 
   renderLegend(section, projection.timed, options);
