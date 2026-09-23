@@ -1639,3 +1639,30 @@ Companion:
 Scope after closeout:
 - Day Dial / Daily Schedule 1.2.0 corrective work is closed.
 - Marco D remains unchanged: E2E real Vault/Drive/Calendar, BRAT beta/RC and V1 release are still pending and must continue in their existing order.
+
+## 2026-09-23 - D1 upstream sync hardening merged; downstream repin prepared
+
+Repo upstream: `olalaurao/aplicativo`
+- PR #51 head: `4019a1869a36c8579c23375d335d726847b221e4`.
+- PR certification: Agent Contract Gate ✅; Dial Focus CI ✅; Flutter Analyze ✅; Flutter Test ✅.
+- Merge SHA: `e0d73cda75a2e91a4f6d13452fd242ae3eee59e4`.
+- Main push CI: Agent Contract Gate ✅; Flutter Analyze ✅; Flutter Test ✅.
+
+Implemented against the existing owners:
+- `SyncManager` now owns the exclusive window for bulk conflict resolution as well as normal sync; no second coordinator/source of truth.
+- resolve-all snapshots conflicts only after acquiring the lock; Auto-Sync requests during resolution coalesce to one follow-up pass.
+- shared progress clamps current to the operation snapshot total.
+- full reconciliation progress reports the current vault-relative path and counts real work units instead of `local + remote` including unprocessable conflicts/folders.
+- Drive inventory/media reads used by full reconciliation have bounded per-request deadlines; the full reconciliation itself keeps single-flight for its complete lifetime.
+- Resource legacy compatibility covers the concrete D1 vault values (`to-watch`, `[normal]`, `None`/date-like optional year) without relaxing arbitrary malformed values.
+- Settings → Sync & Backup has a permanent `View conflicts` entry.
+
+Deliberately not implemented:
+- no targeted single-path sync/debug owner was added before evidence proves it is still needed;
+- no MediaProvider workaround was added for the manual 515-file ADB recovery burst.
+
+Downstream:
+- vendored contract bytes are unchanged relative to the prior `ad096b07...` pin.
+- `UPSTREAM.lock.json` repin to `e0d73cda75a2e91a4f6d13452fd242ae3eee59e4` prepared with the existing manifest/hash set.
+- D1 remains open until the physical rerun succeeds without manual file/DB intervention.
+

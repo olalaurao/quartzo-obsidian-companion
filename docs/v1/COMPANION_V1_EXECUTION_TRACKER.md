@@ -524,3 +524,32 @@ A cada milestone/PR:
 4. promover regras permanentes para contracts/`guidelines.md`/`agents.md`;
 5. não apagar gaps: mover para o milestone correto;
 6. manter uma única linha de chegada até a V1.
+
+## 2026-09-23 — D1 Quartzo sync hardening integrado upstream; rerun físico ainda pendente
+
+Upstream Quartzo:
+- PR #51: `Harden D1 sync conflict recovery`.
+- implementation head certificado: `4019a1869a36c8579c23375d335d726847b221e4`.
+- PR gates: Agent Contract Gate ✅; Dial Focus CI ✅; Flutter Analyze ✅; Flutter Test ✅.
+- merge canônico: `e0d73cda75a2e91a4f6d13452fd242ae3eee59e4`.
+- post-merge `main` CI: Agent Contract Gate ✅; Flutter Analyze ✅; Flutter Test ✅.
+
+Reparo dos blockers D1:
+- Failure 1 — stale public `Quartzo_hash`: correção já integrada antes deste PR e mantida por regression test.
+- Failure 2 — resolve-all concorrente com Auto-Sync: bulk conflict resolution agora compartilha o single-flight do `SyncManager`, captura snapshot depois do lock e coalesce triggers para um único follow-up.
+- Failure 3 — full sync opaco/stall aparente: progresso usa work units realmente processáveis, mostra o path atual e leituras remotas usadas por inventário/download têm deadline por operação; mutações não recebem timeout que solte o lock.
+- Failure 4 — Resources legados: aliases/sentinels observados no vault real passam por compatibilidade estreita sem criar nova semântica canônica; valores desconhecidos continuam fail-closed.
+- Failure 5 — MediaProvider após batch manual de 515 arquivos: não foi criado workaround Android especulativo; produção não usa MediaStore/MediaProvider nesse caminho e o watcher já deduplica por path.
+- Failure 6 — conflitos difíceis de alcançar: Settings → Sync & Backup agora expõe `View conflicts` de forma permanente, reutilizando `/sync-conflicts`.
+
+Repin downstream:
+- `contracts/UPSTREAM.lock.json` preparado para `e0d73cda75a2e91a4f6d13452fd242ae3eee59e4`.
+- O diff upstream desde `ad096b07...` não altera nenhum blob em `contracts/`; hashes/versões vendorados permanecem iguais.
+- Nenhum comportamento de sync do Companion foi reimplementado.
+
+Marco D:
+- **permanece aberto**.
+- Não marcar E2E como verde por causa do merge do reparo.
+- Próxima prova é rerodar D1 fisicamente sem cópia manual, sem intervenção direta no SQLite e sem mass-resolve externo.
+- Critério continua: Android → Drive/PC → Companion/Obsidian completion → Android pull refletindo finalização, sem duplicata e sem conflito para a Task D1.
+

@@ -151,3 +151,18 @@ D1 should only be marked passed when all are true:
 - Android task becomes completed/finalized or otherwise reflects the completed occurrence.
 - No duplicate `Prepare campaign`.
 - No conflict for `tasks/prepare-campaign.md`.
+
+## Repair status — 2026-09-23
+
+The upstream repair work from this handoff has now been packaged and merged as Quartzo PR #51 at `e0d73cda75a2e91a4f6d13452fd242ae3eee59e4`. PR-level Agent Contract Gate, Dial Focus CI, Flutter Analyze and Flutter Test passed; integrated `main` then passed Agent Contract Gate, Flutter Analyze and Flutter Test again.
+
+Status by failure:
+- **Failure 1:** fixed and regression-covered — newer Drive modified time forces remote-byte verification even when the public `Quartzo_hash` property is stale.
+- **Failure 2:** fixed — bulk conflict resolution uses the same `SyncManager` single-flight, snapshots after lock acquisition, bounds progress and coalesces Auto-Sync.
+- **Failure 3:** hardened for rerun — full sync now exposes current relative path, calculates progress from actual work units and bounds remote inventory/media reads individually. A new targeted-path sync API was intentionally not added without evidence that it remains necessary.
+- **Failure 4:** fixed for the concrete legacy values observed in D1 while retaining fail-closed behavior for unknown malformed values.
+- **Failure 5:** no production workaround added. The exception followed the explicit manual 515-file recovery batch; the app path does not directly use MediaStore/MediaProvider and the existing watcher already collapses duplicate path events. Reassess only if a normal D1 rerun reproduces it.
+- **Failure 6:** fixed for normal product reachability by adding Settings → Sync & Backup → `View conflicts`; the existing `/sync-conflicts` route remains the navigation target.
+
+This document remains historical failure evidence. **D1 itself is not closed by these code fixes.** Rerun criteria below remain authoritative for the proof step: the Android-created object must complete the entire app → Drive/PC → Companion/Obsidian → Drive → Android roundtrip without manual copying, SQLite editing or external mass resolution.
+
