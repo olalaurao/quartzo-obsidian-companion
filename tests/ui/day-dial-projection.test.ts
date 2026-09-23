@@ -4,6 +4,7 @@ import { parseSharedSettings } from '../../src/core/shared-settings';
 import {
   DAY_DIAL_SHORT_OCCURRENCE_MINUTES,
   colorForDayDialItem,
+  iconForDayDialItem,
   projectDayDial,
   titleForDayDialItem,
 } from '../../src/ui/day-dial/projection';
@@ -123,6 +124,42 @@ describe('Day Dial canonical projection', () => {
       index: vaultIndex,
       sharedSettings,
     })).toBeNull();
+  });
+
+  it('resolves icon metadata before canonical type fallback', () => {
+    const settingsWithIcon = parseSharedSettings(`---
+type: quartzo_shared_settings
+schema_version: 1
+type_signatures:
+  task:
+    objectType: task
+    markerType: property
+    markerValue: "type: task"
+    iconName: "check_circle"
+---
+`)!;
+    expect(iconForDayDialItem(item({ id: 'typed-icon', sourceId: 'typed' }), {
+      index: index(),
+      sharedSettings: settingsWithIcon,
+    })).toBe('circle-check');
+
+    expect(iconForDayDialItem(item({
+      id: 'reminder-icon',
+      sourceId: 'missing',
+      sourceType: 'reminder',
+    }), { index: null })).toBe('bell');
+  });
+
+  it('keeps invalid canonical timed items observable instead of silently dropping them', () => {
+    const invalidStart = item({ id: 'bad-start', sourceId: 'bad-start', start: '9am' });
+    const invalidEnd = item({ id: 'bad-end', sourceId: 'bad-end', end: 'later' });
+    const projection = projectDayDial([invalidStart, invalidEnd], { index: null });
+
+    expect(projection.timed).toEqual([]);
+    expect(projection.invalidTimed.map(entry => [entry.item.id, entry.reason])).toEqual([
+      ['bad-start', 'invalid-start'],
+      ['bad-end', 'invalid-end'],
+    ]);
   });
 
   it('uses Google Calendar projection title/color without converting it into a local object', () => {
