@@ -15,7 +15,7 @@
 >
 > Quando este tracker descobrir uma regra permanente nova, a regra deve ser promovida ao documento/contract canônico correspondente no mesmo milestone.
 
-Última atualização operacional: **2026-09-22**.
+Última atualização operacional: **2026-09-23**.
 
 ---
 
@@ -450,6 +450,37 @@ Companion:
 - [x] merge canônico Companion: `cd4acf3926b880f62b8da1c15f96e3fef356ae1c`.
 
 ---
+
+
+---
+
+## Milestone corretivo ativo — Day Dial / Daily Schedule 1.2.0
+
+**Status: ⏳ upstream fechado; Companion repinado e aguardando certificação final do PR #63.**
+
+Upstream Quartzo:
+- [x] PR #50 final head certificado: `6780655e17384943c97ff72038e8dc9ffeef0ed9`.
+- [x] Agent Contract Gate, Dial Focus CI, Flutter Analyze e Flutter Test verdes no mesmo head.
+- [x] merge canônico upstream: `ad096b07bdb5c91141d9fca6abb127b7f3069ab2`.
+- [x] `dailyScheduleContractVersion = 1.2.0`.
+- [x] vectors usam o formato persistido real de Time Block (`time_ranges`), múltiplos ranges, overnight, Event/Task scheduler e Event cross-day.
+- [x] o conformance runner Dart lê os mesmos campos persistidos em vez de traduzir fixtures artificiais.
+- [x] bug canônico encontrado pela nova fixture foi corrigido no owner existente: `TimelineAggregatorService` agora respeita `Event.scheduler`; regressões cobrem recorrência diária e weekday não correspondente.
+- [x] regra permanente de Dial documentada: timed <=24 min usa icon marker; >=25 min usa arc; all-day/anytime fica fora do ring; timed inválido não pode sumir silenciosamente.
+
+Companion:
+- [x] PR #63 em `fix/day-dial-parity`.
+- [x] implementação certificada antes do repin no head `d5706f97faeae9e2218668afa140c80823938659`.
+- [x] parser/engine consomem `time_ranges`, Event temporal persistido e Scheduler canônico sem criar segundo owner temporal.
+- [x] Time Block múltiplo/overnight, Task/Event/Routine/System recorrentes e recorte civil cross-day projetados pelo Daily Schedule.
+- [x] Day Dial usa ícones Obsidian/Lucide injetados pelo shell para ocorrências curtas, preserva Done/Skipped e usa arcs para ocorrências >=25 min.
+- [x] item timed malformado permanece observável em diagnóstico/teste; Home e Day Dial têm gate de paridade sobre o mesmo `NormalizedSchedule`.
+- [x] aritmética civil nova permanece no owner `core/local-date`; architecture gate impede reintrodução de `Date.UTC`/owners paralelos na UI.
+- [x] contratos repinados para o merge upstream `ad096b07bdb5c91141d9fca6abb127b7f3069ab2`; árvore completa verificada 22/22 por Git blob SHA antes do repin.
+- [ ] certificar o head pós-repin do PR #63 em Linux, Windows e macOS.
+- [ ] mergear PR #63 somente depois da certificação pós-repin.
+- [ ] validar CI/build/release package do `main` integrado sem avançar os itens de Marco D (E2E/BRAT/RC).
+
 
 ## Descobertas / scope growth log
 

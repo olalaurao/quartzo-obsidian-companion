@@ -1593,3 +1593,31 @@ Additional sync failures captured:
 Closeout decision:
 - Companion-side D1 is ready enough for V1 Companion work.
 - Full D1 app <-> Drive <-> Obsidian E2E is not green and should not be claimed green until Quartzo sync repair is done and rerun without manual copying/DB intervention.
+
+## 2026-09-23 - Day Dial canonical parity upstream merged; Companion repin
+
+Repo upstream: olalaurao/aplicativo
+- PR #50 final head: `6780655e17384943c97ff72038e8dc9ffeef0ed9`.
+- Agent Contract Gate: green.
+- Dial Focus CI: green.
+- Flutter Analyze: green.
+- Flutter Test: green after fixing the canonical recurring Event gap exposed by `event_daily_scheduler_persisted_shape`.
+- Merge SHA: `ad096b07bdb5c91141d9fca6abb127b7f3069ab2`.
+- Daily Schedule contract: `1.2.0`.
+
+Canonical bug exposed by certification:
+- `Event` already persisted `scheduler` and the create/edit surface exposed SchedulerPicker, but `TimelineAggregatorService` ignored `Event.scheduler` and filtered only by `event.date`.
+- Fixed in the existing timeline/scheduler owner using the same `evalScheduler` context; no parallel recurrence engine.
+- Added direct regressions for daily recurrence and a non-matching weekday.
+
+Repo Companion: olalaurao/quartzo-obsidian-companion
+- PR #63 implementation head before repin: `d5706f97faeae9e2218668afa140c80823938659`.
+- That head passed push + PR CI on Linux, Windows and macOS, including audit, contracts verify, typecheck, lint, full tests, contract tests, sync tests, architecture, build, release validate, clean-artifact smoke and package.
+- Verified all 22 vendored contract blobs are byte-identical to upstream merge `ad096b07bdb5c91141d9fca6abb127b7f3069ab2`.
+- Repinned `contracts/UPSTREAM.lock.json` to the integrated merge SHA; contract bytes remain unchanged.
+
+Next:
+- Certify the post-repin PR #63 head on all CI platforms.
+- If green, merge PR #63.
+- Validate integrated `main` CI/build/release package.
+- Do not mark Marco D E2E/BRAT/RC/V1 complete as part of this corrective milestone.
