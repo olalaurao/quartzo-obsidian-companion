@@ -429,11 +429,13 @@
           "type": "time_block",
           "id": "block-fixture",
           "title": "Deep work",
-          "ranges": [
+          "time_ranges": [
             {
               "id": "range-a",
-              "start": "09:00",
-              "end": "10:00"
+              "start_hour": 9,
+              "start_minute": 0,
+              "end_hour": 10,
+              "end_minute": 0
             }
           ]
         }
@@ -622,6 +624,176 @@
           "sourceId": "goal-fixture",
           "date": "2026-09-06",
           "isAllDay": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "time_block_multiple_persisted_ranges",
+    "kind": "timeBlock",
+    "input": {
+      "date": "2026-09-06",
+      "objects": [
+        {
+          "type": "time_block",
+          "id": "block-multi",
+          "title": "Split day",
+          "time_ranges": [
+            {
+              "id": "range-morning",
+              "start_hour": 9,
+              "start_minute": 0,
+              "end_hour": 10,
+              "end_minute": 0
+            },
+            {
+              "id": "range-afternoon",
+              "start_hour": 13,
+              "start_minute": 30,
+              "end_hour": 14,
+              "end_minute": 15
+            }
+          ]
+        }
+      ]
+    },
+    "expectedNormalized": {
+      "kind": "timeBlock",
+      "count": 2,
+      "items": [
+        {
+          "id": "time_block:block-multi:range-morning@2026-09-06",
+          "sourceId": "block-multi",
+          "occurrenceId": "time_block:block-multi:range-morning@2026-09-06",
+          "date": "2026-09-06",
+          "start": "09:00",
+          "end": "10:00",
+          "isTimed": true
+        },
+        {
+          "id": "time_block:block-multi:range-afternoon@2026-09-06",
+          "sourceId": "block-multi",
+          "occurrenceId": "time_block:block-multi:range-afternoon@2026-09-06",
+          "date": "2026-09-06",
+          "start": "13:30",
+          "end": "14:15",
+          "isTimed": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "event_persisted_temporal_shape",
+    "kind": "event",
+    "input": {
+      "date": "2026-09-06",
+      "objects": [
+        {
+          "type": "event",
+          "id": "event-persisted",
+          "title": "Persisted event",
+          "date": "2026-09-06",
+          "time_of_day": "15:00",
+          "end_time": "16:20",
+          "duration": 80,
+          "multi_day": false
+        }
+      ]
+    },
+    "expectedNormalized": {
+      "kind": "event",
+      "count": 1,
+      "items": [
+        {
+          "id": "event:event-persisted",
+          "sourceId": "event-persisted",
+          "occurrenceId": "event-persisted",
+          "date": "2026-09-06",
+          "start": "15:00",
+          "end": "16:20",
+          "isTimed": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "task_daily_scheduler_persisted_shape",
+    "kind": "task",
+    "input": {
+      "date": "2026-09-07",
+      "objects": [
+        {
+          "type": "task",
+          "id": "task-daily",
+          "title": "Daily task",
+          "start_date": "2026-09-06",
+          "scheduled_time": "11:00",
+          "duration": 45,
+          "scheduler": {
+            "start_date": "2026-09-06T00:00:00.000",
+            "rules": [
+              {
+                "repeat_type": "number_of_days",
+                "interval": 1
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "expectedNormalized": {
+      "kind": "task",
+      "count": 1,
+      "items": [
+        {
+          "id": "task:task-daily",
+          "sourceId": "task-daily",
+          "occurrenceId": "task-daily",
+          "date": "2026-09-07",
+          "start": "11:00",
+          "end": "11:45",
+          "isTimed": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "event_daily_scheduler_persisted_shape",
+    "kind": "event",
+    "input": {
+      "date": "2026-09-07",
+      "objects": [
+        {
+          "type": "event",
+          "id": "event-daily",
+          "title": "Daily event",
+          "date": "2026-09-06",
+          "time_of_day": "10:00",
+          "duration": 30,
+          "scheduler": {
+            "start_date": "2026-09-06T00:00:00.000",
+            "rules": [
+              {
+                "repeat_type": "number_of_days",
+                "interval": 1
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "expectedNormalized": {
+      "kind": "event",
+      "count": 1,
+      "items": [
+        {
+          "id": "event:event-daily",
+          "sourceId": "event-daily",
+          "occurrenceId": "event-daily",
+          "date": "2026-09-07",
+          "start": "10:00",
+          "end": "10:30",
+          "isTimed": true
         }
       ]
     }
