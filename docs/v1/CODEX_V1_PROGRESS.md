@@ -1621,3 +1621,21 @@ Next:
 - If green, merge PR #63.
 - Validate integrated `main` CI/build/release package.
 - Do not mark Marco D E2E/BRAT/RC/V1 complete as part of this corrective milestone.
+
+## 2026-09-23 - Day Dial canonical parity corrective milestone closed
+
+Upstream Quartzo:
+- PR #50 merged at `ad096b07bdb5c91141d9fca6abb127b7f3069ab2`.
+- Post-merge `main`: Agent Contract Gate green; Flutter Analyze green; Flutter Test green.
+- Daily Schedule contract remains `1.2.0`.
+
+Companion:
+- PR #63 post-repin head: `93c777055bec9461f5d842833ebc99f9fdd4a4a1`.
+- PR CI `35819221321`: Linux / Windows / macOS green.
+- Merge SHA: `2b6e36d143f4a1d6e2b80de1d3176fc6fbd23bc3`.
+- Integrated main CI `35820184962`: Linux / Windows / macOS green; build, release validation, clean-artifact smoke and release package passed where defined by the platform matrix.
+- GitHub Actions workflow does not upload a separate release artifact in this CI; package success is certified by the `release:package` step.
+
+Scope after closeout:
+- Day Dial / Daily Schedule 1.2.0 corrective work is closed.
+- Marco D remains unchanged: E2E real Vault/Drive/Calendar, BRAT beta/RC and V1 release are still pending and must continue in their existing order.

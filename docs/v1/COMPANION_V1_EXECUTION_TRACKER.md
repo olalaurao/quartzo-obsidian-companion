@@ -454,9 +454,9 @@ Companion:
 
 ---
 
-## Milestone corretivo ativo — Day Dial / Daily Schedule 1.2.0
+## Milestone corretivo fechado — Day Dial / Daily Schedule 1.2.0
 
-**Status: ⏳ upstream fechado; Companion repinado e aguardando certificação final do PR #63.**
+**Status: ✅ fechado upstream + Companion. Quartzo PR #50 → `ad096b07`; Companion PR #63 → `2b6e36d1`.**
 
 Upstream Quartzo:
 - [x] PR #50 final head certificado: `6780655e17384943c97ff72038e8dc9ffeef0ed9`.
@@ -477,9 +477,10 @@ Companion:
 - [x] item timed malformado permanece observável em diagnóstico/teste; Home e Day Dial têm gate de paridade sobre o mesmo `NormalizedSchedule`.
 - [x] aritmética civil nova permanece no owner `core/local-date`; architecture gate impede reintrodução de `Date.UTC`/owners paralelos na UI.
 - [x] contratos repinados para o merge upstream `ad096b07bdb5c91141d9fca6abb127b7f3069ab2`; árvore completa verificada 22/22 por Git blob SHA antes do repin.
-- [ ] certificar o head pós-repin do PR #63 em Linux, Windows e macOS.
-- [ ] mergear PR #63 somente depois da certificação pós-repin.
-- [ ] validar CI/build/release package do `main` integrado sem avançar os itens de Marco D (E2E/BRAT/RC).
+- [x] head pós-repin `93c777055bec9461f5d842833ebc99f9fdd4a4a1` certificado no PR CI `35819221321`: Linux, Windows e macOS verdes; `contracts:verify` confirmou 22/22 blobs contra o merge upstream.
+- [x] merge canônico Companion PR #63: `2b6e36d143f4a1d6e2b80de1d3176fc6fbd23bc3`.
+- [x] `main` integrado certificado no CI `35820184962`: Linux/macOS com audit, contracts, typecheck, lint, full tests, contract/sync tests, architecture, build, release validate, clean-artifact smoke e package; Windows com audit, typecheck, sync, build, smoke e package.
+- [x] este milestone corretivo não avançou os itens de Marco D (E2E/BRAT/RC), que permanecem na linha de chegada V1.
 
 
 ## Descobertas / scope growth log
