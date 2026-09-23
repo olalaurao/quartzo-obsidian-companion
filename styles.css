@@ -661,6 +661,29 @@ button.qz-chip { cursor: pointer; }
   stroke-linecap: round;
 }
 
+.quartzo-day-dial-icon-marker {
+  color: var(--interactive-accent);
+}
+
+.quartzo-day-dial-marker-hit-target {
+  fill: transparent;
+  stroke: none;
+}
+
+.quartzo-day-dial-marker-icon {
+  color: inherit;
+  stroke: currentColor;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.quartzo-day-dial-marker-fallback {
+  fill: currentColor;
+  stroke: var(--background-primary);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
 .quartzo-day-dial-now {
   stroke: var(--text-accent);
   stroke-width: 1.5;
@@ -704,7 +727,7 @@ button.qz-chip { cursor: pointer; }
 
 .quartzo-day-dial-legend-row {
   display: grid;
-  grid-template-columns: 10px minmax(0, 1fr);
+  grid-template-columns: 16px minmax(0, 1fr);
   align-items: center;
   gap: var(--qz-sp-sm);
   padding: 4px 2px;
@@ -726,6 +749,28 @@ button.qz-chip { cursor: pointer; }
   height: 8px;
   border-radius: 999px;
   background: var(--interactive-accent);
+}
+
+.quartzo-day-dial-swatch.is-icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 0;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quartzo-day-dial-swatch.is-icon svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+}
+
+.quartzo-day-dial-diagnostic {
+  margin-block: var(--qz-sp-xs);
+  color: var(--qz-warning);
+  font-size: var(--qz-font-xs);
 }
 
 .quartzo-schedule-row.is-completed,
