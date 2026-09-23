@@ -1,5 +1,10 @@
 import { DailyScheduleInput, NormalizedSchedule, NormalizedItem } from './types';
-import { addLocalDays, localIsoDate, parseLocalIsoDate } from '../local-date';
+import {
+  addLocalDays,
+  localCivilDayDifference,
+  localIsoDate,
+  parseLocalIsoDate,
+} from '../local-date';
 import { SchedulerEngine, type SchedulerDefinition } from '../scheduler';
 import { occurrenceResponseIdForDailyItem } from '../occurrence_actions';
 import { isScheduledSystemOccurrenceCompleted } from '../manual-execution';
@@ -795,7 +800,7 @@ export class DailyScheduleEngine {
   ): { start: string; end: string } | null {
     const startMinute = this.clockMinutes(startClock);
     if (startMinute == null || durationMinutes <= 0) return null;
-    const dayOffset = this.civilDayNumber(selectedDate) - this.civilDayNumber(anchorDate);
+    const dayOffset = localCivilDayDifference(selectedDate, anchorDate);
     if (!Number.isFinite(dayOffset) || dayOffset < 0) return null;
     const selectedStart = dayOffset * 24 * 60;
     const selectedEnd = selectedStart + 24 * 60;
@@ -842,12 +847,6 @@ export class DailyScheduleEngine {
   private static dateOnly(value: string): string | null {
     const match = /^(\d{4}-\d{2}-\d{2})/.exec(value.trim());
     return match?.[1] ?? null;
-  }
-
-  private static civilDayNumber(value: string): number {
-    const [year, month, day] = value.split('-').map(Number);
-    if (![year, month, day].every(Number.isFinite)) return Number.NaN;
-    return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000);
   }
 
   private static overridePlacement(startIso: string, endIso: string): { date: string; start: string; end: string } {

@@ -1,3 +1,4 @@
+import { localCivilDayDifference, parseLocalIsoDate } from '../local-date';
 import { parseISO, addDays, addWeeks, addMonths, addMinutes, addHours, isBefore, isAfter, isEqual, startOfDay, getDay, getDate, lastDayOfMonth, isSameDay, set, formatISO } from 'date-fns';
 
 export type RepeatType = 
@@ -103,7 +104,7 @@ export class SchedulerEngine {
     const first = scheduler.rules[0];
     if (max != null && max > 0 && first?.repeat_type === 'number_of_days') {
       const interval = Math.max(1, first.interval ?? 1);
-      const diff = this.civilDayNumber(target) - this.civilDayNumber(start);
+      const diff = localCivilDayDifference(target, start);
       const occurrenceIndex = Math.floor(diff / interval) + 1;
       if (occurrenceIndex > max) return false;
     }
@@ -116,12 +117,17 @@ export class SchedulerEngine {
     target: string,
     context?: SchedulerContext,
   ): boolean {
-    const diffDays = this.civilDayNumber(target) - this.civilDayNumber(start);
+    const diffDays = localCivilDayDifference(target, start);
     if (diffDays < 0) return false;
-    const [targetYear, targetMonth, targetDay] = target.split('-').map(Number);
-    const [startYear, startMonth, startDay] = start.split('-').map(Number);
-    const targetDate = new Date(Date.UTC(targetYear, targetMonth - 1, targetDay));
-    const weekday = WEEKDAYS[targetDate.getUTCDay()];
+    const targetDate = parseLocalIsoDate(target);
+    const startDate = parseLocalIsoDate(start);
+    const targetYear = targetDate.getFullYear();
+    const targetMonth = targetDate.getMonth() + 1;
+    const targetDay = targetDate.getDate();
+    const startYear = startDate.getFullYear();
+    const startMonth = startDate.getMonth() + 1;
+    const startDay = startDate.getDate();
+    const weekday = WEEKDAYS[targetDate.getDay()];
 
     switch (rule.repeat_type) {
       case 'number_of_days':
@@ -143,12 +149,12 @@ export class SchedulerEngine {
       case 'days_after_last_start': {
         if (!context?.lastStartDate) return false;
         const base = context.lastStartDate.slice(0, 10);
-        return this.civilDayNumber(target) - this.civilDayNumber(base) === (rule.interval ?? 1);
+        return localCivilDayDifference(target, base) === (rule.interval ?? 1);
       }
       case 'days_after_last_end': {
         if (!context?.lastEndDate) return false;
         const base = context.lastEndDate.slice(0, 10);
-        return this.civilDayNumber(target) - this.civilDayNumber(base) === (rule.interval ?? 1);
+        return localCivilDayDifference(target, base) === (rule.interval ?? 1);
       }
       case 'linked_item_appears':
         return rule.linked_item_id != null &&
@@ -157,7 +163,7 @@ export class SchedulerEngine {
         if (!rule.linked_item_id) return false;
         const bases = context?.scheduledItems?.[rule.linked_item_id] ?? [];
         return bases.some(value =>
-          this.civilDayNumber(target) - this.civilDayNumber(value.slice(0, 10)) === (rule.interval ?? 0)
+          localCivilDayDifference(target, value.slice(0, 10)) === (rule.interval ?? 0)
         );
       }
       case 'first_business_day_of_month': {
@@ -175,7 +181,7 @@ export class SchedulerEngine {
         if (!rule.target_type || !rule.field_name) return false;
         const base = context?.referenceFields?.[`${rule.target_type}.${rule.field_name}`];
         return base != null &&
-          this.civilDayNumber(target) - this.civilDayNumber(base.slice(0, 10)) === (rule.interval ?? 0);
+          localCivilDayDifference(target, base.slice(0, 10)) === (rule.interval ?? 0);
       }
       case 'days_of_theme':
         return rule.theme_id != null &&
@@ -189,12 +195,6 @@ export class SchedulerEngine {
       default:
         return false;
     }
-  }
-
-  private static civilDayNumber(value: string): number {
-    const [year, month, day] = value.slice(0, 10).split('-').map(Number);
-    if (![year, month, day].every(Number.isFinite)) return Number.NaN;
-    return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000);
   }
 
   static evaluate(

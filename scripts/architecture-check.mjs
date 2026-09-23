@@ -1072,7 +1072,8 @@ function checkCanonicalOccurrenceReschedule() {
     return false;
   }
   if (!schedule.includes('occurrenceOverrides') ||
-      !schedule.includes('obj.scheduled_time ?? obj.time') ||
+      !schedule.includes('obj.scheduled_time') ||
+      !schedule.includes('obj.time') ||
       !main.includes('getOccurrenceOverrides()') ||
       !main.includes('SHARED_PLANNING_STATE_PATH')) {
     console.error('FAIL: Shared Reschedule state is not projected back through the canonical Daily Schedule');
