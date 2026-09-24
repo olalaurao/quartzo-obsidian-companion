@@ -1579,8 +1579,8 @@ function checkC4ReleaseDocsAndCapabilityMatrix() {
     console.error('FAIL: BRAT install docs must not pin stale beta version or feature branch');
     return false;
   }
-  if (!brat.includes('latest validated GitHub prerelease') || !brat.includes('manifest.json')) {
-    console.error('FAIL: BRAT install docs must point to the validated prerelease/version metadata flow');
+  if (!brat.includes('latest validated GitHub release') || !brat.includes('manifest.json')) {
+    console.error('FAIL: BRAT install docs must point to the validated release/version metadata flow');
     return false;
   }
 
@@ -1595,8 +1595,8 @@ function checkC4ReleaseDocsAndCapabilityMatrix() {
     fs.readFileSync(runbookPath, 'utf8'),
     fs.readFileSync(oauthPath, 'utf8'),
   ].join('\n');
-  if (!docs.includes('COMPANION_V1_CAPABILITY_MATRIX.md') || !docs.includes('não configura, envia nem empacota Client Secret')) {
-    console.error('FAIL: release docs must link the V1 capability matrix and document the no-secret OAuth boundary');
+  if (!docs.includes('COMPANION_V1_CAPABILITY_MATRIX.md') || !docs.includes('QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET')) {
+    console.error('FAIL: release docs must link the V1 capability matrix and document the Desktop OAuth client credential boundary');
     return false;
   }
 

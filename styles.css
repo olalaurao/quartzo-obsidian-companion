@@ -65,6 +65,65 @@
       Three semantic variants: primary / secondary / ghost
    ---------------------------------------------------------- */
 
+/* Shell frame */
+.quartzo-shell {
+  color: var(--qz-text);
+  min-height: 100%;
+}
+
+.quartzo-shell-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--qz-sp-md);
+  padding: var(--qz-sp-md) var(--qz-sp-lg);
+  background: color-mix(in srgb, var(--qz-bg) 92%, transparent);
+  border-bottom: 1px solid var(--qz-divider);
+  backdrop-filter: blur(10px);
+}
+
+.quartzo-shell-header > strong {
+  font-size: var(--qz-font-lg);
+  line-height: 1;
+  color: var(--qz-text);
+}
+
+.quartzo-shell-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--qz-sp-xs);
+  flex-wrap: wrap;
+}
+
+.quartzo-shell-content {
+  max-width: 1120px;
+  margin-inline: auto;
+  padding: var(--qz-sp-lg);
+}
+
+.quartzo-input {
+  min-height: 32px;
+  width: 100%;
+  padding: 6px 9px;
+  border: 1px solid var(--qz-divider);
+  border-radius: var(--qz-r-sm);
+  background: var(--qz-bg);
+  color: var(--qz-text);
+}
+
+.quartzo-input:hover {
+  border-color: color-mix(in srgb, var(--qz-accent) 35%, var(--qz-divider));
+}
+
+.quartzo-input:focus {
+  border-color: var(--qz-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--qz-accent) 18%, transparent);
+}
+
 /* Base */
 .qz-btn {
   display: inline-flex;
@@ -545,6 +604,12 @@ button.qz-chip { cursor: pointer; }
 
 .quartzo-home-section {
   margin-block: var(--qz-sp-lg);
+}
+
+.quartzo-home-section > h3,
+.quartzo-planner-section > h3,
+.quartzo-journal-navigation + h3 {
+  margin-bottom: var(--qz-sp-sm);
 }
 
 .quartzo-home-progress {
@@ -1105,6 +1170,77 @@ button.qz-chip { cursor: pointer; }
    16. MISC / SHELL UTILITIES
    ---------------------------------------------------------- */
 
+.quartzo-focus-runtime {
+  display: grid;
+  gap: var(--qz-sp-md);
+  max-width: 520px;
+  margin-inline: auto;
+  padding: var(--qz-sp-xl);
+  border: 1px solid var(--qz-divider);
+  border-radius: var(--qz-r-md);
+  background: var(--qz-surface);
+  box-shadow: var(--qz-shadow-sm);
+}
+
+.quartzo-focus-phase {
+  color: var(--qz-text-secondary);
+  font-size: var(--qz-font-sm);
+  font-weight: 600;
+}
+
+.quartzo-focus-clock {
+  font-size: 42px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--qz-text);
+}
+
+.quartzo-focus-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--qz-sp-xs);
+}
+
+.quartzo-muted {
+  color: var(--qz-text-secondary);
+}
+
+.quartzo-journal-navigation,
+.quartzo-journal-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--qz-sp-xs);
+  margin-block: var(--qz-sp-sm);
+}
+
+.quartzo-journal-daily-note,
+.quartzo-journal-entry-row,
+.quartzo-journal-overdue-row {
+  width: 100%;
+  text-align: start;
+  overflow-wrap: anywhere;
+  padding: var(--qz-sp-sm) var(--qz-sp-md);
+  border: 1px solid var(--qz-divider);
+  border-radius: var(--qz-r-sm);
+  background: var(--qz-surface);
+  margin-block: var(--qz-sp-xs);
+}
+
+.quartzo-journal-daily-note:hover,
+.quartzo-journal-entry-row:hover,
+.quartzo-journal-overdue-row:hover {
+  background: var(--qz-surface-alt);
+}
+
+.quartzo-journal-entry-preview {
+  display: block;
+  margin-top: 4px;
+  color: var(--qz-text-secondary);
+  font-size: var(--qz-font-xs);
+}
+
 .quartzo-sync-summary,
 .quartzo-sync-progress,
 .quartzo-conflict-card pre {
@@ -1143,7 +1279,19 @@ button.qz-chip { cursor: pointer; }
    ---------------------------------------------------------- */
 
 @media (max-width: 780px) {
-  .quartzo-shell-content { overflow-x: auto; }
+  .quartzo-shell-header {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .quartzo-shell-actions {
+    justify-content: flex-start;
+  }
+
+  .quartzo-shell-content {
+    overflow-x: auto;
+    padding-inline: var(--qz-sp-md);
+  }
 }
 
 @media (max-width: 520px) {
