@@ -19,17 +19,17 @@ O Quartzo Companion é um plugin para Obsidian Desktop que atua como segundo cli
 - Google Calendar, quando habilitado, é uma projeção read-only; o Companion não cria, edita nem apaga eventos no V1.
 - Tipos sem mutation contract completo devem abrir em modo seguro/Markdown em vez de ganhar um editor simplificado que possa perder dados.
 
-## Instalação via BRAT — beta
+## Instalação via BRAT
 
 O repositório é público; não é necessário PAT do GitHub para instalar o beta.
 
 1. Instale e habilite o plugin BRAT no Obsidian.
 2. No BRAT, escolha **Add Beta plugin**.
 3. Informe `olalaurao/quartzo-obsidian-companion`.
-4. Instale a release beta disponível.
+4. Instale a release estável mais recente.
 5. Habilite **Quartzo Companion** em Community plugins.
 
-A distribuição beta deve usar uma release validada pelo CI contendo `main.js`, `manifest.json` e `styles.css` quando aplicável. Não use um `main.js` local não validado como release.
+A distribuição deve usar uma release validada pelo CI contendo `main.js`, `manifest.json`, `styles.css` e `SHA256SUMS.txt`. Não use um `main.js` local não validado como release.
 
 ## Desenvolvimento e testes
 
@@ -52,9 +52,9 @@ npm run release:package
 
 ## Releases
 
-A tag da release, a versão do `package.json` e a versão do `manifest.json` devem coincidir. O GitHub Actions recompila e valida o artefato antes de publicar a prerelease.
+A tag da release, a versão do `package.json` e a versão do `manifest.json` devem coincidir. O GitHub Actions recompila e valida o artefato antes de publicar a release.
 
-O build de release exige apenas `QUARTZO_GOOGLE_DESKTOP_CLIENT_ID` configurado como GitHub Actions secret para o cliente OAuth do tipo Desktop app. O Companion usa loopback `127.0.0.1` com PKCE e não configura, envia nem empacota Client Secret para esse cliente público; tokens OAuth do usuário nunca são empacotados e permanecem no `SecretStorage` do Obsidian.
+O build de release exige `QUARTZO_GOOGLE_DESKTOP_CLIENT_ID` e `QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET` configurados como GitHub Actions secrets para o mesmo cliente OAuth do tipo Desktop app. O Companion usa loopback `127.0.0.1` com PKCE e envia a credential exigida pelo token endpoint do Google; tokens OAuth do usuário nunca são empacotados e permanecem no `SecretStorage` do Obsidian.
 
 O escopo completo de suporte V1 está em [`docs/v1/COMPANION_V1_CAPABILITY_MATRIX.md`](docs/v1/COMPANION_V1_CAPABILITY_MATRIX.md).
 

@@ -1,16 +1,16 @@
 # Codex V1 Progress
 
-Last update: 2026-09-22T11:54:31-03:00
-Current milestone: D1 E2E app <-> Drive <-> Obsidian
+Last update: 2026-09-24T16:50:00-03:00
+Current milestone: V1 final release polish + BRAT publication
 Current repo: Companion (`C:\Users\lauri\Documents\companion`)
-Current branch: main
-Current HEAD: a56c377d7af90fc5f6ad9752401040e7afd8d93b
-Upstream main HEAD: e0bfa98611138512f916be9cf10f5395b78c10ed
-Companion main HEAD: a56c377d7af90fc5f6ad9752401040e7afd8d93b
-Open PR: none
-CI status: PR #58 merged. Remote CI run 35736427247 completed successfully on `test-linux`, `test-windows`, and `test-macos`; merge SHA `fa889f1564f1d2be9299025756322bb26b2be191`. Progress-only main run 35736918805 also completed successfully on `test-linux`, `test-windows`, and `test-macos` for `a56c377d7af90fc5f6ad9752401040e7afd8d93b`.
-Blocker: D1 Android -> Drive -> local vault and Companion projection are proven, including user confirmation that Companion shows `Prepare campaign` on 2026-09-23 at `10:00` in Home/Planner. Obsidian completion mutation was written and Google Drive Desktop upload activity was observed, but the Android app still did not pull that external Drive Desktop edit. User authorized mass resolution of old conflicts; 515 `social/...` conflicts were resolved newest-wins with backups/evidence, leaving `sync_conflicts = 0`, but Android full sync still stalled around 34-35% and the D1 Task remained `stage: "todo"`.
-Exact next action: stop spending quota on D1 in this session. Treat Companion-side V1/D1 work as ready, but do not mark the full E2E green until Quartzo app sync is fixed. Use `docs/v1/QUARTZO_SYNC_FAILURES_POST_D1.md` as the upstream sync repair handoff.
+Current branch: `codex/v1-final-release-polish`
+Current HEAD: working tree after `c4616fb`
+Upstream main HEAD: `bb814fcb54f6dcff1109cf51358a9d90db85fb7d`
+Companion main HEAD: `c4616fb`
+Open PR: pending
+CI status: local final gates green; remote Companion PR/Release Preflight pending.
+Blocker: physical Android/Obsidian E2E cannot be rerun in this session because no Android device is connected and Obsidian is not running; publish path can still be completed through CI/release.
+Exact next action: commit final polish/repin/version bump, push Companion PR, merge after Linux/Windows/macOS CI, run Release Preflight on main, tag `1.0.3`, wait for Release workflow and confirm BRAT-visible GitHub release assets.
 
 ## 2026-09-21 - Initial handoff sync
 
@@ -1665,4 +1665,48 @@ Downstream:
 - vendored contract bytes are unchanged relative to the prior `ad096b07...` pin.
 - `UPSTREAM.lock.json` repin to `e0d73cda75a2e91a4f6d13452fd242ae3eee59e4` prepared with the existing manifest/hash set.
 - D1 remains open until the physical rerun succeeds without manual file/DB intervention.
+
+## 2026-09-24 - V1 final release polish and OAuth credential contract realignment
+
+Repo upstream: `olalaurao/aplicativo`
+- PR #52: `docs: align Companion OAuth desktop credential contract`.
+- Head: `a78c495a072ca9c8781f070e7d19ebeec5672316`.
+- Merge SHA: `bb814fcb54f6dcff1109cf51358a9d90db85fb7d`.
+- Remote gates: Agent Contract Gate ✅; Flutter Analyze ✅; Flutter Test ✅.
+- Contract update: `QUARTZO_OBSIDIAN_COMPANION_CONTRACT.md` now states the Google Desktop OAuth release build uses the Client ID and matching Desktop client credential, while PKCE S256 and loopback state validation remain mandatory and user refresh tokens remain the only runtime OAuth secret stored in Obsidian SecretStorage.
+
+Repo Companion: `olalaurao/quartzo-obsidian-companion`
+- Branch: `codex/v1-final-release-polish`.
+- Base before branch: `c4616fb`.
+- Upstream pin: `bb814fcb54f6dcff1109cf51358a9d90db85fb7d`.
+- Version prepared: `1.0.3` in `package.json`, `manifest.json`, and `versions.json`.
+
+Changed:
+- Repinned `contracts/UPSTREAM.lock.json` and vendored `QUARTZO_OBSIDIAN_COMPANION_CONTRACT.md`.
+- Updated README, release runbook, Google OAuth setup, BRAT install docs and V1 capability matrix for stable release + Desktop client credential.
+- Updated architecture docs gate to require the Desktop OAuth client credential boundary instead of the superseded no-secret text.
+- Added scoped UI polish in `styles.css`: sticky shell header, constrained content width, consistent inputs, Focus runtime card, Journal rows/actions and mobile shell layout.
+- Updated execution tracker to supersede C3.5 no-secret evidence with the PR #59 runtime fix plus upstream PR #52 contract alignment.
+
+Local verification:
+- `$env:GITHUB_TOKEN = gh auth token; node scripts/sync-contracts.mjs sync bb814fcb54f6dcff1109cf51358a9d90db85fb7d` - PASS, 22 files vendored.
+- `npm run contracts:verify` - PASS, 22 contracts verified byte-for-byte.
+- `npm run audit:prod` - PASS, 0 vulnerabilities.
+- `npm run typecheck` - PASS.
+- `npm run lint` - PASS.
+- `npm test` - PASS, 615 tests.
+- `npm run test:contracts` - PASS, 266 tests.
+- `npm run test:sync` - PASS, 226 tests. One earlier parallel run hit the known `withRetry` 5000ms timeout; isolated rerun and full rerun passed.
+- `npm run architecture:check` - PASS.
+- `QUARTZO_GOOGLE_DESKTOP_CLIENT_ID=test-client.apps.googleusercontent.com QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET=test-client-secret npm run build` - PASS.
+- `npm run release:validate` - PASS with dummy credentials injected into the local production build.
+- `npm run smoke:clean-artifact` - PASS.
+- `npm run release:package` - PASS, artifact staged in `.release-artifact`.
+
+Still pending:
+- Companion PR creation and remote Linux/Windows/macOS CI.
+- Release Preflight on final `main`.
+- Tag `1.0.3` and Release workflow.
+- Confirm GitHub release assets for BRAT.
+- Physical Android/Obsidian E2E remains unavailable in this session because `adb devices` returned no connected devices and no Obsidian process was running.
 

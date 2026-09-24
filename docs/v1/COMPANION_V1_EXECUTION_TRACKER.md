@@ -49,6 +49,7 @@ A V1 só é considerada pronta quando todos os quatro marcos abaixo estiverem co
 - [x] pending-sync path + reason diagnostics.
 - [x] macOS CI.
 - [x] OAuth contract/runtime/release divergence.
+- [x] OAuth Desktop client credential contract realignment.
 - [x] docs/capability matrix final.
 
 ### Marco D — prova e release
@@ -403,24 +404,17 @@ Companion:
 
 ## Milestone fechado — C3.5 OAuth contract/runtime/release divergence
 
-**Status: ✅ fechado no Companion. PR #56 → `5c96485`.**
+**Status: ✅ fechado após correção canônica. PR #56 foi superseded por smoke test real; Companion PR #59 restaurou `client_secret`; upstream PR #52 alinhou o contrato.**
 
 Companion:
-- [x] Branch `codex/c35-oauth-no-client-secret`.
-- [x] Upstream Quartzo app verificado em `C:\Users\lauri\Documents\aplicativo_v11_1_antigravity`.
-- [x] Upstream main verificado no SHA canônico `d9302f0860fa1a4e33c1c611f2b448bec167e51f`.
-- [x] Contrato vendorizado já dizia que o Desktop OAuth client não deve conter client secret; não houve patch upstream necessário.
-- [x] Runtime OAuth usa Client ID + loopback `127.0.0.1` + PKCE, sem enviar `client_secret` no authorization-code exchange ou refresh-token exchange.
-- [x] `SecretStorage` guarda somente refresh token; Client Secret removido de IDs, Settings UI e configuração OAuth.
-- [x] Release/preflight exigem somente `QUARTZO_GOOGLE_DESKTOP_CLIENT_ID`.
-- [x] `release:validate` rejeita artefato que contenha `QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET`.
-- [x] Architecture gate e regressões cobrem ausência de secret em runtime, workflows e SecretStorage.
-- [x] README, runbook beta e OAuth setup documentam o fluxo sem Client Secret.
-- [x] PR #56 final head certificado: `9b912ca2b0f91e742313e82cf545e8d8bd399d9a`.
-- [x] CI #35680269632 Linux: audit, contracts verify, typecheck, lint, full tests, contract vectors, sync regressions, architecture check, build, release validate, clean artifact e package verdes.
-- [x] CI #35680269632 Windows: audit, typecheck, sync regression, build, clean artifact e package verdes.
-- [x] CI #35680269632 macOS: audit, contracts verify, typecheck, lint, full tests, contract vectors, sync regressions, architecture check, build, release validate, clean artifact e package verdes.
-- [x] merge canônico Companion: `5c96485a91be1a20243dce32f38fbcaa89ac2f2b`.
+- [x] PR #56 (`5c96485a91be1a20243dce32f38fbcaa89ac2f2b`) tentou alinhar o runtime ao contrato antigo sem Client Secret e teve CI verde.
+- [x] D3 smoke test real provou que o Google Desktop OAuth Client usado pelo projeto retorna `400 client_secret is missing` sem a client credential no token endpoint.
+- [x] PR #59 (`167bbe9f8bc0bbf99e6ab22483015eb0c75f6323`) restaurou `QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET`, injeção no build, envio de `client_secret` no authorization-code exchange e no refresh, e gates de release/architecture exigindo a credential.
+- [x] A client credential permanece build/release credential do Google Desktop OAuth Client, não user token nem estado de vault; Obsidian `SecretStorage` guarda somente refresh token do usuário.
+- [x] Upstream PR #52 (`bb814fcb54f6dcff1109cf51358a9d90db85fb7d`) promoveu a decisão para `QUARTZO_OBSIDIAN_COMPANION_CONTRACT.md`.
+- [x] Companion repinado byte-for-byte para upstream `bb814fcb54f6dcff1109cf51358a9d90db85fb7d`.
+- [x] README, runbook, OAuth setup, capability matrix e architecture gate documentam Client ID + matching Desktop client credential + loopback PKCE.
+- [x] Local gates pós-repin: contracts verify, production audit, typecheck, lint, full tests, contract tests, sync tests, architecture, build, release validate, clean artifact smoke e package verdes.
 
 ---
 

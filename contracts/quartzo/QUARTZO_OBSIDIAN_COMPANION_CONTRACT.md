@@ -1738,11 +1738,11 @@ timer truth and they do not authorize an independent floating Pomodoro overlay.
 
 # 25. Google OAuth Contract
 
-The Companion uses a dedicated **Desktop OAuth Client** in the same Google Cloud project used by Quartzo where practical.
+The Companion uses the dedicated **Google Desktop OAuth Client** in the same Google Cloud project used by Quartzo where practical.
 
-It must not contain a client secret.
+The Companion release build must be configured with the Client ID and the client credential belonging to that same Desktop OAuth Client. Google requires both values at the token endpoint for this project type, even while PKCE S256 remains mandatory.
 
-Desktop installed applications cannot safely keep secrets.
+The client credential is a build/release credential, not user state. It must not be stored in the vault, shared settings, sync metadata, markdown, logs or Obsidian SecretStorage. User refresh credentials remain the only OAuth secret stored by the running plugin.
 
 Authorization flow:
 
@@ -1754,7 +1754,7 @@ Authorization flow:
 5. Open Google authorization in system browser
 6. Receive authorization code
 7. Verify state
-8. Exchange code using code_verifier
+8. Exchange code using code_verifier plus the Desktop client credential
 9. Persist refresh credential securely
 10. Keep short-lived access token in memory
 ```
@@ -2544,14 +2544,15 @@ At minimum:
 - PKCE verifier/challenge;
 - state mismatch rejection;
 - loopback callback validation;
-- token exchange;
-- refresh;
+- token exchange sends Client ID, PKCE verifier and the matching Desktop client credential;
+- refresh sends Client ID and the matching Desktop client credential;
 - expired token;
 - revoked credential;
 - denied consent;
 - missing scope;
 - corporate/admin policy rejection;
-- secrets absent from logs and plugin JSON.
+- user tokens absent from logs and plugin JSON;
+- release/preflight fail when either build OAuth credential is absent.
 
 ---
 
