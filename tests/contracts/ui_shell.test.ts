@@ -107,6 +107,8 @@ folder_paths:
     const firstRun = main.slice(start, end);
     expect(firstRun).toContain('Connect Google Drive');
     expect(firstRun).toContain('Use without sync');
+    expect(firstRun).toContain('Google Drive Desktop');
+    expect(firstRun).toContain('Google Drive pairing is optional');
     expect(firstRun).toContain('Sync mode starts in Manual');
     expect(firstRun).toContain('startPairingFlow()');
     expect(firstRun).toContain("activateQuartzo('home', 'sync')");
@@ -127,6 +129,9 @@ folder_paths:
     expect(main).not.toContain('this.settings.syncAuto');
     expect(main).not.toContain('this.settings.syncOnStartup');
     expect(main).not.toContain('this.settings.syncOnFocus');
+    const shell = fs.readFileSync(path.join(process.cwd(), 'src/ui/shell/view.ts'), 'utf8');
+    expect(shell).toContain('Companion can stay local-first');
+    expect(shell).toContain('Drive pairing is optional');
   });
 
   it('keeps C1 accessibility labels and status semantics on core UI surfaces', () => {
