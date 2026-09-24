@@ -10,6 +10,8 @@ A arquitetura do Companion é dividida nestas camadas:
 - **ui**: Shell do plugin, Home, Planner, Journal, Search, Configurações. Usar Vanilla DOM via Obsidian API, sem react/vue/svelte (a não ser que documentado ganho real).
 - **local-state**: Abstração do estado de sincronização e token cache, armazenado localmente (`data.json` para pequeno, file-backed cache para sync queue).
 
+- **Companion local-first sync model:** quando o vault selecionado já está dentro do Google Drive Desktop ou outra pasta sincronizada pelo sistema de arquivos, o Companion deve operar local-first e não exigir pairing do Google Drive. O sync/pairing Drive do Companion continua suportado como fallback explícito e opcional para um vault que não esteja sincronizado pelo Drive Desktop. UI e settings devem deixar claro que `Use without sync` é o caminho normal nesse cenário, e que `Manual` não dispara reconciliação automática.
+
 - **OAuth loopback:** O listener desktop deve validar `state` somente em respostas que sejam callbacks OAuth reais. Requests auxiliares do navegador (por exemplo `/favicon.ico`) devem ser ignorados/retornar 404 sem consumir, rejeitar ou encerrar o fluxo de autenticação ativo.
 
 - **OAuth Desktop credentials:** Drive e Calendar devem usar o mesmo `GoogleOAuthDesktop` canônico. O token exchange e o refresh devem enviar `client_id` + a client credential do mesmo Google Desktop OAuth client, mantendo PKCE S256. Release/preflight devem falhar se qualquer uma das duas credenciais de build estiver ausente. Não criar fluxo OAuth paralelo para Calendar/Drive nem commitar valores reais no repositório.

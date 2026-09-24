@@ -2649,11 +2649,11 @@ class QuartzoFirstRunModal extends Modal {
     contentEl.appendChild(title);
 
     const description = document.createElement('p');
-    description.textContent = 'Use this Obsidian vault as a Quartzo client and synchronize it with your existing Quartzo vault in Google Drive.';
+    description.textContent = 'Use this Obsidian vault as a Quartzo client. If the vault already lives in Google Drive Desktop, choose Use without sync and let Drive Desktop move the bytes.';
     contentEl.appendChild(description);
 
     const safety = document.createElement('p');
-    safety.textContent = 'The Companion will never silently create a second Quartzo vault. After authorization, you explicitly select an existing Quartzo vault and review the pairing summary. Sync mode starts in Manual, so pairing does not enable background sync.';
+    safety.textContent = 'Google Drive pairing is optional for vaults that are not already filesystem-synced. The Companion will never silently create a second Quartzo vault; after authorization, you explicitly select an existing Quartzo vault and review the pairing summary. Sync mode starts in Manual, so pairing does not enable background sync.';
     contentEl.appendChild(safety);
 
     const actions = document.createElement('div');

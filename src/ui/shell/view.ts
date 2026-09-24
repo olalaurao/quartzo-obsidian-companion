@@ -1097,6 +1097,13 @@ export class QuartzoView extends ItemView {
     }
     container.appendChild(summary);
 
+    if (!conflictsOnly) {
+      const localFirstNote = document.createElement('p');
+      localFirstNote.className = 'quartzo-sync-note';
+      localFirstNote.textContent = 'If this vault already lives in Google Drive Desktop, Companion can stay local-first; Drive pairing is optional for vaults that need Companion to reconcile with a Drive folder directly.';
+      container.appendChild(localFirstNote);
+    }
+
     if (requiresAuth) {
       const connect = document.createElement('button');
       const canReconnect = Boolean(plugin.settings.googleDriveFolderId);
