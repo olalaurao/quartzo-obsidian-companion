@@ -63,3 +63,7 @@ Estas regras são permanentes para o desenvolvimento do Quartzo Obsidian Compani
 
 34. **Daily note do Quartzo tem projeção canônica única no Companion:** o parser aceita tanto `type: daily` (formato escrito pelo Quartzo) quanto `type: daily_note` e projeta ambos como `daily_note` read-only. Quando não há `id` explícito, a identidade derivada é a própria `date`, para que cada dia permaneça distinto no `VaultIndex`. Não criar parser/índice paralelo para recuperar `pomodoro_sessions` ou outras evidences embutidas em daily notes.
 
+34. **Smart Link Capture é advisory, não source of truth:** o Companion pode sugerir Social Post, Recipe ou Resource ao analisar uma URL, mas a seleção final do usuário é autoridade para Save, duplicate policy e persistência. Social Post permanece `type: social_post`, Recipe permanece `type: note` + `note_subtype: recipe`, e Resource permanece `type: resource` + `media_type` livre. Não persistir provenance do classificador nem criar `link`/`saved_link`.
+
+35. **Import genérico de páginas passa pelo boundary seguro:** Link Capture, Recipe import e metadata genérica não podem fazer fetch direto na UI. Qualquer import remoto novo usa `secureRemoteFetch`/owner equivalente, com HTTPS, timeout, limite de bytes, validação DNS/redirect/content-type e rejeição de redes privadas. Falha de metadata é recuperável e não impede captura manual válida.
+

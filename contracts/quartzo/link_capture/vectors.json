@@ -1,0 +1,556 @@
+[
+  {
+    "id": "host_instagram_reel",
+    "kind": "detect_url",
+    "url": "https://www.instagram.com/reel/abc/",
+    "expected": {
+      "destination": "social_post",
+      "confidence": "high",
+      "reason": "social_host",
+      "socialPlatform": "instagram",
+      "socialMediaType": "video"
+    }
+  },
+  {
+    "id": "host_tiktok_video",
+    "kind": "detect_url",
+    "url": "https://www.tiktok.com/@creator/video/123",
+    "expected": {
+      "destination": "social_post",
+      "confidence": "high",
+      "reason": "social_host",
+      "socialPlatform": "tiktok",
+      "socialMediaType": "video"
+    }
+  },
+  {
+    "id": "host_youtube_watch",
+    "kind": "detect_url",
+    "url": "https://www.youtube.com/watch?v=abc",
+    "expected": {
+      "destination": "social_post",
+      "confidence": "high",
+      "reason": "social_host",
+      "socialPlatform": "youtube",
+      "socialMediaType": "video"
+    }
+  },
+  {
+    "id": "host_youtu_be",
+    "kind": "detect_url",
+    "url": "https://youtu.be/abc",
+    "expected": {
+      "destination": "social_post",
+      "confidence": "high",
+      "reason": "social_host",
+      "socialPlatform": "youtube",
+      "socialMediaType": "video"
+    }
+  },
+  {
+    "id": "host_x_post",
+    "kind": "detect_url",
+    "url": "https://x.com/laura/status/123",
+    "expected": {
+      "destination": "social_post",
+      "confidence": "high",
+      "reason": "social_host",
+      "socialPlatform": "twitter",
+      "socialMediaType": "other"
+    }
+  },
+  {
+    "id": "host_twitter_post",
+    "kind": "detect_url",
+    "url": "https://twitter.com/laura/status/123",
+    "expected": {
+      "destination": "social_post",
+      "confidence": "high",
+      "reason": "social_host",
+      "socialPlatform": "twitter",
+      "socialMediaType": "other"
+    }
+  },
+  {
+    "id": "host_reddit_post",
+    "kind": "detect_url",
+    "url": "https://www.reddit.com/r/test/comments/abc/title/",
+    "expected": {
+      "destination": "social_post",
+      "confidence": "high",
+      "reason": "social_host",
+      "socialPlatform": "reddit",
+      "socialMediaType": "other"
+    }
+  },
+  {
+    "id": "host_linkedin_post",
+    "kind": "detect_url",
+    "url": "https://www.linkedin.com/posts/example",
+    "expected": {
+      "destination": "social_post",
+      "confidence": "high",
+      "reason": "social_host",
+      "socialPlatform": "linkedin",
+      "socialMediaType": "article"
+    }
+  },
+  {
+    "id": "host_pinterest_pin",
+    "kind": "detect_url",
+    "url": "https://www.pinterest.com/pin/123/",
+    "expected": {
+      "destination": "social_post",
+      "confidence": "high",
+      "reason": "social_host",
+      "socialPlatform": "pinterest",
+      "socialMediaType": "image"
+    }
+  },
+  {
+    "id": "host_substack",
+    "kind": "detect_url",
+    "url": "https://example.substack.com/p/essay",
+    "expected": {
+      "destination": "social_post",
+      "confidence": "high",
+      "reason": "social_host",
+      "socialPlatform": "substack",
+      "socialMediaType": "newsletter"
+    }
+  },
+  {
+    "id": "provider_openlibrary",
+    "kind": "detect_url",
+    "url": "https://openlibrary.org/works/OL27448W",
+    "expected": {
+      "destination": "resource",
+      "confidence": "high",
+      "reason": "known_resource_provider",
+      "resourceMediaType": "Book"
+    }
+  },
+  {
+    "id": "provider_google_books",
+    "kind": "detect_url",
+    "url": "https://books.google.com/books?id=abc",
+    "expected": {
+      "destination": "resource",
+      "confidence": "high",
+      "reason": "known_resource_provider",
+      "resourceMediaType": "Book"
+    }
+  },
+  {
+    "id": "provider_google_play_books",
+    "kind": "detect_url",
+    "url": "https://play.google.com/store/books/details?id=abc",
+    "expected": {
+      "destination": "resource",
+      "confidence": "high",
+      "reason": "known_resource_provider",
+      "resourceMediaType": "Book"
+    }
+  },
+  {
+    "id": "provider_imdb",
+    "kind": "detect_url",
+    "url": "https://www.imdb.com/title/tt0111161/",
+    "expected": {
+      "destination": "resource",
+      "confidence": "high",
+      "reason": "known_resource_provider",
+      "resourceMediaType": "Movie"
+    }
+  },
+  {
+    "id": "provider_amazon",
+    "kind": "detect_url",
+    "url": "https://www.amazon.com/dp/014312779X",
+    "expected": {
+      "destination": "resource",
+      "confidence": "high",
+      "reason": "known_resource_provider",
+      "resourceMediaType": "General"
+    }
+  },
+  {
+    "id": "provider_goodreads",
+    "kind": "detect_url",
+    "url": "https://www.goodreads.com/book/show/1",
+    "expected": {
+      "destination": "resource",
+      "confidence": "high",
+      "reason": "known_resource_provider",
+      "resourceMediaType": "Book"
+    }
+  },
+  {
+    "id": "spoof_instagram_path_not_social",
+    "kind": "detect_url",
+    "url": "https://evil.example/instagram.com/reel/abc",
+    "expected": {
+      "destination": "resource",
+      "confidence": "low",
+      "reason": "generic_page",
+      "resourceMediaType": "General"
+    }
+  },
+  {
+    "id": "spoof_imdb_host_not_provider",
+    "kind": "detect_url",
+    "url": "https://evil-imdb.example/title/tt0111161/",
+    "expected": {
+      "destination": "resource",
+      "confidence": "low",
+      "reason": "generic_page",
+      "resourceMediaType": "General"
+    }
+  },
+  {
+    "id": "http_no_automatic_import",
+    "kind": "detect_url",
+    "url": "http://example.com/recipe",
+    "expected": {
+      "destination": "resource",
+      "confidence": "unknown",
+      "reason": "network_unavailable",
+      "resourceMediaType": "General"
+    }
+  },
+  {
+    "id": "structured_recipe_jsonld",
+    "kind": "detect_html",
+    "url": "https://food.example/crispy-potatoes",
+    "html": "<html><head><script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@type\":\"Recipe\",\"name\":\"Crispy Potatoes\"}</script></head></html>",
+    "expected": {
+      "destination": "recipe",
+      "confidence": "high",
+      "reason": "schema_org_recipe"
+    }
+  },
+  {
+    "id": "structured_book_jsonld",
+    "kind": "detect_html",
+    "url": "https://example.com/book",
+    "html": "<script type=\"application/ld+json\">{\"@type\":\"Book\",\"name\":\"Book\"}</script>",
+    "expected": {
+      "destination": "resource",
+      "confidence": "high",
+      "reason": "schema_org_book",
+      "resourceMediaType": "Book"
+    }
+  },
+  {
+    "id": "structured_movie_jsonld",
+    "kind": "detect_html",
+    "url": "https://example.com/movie",
+    "html": "<script type=\"application/ld+json\">[{\"@type\":\"Movie\",\"name\":\"Movie\"}]</script>",
+    "expected": {
+      "destination": "resource",
+      "confidence": "high",
+      "reason": "schema_org_movie",
+      "resourceMediaType": "Movie"
+    }
+  },
+  {
+    "id": "structured_series_graph",
+    "kind": "detect_html",
+    "url": "https://example.com/show",
+    "html": "<script type=\"application/ld+json\">{\"@graph\":[{\"@type\":\"TVSeries\",\"name\":\"Show\"}]}</script>",
+    "expected": {
+      "destination": "resource",
+      "confidence": "high",
+      "reason": "schema_org_series",
+      "resourceMediaType": "Show"
+    }
+  },
+  {
+    "id": "structured_video_jsonld",
+    "kind": "detect_html",
+    "url": "https://example.com/video",
+    "html": "<script type=\"application/ld+json\">{\"@type\":[\"VideoObject\"],\"name\":\"Video\"}</script>",
+    "expected": {
+      "destination": "resource",
+      "confidence": "high",
+      "reason": "schema_org_video",
+      "resourceMediaType": "Video"
+    }
+  },
+  {
+    "id": "structured_podcast_jsonld",
+    "kind": "detect_html",
+    "url": "https://example.com/podcast",
+    "html": "<script type=\"application/ld+json\">{\"@type\":\"PodcastEpisode\",\"name\":\"Episode\"}</script>",
+    "expected": {
+      "destination": "resource",
+      "confidence": "high",
+      "reason": "schema_org_podcast",
+      "resourceMediaType": "Podcast"
+    }
+  },
+  {
+    "id": "structured_article_jsonld",
+    "kind": "detect_html",
+    "url": "https://example.com/article",
+    "html": "<script type=\"application/ld+json\">{\"@type\":\"NewsArticle\",\"name\":\"Article\"}</script>",
+    "expected": {
+      "destination": "resource",
+      "confidence": "high",
+      "reason": "schema_org_article",
+      "resourceMediaType": "Article"
+    }
+  },
+  {
+    "id": "structured_course_jsonld",
+    "kind": "detect_html",
+    "url": "https://example.com/course",
+    "html": "<script type=\"application/ld+json\">{\"@type\":\"Course\",\"name\":\"Course\"}</script>",
+    "expected": {
+      "destination": "resource",
+      "confidence": "high",
+      "reason": "schema_org_course",
+      "resourceMediaType": "Course"
+    }
+  },
+  {
+    "id": "open_graph_article",
+    "kind": "detect_html",
+    "url": "https://example.com/post",
+    "html": "<meta property=\"og:type\" content=\"article\"><meta property=\"og:title\" content=\"Post\">",
+    "expected": {
+      "destination": "resource",
+      "confidence": "medium",
+      "reason": "open_graph_article",
+      "resourceMediaType": "Article"
+    }
+  },
+  {
+    "id": "open_graph_video",
+    "kind": "detect_html",
+    "url": "https://example.com/watch",
+    "html": "<meta property=\"og:type\" content=\"video.other\"><meta property=\"og:title\" content=\"Video\">",
+    "expected": {
+      "destination": "resource",
+      "confidence": "medium",
+      "reason": "open_graph_video",
+      "resourceMediaType": "Video"
+    }
+  },
+  {
+    "id": "recipe_word_only_is_generic",
+    "kind": "detect_url",
+    "url": "https://example.com/recipes/ideas",
+    "expected": {
+      "destination": "resource",
+      "confidence": "low",
+      "reason": "generic_page",
+      "resourceMediaType": "General"
+    }
+  },
+  {
+    "id": "override_social_to_recipe",
+    "kind": "override",
+    "suggested": {
+      "destination": "social_post",
+      "socialPlatform": "instagram",
+      "socialMediaType": "video",
+      "confidence": "high",
+      "reason": "social_host"
+    },
+    "selected": {
+      "destination": "recipe"
+    },
+    "expected": {
+      "destination": "recipe",
+      "confidence": "unknown",
+      "reason": "manual_override"
+    }
+  },
+  {
+    "id": "override_social_to_resource_video",
+    "kind": "override",
+    "suggested": {
+      "destination": "social_post",
+      "socialPlatform": "youtube",
+      "socialMediaType": "video",
+      "confidence": "high",
+      "reason": "social_host"
+    },
+    "selected": {
+      "destination": "resource",
+      "resourceMediaType": "Video"
+    },
+    "expected": {
+      "destination": "resource",
+      "resourceMediaType": "Video",
+      "confidence": "unknown",
+      "reason": "manual_override"
+    }
+  },
+  {
+    "id": "override_recipe_to_social",
+    "kind": "override",
+    "suggested": {
+      "destination": "recipe",
+      "confidence": "high",
+      "reason": "schema_org_recipe"
+    },
+    "selected": {
+      "destination": "social_post",
+      "socialPlatform": "instagram",
+      "socialMediaType": "video"
+    },
+    "expected": {
+      "destination": "social_post",
+      "socialPlatform": "instagram",
+      "socialMediaType": "video",
+      "confidence": "unknown",
+      "reason": "manual_override"
+    }
+  },
+  {
+    "id": "override_recipe_to_resource",
+    "kind": "override",
+    "suggested": {
+      "destination": "recipe",
+      "confidence": "high",
+      "reason": "schema_org_recipe"
+    },
+    "selected": {
+      "destination": "resource",
+      "resourceMediaType": "Article"
+    },
+    "expected": {
+      "destination": "resource",
+      "resourceMediaType": "Article",
+      "confidence": "unknown",
+      "reason": "manual_override"
+    }
+  },
+  {
+    "id": "override_resource_to_recipe",
+    "kind": "override",
+    "suggested": {
+      "destination": "resource",
+      "resourceMediaType": "Book",
+      "confidence": "high",
+      "reason": "known_resource_provider"
+    },
+    "selected": {
+      "destination": "recipe"
+    },
+    "expected": {
+      "destination": "recipe",
+      "confidence": "unknown",
+      "reason": "manual_override"
+    }
+  },
+  {
+    "id": "override_resource_to_social",
+    "kind": "override",
+    "suggested": {
+      "destination": "resource",
+      "resourceMediaType": "Article",
+      "confidence": "medium",
+      "reason": "schema_org_article"
+    },
+    "selected": {
+      "destination": "social_post",
+      "socialPlatform": "linkedin",
+      "socialMediaType": "article"
+    },
+    "expected": {
+      "destination": "social_post",
+      "socialPlatform": "linkedin",
+      "socialMediaType": "article",
+      "confidence": "unknown",
+      "reason": "manual_override"
+    }
+  },
+  {
+    "id": "override_book_to_article",
+    "kind": "override",
+    "suggested": {
+      "destination": "resource",
+      "resourceMediaType": "Book",
+      "confidence": "high",
+      "reason": "known_resource_provider"
+    },
+    "selected": {
+      "destination": "resource",
+      "resourceMediaType": "Article"
+    },
+    "expected": {
+      "destination": "resource",
+      "resourceMediaType": "Article",
+      "confidence": "unknown",
+      "reason": "manual_override"
+    }
+  },
+  {
+    "id": "override_video_to_custom_resource",
+    "kind": "override",
+    "suggested": {
+      "destination": "resource",
+      "resourceMediaType": "Video",
+      "confidence": "medium",
+      "reason": "open_graph_video"
+    },
+    "selected": {
+      "destination": "resource",
+      "resourceMediaType": "Video Essay"
+    },
+    "expected": {
+      "destination": "resource",
+      "resourceMediaType": "Video Essay",
+      "confidence": "unknown",
+      "reason": "manual_override"
+    }
+  },
+  {
+    "id": "dirty_title_is_not_overwritten",
+    "kind": "merge",
+    "current": {
+      "sourceUrl": "https://example.com/a",
+      "title": "My title",
+      "imageUrl": ""
+    },
+    "dirty": ["title"],
+    "incoming": {
+      "title": "Automatic title",
+      "imageUrl": "https://example.com/image.jpg"
+    },
+    "expected": {
+      "sourceUrl": "https://example.com/a",
+      "title": "My title",
+      "imageUrl": "https://example.com/image.jpg"
+    }
+  },
+  {
+    "id": "pristine_title_fills_empty",
+    "kind": "merge",
+    "current": {
+      "sourceUrl": "https://example.com/a",
+      "title": "",
+      "description": ""
+    },
+    "dirty": [],
+    "incoming": {
+      "title": "Automatic title",
+      "description": "Summary"
+    },
+    "expected": {
+      "sourceUrl": "https://example.com/a",
+      "title": "Automatic title",
+      "description": "Summary"
+    }
+  },
+  {
+    "id": "normalized_duplicate_urls_match",
+    "kind": "normalize_url",
+    "left": "https://Example.com/path/?utm_source=x#section",
+    "right": "https://example.com/path",
+    "expectedEqual": true
+  }
+]

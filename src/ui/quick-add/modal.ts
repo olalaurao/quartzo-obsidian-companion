@@ -13,6 +13,7 @@ import {
 } from '../../vault/shared-settings';
 import type { IndexedObject, VaultIndex } from '../../vault/index/types';
 import { renderTrackerRecordQuickAdd, type TrackerRecordFormController } from './record-form';
+import { renderLinkCaptureQuickAdd } from './link-capture/view';
 import type { ViewContext } from '../types';
 
 function isoDate(date: Date): string {
@@ -60,6 +61,23 @@ export class QuickAddModal extends Modal {
     const title = document.createElement('h2');
     title.textContent = 'Quick Add';
     contentEl.appendChild(title);
+
+    const saveLink = document.createElement('button');
+    saveLink.type = 'button';
+    saveLink.className = 'mod-cta';
+    saveLink.textContent = 'Save link';
+    saveLink.addEventListener('click', () => {
+      renderLinkCaptureQuickAdd(contentEl, this.context, {
+        settingsRepository: this.settingsRepository,
+        getIndex: () => this.getIndex(),
+        ensureParentFolders: path => this.ensureParentFolders(path),
+        openIndexedObject: object => this.openIndexedObject(object),
+        onCreated: this.options.onCreated,
+        close: () => this.close(),
+        back: () => this.render(),
+      });
+    });
+    contentEl.appendChild(saveLink);
 
     const typeSelect = document.createElement('select');
     typeSelect.setAttribute('aria-label', 'Quick Add type');
@@ -115,7 +133,7 @@ export class QuickAddModal extends Modal {
     }
 
     let sourceUrlInput: HTMLInputElement | null = null;
-    let mediaTypeSelect: HTMLSelectElement | null = null;
+    let mediaTypeInput: HTMLInputElement | null = null;
     let prioritySelect: HTMLSelectElement | null = null;
     let statusSelect: HTMLSelectElement | null = null;
     let categoriesInput: HTMLInputElement | null = null;
@@ -135,11 +153,21 @@ export class QuickAddModal extends Modal {
       sourceUrlInput.addEventListener('input', () => { resourceMetadata = null; });
       contentEl.appendChild(sourceUrlInput);
 
-      mediaTypeSelect = this.createSelect('Resource type', [
-        'General', 'Book', 'Movie', 'Show', 'Video', 'Podcast', 'Article', 'Course',
-      ]);
-      mediaTypeSelect.addEventListener('change', () => { mediaTypeEdited = true; });
-      contentEl.appendChild(mediaTypeSelect);
+      mediaTypeInput = document.createElement('input');
+      mediaTypeInput.className = 'quartzo-input';
+      mediaTypeInput.setAttribute('aria-label', 'Resource type');
+      mediaTypeInput.setAttribute('list', 'quartzo-resource-media-types');
+      mediaTypeInput.value = 'General';
+      mediaTypeInput.addEventListener('input', () => { mediaTypeEdited = true; });
+      const mediaTypeOptions = document.createElement('datalist');
+      mediaTypeOptions.id = 'quartzo-resource-media-types';
+      for (const value of this.resourceMediaTypeSuggestions()) {
+        const option = document.createElement('option');
+        option.value = value;
+        mediaTypeOptions.appendChild(option);
+      }
+      contentEl.appendChild(mediaTypeInput);
+      contentEl.appendChild(mediaTypeOptions);
 
       const metadataStatus = document.createElement('small');
       metadataStatus.setAttribute('role', 'status');
@@ -166,9 +194,8 @@ export class QuickAddModal extends Modal {
           }
           if (!titleEdited && metadata.title) titleInput.value = metadata.title;
           if (!bodyEdited && metadata.synopsis) bodyInput.value = metadata.synopsis;
-          if (!mediaTypeEdited && metadata.mediaType && mediaTypeSelect) {
-            const supported = Array.from(mediaTypeSelect.options).some(option => option.value === metadata.mediaType);
-            if (supported) mediaTypeSelect.value = metadata.mediaType;
+          if (!mediaTypeEdited && metadata.mediaType && mediaTypeInput) {
+            mediaTypeInput.value = metadata.mediaType;
           }
           const details = [metadata.author, metadata.year, metadata.pages ? `${metadata.pages} pages` : undefined]
             .filter((value): value is string | number => value != null && value !== '');
@@ -227,7 +254,7 @@ export class QuickAddModal extends Modal {
           : rawRecordInput;
         const resourceInput = this.type === 'resource'
           ? {
-              mediaType: mediaTypeSelect?.value ?? '',
+              mediaType: mediaTypeInput?.value ?? '',
               sourceUrl: currentResourceUrl || undefined,
               priority: (prioritySelect?.value ?? 'none') as 'none' | 'low' | 'medium' | 'high',
               status: (statusSelect?.value ?? 'toConsume') as 'toConsume' | 'inProgress' | 'completed' | 'dropped',
@@ -312,6 +339,15 @@ export class QuickAddModal extends Modal {
     const index = this.getIndex();
     if (!index) return [];
     return queryVaultObjects(index, { types: ['resource'] });
+  }
+
+  private resourceMediaTypeSuggestions(): string[] {
+    const values = new Set(['General', 'Book', 'Movie', 'Show', 'Video', 'Podcast', 'Article', 'Course']);
+    for (const object of this.resourceObjects()) {
+      const raw = object.frontmatter.media_type;
+      if (typeof raw === 'string' && raw.trim()) values.add(raw.trim());
+    }
+    return [...values].sort((left, right) => left.localeCompare(right));
   }
 
   private resourceIdentities(): ResourceIdentity[] {
