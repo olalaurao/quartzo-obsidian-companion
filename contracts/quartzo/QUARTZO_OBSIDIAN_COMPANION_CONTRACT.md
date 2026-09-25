@@ -874,6 +874,14 @@ day_dial:
 
 Flutter `SharedPreferences` may cache these values but must no longer be their independent source of truth.
 
+Bidirectional behavior is mandatory:
+
+- Companion startup loads this document before parsing any objects.
+- Companion sync/filesystem refresh reloads this document before reparsing objects.
+- Companion settings edits write this same document, never a plugin-local substitute.
+- Quartzo startup and Drive sync reload the same document before reparsing objects.
+- If one client changes Object Identification so Task is identified by a folder, the other client must apply that rule on its next startup/sync without creating duplicate files, moving unrelated files, or losing the original path/remote identity.
+
 ---
 
 ## 9.1 Settings that must remain device-local
@@ -914,12 +922,30 @@ priority
 folder/property/tag identification
 ```
 
+The default `TypeSignature` set must cover every canonical `ObjectTypes.all` product type. Product-facing type keys may intentionally differ from legacy persisted Markdown values only through explicit aliases. Required aliases include:
+
+```text
+tracker            <-> tracker_definition
+pomodoro           <-> pomodoro_session
+analysis           <-> combined_analysis
+```
+
+Those aliases are equivalent for parsing and must not produce a type-conflict warning by themselves.
+
 When an object matches conflicting signatures:
 
 - canonical priority determines the interpreted type;
 - conflict state remains visible for cleanup.
 
 The Companion must not invent its own priority order.
+
+---
+
+## 10.1 Open Original Markdown
+
+Every Companion surface that renders a Quartzo object row, card, detail header, conflict row, search result, schedule item, linked object chip, or picker result must expose a direct click/tap target that opens the object's original Markdown file in Obsidian.
+
+The target is the concrete vault-relative `.md` path stored on the parsed object, not a reconstructed slug, guessed folder, or extensionless alias. If the object has no materialized file yet, the surface must show a non-destructive unavailable state instead of creating a placeholder file.
 
 ---
 

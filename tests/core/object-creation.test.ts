@@ -8,6 +8,8 @@ const settings: QuartzoSharedSettings = {
   typeSignatures: {},
   folderPaths: {
     resource: 'resources',
+    note: 'notes/custom',
+    social_post: 'social/custom',
     entry: 'journal/entries',
     reminder: 'reminders',
   },
@@ -80,6 +82,62 @@ describe('buildQuickAddDocument', () => {
       { title: 'Untyped', body: '', resource: { mediaType: '   ' } },
       'resource-no-type',
     )).toThrow('Resource type is required.');
+  });
+
+  it('creates a Recipe as a canonical Note subtype', () => {
+    const created = buildQuickAddDocument(
+      settings,
+      'recipe',
+      {
+        title: 'Crispy Potatoes',
+        body: '<!-- quartzo:recipe:v1 -->\n\n<!-- quartzo:recipe:ingredients -->\n## Ingredients\n\n- Potato',
+        recipe: {
+          sourceUrl: 'https://food.example/potatoes',
+          coverImageUrl: 'https://food.example/potatoes.jpg',
+          recipeSourceName: 'Food Example',
+          servings: '4',
+          prepTimeMinutes: 10,
+        },
+      },
+      'recipe-potatoes',
+    );
+    const parsed = ObjectParser.parse(created.content).object;
+    expect(created.path).toBe('notes/custom/recipe-potatoes.md');
+    expect(parsed).toMatchObject({
+      id: 'recipe-potatoes',
+      type: 'note',
+      note_subtype: 'recipe',
+      source_url: 'https://food.example/potatoes',
+      cover_image_url: 'https://food.example/potatoes.jpg',
+    });
+  });
+
+  it('creates a Social Post with canonical social fields', () => {
+    const created = buildQuickAddDocument(
+      settings,
+      'social_post',
+      {
+        title: 'Instagram Reel',
+        body: 'Saved for later',
+        socialPost: {
+          url: 'https://www.instagram.com/reel/abc/',
+          platform: 'instagram',
+          mediaType: 'video',
+          caption: 'Crispy potatoes',
+          thumbnail: 'https://cdn.example/thumb.jpg',
+        },
+      },
+      'social-instagram',
+    );
+    const parsed = ObjectParser.parse(created.content).object;
+    expect(created.path).toBe('social/custom/social-instagram.md');
+    expect(parsed).toMatchObject({
+      id: 'social-instagram',
+      type: 'social_post',
+      url: 'https://www.instagram.com/reel/abc/',
+      platform: 'instagram',
+      media_type: 'video',
+    });
   });
 
   it('persists Quick Add Reminder as one exact canonical instant with embedded ReminderConfig', () => {

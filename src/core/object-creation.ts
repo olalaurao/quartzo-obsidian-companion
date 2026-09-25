@@ -7,7 +7,7 @@ import {
   type QuartzoSharedSettings,
 } from './shared-settings';
 
-export type QuickAddType = 'task' | 'entry' | 'note' | 'reminder' | 'resource' | 'tracker_record';
+export type QuickAddType = 'task' | 'entry' | 'note' | 'reminder' | 'resource' | 'tracker_record' | 'recipe' | 'social_post';
 
 export interface ResourceQuickAddInput {
   mediaType: string;
@@ -27,6 +27,31 @@ export interface ResourceQuickAddInput {
   imdbId?: string;
 }
 
+export interface RecipeQuickAddInput {
+  sourceUrl?: string;
+  coverImageUrl?: string;
+  recipeSourceName?: string;
+  servings?: string;
+  prepTimeMinutes?: number;
+  cookTimeMinutes?: number;
+  totalTimeMinutes?: number;
+}
+
+export interface SocialPostQuickAddInput {
+  url: string;
+  platform: string;
+  mediaType?: string;
+  caption?: string;
+  creator?: string;
+  authorHandle?: string;
+  authorName?: string;
+  thumbnail?: string;
+  embedUrl?: string;
+  videoUrl?: string;
+  postedAt?: string;
+  personalNote?: string;
+}
+
 export interface TrackerRecordQuickAddInput {
   trackerId: string;
   trackerTitle: string;
@@ -40,6 +65,8 @@ export interface QuickAddInput {
   date?: string;
   time?: string;
   resource?: ResourceQuickAddInput;
+  recipe?: RecipeQuickAddInput;
+  socialPost?: SocialPostQuickAddInput;
   record?: TrackerRecordQuickAddInput;
 }
 
@@ -49,14 +76,15 @@ export function buildQuickAddDocument(
   input: QuickAddInput,
   id: string,
 ): { path: string; content: string } {
-  const folder = resolveCreationFolder(settings, type);
+  const canonicalObjectType = type === 'recipe' ? 'note' : type;
+  const folder = resolveCreationFolder(settings, canonicalObjectType);
   if (!folder) {
-    throw new Error(`No canonical creation folder is configured for ${type}. Configure Object Identification in Quartzo first.`);
+    throw new Error(`No canonical creation folder is configured for ${canonicalObjectType}. Configure Object Identification in Quartzo first.`);
   }
 
   const trimmedTitle = input.title.trim();
-  if (type === 'resource' && !trimmedTitle) {
-    throw new Error('Resource title is required.');
+  if ((type === 'resource' || type === 'recipe' || type === 'social_post') && !trimmedTitle) {
+    throw new Error(`${type === 'social_post' ? 'Social Post' : labelForCreationType(type)} title is required.`);
   }
   const record = type === 'tracker_record' ? input.record : undefined;
   if (type === 'tracker_record' && !record) throw new Error('Record fields are required.');
@@ -65,7 +93,37 @@ export function buildQuickAddDocument(
   const title = type === 'tracker_record'
     ? `${recordTrackerTitle} ${record?.date ?? ''}`.trim()
     : trimmedTitle || (type === 'entry' ? 'Journal Entry' : 'Untitled');
-  const frontmatter: Record<string, unknown> = { id, type, title };
+  const frontmatter: Record<string, unknown> = { id, type: canonicalObjectType, title };
+
+  if (type === 'recipe') {
+    const recipe = input.recipe;
+    frontmatter.note_subtype = 'recipe';
+    assignText(frontmatter, 'source_url', recipe?.sourceUrl);
+    assignText(frontmatter, 'cover_image_url', recipe?.coverImageUrl);
+    assignText(frontmatter, 'recipe_source_name', recipe?.recipeSourceName);
+    assignText(frontmatter, 'servings', recipe?.servings);
+    if (recipe?.prepTimeMinutes != null) frontmatter.prep_time_minutes = recipe.prepTimeMinutes;
+    if (recipe?.cookTimeMinutes != null) frontmatter.cook_time_minutes = recipe.cookTimeMinutes;
+    if (recipe?.totalTimeMinutes != null) frontmatter.total_time_minutes = recipe.totalTimeMinutes;
+  }
+
+  if (type === 'social_post') {
+    const social = input.socialPost;
+    if (!social?.url.trim()) throw new Error('Social Post URL is required.');
+    if (!social.platform.trim()) throw new Error('Social Post platform is required.');
+    frontmatter.url = social.url.trim();
+    frontmatter.platform = social.platform.trim();
+    frontmatter.media_type = social.mediaType?.trim() || 'other';
+    assignText(frontmatter, 'caption', social.caption);
+    assignText(frontmatter, 'creator', social.creator);
+    assignText(frontmatter, 'author_handle', social.authorHandle);
+    assignText(frontmatter, 'author_name', social.authorName);
+    assignText(frontmatter, 'thumbnail', social.thumbnail);
+    assignText(frontmatter, 'embed_url', social.embedUrl);
+    assignText(frontmatter, 'video_url', social.videoUrl);
+    assignText(frontmatter, 'posted_at', social.postedAt);
+    frontmatter.watched = false;
+  }
 
   if (type === 'entry') {
     frontmatter.date = input.date ?? localIsoDate(new Date());
@@ -112,17 +170,13 @@ export function buildQuickAddDocument(
     frontmatter.rating = 0;
     frontmatter.priority = resource.priority ?? 'none';
 
-    const assignText = (key: string, value: string | undefined): void => {
-      const normalized = value?.trim();
-      if (normalized) frontmatter[key] = normalized;
-    };
-    assignText('source_url', resource.sourceUrl);
-    assignText('cover', resource.cover);
-    assignText('author', resource.author);
-    assignText('category', resource.category);
-    assignText('isbn', resource.isbn);
-    assignText('google_books_id', resource.googleBooksId);
-    assignText('imdb_id', resource.imdbId);
+    assignText(frontmatter, 'source_url', resource.sourceUrl);
+    assignText(frontmatter, 'cover', resource.cover);
+    assignText(frontmatter, 'author', resource.author);
+    assignText(frontmatter, 'category', resource.category);
+    assignText(frontmatter, 'isbn', resource.isbn);
+    assignText(frontmatter, 'google_books_id', resource.googleBooksId);
+    assignText(frontmatter, 'imdb_id', resource.imdbId);
     if (resource.year != null) frontmatter.year = resource.year;
     if (resource.pages != null) frontmatter.pages = resource.pages;
     if (resource.categories?.length) frontmatter.categories = resource.categories;
@@ -130,13 +184,30 @@ export function buildQuickAddDocument(
     if (resource.links?.length) frontmatter.links = resource.links;
   }
 
-  const signature = resolveTypeSignature(settings, type);
+  const signature = resolveTypeSignature(settings, canonicalObjectType);
   const signed = applyTypeSignature(frontmatter, input.body, signature);
   const path = `${folder}/${id}.md`.replace(/\\/g, '/').replace(/\/{2,}/g, '/');
   const content = ObjectParser.serializeMarkdown(signed.frontmatter, signed.body);
   const roundtrip = ObjectParser.parse(content);
-  if (roundtrip.object.id !== id || roundtrip.object.type !== type) {
+  if (roundtrip.object.id !== id || roundtrip.object.type !== canonicalObjectType) {
     throw new Error(`Creation roundtrip failed for ${type}`);
   }
+  if (type === 'recipe' && roundtrip.object.type === 'note' && roundtrip.object.note_subtype !== 'recipe') {
+    throw new Error('Creation roundtrip failed for recipe.');
+  }
   return { path, content };
+}
+
+function assignText(
+  target: Record<string, unknown>,
+  key: string,
+  value: string | undefined,
+): void {
+  const normalized = value?.trim();
+  if (!normalized) return;
+  target[key] = normalized;
+}
+
+function labelForCreationType(type: QuickAddType): string {
+  return type.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
 }

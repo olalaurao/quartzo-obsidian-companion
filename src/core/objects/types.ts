@@ -86,6 +86,13 @@ export interface Entry extends BaseObject {
 export interface Note extends BaseObject {
   type: 'note';
   note_subtype?: string;
+  source_url?: string;
+  cover_image_url?: string;
+  recipe_source_name?: string;
+  servings?: string;
+  prep_time_minutes?: number;
+  cook_time_minutes?: number;
+  total_time_minutes?: number;
   links?: string[];
 }
 
@@ -204,7 +211,18 @@ export interface Routine extends BaseObject {
 export interface SocialPost extends BaseObject {
   type: 'social_post';
   platform?: string;
+  media_type?: string;
+  url?: string;
+  caption?: string;
+  creator?: string;
+  author_handle?: string;
+  author_name?: string;
+  thumbnail?: string;
+  embed_url?: string;
+  video_url?: string;
+  posted_at?: string;
   personal_note?: string;
+  watched?: boolean;
 }
 
 export interface MoodDefinition extends BaseObject {

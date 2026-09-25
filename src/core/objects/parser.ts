@@ -46,7 +46,11 @@ const KNOWN_FIELDS: Record<ObjectType, Set<string>> = {
   tracker_definition: new Set(['id', 'type', 'title', 'sections', 'section_count', 'field_count', 'body']),
   tracker_record: new Set(['id', 'type', 'title', 'tracker_id', 'date', 'field_values', 'body']),
   entry: new Set(['id', 'type', 'title', 'date', 'time', 'body']),
-  note: new Set(['id', 'type', 'title', 'note_subtype', 'links', 'body']),
+  note: new Set([
+    'id', 'type', 'title', 'note_subtype', 'links', 'source_url',
+    'cover_image_url', 'recipe_source_name', 'servings', 'prep_time_minutes',
+    'cook_time_minutes', 'total_time_minutes', 'body',
+  ]),
   reminder: new Set(['id', 'type', 'title', 'date', 'time', 'is_completed', 'is_completable', 'reminder_count', 'reminder_id', 'reminders', 'scheduled_date', 'scheduler', 'notes', 'time_block', 'time_block_id', 'checkboxes', 'habit_reminder', 'organizers', 'categories', 'tags', 'links', 'archived', 'pinned', 'created_at', 'updated_at', 'source_url', 'body']),
   goal: new Set(['id', 'type', 'title', 'state', 'start_date', 'deadline', 'description', 'body']),
   event: new Set(['id', 'type', 'title', 'date', 'time_of_day', 'time', 'duration', 'end_time', 'multi_day', 'scheduler', 'body']),
@@ -60,7 +64,11 @@ const KNOWN_FIELDS: Record<ObjectType, Set<string>> = {
     'estimated_minutes', 'show_in_planner', 'mood_trigger', 'scheduler',
     'steps', 'routine_executions_version', 'routine_executions', 'body',
   ]),
-  social_post: new Set(['id', 'type', 'title', 'platform', 'personal_note', 'body']),
+  social_post: new Set([
+    'id', 'type', 'title', 'url', 'platform', 'media_type', 'caption',
+    'creator', 'author_handle', 'author_name', 'thumbnail', 'embed_url',
+    'video_url', 'posted_at', 'personal_note', 'watched', 'body',
+  ]),
   mood_definition: new Set(['id', 'type', 'title', 'numeric_value', 'pleasantness', 'body']),
   idea: new Set(['id', 'type', 'title', 'horizon', 'body']),
   inbox: new Set(['id', 'type', 'title', 'temporal_intent', 'body']),
@@ -351,6 +359,13 @@ export class ObjectParser {
           ...baseObject,
           type: 'note',
           note_subtype: frontmatter.note_subtype as string,
+          source_url: frontmatter.source_url as string,
+          cover_image_url: frontmatter.cover_image_url as string,
+          recipe_source_name: frontmatter.recipe_source_name as string,
+          servings: frontmatter.servings as string,
+          prep_time_minutes: frontmatter.prep_time_minutes as number,
+          cook_time_minutes: frontmatter.cook_time_minutes as number,
+          total_time_minutes: frontmatter.total_time_minutes as number,
           links: frontmatter.links as string[],
         } as Note;
         break;
@@ -456,8 +471,19 @@ export class ObjectParser {
         object = {
           ...baseObject,
           type: 'social_post',
+          url: frontmatter.url as string,
           platform: frontmatter.platform as string,
+          media_type: frontmatter.media_type as string,
+          caption: frontmatter.caption as string,
+          creator: frontmatter.creator as string,
+          author_handle: frontmatter.author_handle as string,
+          author_name: frontmatter.author_name as string,
+          thumbnail: frontmatter.thumbnail as string,
+          embed_url: frontmatter.embed_url as string,
+          video_url: frontmatter.video_url as string,
+          posted_at: frontmatter.posted_at as string,
           personal_note: body,
+          watched: frontmatter.watched as boolean,
         } as SocialPost;
         break;
       
