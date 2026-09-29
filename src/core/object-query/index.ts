@@ -1,11 +1,29 @@
 import type { IndexedObject, VaultIndex } from '../../vault/index/types';
 
+export type ObjectQueryArchiveFilter = 'active' | 'include_archived' | 'archived_only';
+export type ObjectQueryConflictFilter = 'all' | 'conflicts' | 'clean';
+export type ObjectQuerySort =
+  | 'relevance'
+  | 'title_asc'
+  | 'title_desc'
+  | 'type_asc'
+  | 'type_desc'
+  | 'updated_desc'
+  | 'updated_asc'
+  | 'created_desc'
+  | 'created_asc'
+  | 'path_asc'
+  | 'path_desc';
+
 export interface ObjectQueryOptions {
   query?: string;
   types?: string[];
   excludeIds?: string[];
   includeArchived?: boolean;
+  archiveFilter?: ObjectQueryArchiveFilter;
   hasTypeConflict?: boolean;
+  conflictFilter?: ObjectQueryConflictFilter;
+  sort?: ObjectQuerySort;
   limit?: number;
 }
 
@@ -61,6 +79,67 @@ function titleForSort(object: IndexedObject): string {
   return String(object.frontmatter.title ?? object.id).toLocaleLowerCase();
 }
 
+function isArchived(object: IndexedObject): boolean {
+  return object.frontmatter.archived === true;
+}
+
+function isDeleted(object: IndexedObject): boolean {
+  const normalizedPath = object.path.replace(/\\/g, '/').replace(/^\/+/, '');
+  return object.frontmatter.deleted === true ||
+    object.frontmatter._deleted === true ||
+    normalizedPath === '_deleted' ||
+    normalizedPath.startsWith('_deleted/');
+}
+
+function frontmatterTime(object: IndexedObject, keys: string[]): number | null {
+  for (const key of keys) {
+    const value = object.frontmatter[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string') {
+      const parsed = Date.parse(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return null;
+}
+
+function compareText(left: string, right: string): number {
+  return left.localeCompare(right);
+}
+
+function compareTime(left: number | null, right: number | null, direction: 'asc' | 'desc'): number {
+  if (left == null && right == null) return 0;
+  if (left == null) return 1;
+  if (right == null) return -1;
+  return direction === 'asc' ? left - right : right - left;
+}
+
+function compareObjects(
+  left: { object: IndexedObject; score: number },
+  right: { object: IndexedObject; score: number },
+  sort: ObjectQuerySort,
+): number {
+  const leftObject = left.object;
+  const rightObject = right.object;
+  const fallback = titleForSort(leftObject).localeCompare(titleForSort(rightObject)) ||
+    leftObject.id.localeCompare(rightObject.id);
+
+  if (sort === 'relevance') return right.score - left.score || fallback;
+  if (sort === 'title_asc') return fallback;
+  if (sort === 'title_desc') return titleForSort(rightObject).localeCompare(titleForSort(leftObject)) ||
+    rightObject.id.localeCompare(leftObject.id);
+  if (sort === 'type_asc') return compareText(leftObject.type, rightObject.type) || fallback;
+  if (sort === 'type_desc') return compareText(rightObject.type, leftObject.type) || fallback;
+  if (sort === 'path_asc') return compareText(leftObject.path, rightObject.path) || fallback;
+  if (sort === 'path_desc') return compareText(rightObject.path, leftObject.path) || fallback;
+
+  const keys = sort.startsWith('updated')
+    ? ['updated_at', 'updatedAt', 'modified_at', 'modifiedAt']
+    : ['created_at', 'createdAt'];
+  const direction = sort.endsWith('_asc') ? 'asc' : 'desc';
+  return compareTime(frontmatterTime(leftObject, keys), frontmatterTime(rightObject, keys), direction) || fallback;
+}
+
 /**
  * Canonical read-only query projection over the existing VaultIndex.
  * No second index/cache is created here.
@@ -75,14 +154,21 @@ export function queryVaultObjects(
   const types = options.types && options.types.length > 0 ? new Set(options.types) : null;
   const excluded = new Set(options.excludeIds ?? []);
   const limit = options.limit == null ? Number.POSITIVE_INFINITY : Math.max(0, Math.trunc(options.limit));
+  const archiveFilter = options.archiveFilter ?? (options.includeArchived ? 'include_archived' : 'active');
+  const conflictFilter = options.conflictFilter ?? (
+    options.hasTypeConflict === true ? 'conflicts' :
+      options.hasTypeConflict === false ? 'clean' :
+        'all'
+  );
+  const sort = options.sort ?? 'relevance';
 
   const ranked: Array<{ object: IndexedObject; score: number }> = [];
   for (const object of index.objects.values()) {
-    if (!options.includeArchived && (object.frontmatter.archived === true || object.frontmatter.deleted === true || object.frontmatter._deleted === true)) {
-      continue;
-    }
-    if (options.hasTypeConflict === true && object.identification?.hasConflict !== true) continue;
-    if (options.hasTypeConflict === false && object.identification?.hasConflict === true) continue;
+    if (isDeleted(object)) continue;
+    if (archiveFilter === 'active' && isArchived(object)) continue;
+    if (archiveFilter === 'archived_only' && !isArchived(object)) continue;
+    if (conflictFilter === 'conflicts' && object.identification?.hasConflict !== true) continue;
+    if (conflictFilter === 'clean' && object.identification?.hasConflict === true) continue;
     if (types && !types.has(object.type)) continue;
     if (excluded.has(object.id)) continue;
 
@@ -91,11 +177,7 @@ export function queryVaultObjects(
     ranked.push({ object, score });
   }
 
-  ranked.sort((left, right) =>
-    right.score - left.score ||
-    titleForSort(left.object).localeCompare(titleForSort(right.object)) ||
-    left.object.id.localeCompare(right.object.id)
-  );
+  ranked.sort((left, right) => compareObjects(left, right, sort));
 
   return ranked.slice(0, limit).map(entry => entry.object);
 }

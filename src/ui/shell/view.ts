@@ -4,7 +4,12 @@ import type { NormalizedItem, NormalizedSchedule } from '../../core/daily_schedu
 import type { GoogleCalendarProjection } from '../../integrations/google/calendar';
 import { addLocalDays, localIsoDate, parseLocalIsoDate, shiftLocalMonth } from '../../core/local-date';
 import { chooseNewestConflictResolution, type SyncPendingDiagnostic, type SyncProgress, type SyncStatusSnapshot } from '../../sync/coordinator';
-import { queryVaultObjects } from '../../core/object-query';
+import {
+  queryVaultObjects,
+  type ObjectQueryArchiveFilter,
+  type ObjectQueryConflictFilter,
+  type ObjectQuerySort,
+} from '../../core/object-query';
 import { renderObjectDetail } from '../detail/object-detail';
 import { renderObjectEditor } from '../detail/object-editor';
 import { renderHomeView } from '../home/view';
@@ -831,22 +836,65 @@ export class QuartzoView extends ItemView {
     input.className = 'quartzo-input';
     controls.appendChild(input);
 
+    const appendOption = (select: HTMLSelectElement, value: string, label: string): void => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      select.appendChild(option);
+    };
+
     const filter = document.createElement('select');
     filter.className = 'quartzo-input';
     filter.setAttribute('aria-label', 'Filter by object type');
-    const all = document.createElement('option');
-    all.value = '';
-    all.textContent = 'All types';
-    filter.appendChild(all);
-    const available = queryVaultObjects(this.getIndex());
+    appendOption(filter, '', 'All types');
+    const available = queryVaultObjects(this.getIndex(), {
+      archiveFilter: 'include_archived',
+      conflictFilter: 'all',
+      sort: 'type_asc',
+    });
     for (const type of [...new Set(available.map(object => object.type))].sort()) {
-      const option = document.createElement('option');
-      option.value = type;
-      option.textContent = labelForType(type);
-      filter.appendChild(option);
+      appendOption(filter, type, labelForType(type));
     }
     controls.appendChild(filter);
+
+    const archiveFilter = document.createElement('select');
+    archiveFilter.className = 'quartzo-input';
+    archiveFilter.setAttribute('aria-label', 'Filter by archive status');
+    appendOption(archiveFilter, 'active', 'Active');
+    appendOption(archiveFilter, 'include_archived', 'Active + archived');
+    appendOption(archiveFilter, 'archived_only', 'Archived only');
+    controls.appendChild(archiveFilter);
+
+    const conflictFilter = document.createElement('select');
+    conflictFilter.className = 'quartzo-input';
+    conflictFilter.setAttribute('aria-label', 'Filter by Object Identification status');
+    appendOption(conflictFilter, 'all', 'All identification');
+    appendOption(conflictFilter, 'clean', 'No conflicts');
+    appendOption(conflictFilter, 'conflicts', 'Conflicts only');
+    controls.appendChild(conflictFilter);
+
+    const sort = document.createElement('select');
+    sort.className = 'quartzo-input';
+    sort.setAttribute('aria-label', 'Sort Quartzo objects');
+    appendOption(sort, 'relevance', 'Best match');
+    appendOption(sort, 'title_asc', 'Title A-Z');
+    appendOption(sort, 'title_desc', 'Title Z-A');
+    appendOption(sort, 'type_asc', 'Type A-Z');
+    appendOption(sort, 'type_desc', 'Type Z-A');
+    appendOption(sort, 'updated_desc', 'Updated newest');
+    appendOption(sort, 'updated_asc', 'Updated oldest');
+    appendOption(sort, 'created_desc', 'Created newest');
+    appendOption(sort, 'created_asc', 'Created oldest');
+    appendOption(sort, 'path_asc', 'Path A-Z');
+    appendOption(sort, 'path_desc', 'Path Z-A');
+    controls.appendChild(sort);
     container.appendChild(controls);
+
+    const summary = document.createElement('p');
+    summary.className = 'quartzo-browse-summary';
+    summary.setAttribute('role', 'status');
+    summary.setAttribute('aria-live', 'polite');
+    container.appendChild(summary);
 
     const list = document.createElement('div');
     list.className = 'quartzo-object-results';
@@ -857,11 +905,18 @@ export class QuartzoView extends ItemView {
       const visible = queryVaultObjects(this.getIndex(), {
         query: input.value,
         types: filter.value ? [filter.value] : undefined,
+        archiveFilter: archiveFilter.value as ObjectQueryArchiveFilter,
+        conflictFilter: conflictFilter.value as ObjectQueryConflictFilter,
+        sort: sort.value as ObjectQuerySort,
       });
+      summary.textContent = `${visible.length} ${visible.length === 1 ? 'object' : 'objects'}`;
       if (visible.length === 0) {
         const empty = document.createElement('p');
         empty.className = 'quartzo-empty-state';
-        empty.textContent = input.value.trim() || filter.value
+        empty.textContent = input.value.trim() ||
+          filter.value ||
+          archiveFilter.value !== 'active' ||
+          conflictFilter.value !== 'all'
           ? 'No matching Quartzo objects.'
           : 'No Quartzo objects yet.';
         list.appendChild(empty);
@@ -870,6 +925,9 @@ export class QuartzoView extends ItemView {
       for (const object of visible) this.renderObjectRow(list, object);
     };
     filter.addEventListener('change', render);
+    archiveFilter.addEventListener('change', render);
+    conflictFilter.addEventListener('change', render);
+    sort.addEventListener('change', render);
     input.addEventListener('input', render);
     render();
   }
