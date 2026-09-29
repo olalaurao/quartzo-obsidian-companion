@@ -1374,8 +1374,8 @@ function checkObjectIdentificationSingleOwnerAndDriftGate() {
     return false;
   }
 
-  if (!creation.includes('resolveCreationFolder(settings, type)') ||
-      !creation.includes('resolveTypeSignature(settings, type)') ||
+  if (!creation.includes('resolveCreationFolder(settings, canonicalObjectType)') ||
+      !creation.includes('resolveTypeSignature(settings, canonicalObjectType)') ||
       !creation.includes('applyTypeSignature(frontmatter, input.body, signature)')) {
     console.error('FAIL: Quick Add does not use the current shared Object Identification settings for path and marker creation');
     return false;
