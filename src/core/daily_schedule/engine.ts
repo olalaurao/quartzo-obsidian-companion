@@ -122,7 +122,7 @@ export class DailyScheduleEngine {
 
   private static processHabit(obj: Record<string, unknown>, date: string, items: RawNormalizedItem[]): void {
     const id = obj.id as string;
-    const slots = obj.slots as Array<{time: string; label: string}>;
+    const slots = Array.isArray(obj.slots) ? obj.slots : [];
 
     // Skip negative habits
     if (obj.negative === true) {
@@ -131,26 +131,75 @@ export class DailyScheduleEngine {
 
     if (slots && slots.length > 0) {
       // Multiple timed slots
+      let emittedTimedSlot = false;
       for (let i = 0; i < slots.length; i++) {
         const slot = slots[i];
+        const time = this.habitSlotTime(slot);
+        if (!time) {
+          continue;
+        }
+        emittedTimedSlot = true;
         items.push({
-          id: `legacyTime:habit:${id}:slot:${i}:reminder:slot_time:${date}T${slot.time}:00.000`,
+          id: `legacyTime:habit:${id}:slot:${i}:reminder:slot_time:${date}T${time}:00.000`,
           sourceId: id,
           slotIndex: i,
           date,
-          start: slot.time,
+          start: time,
           isTimed: true
         });
       }
-    } else {
-      // All-day fallback
-      items.push({
-        id: `habit:${id}`,
-        sourceId: id,
-        date,
-        isTimed: false
-      });
+      if (emittedTimedSlot) {
+        return;
+      }
     }
+
+    // All-day fallback
+    items.push({
+      id: `habit:${id}`,
+      sourceId: id,
+      date,
+      isTimed: false
+    });
+  }
+
+  private static habitSlotTime(slot: unknown): string | null {
+    const record = this.objectRecord(slot);
+    if (!record) return null;
+    const schedule = this.objectRecord(record.schedule);
+    const scheduler = this.objectRecord(record.scheduler);
+    const reminder = this.firstObjectRecord(record.reminders);
+    return this.clockFromAny(record.time) ??
+      this.clockFromAny(record.time_of_day) ??
+      this.clockFromAny(record.scheduled_time) ??
+      this.clockFromAny(record.exact_time) ??
+      this.clockFromAny(schedule?.time_of_day) ??
+      this.clockFromAny(schedule?.exact_time) ??
+      this.clockFromAny(scheduler?.exact_time) ??
+      this.clockFromAny(reminder?.time_of_day) ??
+      this.clockFromAny(reminder?.exact_time);
+  }
+
+  private static objectRecord(value: unknown): Record<string, unknown> | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    return value as Record<string, unknown>;
+  }
+
+  private static firstObjectRecord(value: unknown): Record<string, unknown> | null {
+    if (!Array.isArray(value)) return null;
+    for (const item of value) {
+      const record = this.objectRecord(item);
+      if (record) return record;
+    }
+    return null;
+  }
+
+  private static clockFromAny(value: unknown): string | null {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const fromIso = this.clockFromIso(trimmed);
+    if (fromIso) return fromIso;
+    return this.clockMinutes(trimmed) == null ? null : trimmed;
   }
 
   private static processTask(obj: Record<string, unknown>, date: string, items: RawNormalizedItem[]): void {

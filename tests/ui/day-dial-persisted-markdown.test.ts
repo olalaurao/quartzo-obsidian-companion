@@ -15,6 +15,108 @@ function parsedObject(markdown: string, path: string): Record<string, unknown> {
 }
 
 describe('Day Dial persisted Markdown parity', () => {
+  it('accepts legacy camelCase Time Block types from persisted Markdown', () => {
+    const block = parsedObject(`---
+id: morning
+type: timeBlock
+organizer_type: timeBlock
+title: Manha
+time_ranges:
+  - start_hour: 7
+    start_minute: 0
+    end_hour: 11
+    end_minute: 59
+---
+`, 'app/manha.md');
+
+    const schedule = DailyScheduleEngine.normalize({
+      date: '2026-09-06',
+      objects: [block],
+    });
+    const projection = projectDayDial(schedule.items, { index: null });
+
+    expect(block.type).toBe('time_block');
+    expect(schedule.items).toHaveLength(1);
+    expect(schedule.items[0]).toMatchObject({
+      id: 'time_block:morning:range-0@2026-09-06',
+      sourceType: 'time_block',
+      start: '07:00',
+      end: '11:59',
+      isTimed: true,
+    });
+    expect(projection.invalidTimed).toEqual([]);
+  });
+
+  it('projects Habit slot reminders as timed items instead of invalid clockless dial entries', () => {
+    const habit = parsedObject(`---
+id: ritalina
+type: habit
+title: Ritalina
+archived: false
+slots:
+  - completed: false
+    reminders:
+      - id: primary
+        time_of_day: 09:08
+        type: popup
+  - completed: false
+    reminders:
+      - id: primary
+        time_of_day: "12:47"
+        type: popup
+---
+`, 'habits/ritalina.md');
+
+    const schedule = DailyScheduleEngine.normalize({
+      date: '2026-09-06',
+      objects: [habit],
+    });
+    const projection = projectDayDial(schedule.items, { index: null });
+
+    expect(schedule.items.map(item => ({
+      id: item.id,
+      start: item.start,
+      isTimed: item.isTimed,
+    }))).toEqual([
+      {
+        id: 'legacyTime:habit:ritalina:slot:0:reminder:slot_time:2026-09-06T09:08:00.000',
+        start: '09:08',
+        isTimed: true,
+      },
+      {
+        id: 'legacyTime:habit:ritalina:slot:1:reminder:slot_time:2026-09-06T12:47:00.000',
+        start: '12:47',
+        isTimed: true,
+      },
+    ]);
+    expect(projection.invalidTimed).toEqual([]);
+  });
+
+  it('falls back to an all-day Habit when slots have no canonical clock', () => {
+    const habit = parsedObject(`---
+id: water-plants
+type: habit
+title: Water plants
+archived: false
+slots:
+  - completed: false
+---
+`, 'habits/water-plants.md');
+
+    const schedule = DailyScheduleEngine.normalize({
+      date: '2026-09-06',
+      objects: [habit],
+    });
+    const projection = projectDayDial(schedule.items, { index: null });
+
+    expect(schedule.items).toHaveLength(1);
+    expect(schedule.items[0]).toMatchObject({
+      id: 'habit:water-plants',
+      isTimed: false,
+    });
+    expect(projection.invalidTimed).toEqual([]);
+  });
+
   it('projects current time_ranges Markdown into canonical Time Block arcs', () => {
     const block = parsedObject(`---
 id: deep-work
