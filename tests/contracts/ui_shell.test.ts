@@ -165,7 +165,19 @@ folder_paths:
 
     expect(styles).toContain('.quartzo-shell button:focus-visible');
     expect(styles).toContain('.quartzo-sync-pending-diagnostics');
-    expect(styles).toContain('overflow-wrap: anywhere');
+    expect(styles).toContain('overflow-wrap: break-word');
+  });
+
+  it('keeps schedule and major shell surfaces responsive in narrow panes', () => {
+    const styles = fs.readFileSync(path.join(process.cwd(), 'styles.css'), 'utf8');
+
+    expect(styles).toContain('.quartzo-schedule-label {\n  min-width: min(100%, 14rem);\n  overflow-wrap: break-word;');
+    expect(styles).toContain('.quartzo-schedule-row > .quartzo-occurrence-actions {\n  flex: 1 0 18rem;\n  justify-content: flex-end;');
+    expect(styles).toContain('.quartzo-schedule-row > .quartzo-occurrence-actions {\n    flex-basis: 100%;\n    justify-content: flex-start;');
+    expect(styles).toContain('.quartzo-planner-section {\n  max-width: 100%;\n  min-width: 0;\n  overflow-x: auto;');
+    expect(styles).toContain('grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));');
+    expect(styles).toContain('grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));');
+    expect(styles).toContain('.quartzo-detail-section dl {\n    grid-template-columns: 1fr;');
   });
 
   it('guards async UI renders against stale Calendar responses', () => {

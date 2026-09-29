@@ -69,6 +69,8 @@
 .quartzo-shell {
   color: var(--qz-text);
   min-height: 100%;
+  min-width: 0;
+  overflow-wrap: break-word;
 }
 
 .quartzo-shell-header {
@@ -106,6 +108,7 @@
   max-width: 1120px;
   margin-inline: auto;
   padding: var(--qz-sp-lg);
+  min-width: 0;
 }
 
 .quartzo-input {
@@ -140,6 +143,7 @@
   border: 1px solid transparent;
   line-height: 1.4;
   white-space: nowrap;
+  max-width: 100%;
   transition: background 120ms, border-color 120ms, color 120ms, box-shadow 120ms;
 }
 
@@ -292,6 +296,7 @@ button.qz-chip { cursor: pointer; }
   align-items: center;
   gap: var(--qz-sp-sm);
   margin-block: var(--qz-sp-lg) var(--qz-sp-sm);
+  flex-wrap: wrap;
 }
 
 .qz-section-header-icon {
@@ -314,7 +319,7 @@ button.qz-chip { cursor: pointer; }
 }
 
 .qz-section-header-trailing {
-  flex-shrink: 0;
+  flex: 0 1 auto;
   margin-left: auto;
 }
 
@@ -334,6 +339,7 @@ button.qz-chip { cursor: pointer; }
   border-radius: var(--qz-r-md);
   padding: var(--qz-sp-md);
   box-shadow: var(--qz-shadow-sm);
+  min-width: 0;
 }
 
 .qz-card + .qz-card {
@@ -384,9 +390,10 @@ button.qz-chip { cursor: pointer; }
 }
 
 .quartzo-schedule-label {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  flex: 1;
+  min-width: min(100%, 14rem);
+  overflow-wrap: break-word;
+  word-break: normal;
+  flex: 999 1 18rem;
 }
 
 .quartzo-occurrence-actions,
@@ -395,6 +402,18 @@ button.qz-chip { cursor: pointer; }
   align-items: center;
   gap: var(--qz-sp-xs);
   flex-wrap: wrap;
+  min-width: 0;
+}
+
+.quartzo-schedule-row > .quartzo-occurrence-actions {
+  flex: 1 0 18rem;
+  justify-content: flex-end;
+}
+
+.quartzo-occurrence-actions > button,
+.quartzo-modal-actions > button {
+  max-width: 100%;
+  white-space: normal;
 }
 
 .quartzo-occurrence-status {
@@ -515,7 +534,9 @@ button.qz-chip { cursor: pointer; }
   background: var(--qz-surface);
   border: 1px solid var(--qz-divider);
   font-size: var(--qz-font-xs);
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
+  flex-wrap: wrap;
 }
 
 .qz-diagnostic-row .qz-badge {
@@ -524,7 +545,8 @@ button.qz-chip { cursor: pointer; }
 
 /* Conflict cards */
 .quartzo-conflict-card {
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
   border: 1px solid var(--qz-divider);
   border-radius: var(--qz-r-md);
   padding: var(--qz-sp-md);
@@ -538,6 +560,7 @@ button.qz-chip { cursor: pointer; }
   align-items: center;
   gap: var(--qz-sp-sm);
   margin-bottom: var(--qz-sp-sm);
+  flex-wrap: wrap;
 }
 
 .qz-conflict-path {
@@ -553,15 +576,9 @@ button.qz-chip { cursor: pointer; }
 
 .qz-conflict-versions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
   gap: var(--qz-sp-sm);
   margin-bottom: var(--qz-sp-md);
-}
-
-@media (max-width: 480px) {
-  .qz-conflict-versions {
-    grid-template-columns: 1fr;
-  }
 }
 
 .qz-conflict-version-block {
@@ -610,6 +627,7 @@ button.qz-chip { cursor: pointer; }
 
 .quartzo-home-section {
   margin-block: var(--qz-sp-lg);
+  min-width: 0;
 }
 
 .quartzo-home-section > h3,
@@ -902,6 +920,13 @@ button.qz-chip { cursor: pointer; }
 
 .quartzo-planner-section { margin-block: var(--qz-sp-lg); }
 
+.quartzo-planner-section {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
 .quartzo-planner-adaptive-note {
   color: var(--qz-text-secondary);
   font-size: var(--qz-font-xs);
@@ -978,6 +1003,8 @@ button.qz-chip { cursor: pointer; }
   font-size: 10px;
   text-align: start;
   line-height: 1.15;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .quartzo-planner-week-item.is-completed,
@@ -1074,6 +1101,7 @@ button.qz-chip { cursor: pointer; }
   display: grid;
   grid-template-columns: minmax(110px, 0.35fr) minmax(0, 1fr);
   gap: 6px var(--qz-sp-md);
+  min-width: 0;
 }
 
 .quartzo-detail-section dt {
@@ -1084,7 +1112,8 @@ button.qz-chip { cursor: pointer; }
 
 .quartzo-detail-section dd {
   margin: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
   font-size: var(--qz-font-sm);
 }
 
@@ -1118,7 +1147,7 @@ button.qz-chip { cursor: pointer; }
 
 .quartzo-browse-controls {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(130px, auto);
+  grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
   gap: var(--qz-sp-sm);
   margin-block: var(--qz-sp-sm) var(--qz-sp-md);
 }
@@ -1132,7 +1161,8 @@ button.qz-chip { cursor: pointer; }
 .quartzo-object-row {
   width: 100%;
   text-align: start;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
   padding: var(--qz-sp-xs) var(--qz-sp-sm);
   border-radius: var(--qz-r-xs);
 }
@@ -1237,7 +1267,8 @@ button.qz-chip { cursor: pointer; }
 .quartzo-journal-overdue-row {
   width: 100%;
   text-align: start;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
   padding: var(--qz-sp-sm) var(--qz-sp-md);
   border: 1px solid var(--qz-divider);
   border-radius: var(--qz-r-sm);
@@ -1261,12 +1292,14 @@ button.qz-chip { cursor: pointer; }
 .quartzo-sync-summary,
 .quartzo-sync-progress,
 .quartzo-conflict-card pre {
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .quartzo-warning-state {
   display: flex;
   align-items: flex-start;
+  flex-wrap: wrap;
   gap: var(--qz-sp-sm);
   padding: var(--qz-sp-sm) var(--qz-sp-md);
   border-radius: var(--qz-r-sm);
@@ -1274,7 +1307,8 @@ button.qz-chip { cursor: pointer; }
   background: color-mix(in srgb, var(--qz-warning) 8%, transparent);
   color: var(--qz-text);
   font-size: var(--qz-font-sm);
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .quartzo-ribbon-icon { color: var(--interactive-accent); }
@@ -1319,6 +1353,15 @@ button.qz-chip { cursor: pointer; }
     overflow-x: auto;
     padding-inline: var(--qz-sp-md);
   }
+
+  .quartzo-schedule-row > .quartzo-occurrence-actions {
+    flex-basis: 100%;
+    justify-content: flex-start;
+  }
+
+  .quartzo-detail-section dl {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 520px) {
@@ -1341,5 +1384,27 @@ button.qz-chip { cursor: pointer; }
 
   .quartzo-day-dial-viewport { width: 100%; }
   .quartzo-home-progress { grid-template-columns: 1fr; }
-  .quartzo-browse-controls { grid-template-columns: 1fr; }
+
+  .quartzo-schedule-row {
+    align-items: stretch;
+  }
+
+  .quartzo-schedule-label {
+    min-width: 0;
+    flex-basis: 100%;
+  }
+
+  .quartzo-occurrence-actions > button,
+  .quartzo-modal-actions > button,
+  .quartzo-journal-navigation > button,
+  .quartzo-journal-actions > button,
+  .quartzo-planner-controls > button {
+    flex: 1 1 9rem;
+  }
+
+  .quartzo-planner-controls > input,
+  .quartzo-journal-navigation > input {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
 }
