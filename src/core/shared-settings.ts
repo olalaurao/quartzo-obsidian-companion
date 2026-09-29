@@ -1,5 +1,5 @@
 import { ObjectParser } from './objects';
-import type { ObjectType, ParseResult } from './objects/types';
+import type { ObjectIdentificationMatch, ObjectIdentificationResult, ObjectType, ParseResult } from './objects/types';
 
 export const SHARED_SETTINGS_PATH = 'app/quartzo_shared_settings.md';
 
@@ -17,6 +17,8 @@ export interface TypeSignature {
 export interface QuartzoSharedSettings {
   schemaVersion: number;
   typeSignatures: Record<string, TypeSignature>;
+  typeAliases: Record<string, string[]>;
+  typePriority: string[];
   folderPaths: Record<string, string>;
   categoryColors: Record<string, string>;
   accentColor: string;
@@ -36,6 +38,15 @@ function asRecord(value: unknown): Record<string, unknown> {
 function stringMap(value: unknown): Record<string, string> {
   const source = asRecord(value);
   return Object.fromEntries(Object.entries(source).map(([key, item]) => [key, String(item)]));
+}
+
+function stringListMap(value: unknown): Record<string, string[]> {
+  const source = asRecord(value);
+  const out: Record<string, string[]> = {};
+  for (const [key, item] of Object.entries(source)) {
+    out[key] = Array.isArray(item) ? item.map(value => String(value)) : [];
+  }
+  return out;
 }
 
 export function normalizeSharedFolder(value: string): string {
@@ -84,6 +95,8 @@ export function parseSharedSettings(markdown: string): QuartzoSharedSettings | n
   return {
     schemaVersion: Number(fm.schema_version ?? 1),
     typeSignatures,
+    typeAliases: stringListMap(fm.type_aliases),
+    typePriority: Array.isArray(fm.type_priority) ? fm.type_priority.map(value => String(value)) : Object.keys(typeSignatures),
     folderPaths: stringMap(fm.folder_paths),
     categoryColors: stringMap(fm.category_colors),
     accentColor: String(fm.accent_color ?? '#F97316'),
@@ -94,6 +107,19 @@ export function parseSharedSettings(markdown: string): QuartzoSharedSettings | n
     dayStartHour: Number(day.start_hour ?? 0),
     showDayDialLegend: dayDial.show_legend !== false,
   };
+}
+
+function canonicalProductType(settings: QuartzoSharedSettings | null, type: string): string {
+  if (!settings) return type;
+  for (const [canonical, aliases] of Object.entries(settings.typeAliases)) {
+    if (canonical === type || aliases.includes(type)) return canonical;
+  }
+  const signature = resolveTypeSignature(settings, type);
+  return signature?.objectType ?? type;
+}
+
+function equivalentProductType(settings: QuartzoSharedSettings | null, left: string, right: string): boolean {
+  return canonicalProductType(settings, left) === canonicalProductType(settings, right);
 }
 
 export function resolveTypeSignature(
@@ -159,6 +185,12 @@ function propertySignatureMatches(frontmatter: Record<string, unknown>, markerVa
   return String(actual ?? '').trim().toLowerCase() === expected;
 }
 
+function signatureSource(markerType: MarkerType, markerValue: string): string {
+  if (markerType === 'folder') return `Folder \`${markerValue}\``;
+  if (markerType === 'tag') return `Tag \`${markerValue.startsWith('#') ? markerValue : `#${markerValue}`}\``;
+  return `Property \`${markerValue}\``;
+}
+
 function tagSignatureMatches(frontmatter: Record<string, unknown>, body: string, markerValue: string): boolean {
   const marker = markerValue.trim();
   const normalized = marker.replace(/^#/, '');
@@ -174,9 +206,25 @@ export function identifyTypeFromSignatures(
   frontmatter: Record<string, unknown>,
   body: string,
 ): ObjectType | null {
-  if (!settings) return null;
+  const identification = identifyObjectFromSignatures(settings, filePath, frontmatter, body);
+  return identification.resolvedType as ObjectType | null;
+}
+
+export function identifyObjectFromSignatures(
+  settings: QuartzoSharedSettings | null,
+  filePath: string,
+  frontmatter: Record<string, unknown>,
+  body: string,
+): ObjectIdentificationResult {
+  if (!settings) {
+    return {
+      resolvedType: null,
+      matchedSignatures: [],
+      hasConflict: false,
+    };
+  }
   const normalizedPath = normalizeSharedPath(filePath);
-  const matches = new Set<string>();
+  const matchedSignatures: ObjectIdentificationMatch[] = [];
 
   for (const signature of Object.values(settings.typeSignatures)) {
     let matched = false;
@@ -188,11 +236,53 @@ export function identifyTypeFromSignatures(
     } else if (signature.markerType === 'tag') {
       matched = tagSignatureMatches(frontmatter, body, signature.markerValue);
     }
-    if (matched) matches.add(signature.objectType);
+    if (matched) {
+      matchedSignatures.push({
+        objectType: canonicalProductType(settings, signature.objectType),
+        markerType: signature.markerType,
+        markerValue: signature.markerValue,
+        source: signatureSource(signature.markerType, signature.markerValue),
+      });
+    }
   }
 
-  if (matches.size !== 1) return null;
-  return [...matches][0] as ObjectType;
+  const candidates = [...new Set(matchedSignatures.map(match => match.objectType))];
+  if (candidates.length === 0) {
+    return {
+      resolvedType: null,
+      matchedSignatures,
+      hasConflict: false,
+    };
+  }
+
+  const priority = settings.typePriority.length > 0 ? settings.typePriority : Object.keys(settings.typeSignatures);
+  const canonicalPriority = priority.map(type => canonicalProductType(settings, type));
+  const resolvedType = candidates
+    .slice()
+    .sort((left, right) => {
+      const leftPriority = canonicalPriority.indexOf(left);
+      const rightPriority = canonicalPriority.indexOf(right);
+      const normalizedLeft = leftPriority < 0 ? Number.MAX_SAFE_INTEGER : leftPriority;
+      const normalizedRight = rightPriority < 0 ? Number.MAX_SAFE_INTEGER : rightPriority;
+      return normalizedLeft - normalizedRight || left.localeCompare(right);
+    })[0];
+  const hasConflict = candidates.some(candidate => !equivalentProductType(settings, candidate, resolvedType));
+  const resolutionReason = hasConflict
+    ? `${labelForType(resolvedType)} has higher Object Identification priority.`
+    : `${labelForType(resolvedType)} is identified by Object Identification.`;
+
+  return {
+    resolvedType,
+    matchedSignatures,
+    hasConflict,
+    resolutionReason,
+    conflictDetails: hasConflict ? {
+      winner: resolvedType,
+      candidates,
+      reason: resolutionReason,
+      explanation: `${matchedSignatures.map(match => `${match.source} identifies this file as ${labelForType(match.objectType)}`).join('. ')}. Treated as ${labelForType(resolvedType)} because it has higher Object Identification priority.`,
+    } : undefined,
+  };
 }
 
 export function parseObjectWithSharedSettings(
@@ -200,12 +290,22 @@ export function parseObjectWithSharedSettings(
   filePath: string,
   settings: QuartzoSharedSettings | null,
 ): ParseResult {
+  const parsed = ObjectParser.parseMarkdown(markdown);
+  const identification = identifyObjectFromSignatures(settings, filePath, parsed.frontmatter, parsed.body);
+  const typeForParse = identification.resolvedType ?? parsed.frontmatter.type;
+  const markdownForParse = typeForParse == null
+    ? markdown
+    : ObjectParser.serializeMarkdown({ ...parsed.frontmatter, type: typeForParse }, parsed.body);
   try {
-    return ObjectParser.parse(markdown);
+    const result = ObjectParser.parse(markdownForParse);
+    return { ...result, identification };
   } catch (originalError) {
-    const parsed = ObjectParser.parseMarkdown(markdown);
-    const identified = identifyTypeFromSignatures(settings, filePath, parsed.frontmatter, parsed.body);
-    if (!identified) throw originalError;
-    return ObjectParser.parse(ObjectParser.serializeMarkdown({ ...parsed.frontmatter, type: identified }, parsed.body));
+    if (!identification.resolvedType) throw originalError;
+    const result = ObjectParser.parse(ObjectParser.serializeMarkdown({ ...parsed.frontmatter, type: identification.resolvedType }, parsed.body));
+    return { ...result, identification };
   }
+}
+
+function labelForType(type: string): string {
+  return type.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
 }

@@ -39,7 +39,8 @@ export class VaultIndexEngine {
           type: result.object.type,
           path: file.path,
           frontmatter: result.object as Record<string, unknown>,
-          body: result.object.body || ''
+          body: result.object.body || '',
+          identification: result.identification,
         };
         index.objects.set(result.object.id, indexedObject);
       } catch {

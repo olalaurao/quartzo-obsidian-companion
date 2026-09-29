@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import YAML from 'yaml';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1274,6 +1275,140 @@ function checkCanonicalObjectQueryOwner() {
   return true;
 }
 
+function parseFrontmatterDocument(filePath) {
+  const source = fs.readFileSync(filePath, 'utf8').replace(/\r\n/g, '\n');
+  const match = source.match(/^---\n([\s\S]*?)\n---/);
+  if (!match) throw new Error(`Missing frontmatter in ${path.relative(rootDir, filePath)}`);
+  return YAML.parse(match[1]) || {};
+}
+
+function checkObjectIdentificationSingleOwnerAndDriftGate() {
+  const sharedCorePath = path.join(rootDir, 'src/core/shared-settings.ts');
+  const sharedVaultPath = path.join(rootDir, 'src/vault/shared-settings.ts');
+  const indexTypePath = path.join(rootDir, 'src/vault/index/types.ts');
+  const indexEnginePath = path.join(rootDir, 'src/vault/index/engine.ts');
+  const queryPath = path.join(rootDir, 'src/core/object-query/index.ts');
+  const shellPath = path.join(rootDir, 'src/ui/shell/view.ts');
+  const detailPath = path.join(rootDir, 'src/ui/detail/object-detail.ts');
+  const mainPath = path.join(rootDir, 'src/main.ts');
+  const mutationPath = path.join(rootDir, 'src/core/object-mutation/type-conflict.ts');
+  const repositoryPath = path.join(rootDir, 'src/vault/object-mutation.ts');
+  const creationPath = path.join(rootDir, 'src/core/object-creation.ts');
+  const sharedFixturePath = path.join(rootDir, 'contracts/quartzo/shared_settings/v1.md');
+  const coveragePath = path.join(rootDir, 'contracts/quartzo/object_fixtures/coverage.json');
+
+  for (const file of [
+    sharedCorePath, sharedVaultPath, indexTypePath, indexEnginePath, queryPath,
+    shellPath, detailPath, mainPath, mutationPath, repositoryPath, creationPath,
+    sharedFixturePath, coveragePath,
+  ]) {
+    if (!fs.existsSync(file)) {
+      console.error(`FAIL: Object Identification canonical file missing: ${path.relative(rootDir, file)}`);
+      return false;
+    }
+  }
+
+  const sharedCore = fs.readFileSync(sharedCorePath, 'utf8');
+  const sharedVault = fs.readFileSync(sharedVaultPath, 'utf8');
+  const indexTypes = fs.readFileSync(indexTypePath, 'utf8');
+  const indexEngine = fs.readFileSync(indexEnginePath, 'utf8');
+  const query = fs.readFileSync(queryPath, 'utf8');
+  const shell = fs.readFileSync(shellPath, 'utf8');
+  const detail = fs.readFileSync(detailPath, 'utf8');
+  const main = fs.readFileSync(mainPath, 'utf8');
+  const mutation = fs.readFileSync(mutationPath, 'utf8');
+  const repository = fs.readFileSync(repositoryPath, 'utf8');
+  const creation = fs.readFileSync(creationPath, 'utf8');
+
+  if (!sharedCore.includes('identifyObjectFromSignatures') ||
+      !sharedCore.includes('matchedSignatures') ||
+      !sharedCore.includes('conflictDetails') ||
+      !sharedCore.includes('typeAliases') ||
+      !sharedCore.includes('typePriority') ||
+      !sharedCore.includes('canonicalProductType') ||
+      !sharedCore.includes('parseObjectWithSharedSettings')) {
+    console.error('FAIL: Object Identification result is not owned by the shared-settings parser projection');
+    return false;
+  }
+
+  if (!indexTypes.includes('identification?: ObjectIdentificationResult') ||
+      !indexEngine.includes('identification: result.identification') ||
+      !query.includes('hasTypeConflict?: boolean') ||
+      !query.includes('object.identification?.hasConflict') ||
+      !shell.includes('queryVaultObjects(this.getIndex(), {') ||
+      !shell.includes('hasTypeConflict: true')) {
+    console.error('FAIL: Type Conflicts must be projected from VaultIndex through the canonical object query owner');
+    return false;
+  }
+
+  if (!detail.includes('object.identification') ||
+      !shell.includes("'type-conflicts'") ||
+      !shell.includes('Type Conflicts') ||
+      !shell.includes('Treated as') ||
+      !shell.includes('Keep ') ||
+      shell.includes('ObjectParser.parseMarkdown(object') ||
+      shell.includes('parseObjectWithSharedSettings(object')) {
+    console.error('FAIL: UI must present indexed identification/conflicts without reparsing objects');
+    return false;
+  }
+
+  if (!sharedVault.includes('await this.vault.process(file, current =>') ||
+      !sharedVault.includes('frontmatter.type_signatures = signatures') ||
+      !sharedVault.includes('frontmatter.type_priority = next') ||
+      sharedVault.includes('this.vault.modify(') ||
+      !main.includes('updateObjectIdentificationSignature(') ||
+      !main.includes('moveObjectIdentificationPriority(') ||
+      !main.includes('await this.reloadSharedSettingsAndIndex()')) {
+    console.error('FAIL: Companion Object Identification edits must be localized shared-settings Vault.process writes followed by canonical reindex');
+    return false;
+  }
+
+  if (!mutation.includes('applyTypeConflictMarkerRemoval') ||
+      !mutation.includes("request.match.markerType === 'folder'") ||
+      !mutation.includes('parseObjectWithSharedSettings(currentMarkdown') ||
+      !mutation.includes('parsedAfter.object.type !== request.resolvedType') ||
+      !repository.includes('removeTypeConflictMarker(') ||
+      !repository.includes('await this.vault.process(file, current =>') ||
+      !main.includes('resolveTypeConflictMarker(')) {
+    console.error('FAIL: Type conflict fixes must be explicit, fail-closed, revalidated and Vault.process-safe');
+    return false;
+  }
+
+  if (!creation.includes('resolveCreationFolder(settings, type)') ||
+      !creation.includes('resolveTypeSignature(settings, type)') ||
+      !creation.includes('applyTypeSignature(frontmatter, input.body, signature)')) {
+    console.error('FAIL: Quick Add does not use the current shared Object Identification settings for path and marker creation');
+    return false;
+  }
+
+  const sharedFrontmatter = parseFrontmatterDocument(sharedFixturePath);
+  const signatures = sharedFrontmatter.type_signatures || {};
+  const aliases = sharedFrontmatter.type_aliases || {};
+  const priority = sharedFrontmatter.type_priority || [];
+  const coverage = JSON.parse(fs.readFileSync(coveragePath, 'utf8'));
+  const missing = [];
+  for (const row of coverage) {
+    if (!row?.type || row.type === 'tracker_record') continue;
+    const hasSignature = Object.prototype.hasOwnProperty.call(signatures, row.type);
+    const hasAlias = Object.values(aliases).some(value => Array.isArray(value) && value.includes(row.type));
+    if (!hasSignature && !hasAlias) missing.push(row.type);
+  }
+  const financePresent = Object.keys(signatures).some(type => type.toLowerCase().includes('finance'));
+  if (!Array.isArray(priority) ||
+      priority.length !== Object.keys(signatures).length ||
+      missing.length > 0 ||
+      financePresent ||
+      !aliases.tracker?.includes('tracker_definition') ||
+      !aliases.pomodoro?.includes('pomodoro_session') ||
+      !aliases.analysis?.includes('combined_analysis')) {
+    console.error(`FAIL: Shared-settings contract fixture does not cover vault object identification drift gates. Missing: ${missing.join(', ') || '(none)'}`);
+    return false;
+  }
+
+  console.log('PASS: Object Identification, Type Conflicts and shared-settings drift gates are single-owner and contract-backed');
+  return true;
+}
+
 
 function checkReminderTargetNavigation() {
   const notificationsPath = path.join(rootDir, 'src/platform/notifications.ts');
@@ -1645,6 +1780,7 @@ function main() {
   if (!checkCanonicalPlannerProjection()) allPassed = false;
   if (!checkCanonicalUniversalDetailMutation()) allPassed = false;
   if (!checkCanonicalObjectQueryOwner()) allPassed = false;
+  if (!checkObjectIdentificationSingleOwnerAndDriftGate()) allPassed = false;
   if (!checkReminderTargetNavigation()) allPassed = false;
   if (!checkCalendarExternalNavigation()) allPassed = false;
   if (!checkFirstPairingApplyProgress()) allPassed = false;

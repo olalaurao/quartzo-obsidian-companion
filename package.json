@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:contracts": "vitest run tests/contracts",
     "test:sync": "vitest run tests/contracts/sync.test.ts tests/sync/runtime.test.ts tests/sync/regression.test.ts tests/sync/p0-regression.test.ts",
+    "contracts:sync": "node scripts/sync-contracts.mjs sync",
     "contracts:verify": "node scripts/sync-contracts.mjs verify",
     "architecture:check": "node scripts/architecture-check.mjs",
     "release:validate": "node scripts/release-validate.mjs",

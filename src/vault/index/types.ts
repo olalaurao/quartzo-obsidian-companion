@@ -1,3 +1,5 @@
+import type { ObjectIdentificationResult } from '../../core/objects/types';
+
 export interface VaultFile {
   path: string;
   content: string;
@@ -11,6 +13,7 @@ export interface IndexedObject {
   path: string;
   frontmatter: Record<string, unknown>;
   body: string;
+  identification?: ObjectIdentificationResult;
 }
 
 export interface VaultIndex {

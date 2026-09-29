@@ -429,4 +429,27 @@ export interface ParsedMarkdown {
 export interface ParseResult {
   object: QuartzoObject;
   unknownFields: string[];
+  identification?: ObjectIdentificationResult;
+}
+
+export interface ObjectIdentificationMatch {
+  objectType: string;
+  markerType: 'tag' | 'property' | 'folder';
+  markerValue: string;
+  source: string;
+}
+
+export interface ObjectIdentificationConflict {
+  winner: string;
+  candidates: string[];
+  reason: string;
+  explanation: string;
+}
+
+export interface ObjectIdentificationResult {
+  resolvedType: string | null;
+  matchedSignatures: ObjectIdentificationMatch[];
+  hasConflict: boolean;
+  conflictDetails?: ObjectIdentificationConflict;
+  resolutionReason?: string;
 }

@@ -5,6 +5,7 @@ export interface ObjectQueryOptions {
   types?: string[];
   excludeIds?: string[];
   includeArchived?: boolean;
+  hasTypeConflict?: boolean;
   limit?: number;
 }
 
@@ -80,6 +81,8 @@ export function queryVaultObjects(
     if (!options.includeArchived && (object.frontmatter.archived === true || object.frontmatter.deleted === true || object.frontmatter._deleted === true)) {
       continue;
     }
+    if (options.hasTypeConflict === true && object.identification?.hasConflict !== true) continue;
+    if (options.hasTypeConflict === false && object.identification?.hasConflict === true) continue;
     if (types && !types.has(object.type)) continue;
     if (excluded.has(object.id)) continue;
 

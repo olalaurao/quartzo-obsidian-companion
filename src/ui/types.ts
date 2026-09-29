@@ -11,6 +11,7 @@ import type { SafeObjectMutation } from '../core/object-mutation';
 import type { ManualExecutionRunCapability } from '../core/manual-execution';
 import type { FocusRuntimeUiController, FocusRuntimeViewState } from './focus/view';
 import type { IndexedObject } from '../vault/index/types';
+import type { ObjectIdentificationMatch } from '../core/objects/types';
 import type {
   CanonicalOccurrenceAction,
   CanonicalOccurrenceActionResult,
@@ -81,6 +82,7 @@ export interface ViewContext {
     getFocusRuntimeViewState(now?: Date): FocusRuntimeViewState;
     openFocusRuntime(): Promise<void>;
     mutateObject(object: IndexedObject, patch: SafeObjectMutation): Promise<void>;
+    resolveTypeConflictMarker(object: IndexedObject, match: ObjectIdentificationMatch): Promise<void>;
     adoptFile(filePath: string): Promise<void>;
     openSettings(): void;
   };

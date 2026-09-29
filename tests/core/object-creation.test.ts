@@ -6,6 +6,8 @@ import type { QuartzoSharedSettings } from '../../src/core/shared-settings';
 const settings: QuartzoSharedSettings = {
   schemaVersion: 1,
   typeSignatures: {},
+  typeAliases: {},
+  typePriority: [],
   folderPaths: {
     resource: 'resources',
     note: 'notes/custom',

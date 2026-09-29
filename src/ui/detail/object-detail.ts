@@ -150,6 +150,30 @@ export function renderObjectDetail(
   metadata.textContent = `${labelForKey(model.type)} · ${model.path}`;
   container.appendChild(metadata);
 
+  if (object.identification) {
+    const identification = document.createElement('section');
+    identification.className = object.identification.hasConflict
+      ? 'quartzo-detail-section quartzo-warning-state'
+      : 'quartzo-detail-section';
+    const heading = document.createElement('h3');
+    heading.textContent = object.identification.hasConflict ? 'Identification ⚠' : 'Identification';
+    identification.appendChild(heading);
+    const resolved = document.createElement('p');
+    resolved.textContent = `Resolved type: ${labelForKey(object.identification.resolvedType ?? object.type)}`;
+    identification.appendChild(resolved);
+    if (object.identification.resolutionReason) {
+      const reason = document.createElement('p');
+      reason.textContent = object.identification.resolutionReason;
+      identification.appendChild(reason);
+    }
+    if (object.identification.conflictDetails) {
+      const explanation = document.createElement('p');
+      explanation.textContent = object.identification.conflictDetails.explanation;
+      identification.appendChild(explanation);
+    }
+    container.appendChild(identification);
+  }
+
   appendPropertySection(container, 'Properties', model.properties);
   appendPropertySection(container, 'Relationships', model.relationships);
   appendTextSection(container, 'Schedule', model.schedule);

@@ -30,6 +30,14 @@ describe('canonical object query', () => {
   const vault = index([
     object('book-1', 'resource', 'The Hobbit', { author: 'Tolkien', categories: ['reading'] }),
     object('task-1', 'task', 'Read chapter', { priority: 'high' }, 'Hobbit notes'),
+    {
+      ...object('conflict-1', 'project', 'Mixed markers'),
+      identification: {
+        resolvedType: 'project',
+        matchedSignatures: [],
+        hasConflict: true,
+      },
+    },
     object('archived-1', 'resource', 'Old Hobbit', { archived: true }),
     object('entry-1', 'entry', 'Morning log', { date: '2026-09-19' }),
   ]);
@@ -49,6 +57,11 @@ describe('canonical object query', () => {
 
   it('supports picker exclusions and deterministic limits', () => {
     expect(queryVaultObjects(vault, { excludeIds: ['book-1'], limit: 2 }).map(value => value.id))
-      .toEqual(['entry-1', 'task-1']);
+      .toEqual(['conflict-1', 'entry-1']);
+  });
+
+  it('filters type conflicts from the canonical index projection', () => {
+    expect(queryVaultObjects(vault, { hasTypeConflict: true }).map(value => value.id))
+      .toEqual(['conflict-1']);
   });
 });

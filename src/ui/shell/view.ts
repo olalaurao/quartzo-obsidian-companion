@@ -24,7 +24,7 @@ import { buildConflictDiff, formatConflictDiff } from '../sync/conflict-diff';
 
 export const QUARTZO_VIEW_TYPE = 'quartzo-view';
 export type QuartzoSection = 'home' | 'planner' | 'journal' | 'browse';
-export type QuartzoAction = 'focus' | 'search' | 'add' | 'sync' | 'conflicts' | 'settings';
+export type QuartzoAction = 'focus' | 'search' | 'add' | 'sync' | 'conflicts' | 'type-conflicts' | 'settings';
 function isoDate(date: Date): string {
   return localIsoDate(date);
 }
@@ -284,6 +284,7 @@ export class QuartzoView extends ItemView {
     const actionDefs: Array<[QuartzoAction, string, string]> = [
       ['search', '🔍', 'Search'],
       ['add', '＋', 'Add'],
+      ['type-conflicts', '⚠', 'Type Conflicts'],
       ['sync', '☁', 'Sync'],
       ['settings', '⚙', 'Settings'],
     ];
@@ -381,6 +382,10 @@ export class QuartzoView extends ItemView {
     }
     if (this.action === 'sync' || this.action === 'conflicts') {
       await this.renderSync(content, this.action === 'conflicts', generation);
+      return;
+    }
+    if (this.action === 'type-conflicts') {
+      this.renderTypeConflicts(content);
       return;
     }
 
@@ -905,6 +910,78 @@ export class QuartzoView extends ItemView {
     input.addEventListener('input', renderResults);
     renderResults();
     input.focus();
+  }
+
+  private renderTypeConflicts(container: HTMLElement): void {
+    const title = document.createElement('h2');
+    title.textContent = 'Type Conflicts';
+    container.appendChild(title);
+
+    const conflicts = queryVaultObjects(this.getIndex(), {
+      hasTypeConflict: true,
+      includeArchived: true,
+    });
+    if (conflicts.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'quartzo-empty-state';
+      empty.textContent = 'No type conflicts.';
+      container.appendChild(empty);
+      return;
+    }
+
+    const list = document.createElement('div');
+    list.className = 'quartzo-object-results';
+    for (const object of conflicts) {
+      const card = document.createElement('section');
+      card.className = 'quartzo-conflict-card';
+      const heading = document.createElement('h3');
+      heading.textContent = String(object.frontmatter.title ?? object.id);
+      card.appendChild(heading);
+
+      const meta = document.createElement('p');
+      meta.textContent = `${object.path} · Treated as ${labelForType(object.identification?.resolvedType ?? object.type)}`;
+      card.appendChild(meta);
+
+      const details = object.identification?.conflictDetails;
+      const explanation = document.createElement('p');
+      explanation.textContent = details?.explanation ?? 'This object matches incompatible Object Identification markers.';
+      card.appendChild(explanation);
+
+      const detected = document.createElement('ul');
+      for (const match of object.identification?.matchedSignatures ?? []) {
+        const item = document.createElement('li');
+        item.textContent = `${match.source} -> ${labelForType(match.objectType)}`;
+        detected.appendChild(item);
+      }
+      card.appendChild(detected);
+
+      const actions = document.createElement('div');
+      actions.className = 'qz-conflict-actions';
+      const resolvedType = object.identification?.resolvedType ?? object.type;
+      for (const match of object.identification?.matchedSignatures ?? []) {
+        if (match.objectType === resolvedType) continue;
+        if (match.markerType === 'folder') continue;
+        const fix = document.createElement('button');
+        fix.textContent = `Keep ${labelForType(resolvedType)} and remove ${match.markerType === 'tag' ? match.source.replace('Tag ', '') : match.source.replace('Property ', '')}`;
+        fix.addEventListener('click', async () => {
+          try {
+            await this.context.plugin.resolveTypeConflictMarker(object, match);
+            new Notice('Type conflict marker removed.');
+            await this.render();
+          } catch (error) {
+            new Notice(error instanceof Error ? error.message : String(error));
+          }
+        });
+        actions.appendChild(fix);
+      }
+      const openMarkdown = document.createElement('button');
+      openMarkdown.textContent = 'Open Markdown';
+      openMarkdown.addEventListener('click', () => this.openMarkdown(object));
+      actions.appendChild(openMarkdown);
+      card.appendChild(actions);
+      list.appendChild(card);
+    }
+    container.appendChild(list);
   }
 
   private async renderSync(container: HTMLElement, conflictsOnly: boolean, generation: number): Promise<void> {
@@ -1484,7 +1561,7 @@ export class QuartzoView extends ItemView {
   private renderObjectRow(container: HTMLElement, object: IndexedObject): void {
     const row = document.createElement('button');
     row.className = 'quartzo-object-row';
-    row.textContent = `${String(object.frontmatter.title ?? 'Untitled')} · ${labelForType(object.type)}`;
+    row.textContent = `${object.identification?.hasConflict ? '⚠ ' : ''}${String(object.frontmatter.title ?? 'Untitled')} · ${labelForType(object.type)}`;
     row.addEventListener('click', () => this.openObjectDetail(object));
     container.appendChild(row);
   }

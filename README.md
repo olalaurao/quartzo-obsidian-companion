@@ -11,6 +11,12 @@ O Quartzo Companion é um plugin para Obsidian Desktop que atua como segundo cli
 - **Offline-first**: o trabalho local não depende de conexão contínua; a reconciliação ocorre quando o Drive está disponível.
 - **Uma shell Quartzo**: Home, Planner, Journal e Browse, com Search, Add, Sync e Settings como ações.
 
+## Object Identification
+
+O Companion usa `app/quartzo_shared_settings.md` como a mesma fonte cross-client de Object Identification usada pelo Quartzo mobile. Alterações de marker, prioridade, cor ou ícone feitas no Quartzo são recarregadas pelo Companion após mudança no filesystem/sync; alterações feitas nas Settings do Companion escrevem o mesmo documento do vault e disparam reindexação local.
+
+`Type Conflicts` é uma superfície de identificação de objeto, não o Sync Conflict Center. Ela lista arquivos que satisfazem markers incompatíveis, mostra o tipo vencedor pela prioridade compartilhada e oferece apenas correções localmente seguras, como remover um marker de tag/propriedade conflitante. Conflitos que exigem conversão de schema ou move de arquivo sem política segura permanecem em `Open Markdown`.
+
 ## Limitações do V1
 
 - Reminders são best effort e só podem ser entregues enquanto o Obsidian estiver aberto.
@@ -34,6 +40,8 @@ A distribuição deve usar uma release validada pelo CI contendo `main.js`, `man
 ## Desenvolvimento e testes
 
 O repositório mantém uma cópia pinada dos contratos/fixtures canônicos do upstream `olalaurao/aplicativo`. O `contracts/UPSTREAM.lock.json` registra o commit upstream e os hashes esperados.
+
+Mudanças cross-client em tipos de vault, aliases persistidos, campos, regras de Object Identification, TypeSignature, fixtures ou mutation support devem nascer no upstream `olalaurao/aplicativo`, atualizar os contratos/fixtures e só então ser vendorizadas no Companion. O Companion roda contra contratos empacotados e não baixa schema em runtime.
 
 ```bash
 npm ci

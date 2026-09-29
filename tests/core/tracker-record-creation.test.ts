@@ -6,6 +6,8 @@ import type { QuartzoSharedSettings } from '../../src/core/shared-settings';
 const settings: QuartzoSharedSettings = {
   schemaVersion: 1,
   typeSignatures: {},
+  typeAliases: {},
+  typePriority: [],
   folderPaths: { tracker_record: 'tracking-records' },
   categoryColors: {},
   accentColor: '#F97316',

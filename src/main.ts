@@ -6,6 +6,7 @@ import { ManualExecutionRepository } from './vault/manual-execution';
 import { FOCUS_RUNTIME_PATH, FocusRuntimeRepository } from './vault/focus-runtime';
 import type { SafeObjectMutation } from './core/object-mutation';
 import { ObjectParser } from './core/objects';
+import type { ObjectIdentificationMatch } from './core/objects/types';
 import type { TrackerDefinition } from './core/objects/types';
 import { resolveCreationFolder } from './core/shared-settings';
 import {
@@ -75,7 +76,7 @@ import { createCanonicalObjectId } from './platform/object-id';
 import { GOOGLE_REFRESH_TOKEN_SECRET_ID } from './platform/secret-ids';
 import { normalizeVaultPath } from './sync/coordinator/path-utils';
 import { VaultSyncFilePolicy } from './sync/coordinator/file-policy';
-import { SHARED_SETTINGS_PATH, SharedSettingsRepository, parseObjectWithSharedSettings, type QuartzoSharedSettings } from './vault/shared-settings';
+import { SHARED_SETTINGS_PATH, SharedSettingsRepository, parseObjectWithSharedSettings, type MarkerType, type QuartzoSharedSettings, type TypeSignature } from './vault/shared-settings';
 import { SHARED_OCCURRENCE_STATE_PATH, SharedOccurrenceStateRepository } from './vault/occurrence-state';
 import { OccurrenceDomainMutationRepository } from './vault/occurrence-domain-mutations';
 import { SHARED_PLANNING_STATE_PATH, SharedPlanningStateRepository } from './vault/planning-state';
@@ -781,6 +782,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
       path: filePath,
       frontmatter: parsed.object as Record<string, unknown>,
       body: parsed.object.body || '',
+      identification: parsed.identification,
     };
     const type = index.objects.has(object.id) ? 'modified' as const : 'added' as const;
     engine.setIndex(VaultIndexEngine.updateIndex(index, [{
@@ -1070,6 +1072,20 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     );
   }
 
+  async resolveTypeConflictMarker(object: IndexedObject, match: ObjectIdentificationMatch): Promise<void> {
+    const repository = this.safeObjectMutationRepository;
+    if (!repository) {
+      throw new Error('Object mutation is not initialized.');
+    }
+
+    const markdown = await repository.removeTypeConflictMarker(object, { match }, this.sharedSettings);
+    await this.applyIndexedMarkdown(
+      object.path,
+      markdown,
+      { id: object.id, type: object.type },
+    );
+  }
+
   async setReminderDelivery(mode: ReminderMode): Promise<void> {
     let nextMode = mode;
     if (mode === 'desktop_notifications') {
@@ -1261,6 +1277,25 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     return this.sharedSettings ? 'ready' : 'missing';
   }
 
+  getSharedSettingsSnapshot(): QuartzoSharedSettings | null {
+    return this.sharedSettings;
+  }
+
+  async updateObjectIdentificationSignature(
+    objectType: string,
+    patch: Partial<TypeSignature>,
+  ): Promise<void> {
+    if (!this.sharedSettingsRepository) throw new Error('Shared settings are not initialized.');
+    this.sharedSettings = await this.sharedSettingsRepository.updateTypeSignature(objectType, patch);
+    await this.reloadSharedSettingsAndIndex();
+  }
+
+  async moveObjectIdentificationPriority(objectType: string, direction: -1 | 1): Promise<void> {
+    if (!this.sharedSettingsRepository) throw new Error('Shared settings are not initialized.');
+    this.sharedSettings = await this.sharedSettingsRepository.moveTypePriority(objectType, direction);
+    await this.reloadSharedSettingsAndIndex();
+  }
+
   private async initializeVaultRuntime(): Promise<void> {
     if (this.unloaded || this.vaultRuntimeReady) return;
 
@@ -1326,7 +1361,8 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
                 type: result.object.type,
                 path: file.path,
                 frontmatter: result.object as Record<string, unknown>,
-                body: (result.object as { body?: string }).body || ''
+                body: (result.object as { body?: string }).body || '',
+                identification: result.identification,
               };
               this.vaultIndexEngine!.setIndex(
                 VaultIndexEngine.updateIndex(idx, [{
@@ -1364,7 +1400,8 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
                 type: result.object.type,
                 path: file.path,
                 frontmatter: result.object as Record<string, unknown>,
-                body: (result.object as { body?: string }).body || ''
+                body: (result.object as { body?: string }).body || '',
+                identification: result.identification,
               };
               this.vaultIndexEngine!.setIndex(
                 VaultIndexEngine.updateIndex(idx, [{
@@ -1439,7 +1476,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
       if (!(file instanceof TFile) || !this.vaultIndexEngine) return;
       const idx = this.vaultIndexEngine.getIndex();
       if (!idx) return;
-      const changes: Array<{ type: 'deleted'; path: string } | { type: 'added'; path: string; object: { id: string; type: string; path: string; frontmatter: Record<string, unknown>; body: string } }> = [];
+      const changes: Array<{ type: 'deleted'; path: string } | { type: 'added'; path: string; object: IndexedObject }> = [];
       if (this.shouldIndexPath(oldPath)) changes.push({ type: 'deleted', path: normalizeVaultPath(oldPath) });
       if (!this.shouldIndexPath(file.path)) {
         if (changes.length > 0) this.vaultIndexEngine.setIndex(VaultIndexEngine.updateIndex(idx, changes));
@@ -1457,7 +1494,8 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
               type: result.object.type,
               path: file.path,
               frontmatter: result.object as Record<string, unknown>,
-              body: (result.object as { body?: string }).body || ''
+              body: (result.object as { body?: string }).body || '',
+              identification: result.identification,
             }
           });
           this.vaultIndexEngine!.setIndex(VaultIndexEngine.updateIndex(idx, changes));
@@ -2857,6 +2895,9 @@ class QuartzoSettingTab extends PluginSettingTab {
       .setName('Shared Quartzo appearance')
       .setDesc('Accent color, type colors and semantic type identification come from app/quartzo_shared_settings.md. Companion Settings do not create a second appearance source of truth.');
 
+    this.addHeading(containerEl, 'Object Identification');
+    this.renderObjectIdentificationSettings(containerEl);
+
     this.addHeading(containerEl, 'Privacy');
 
     new Setting(containerEl)
@@ -2892,5 +2933,90 @@ class QuartzoSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         }));
   }
+
+  private renderObjectIdentificationSettings(containerEl: HTMLElement): void {
+    const state = this.plugin.getSharedSettingsState();
+    const shared = this.plugin.getSharedSettingsSnapshot();
+    if (state === 'loading') {
+      new Setting(containerEl)
+        .setName('Loading')
+        .setDesc('Quartzo is loading the shared settings and vault index.');
+      return;
+    }
+    if (!shared) {
+      new Setting(containerEl)
+        .setName('Shared settings unavailable')
+        .setDesc('Object Identification is stored in app/quartzo_shared_settings.md. Create or repair that file from Quartzo before editing shared identification in Companion.');
+      return;
+    }
+
+    const priority = shared.typePriority.length > 0
+      ? shared.typePriority
+      : Object.keys(shared.typeSignatures);
+    const orderedTypes = [
+      ...priority.filter(type => shared.typeSignatures[type]),
+      ...Object.keys(shared.typeSignatures).filter(type => !priority.includes(type)).sort(),
+    ];
+
+    for (const [index, objectType] of orderedTypes.entries()) {
+      const signature = shared.typeSignatures[objectType];
+      if (!signature) continue;
+      new Setting(containerEl)
+        .setName(labelForSettingsType(objectType))
+        .setDesc(`Priority ${index + 1}. ${signature.markerType}: ${signature.markerValue}`)
+        .addDropdown(dropdown => dropdown
+          .addOption('folder', 'Folder')
+          .addOption('tag', 'Tag')
+          .addOption('property', 'Property')
+          .setValue(signature.markerType)
+          .onChange(async value => {
+            await this.plugin.updateObjectIdentificationSignature(objectType, { markerType: value as MarkerType });
+            this.display();
+          }))
+        .addText(text => text
+          .setPlaceholder('Marker')
+          .setValue(signature.markerValue)
+          .onChange(async value => {
+            const markerValue = value.trim();
+            if (!markerValue) return;
+            await this.plugin.updateObjectIdentificationSignature(objectType, { markerValue });
+            this.display();
+          }))
+        .addText(text => text
+          .setPlaceholder('Icon')
+          .setValue(signature.iconName ?? '')
+          .onChange(async value => {
+            await this.plugin.updateObjectIdentificationSignature(objectType, { iconName: value.trim() || null });
+            this.display();
+          }))
+        .addText(text => text
+          .setPlaceholder('#RRGGBB')
+          .setValue(signature.colorHex ?? '')
+          .onChange(async value => {
+            const colorHex = value.trim();
+            if (colorHex && !/^#[0-9a-fA-F]{6}$/.test(colorHex)) return;
+            await this.plugin.updateObjectIdentificationSignature(objectType, { colorHex: colorHex || null });
+            this.display();
+          }))
+        .addButton(button => button
+          .setButtonText('Up')
+          .setDisabled(index === 0)
+          .onClick(async () => {
+            await this.plugin.moveObjectIdentificationPriority(objectType, -1);
+            this.display();
+          }))
+        .addButton(button => button
+          .setButtonText('Down')
+          .setDisabled(index === orderedTypes.length - 1)
+          .onClick(async () => {
+            await this.plugin.moveObjectIdentificationPriority(objectType, 1);
+            this.display();
+          }));
+    }
+  }
+}
+
+function labelForSettingsType(type: string): string {
+  return type.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
 }
 
