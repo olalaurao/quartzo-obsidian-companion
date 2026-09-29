@@ -177,6 +177,9 @@ folder_paths:
     expect(styles).toContain('.quartzo-planner-section {\n  max-width: 100%;\n  min-width: 0;\n  overflow-x: auto;');
     expect(styles).toContain('grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));');
     expect(styles).toContain('grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));');
+    expect(styles).toContain('.quartzo-object-results {\n  display: grid;\n  grid-template-columns: minmax(0, 1fr);');
+    expect(styles).toContain('.quartzo-object-row {\n  display: block;\n  max-width: 100%;\n  min-width: 0;');
+    expect(styles).toContain('white-space: normal;\n  overflow-wrap: anywhere;');
     expect(styles).toContain('.quartzo-detail-section dl {\n    grid-template-columns: 1fr;');
   });
 

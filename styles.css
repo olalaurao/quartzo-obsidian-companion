@@ -1165,15 +1165,22 @@ button.qz-chip { cursor: pointer; }
 
 .quartzo-object-results {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--qz-sp-xs);
   margin-top: var(--qz-sp-sm);
+  max-width: 100%;
+  min-width: 0;
 }
 
 .quartzo-object-row {
+  display: block;
+  max-width: 100%;
+  min-width: 0;
   width: 100%;
   text-align: start;
-  overflow-wrap: break-word;
-  word-break: normal;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   padding: var(--qz-sp-xs) var(--qz-sp-sm);
   border-radius: var(--qz-r-xs);
 }
