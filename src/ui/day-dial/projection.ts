@@ -12,12 +12,14 @@ export interface DayDialProjectedItem {
   title: string;
   color: string | null;
   iconName: string;
+  semanticLane: 'reference' | 'blocking' | 'nonBlocking' | 'context' | 'marker';
   startMinute: number;
   endMinute: number;
   durationMinutes: number;
   visual: 'marker' | 'arc';
   lane: number;
   laneCount: number;
+  markerStack: number;
 }
 
 export interface DayDialInvalidTimedItem {
@@ -40,7 +42,11 @@ export interface DayDialProjectionContext {
 
 function clockMinutes(value: string | undefined, allowDayEnd = false): number | null {
   if (!value) return null;
-  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  const trimmed = value.trim();
+  const clock = trimmed.includes('T')
+    ? trimmed.split('T')[1]?.replace(/Z$/i, '') ?? ''
+    : trimmed;
+  const match = /^(\d{2}):(\d{2})(?::\d{2}(?:\.\d{1,3})?)?(?:[+-]\d{2}:?\d{2})?$/.exec(clock);
   if (!match) return null;
   const hour = Number(match[1]);
   const minute = Number(match[2]);
@@ -68,6 +74,28 @@ function clockRange(value: string | undefined): ClockRange | null {
   const end = clockMinutes(parts[1], true);
   if (end == null) return null;
   return { start, end };
+}
+
+function semanticLaneForItem(
+  item: NormalizedItem,
+  visual: 'marker' | 'arc',
+  hasExplicitEnd: boolean,
+): DayDialProjectedItem['semanticLane'] {
+  const normalizedType = item.sourceType.replace(/_/g, '').toLowerCase();
+  if (normalizedType === 'timeblock') return 'context';
+  if (normalizedType === 'pomodoro' || normalizedType === 'pomodorosession') return 'reference';
+  if (
+    item.origin === 'reminder' ||
+    normalizedType === 'reminder' ||
+    normalizedType === 'entry' ||
+    normalizedType === 'journalentry' ||
+    normalizedType === 'person' ||
+    normalizedType === 'personcontact'
+  ) {
+    return 'marker';
+  }
+  if (visual === 'marker' && !hasExplicitEnd) return 'marker';
+  return 'blocking';
 }
 
 function normalizeHex(value: unknown): string | null {
@@ -209,17 +237,22 @@ function timedCandidates(
       ? rawEnd
       : Math.min(MINUTES_PER_DAY, start + DEFAULT_MARKER_MINUTES);
     const duration = Math.max(0, end - start);
+    const visual = rawEnd == null || rawEnd <= start || duration <= DAY_DIAL_SHORT_OCCURRENCE_MINUTES
+      ? 'marker'
+      : 'arc';
     projected.push({
       item,
       title: titleForDayDialItem(item, context),
       color: colorForDayDialItem(item, context),
       iconName: iconForDayDialItem(item, context),
+      semanticLane: semanticLaneForItem(item, visual, rawEnd != null),
       startMinute: start,
       endMinute: end,
       durationMinutes: duration,
       visual: rawEnd == null || rawEnd <= start || duration <= DAY_DIAL_SHORT_OCCURRENCE_MINUTES
         ? 'marker'
         : 'arc',
+      markerStack: 0,
     });
   }
   projected.sort((left, right) =>
@@ -237,11 +270,12 @@ export function projectDayDial(
   const { projected: candidates, invalidTimed } = timedCandidates(items, context);
   const laneEnds: number[] = [];
   const lanes = new Map<string, number>();
+  const markerStacks = new Map<string, number>();
 
   // Geometry only: arcs that overlap in civil time receive concentric lanes so
   // one canonical occurrence never visually hides another.
   for (const candidate of candidates) {
-    if (candidate.visual !== 'arc') continue;
+    if (candidate.visual !== 'arc' || candidate.semanticLane !== 'blocking') continue;
     let lane = 0;
     while (lane < laneEnds.length && candidate.startMinute < laneEnds[lane]) lane++;
     if (lane === laneEnds.length) laneEnds.push(candidate.endMinute);
@@ -250,11 +284,18 @@ export function projectDayDial(
   }
 
   const laneCount = Math.max(1, laneEnds.length);
+  for (const candidate of candidates) {
+    if (candidate.visual !== 'marker') continue;
+    const clusterKey = String(Math.round((candidate.startMinute / MINUTES_PER_DAY * Math.PI * 2 - Math.PI / 2) * 20) / 20);
+    const stack = markerStacks.get(clusterKey) ?? 0;
+    markerStacks.set(clusterKey, stack + 1);
+    candidate.markerStack = stack;
+  }
   return {
     timed: candidates.map(candidate => ({
       ...candidate,
-      lane: candidate.visual === 'arc' ? (lanes.get(candidate.item.id) ?? 0) : 0,
-      laneCount: candidate.visual === 'arc' ? laneCount : 1,
+      lane: candidate.semanticLane === 'blocking' ? (lanes.get(candidate.item.id) ?? 0) : 0,
+      laneCount: candidate.semanticLane === 'blocking' ? laneCount : 1,
     })),
     allDay: items.filter(item => item.isAllDay),
     invalidTimed,

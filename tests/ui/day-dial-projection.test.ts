@@ -116,6 +116,61 @@ describe('Day Dial canonical projection', () => {
     });
   });
 
+  it('accepts DateTime-like persisted clocks like Quartzo ScheduledOccurrence startAt/endAt', () => {
+    const projection = projectDayDial([
+      item({
+        id: 'iso',
+        sourceId: 'iso',
+        start: '2026-09-19T09:00:00.000',
+        end: '2026-09-19T10:00:00.000',
+      }),
+      item({
+        id: 'seconds',
+        sourceId: 'seconds',
+        start: '11:05:30',
+        end: '11:20:00',
+      }),
+    ], { index: null });
+
+    const byId = new Map(projection.timed.map(entry => [entry.item.id, entry]));
+    expect(projection.invalidTimed).toEqual([]);
+    expect(byId.get('iso')).toMatchObject({
+      startMinute: 9 * 60,
+      endMinute: 10 * 60,
+      visual: 'arc',
+    });
+    expect(byId.get('seconds')).toMatchObject({
+      startMinute: 11 * 60 + 5,
+      endMinute: 11 * 60 + 20,
+      visual: 'marker',
+    });
+  });
+
+  it('keeps Time Blocks on the canonical context lane instead of blocking overlap lanes', () => {
+    const projection = projectDayDial([
+      item({ id: 'meal', sourceId: 'meal', sourceType: 'time_block', start: '12:00', end: '14:00' }),
+      item({ id: 'work', sourceId: 'work', sourceType: 'task', start: '12:30', end: '13:30' }),
+      item({ id: 'call', sourceId: 'call', sourceType: 'event', start: '12:45', end: '13:15' }),
+    ], { index: null });
+
+    const byId = new Map(projection.timed.map(entry => [entry.item.id, entry]));
+    expect(byId.get('meal')).toMatchObject({
+      semanticLane: 'context',
+      lane: 0,
+      laneCount: 1,
+    });
+    expect(byId.get('work')).toMatchObject({
+      semanticLane: 'blocking',
+      lane: 0,
+      laneCount: 2,
+    });
+    expect(byId.get('call')).toMatchObject({
+      semanticLane: 'blocking',
+      lane: 1,
+      laneCount: 2,
+    });
+  });
+
   it('keeps all-day facts outside the ring without inventing another occurrence', () => {
     const allDay = item({
       id: 'all-day',

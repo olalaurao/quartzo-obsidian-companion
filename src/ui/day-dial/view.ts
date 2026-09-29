@@ -9,8 +9,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const SIZE = 320;
 const CENTER = SIZE / 2;
 const OUTER_RADIUS = 124;
-const ARC_BASE_RADIUS = 111;
-const ARC_LANE_GAP = 10;
+const MARKER_STACK_GAP = 20;
 
 export interface DayDialViewOptions {
   selectedDate: string;
@@ -36,6 +35,22 @@ function pointForMinute(minute: number, radius: number): { x: number; y: number 
   };
 }
 
+function minuteLabel(minute: number): string {
+  if (minute >= 24 * 60) return '24:00';
+  const bounded = Math.max(0, Math.min(24 * 60 - 1, Math.floor(minute)));
+  return `${String(Math.floor(bounded / 60)).padStart(2, '0')}:${String(bounded % 60).padStart(2, '0')}`;
+}
+
+function clockLabel(value: string | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  const clock = trimmed.includes('T')
+    ? trimmed.split('T')[1]?.replace(/Z$/i, '') ?? ''
+    : trimmed;
+  const match = /^(\d{2}):(\d{2})(?::\d{2}(?:\.\d{1,3})?)?(?:[+-]\d{2}:?\d{2})?$/.exec(clock);
+  return match ? `${match[1]}:${match[2]}` : null;
+}
+
 function arcPath(startMinute: number, endMinute: number, radius: number): string {
   const start = pointForMinute(startMinute, radius);
   const end = pointForMinute(endMinute, radius);
@@ -46,7 +61,15 @@ function arcPath(startMinute: number, endMinute: number, radius: number): string
 
 function timeLabel(item: NormalizedItem): string {
   if (!item.start) return 'All day';
-  return item.end ? `${item.start}–${item.end}` : item.start;
+  const startRange = item.start.split(/\s*[-–—]\s*/u);
+  if (!item.end && startRange.length === 2) {
+    const start = clockLabel(startRange[0]);
+    const end = clockLabel(startRange[1]);
+    if (start && end) return `${start}–${end}`;
+  }
+  const start = clockLabel(item.start) ?? item.start;
+  const end = clockLabel(item.end);
+  return end ? `${start}–${end}` : start;
 }
 
 function statusClass(item: NormalizedItem): string {
@@ -88,9 +111,9 @@ function makeInteractive(
 function renderHourTicks(svg: SVGSVGElement): void {
   for (let hour = 0; hour < 24; hour++) {
     const minute = hour * 60;
-    const major = hour % 6 === 0;
-    const inner = pointForMinute(minute, major ? 132 : 136);
-    const outer = pointForMinute(minute, 142);
+    const major = hour % 3 === 0;
+    const inner = pointForMinute(minute, OUTER_RADIUS - (major ? 8 : 4));
+    const outer = pointForMinute(minute, OUTER_RADIUS);
     const tick = svgElement('line');
     tick.setAttribute('x1', String(inner.x));
     tick.setAttribute('y1', String(inner.y));
@@ -100,15 +123,15 @@ function renderHourTicks(svg: SVGSVGElement): void {
     svg.appendChild(tick);
   }
 
-  for (const [hour, label] of [[0, '00'], [6, '06'], [12, '12'], [18, '18']] as const) {
-    const point = pointForMinute(hour * 60, 151);
+  for (let hour = 0; hour < 24; hour += 3) {
+    const point = pointForMinute(hour * 60, OUTER_RADIUS + 12);
     const text = svgElement('text');
     text.setAttribute('x', String(point.x));
     text.setAttribute('y', String(point.y));
     text.setAttribute('text-anchor', 'middle');
     text.setAttribute('dominant-baseline', 'middle');
     text.classList.add('quartzo-day-dial-hour-label');
-    text.textContent = label;
+    text.textContent = String(hour).padStart(2, '0');
     svg.appendChild(text);
   }
 }
@@ -116,15 +139,35 @@ function renderHourTicks(svg: SVGSVGElement): void {
 function renderNowIndicator(svg: SVGSVGElement, selectedDate: string, now: Date): void {
   if (selectedDate !== localIsoDate(now)) return;
   const minute = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
-  const point = pointForMinute(minute, OUTER_RADIUS + 4);
+  const inner = pointForMinute(minute, OUTER_RADIUS * 0.28);
+  const outer = pointForMinute(minute, OUTER_RADIUS + 4);
   const line = svgElement('line');
-  line.setAttribute('x1', String(CENTER));
-  line.setAttribute('y1', String(CENTER));
-  line.setAttribute('x2', String(point.x));
-  line.setAttribute('y2', String(point.y));
+  line.setAttribute('x1', String(inner.x));
+  line.setAttribute('y1', String(inner.y));
+  line.setAttribute('x2', String(outer.x));
+  line.setAttribute('y2', String(outer.y));
   line.classList.add('quartzo-day-dial-now');
   line.setAttribute('aria-hidden', 'true');
   svg.appendChild(line);
+}
+
+function laneRadius(projected: DayDialProjectedItem): number {
+  switch (projected.semanticLane) {
+    case 'reference':
+      return OUTER_RADIUS * 0.91;
+    case 'blocking':
+      return OUTER_RADIUS * (0.69 + projected.lane * 0.055);
+    case 'nonBlocking':
+      return OUTER_RADIUS * 0.50;
+    case 'context':
+      return OUTER_RADIUS * 0.38;
+    case 'marker':
+      return OUTER_RADIUS * 0.96;
+  }
+}
+
+function strokeWidth(projected: DayDialProjectedItem): number {
+  return projected.semanticLane === 'blocking' ? 18 : 9;
 }
 
 function renderProjectedItem(
@@ -134,12 +177,13 @@ function renderProjectedItem(
 ): void {
   const classSuffix = statusClass(projected.item);
   if (projected.visual === 'arc') {
-    const radius = Math.max(54, ARC_BASE_RADIUS - projected.lane * ARC_LANE_GAP);
+    const radius = laneRadius(projected);
     if (projected.durationMinutes >= (24 * 60 - 1)) {
       const circle = svgElement('circle');
       circle.setAttribute('cx', String(CENTER));
       circle.setAttribute('cy', String(CENTER));
       circle.setAttribute('r', String(radius));
+      circle.setAttribute('stroke-width', String(strokeWidth(projected)));
       circle.classList.add('quartzo-day-dial-arc');
       if (classSuffix) circle.classList.add(classSuffix.trim());
       if (projected.color) circle.setAttribute('stroke', projected.color);
@@ -149,6 +193,7 @@ function renderProjectedItem(
     }
     const path = svgElement('path');
     path.setAttribute('d', arcPath(projected.startMinute, projected.endMinute, radius));
+    path.setAttribute('stroke-width', String(strokeWidth(projected)));
     path.classList.add('quartzo-day-dial-arc');
     if (classSuffix) path.classList.add(classSuffix.trim());
     if (projected.color) path.setAttribute('stroke', projected.color);
@@ -157,7 +202,7 @@ function renderProjectedItem(
     return;
   }
 
-  const point = pointForMinute(projected.startMinute, ARC_BASE_RADIUS);
+  const point = pointForMinute(projected.startMinute, Math.max(18, laneRadius(projected) - projected.markerStack * MARKER_STACK_GAP));
   const group = svgElement('g');
   group.classList.add('quartzo-day-dial-icon-marker');
   if (classSuffix) group.classList.add(classSuffix.trim());
@@ -316,6 +361,17 @@ export function renderDayDial(container: HTMLElement, options: DayDialViewOption
     empty.textContent = 'Nothing scheduled on the canonical Daily Schedule.';
     section.appendChild(empty);
   }
+
+  const centerLabel = svgElement('text');
+  centerLabel.setAttribute('x', String(CENTER));
+  centerLabel.setAttribute('y', String(CENTER));
+  centerLabel.setAttribute('text-anchor', 'middle');
+  centerLabel.setAttribute('dominant-baseline', 'middle');
+  centerLabel.classList.add('quartzo-day-dial-center-label');
+  centerLabel.textContent = options.selectedDate === localIsoDate(options.now ?? new Date())
+    ? minuteLabel(((options.now ?? new Date()).getHours() * 60) + (options.now ?? new Date()).getMinutes())
+    : `${options.selectedDate.slice(8, 10)}/${options.selectedDate.slice(5, 7)}`;
+  svg.appendChild(centerLabel);
 
   if (projection.invalidTimed.length > 0) {
     const diagnostic = document.createElement('p');
