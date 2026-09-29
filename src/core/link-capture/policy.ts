@@ -187,6 +187,9 @@ function structuredSuggestion(node: Record<string, unknown>): LinkCaptureSuggest
     if (normalized === 'podcastepisode' || normalized === 'podcastseries') return resourceStructured('Podcast', 'schema_org_podcast');
     if (normalized === 'article' || normalized === 'newsarticle' || normalized === 'blogposting') return resourceStructured('Article', 'schema_org_article');
     if (normalized === 'course') return resourceStructured('Course', 'schema_org_course');
+    if (normalized === 'softwareapplication' || normalized === 'webapplication' || normalized === 'mobileapplication') {
+      return resourceStructured('Tool', 'schema_org_software_application');
+    }
   }
   return null;
 }

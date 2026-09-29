@@ -4,9 +4,13 @@ import { describe, expect, it } from 'vitest';
 import {
   detectResourceMetadataSource,
   findResourceDuplicates,
+  normalizeResourceMediaType,
+  resourceMediaTypeSuggestions,
+  resourceStatusLabel,
   type ResourceDuplicateCandidate,
   type ResourceIdentity,
   type ResourceMetadataSource,
+  type ResourceStatus,
 } from '../../src/core/resource-capture/policy';
 
 type SourceVector = {
@@ -24,7 +28,36 @@ type DuplicateVector = {
   expected: ResourceDuplicateCandidate[];
 };
 
-type ResourceCaptureVector = SourceVector | DuplicateVector;
+type MediaTypeSuggestionsVector = {
+  id: string;
+  kind: 'media_type_suggestions';
+  configured: string[];
+  existing: string[];
+  current?: string;
+  expectedContains: string[];
+  expectedNotContains: string[];
+};
+
+type MediaTypeNormalizationVector = {
+  id: string;
+  kind: 'media_type_normalization';
+  input: string;
+  expected: string;
+};
+
+type StatusLabelsVector = {
+  id: string;
+  kind: 'status_labels';
+  mediaType: string;
+  expected: Record<ResourceStatus, string>;
+};
+
+type ResourceCaptureVector =
+  | SourceVector
+  | DuplicateVector
+  | MediaTypeSuggestionsVector
+  | MediaTypeNormalizationVector
+  | StatusLabelsVector;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -97,6 +130,37 @@ function readVectors(): ResourceCaptureVector[] {
         expected: readExpectedDuplicates(item.expected),
       };
     }
+    if (item.kind === 'media_type_suggestions') {
+      if (!Array.isArray(item.configured) || !Array.isArray(item.existing) || !Array.isArray(item.expectedContains) || !Array.isArray(item.expectedNotContains)) {
+        throw new Error(`Invalid media type suggestions vector: ${item.id}`);
+      }
+      return {
+        id: item.id,
+        kind: 'media_type_suggestions',
+        configured: item.configured.map(String),
+        existing: item.existing.map(String),
+        current: typeof item.current === 'string' ? item.current : undefined,
+        expectedContains: item.expectedContains.map(String),
+        expectedNotContains: item.expectedNotContains.map(String),
+      };
+    }
+    if (item.kind === 'media_type_normalization') {
+      if (typeof item.input !== 'string' || typeof item.expected !== 'string') {
+        throw new Error(`Invalid media type normalization vector: ${item.id}`);
+      }
+      return { id: item.id, kind: 'media_type_normalization', input: item.input, expected: item.expected };
+    }
+    if (item.kind === 'status_labels') {
+      if (typeof item.mediaType !== 'string' || !isRecord(item.expected)) {
+        throw new Error(`Invalid status labels vector: ${item.id}`);
+      }
+      return {
+        id: item.id,
+        kind: 'status_labels',
+        mediaType: item.mediaType,
+        expected: item.expected as Record<ResourceStatus, string>,
+      };
+    }
     throw new Error(`Unknown Resource capture vector kind: ${item.kind}`);
   });
 }
@@ -109,9 +173,30 @@ describe('Resource capture contract', () => {
       it(`matches source detection vector ${vector.id}`, () => {
         expect(detectResourceMetadataSource(vector.url)).toBe(vector.expectedSource);
       });
-    } else {
+    } else if (vector.kind === 'duplicate_detection') {
       it(`matches duplicate detection vector ${vector.id}`, () => {
         expect(findResourceDuplicates(vector.candidate, vector.existing)).toEqual(vector.expected);
+      });
+    } else if (vector.kind === 'media_type_suggestions') {
+      it(`matches media type suggestion vector ${vector.id}`, () => {
+        const actual = resourceMediaTypeSuggestions({
+          configured: vector.configured,
+          existing: vector.existing,
+          current: vector.current,
+        });
+        for (const expected of vector.expectedContains) expect(actual).toContain(expected);
+        for (const forbidden of vector.expectedNotContains) expect(actual).not.toContain(forbidden);
+        expect(new Set(actual.map(value => value.toLowerCase())).size).toBe(actual.length);
+      });
+    } else if (vector.kind === 'media_type_normalization') {
+      it(`matches media type normalization vector ${vector.id}`, () => {
+        expect(normalizeResourceMediaType(vector.input)).toBe(vector.expected);
+      });
+    } else {
+      it(`matches status label vector ${vector.id}`, () => {
+        for (const status of ['toConsume', 'inProgress', 'completed', 'dropped'] as ResourceStatus[]) {
+          expect(resourceStatusLabel(status, vector.mediaType)).toBe(vector.expected[status]);
+        }
       });
     }
   }

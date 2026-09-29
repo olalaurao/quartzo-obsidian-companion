@@ -1,6 +1,6 @@
 {
   "name": "quartzo-obsidian-companion",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "description": "Quartzo Obsidian Companion V1",
   "main": "main.js",
   "scripts": {

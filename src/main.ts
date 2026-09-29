@@ -77,6 +77,11 @@ import { GOOGLE_REFRESH_TOKEN_SECRET_ID } from './platform/secret-ids';
 import { normalizeVaultPath } from './sync/coordinator/path-utils';
 import { VaultSyncFilePolicy } from './sync/coordinator/file-policy';
 import { SHARED_SETTINGS_PATH, SharedSettingsRepository, parseObjectWithSharedSettings, type MarkerType, type QuartzoSharedSettings, type TypeSignature } from './vault/shared-settings';
+import { ObjectIdentificationMigrationRepository } from './vault/object-identification-migration';
+import {
+  objectIdentificationPlanSummary,
+  type ObjectIdentificationMigrationPlan,
+} from './core/object-identification-migration';
 import { SHARED_OCCURRENCE_STATE_PATH, SharedOccurrenceStateRepository } from './vault/occurrence-state';
 import { OccurrenceDomainMutationRepository } from './vault/occurrence-domain-mutations';
 import { SHARED_PLANNING_STATE_PATH, SharedPlanningStateRepository } from './vault/planning-state';
@@ -1287,6 +1292,56 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
   ): Promise<void> {
     if (!this.sharedSettingsRepository) throw new Error('Shared settings are not initialized.');
     this.sharedSettings = await this.sharedSettingsRepository.updateTypeSignature(objectType, patch);
+    await this.reloadSharedSettingsAndIndex();
+  }
+
+  async previewObjectIdentificationMigration(
+    objectType: string,
+    newSignature: TypeSignature,
+  ): Promise<ObjectIdentificationMigrationPlan> {
+    if (!this.sharedSettings) throw new Error('Shared settings are not loaded.');
+    const oldSignature = this.sharedSettings.typeSignatures[objectType];
+    if (!oldSignature) throw new Error(`Unknown object type in Object Identification: ${objectType}`);
+    const repository = new ObjectIdentificationMigrationRepository(
+      this.app.vault,
+      path => this.shouldIndexPath(path),
+    );
+    return repository.preview({
+      objectType,
+      oldSignature,
+      newSignature,
+      settings: this.sharedSettings,
+    });
+  }
+
+  async saveObjectIdentificationSignatureEdit(input: {
+    objectType: string;
+    newSignature: TypeSignature;
+    migrationPlan?: ObjectIdentificationMigrationPlan;
+  }): Promise<void> {
+    if (!this.sharedSettingsRepository) throw new Error('Shared settings are not initialized.');
+    const existing = this.sharedSettings?.typeSignatures[input.objectType];
+    if (!existing) throw new Error(`Unknown object type in Object Identification: ${input.objectType}`);
+    const structuralChanged = existing.markerType !== input.newSignature.markerType
+      || existing.markerValue !== input.newSignature.markerValue;
+
+    if (structuralChanged && input.migrationPlan) {
+      const repository = new ObjectIdentificationMigrationRepository(
+        this.app.vault,
+        path => this.shouldIndexPath(path),
+      );
+      const result = await repository.apply(input.migrationPlan);
+      if (result.remaining > 0) {
+        throw new Error(
+          `Migration stopped after ${result.migrated} files. ${result.remaining} remaining. Failed path: ${result.failedPath ?? 'unknown'}.`,
+        );
+      }
+    }
+
+    this.sharedSettings = await this.sharedSettingsRepository.updateTypeSignature(
+      input.objectType,
+      input.newSignature,
+    );
     await this.reloadSharedSettingsAndIndex();
   }
 
@@ -2728,6 +2783,220 @@ class QuartzoFirstRunModal extends Modal {
   }
 }
 
+class ObjectIdentificationEditModal extends Modal {
+  private markerType: MarkerType;
+  private markerValue: string;
+  private iconName: string;
+  private colorHex: string;
+
+  constructor(
+    app: App,
+    private readonly plugin: QuartzoCompanionPlugin,
+    private readonly objectType: string,
+    private readonly signature: TypeSignature,
+    private readonly onSaved: () => void,
+  ) {
+    super(app);
+    this.markerType = signature.markerType;
+    this.markerValue = signature.markerValue;
+    this.iconName = signature.iconName ?? '';
+    this.colorHex = signature.colorHex ?? '';
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl('h2', { text: `Edit ${labelForSettingsType(this.objectType)}` });
+
+    new Setting(contentEl)
+      .setName('Identifier type')
+      .addDropdown(dropdown => dropdown
+        .addOption('folder', 'Folder')
+        .addOption('tag', 'Tag')
+        .addOption('property', 'Property')
+        .setValue(this.markerType)
+        .onChange(value => {
+          this.markerType = value as MarkerType;
+        }));
+
+    new Setting(contentEl)
+      .setName('Identifier value')
+      .addText(text => text
+        .setPlaceholder(this.markerType === 'property' ? 'type: task' : this.markerType === 'tag' ? '#task' : 'tasks')
+        .setValue(this.markerValue)
+        .onChange(value => {
+          this.markerValue = value.trim();
+        }));
+
+    new Setting(contentEl)
+      .setName('Icon')
+      .addText(text => text
+        .setPlaceholder('check_circle')
+        .setValue(this.iconName)
+        .onChange(value => {
+          this.iconName = value.trim();
+        }));
+
+    new Setting(contentEl)
+      .setName('Color')
+      .addText(text => text
+        .setPlaceholder('#RRGGBB')
+        .setValue(this.colorHex)
+        .onChange(value => {
+          this.colorHex = value.trim();
+        }));
+
+    new Setting(contentEl)
+      .addButton(button => button
+        .setButtonText('Cancel')
+        .onClick(() => this.close()))
+      .addButton(button => button
+        .setButtonText('Save')
+        .setCta()
+        .onClick(() => {
+          void this.save();
+        }));
+  }
+
+  private async save(): Promise<void> {
+    const markerValue = this.markerValue.trim();
+    if (!markerValue) {
+      new Notice('Identifier value is required.');
+      return;
+    }
+    const colorHex = this.colorHex.trim();
+    if (colorHex && !/^#[0-9a-fA-F]{6}$/.test(colorHex)) {
+      new Notice('Color must use #RRGGBB.');
+      return;
+    }
+    const next: TypeSignature = {
+      ...this.signature,
+      markerType: this.markerType,
+      markerValue,
+      iconName: this.iconName.trim() || null,
+      colorHex: colorHex || null,
+    };
+    const structuralChanged = this.signature.markerType !== next.markerType
+      || this.signature.markerValue !== next.markerValue;
+
+    try {
+      if (!structuralChanged) {
+        await this.plugin.saveObjectIdentificationSignatureEdit({
+          objectType: this.objectType,
+          newSignature: next,
+        });
+        this.close();
+        this.onSaved();
+        return;
+      }
+
+      const plan = await this.plugin.previewObjectIdentificationMigration(this.objectType, next);
+      const choice = await new ObjectIdentificationMigrationConfirmModal(
+        this.app,
+        this.signature,
+        next,
+        plan,
+      ).choose();
+      if (choice === 'cancel') return;
+      await this.plugin.saveObjectIdentificationSignatureEdit({
+        objectType: this.objectType,
+        newSignature: next,
+        migrationPlan: choice === 'migrate' ? plan : undefined,
+      });
+      this.close();
+      this.onSaved();
+    } catch (error) {
+      new Notice(error instanceof Error ? error.message : String(error), 10000);
+    }
+  }
+}
+
+class ObjectIdentificationMigrationConfirmModal extends Modal {
+  private resolveChoice?: (choice: 'cancel' | 'saveOnly' | 'migrate') => void;
+
+  constructor(
+    app: App,
+    private readonly oldSignature: TypeSignature,
+    private readonly newSignature: TypeSignature,
+    private readonly plan: ObjectIdentificationMigrationPlan,
+  ) {
+    super(app);
+  }
+
+  choose(): Promise<'cancel' | 'saveOnly' | 'migrate'> {
+    return new Promise(resolve => {
+      this.resolveChoice = resolve;
+      this.open();
+    });
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl('h2', {
+      text: this.plan.blockers.length > 0 ? 'Cannot migrate' : 'Migrate existing objects?',
+    });
+    contentEl.createEl('pre', { text: this.summaryText() });
+
+    new Setting(contentEl)
+      .addButton(button => button
+        .setButtonText('Cancel')
+        .onClick(() => this.finish('cancel')))
+      .addButton(button => button
+        .setButtonText('Save only')
+        .onClick(() => this.finish('saveOnly')))
+      .addButton(button => button
+        .setButtonText('Migrate')
+        .setDisabled(this.plan.blockers.length > 0)
+        .setCta()
+        .onClick(() => this.finish('migrate')));
+  }
+
+  onClose(): void {
+    this.resolveChoice?.('cancel');
+    this.resolveChoice = undefined;
+  }
+
+  private finish(choice: 'cancel' | 'saveOnly' | 'migrate'): void {
+    const resolve = this.resolveChoice;
+    this.resolveChoice = undefined;
+    this.close();
+    resolve?.(choice);
+  }
+
+  private summaryText(): string {
+    const summary = objectIdentificationPlanSummary(this.plan);
+    const lines = [
+      `Object type: ${labelForSettingsType(this.oldSignature.objectType)}`,
+      '',
+      'From:',
+      `${this.oldSignature.markerType}: ${this.oldSignature.markerValue}`,
+      '',
+      'To:',
+      `${this.newSignature.markerType}: ${this.newSignature.markerValue}`,
+      '',
+      `Affected objects: ${this.plan.actions.length}`,
+      '',
+      'Changes:',
+      `${summary.markerUpdates} marker updates`,
+      `${summary.moves} moves`,
+    ];
+    if (summary.moves > 0 && this.newSignature.markerType === 'folder') {
+      lines.push(`${summary.moves} files will move to ${this.newSignature.markerValue}`);
+    }
+    if (this.plan.blockers.length > 0) {
+      lines.push('', 'Cannot migrate:', `${this.plan.blockers.length} blockers`);
+      for (const blocker of this.plan.blockers.slice(0, 8)) {
+        lines.push(`- ${blocker.path}: ${blocker.message}`);
+      }
+      if (this.plan.blockers.length > 8) {
+        lines.push(`- and ${this.plan.blockers.length - 8} more`);
+      }
+    }
+    return lines.join('\n');
+  }
+}
+
 class QuartzoSettingTab extends PluginSettingTab {
   plugin: QuartzoCompanionPlugin;
 
@@ -2964,39 +3233,16 @@ class QuartzoSettingTab extends PluginSettingTab {
       new Setting(containerEl)
         .setName(labelForSettingsType(objectType))
         .setDesc(`Priority ${index + 1}. ${signature.markerType}: ${signature.markerValue}`)
-        .addDropdown(dropdown => dropdown
-          .addOption('folder', 'Folder')
-          .addOption('tag', 'Tag')
-          .addOption('property', 'Property')
-          .setValue(signature.markerType)
-          .onChange(async value => {
-            await this.plugin.updateObjectIdentificationSignature(objectType, { markerType: value as MarkerType });
-            this.display();
-          }))
-        .addText(text => text
-          .setPlaceholder('Marker')
-          .setValue(signature.markerValue)
-          .onChange(async value => {
-            const markerValue = value.trim();
-            if (!markerValue) return;
-            await this.plugin.updateObjectIdentificationSignature(objectType, { markerValue });
-            this.display();
-          }))
-        .addText(text => text
-          .setPlaceholder('Icon')
-          .setValue(signature.iconName ?? '')
-          .onChange(async value => {
-            await this.plugin.updateObjectIdentificationSignature(objectType, { iconName: value.trim() || null });
-            this.display();
-          }))
-        .addText(text => text
-          .setPlaceholder('#RRGGBB')
-          .setValue(signature.colorHex ?? '')
-          .onChange(async value => {
-            const colorHex = value.trim();
-            if (colorHex && !/^#[0-9a-fA-F]{6}$/.test(colorHex)) return;
-            await this.plugin.updateObjectIdentificationSignature(objectType, { colorHex: colorHex || null });
-            this.display();
+        .addButton(button => button
+          .setButtonText('Edit')
+          .onClick(() => {
+            new ObjectIdentificationEditModal(
+              this.app,
+              this.plugin,
+              objectType,
+              signature,
+              () => this.display(),
+            ).open();
           }))
         .addButton(button => button
           .setButtonText('Up')

@@ -9,7 +9,12 @@ import {
   type LinkCaptureMetadata,
   type LinkCaptureSuggestion,
 } from '../../../core/link-capture/policy';
-import { findResourceDuplicates, type ResourceIdentity } from '../../../core/resource-capture/policy';
+import {
+  findResourceDuplicates,
+  normalizeResourceMediaType,
+  resourceMediaTypeSuggestions,
+  type ResourceIdentity,
+} from '../../../core/resource-capture/policy';
 import { ResourceMetadataService } from '../../../integrations/resource-metadata/service';
 import { buildRecipeBody, RecipeImportService, type RecipeImportDraft } from '../../../integrations/recipe-import/service';
 import { SocialMetadataService, type SocialMetadataDraft } from '../../../integrations/social-metadata/service';
@@ -18,8 +23,6 @@ import type { SharedSettingsRepository } from '../../../vault/shared-settings';
 import type { IndexedObject, VaultIndex } from '../../../vault/index/types';
 import { queryVaultObjects } from '../../../core/object-query';
 import type { ViewContext } from '../../types';
-
-const RESOURCE_TYPES = ['General', 'Book', 'Movie', 'Show', 'Video', 'Podcast', 'Article', 'Course'];
 
 export interface LinkCaptureRendererOptions {
   settingsRepository: SharedSettingsRepository;
@@ -250,7 +253,7 @@ async function saveSelected(args: {
     title,
     body: bodyFor(args),
     resource: selected.destination === 'resource' ? {
-      mediaType: args.resourceMediaType.trim() || 'General',
+      mediaType: normalizeResourceMediaType(args.resourceMediaType),
       sourceUrl: common.sourceUrl,
       cover: common.imageUrl ?? args.resourceMetadata?.cover,
       author: args.resourceMetadata?.author,
@@ -410,12 +413,12 @@ function resultSummary(selected: LinkCaptureSuggestion, recipeDraft: RecipeImpor
 }
 
 function resourceTypeSuggestions(index: VaultIndex | null): string[] {
-  const used = new Set<string>(RESOURCE_TYPES);
+  const existing: string[] = [];
   if (index) {
     for (const object of queryVaultObjects(index, { types: ['resource'] })) {
       const value = object.frontmatter.media_type;
-      if (typeof value === 'string' && value.trim()) used.add(value.trim());
+      if (typeof value === 'string' && value.trim()) existing.push(value);
     }
   }
-  return [...used].sort((left, right) => left.localeCompare(right));
+  return resourceMediaTypeSuggestions({ existing });
 }

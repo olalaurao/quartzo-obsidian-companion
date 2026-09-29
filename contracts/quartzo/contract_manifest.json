@@ -8,5 +8,6 @@
   "focusRuntimeContractVersion": "1.0.0",
   "overdueProjectionContractVersion": "1.0.0",
   "adaptivePlanningContractVersion": "1.0.0",
-  "linkCaptureContractVersion": "1.0.0"
+  "linkCaptureContractVersion": "1.0.0",
+  "objectIdentificationMigrationContractVersion": "1.0.0"
 }

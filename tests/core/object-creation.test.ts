@@ -86,6 +86,40 @@ describe('buildQuickAddDocument', () => {
     )).toThrow('Resource type is required.');
   });
 
+  it('creates Tool, Sewing Pattern, and custom Resources without new object types', () => {
+    for (const mediaType of ['tool', 'Sewing Pattern', 'Research Database']) {
+      const created = buildQuickAddDocument(
+        settings,
+        'resource',
+        {
+          title: `${mediaType} Resource`,
+          body: `Notes for ${mediaType}.`,
+          resource: {
+            mediaType,
+            sourceUrl: `https://example.com/${mediaType.toLowerCase().replace(/\s+/g, '-')}`,
+            status: 'toConsume',
+            priority: 'medium',
+            categories: ['Work', 'Sewing'],
+            tags: ['dress', 'research'],
+            links: ['[[projects/make-linen-wrap-dress]]'],
+          },
+        },
+        `resource-${mediaType.toLowerCase().replace(/\s+/g, '-')}`,
+      );
+      const parsed = ObjectParser.parse(created.content).object;
+      const expectedMediaType = mediaType === 'tool' ? 'Tool' : mediaType;
+      expect(parsed).toMatchObject({
+        type: 'resource',
+        media_type: expectedMediaType,
+        status: 'toConsume',
+        priority: 'medium',
+        categories: ['Work', 'Sewing'],
+        tags: ['dress', 'research'],
+        links: ['[[projects/make-linen-wrap-dress]]'],
+      });
+    }
+  });
+
   it('creates a Recipe as a canonical Note subtype', () => {
     const created = buildQuickAddDocument(
       settings,

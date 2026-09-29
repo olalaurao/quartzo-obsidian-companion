@@ -314,6 +314,30 @@
     }
   },
   {
+    "id": "structured_software_application_jsonld",
+    "kind": "detect_html",
+    "url": "https://example.com/app",
+    "html": "<script type=\"application/ld+json\">{\"@type\":\"SoftwareApplication\",\"name\":\"Useful App\"}</script>",
+    "expected": {
+      "destination": "resource",
+      "confidence": "high",
+      "reason": "schema_org_software_application",
+      "resourceMediaType": "Tool"
+    }
+  },
+  {
+    "id": "structured_web_application_jsonld",
+    "kind": "detect_html",
+    "url": "https://example.com/web-app",
+    "html": "<script type=\"application/ld+json\">{\"@type\":[\"WebApplication\"],\"name\":\"Useful Web App\"}</script>",
+    "expected": {
+      "destination": "resource",
+      "confidence": "high",
+      "reason": "schema_org_software_application",
+      "resourceMediaType": "Tool"
+    }
+  },
+  {
     "id": "open_graph_article",
     "kind": "detect_html",
     "url": "https://example.com/post",
@@ -384,6 +408,27 @@
     "expected": {
       "destination": "resource",
       "resourceMediaType": "Video",
+      "confidence": "unknown",
+      "reason": "manual_override"
+    }
+  },
+  {
+    "id": "override_social_to_resource_sewing_pattern",
+    "kind": "override",
+    "suggested": {
+      "destination": "social_post",
+      "socialPlatform": "instagram",
+      "socialMediaType": "video",
+      "confidence": "high",
+      "reason": "social_host"
+    },
+    "selected": {
+      "destination": "resource",
+      "resourceMediaType": "Sewing Pattern"
+    },
+    "expected": {
+      "destination": "resource",
+      "resourceMediaType": "Sewing Pattern",
       "confidence": "unknown",
       "reason": "manual_override"
     }
@@ -504,6 +549,46 @@
     "expected": {
       "destination": "resource",
       "resourceMediaType": "Video Essay",
+      "confidence": "unknown",
+      "reason": "manual_override"
+    }
+  },
+  {
+    "id": "override_generic_to_resource_tool",
+    "kind": "override",
+    "suggested": {
+      "destination": "resource",
+      "resourceMediaType": "General",
+      "confidence": "low",
+      "reason": "generic_page"
+    },
+    "selected": {
+      "destination": "resource",
+      "resourceMediaType": "Tool"
+    },
+    "expected": {
+      "destination": "resource",
+      "resourceMediaType": "Tool",
+      "confidence": "unknown",
+      "reason": "manual_override"
+    }
+  },
+  {
+    "id": "override_generic_to_custom_resource",
+    "kind": "override",
+    "suggested": {
+      "destination": "resource",
+      "resourceMediaType": "General",
+      "confidence": "low",
+      "reason": "generic_page"
+    },
+    "selected": {
+      "destination": "resource",
+      "resourceMediaType": "Knitting Pattern"
+    },
+    "expected": {
+      "destination": "resource",
+      "resourceMediaType": "Knitting Pattern",
       "confidence": "unknown",
       "reason": "manual_override"
     }

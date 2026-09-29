@@ -79,6 +79,41 @@ describe('Resource object contract', () => {
     });
   });
 
+  it('roundtrips extensible media types used by Quartzo and Companion', () => {
+    for (const mediaType of ['Sewing Pattern', 'Tool', 'Research Database']) {
+      const markdown = `---
+id: resource-${mediaType.toLowerCase().replace(/\s+/g, '-')}
+type: resource
+title: ${mediaType} Resource
+media_type: ${mediaType}
+status: toConsume
+priority: high
+source_url: https://example.com/${mediaType.toLowerCase().replace(/\s+/g, '-')}
+categories:
+  - Sewing
+tags:
+  - dress
+links:
+  - '[[projects/make-linen-wrap-dress]]'
+---
+Notes for ${mediaType}.
+`;
+      const parsed = ObjectParser.parse(markdown);
+      const serialized = ObjectParser.serialize(parsed.object);
+      const reparsed = ObjectParser.parse(serialized);
+      expect(reparsed.object).toMatchObject({
+        type: 'resource',
+        media_type: mediaType,
+        status: 'toConsume',
+        priority: 'high',
+        categories: ['Sewing'],
+        tags: ['dress'],
+        links: ['[[projects/make-linen-wrap-dress]]'],
+        body: `Notes for ${mediaType}.`,
+      });
+    }
+  });
+
   it('preserves future Resource frontmatter fields through roundtrip', () => {
     const withFutureField = fixture.markdown.replace(
       '\n---\nA hobbit goes on an unexpected journey.',

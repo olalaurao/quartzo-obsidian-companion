@@ -29,5 +29,48 @@
     "candidate":{"title":"Foundation","mediaType":"Book"},
     "existing":[{"id":"foundation-show","title":"Foundation","mediaType":"Show"}],
     "expected":[]
+  },
+  {
+    "id":"media_type_suggestions_dedupe_sources",
+    "kind":"media_type_suggestions",
+    "configured":["tool","Movie","Research Database"],
+    "existing":[" TOOL ","Sewing Pattern","Knitting Pattern","research database"],
+    "current":"Academic Paper",
+    "expectedContains":["Book","Movie","Show","General","Sewing Pattern","Tool","Research Database","Knitting Pattern","Academic Paper"],
+    "expectedNotContains":["tool"," TOOL ","research database"]
+  },
+  {
+    "id":"custom_media_type_normalization_preserves_text",
+    "kind":"media_type_normalization",
+    "input":"  Knitting   Pattern  ",
+    "expected":"Knitting Pattern"
+  },
+  {
+    "id":"known_media_type_normalization_uses_canonical_casing",
+    "kind":"media_type_normalization",
+    "input":" tool ",
+    "expected":"Tool"
+  },
+  {
+    "id":"sewing_pattern_status_labels_are_presentation_only",
+    "kind":"status_labels",
+    "mediaType":"Sewing Pattern",
+    "expected":{
+      "toConsume":"Want to make",
+      "inProgress":"Making",
+      "completed":"Made",
+      "dropped":"Dropped"
+    }
+  },
+  {
+    "id":"tool_status_labels_are_presentation_only",
+    "kind":"status_labels",
+    "mediaType":"Tool",
+    "expected":{
+      "toConsume":"Want to try",
+      "inProgress":"Using",
+      "completed":"Used",
+      "dropped":"Dropped"
+    }
   }
 ]

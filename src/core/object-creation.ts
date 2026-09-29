@@ -1,5 +1,6 @@
 import { ObjectParser } from './objects';
 import { localIsoDate } from './local-date';
+import { normalizeResourceMediaType } from './resource-capture/policy';
 import {
   applyTypeSignature,
   resolveCreationFolder,
@@ -162,7 +163,7 @@ export function buildQuickAddDocument(
   if (type === 'resource') {
     const resource = input.resource;
     if (!resource) throw new Error('Resource fields are required.');
-    const mediaType = resource.mediaType.trim();
+    const mediaType = normalizeResourceMediaType(resource.mediaType);
     if (!mediaType) throw new Error('Resource type is required.');
 
     frontmatter.media_type = mediaType;

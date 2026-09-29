@@ -12,6 +12,8 @@ Object Identification settings are shared client settings. A client must interpr
 
 Hardcoded folder assumptions are forbidden when shared Object Identification says otherwise.
 
+Editing `markerType` or `markerValue` is structural. A client that exposes structural Object Identification editing must build and validate the full migration plan before the first content mutation, then present Cancel, Save only and Migrate choices. Save only persists only `app/quartzo_shared_settings.md` and reindexes. Migrate may change only the old marker, the new marker and a safe folder-marker path move; it must preserve unknown fields, IDs, body Markdown and unrelated tags/properties, fail closed on destination conflicts or ambiguous unsafe candidates, and be safe to retry after partial I/O failure. Icon, emoji, color and priority-only edits do not migrate content objects.
+
 
 
 ## Cross-Client Drive Metadata

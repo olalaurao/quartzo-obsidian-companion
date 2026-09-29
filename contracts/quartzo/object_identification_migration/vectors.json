@@ -1,0 +1,243 @@
+{
+  "version": "1.0.0",
+  "description": "Pure Object Identification marker migration vectors. Adapters own vault scanning, preflight, writes, moves, shared-settings persistence and reindex.",
+  "cases": [
+    {
+      "name": "property_to_property",
+      "objectType": "task",
+      "oldSignature": {"objectType": "task", "markerType": "property", "markerValue": "type: task"},
+      "newSignature": {"objectType": "task", "markerType": "property", "markerValue": "kind: task"},
+      "candidate": {
+        "path": "app/task.md",
+        "frontmatter": {"id": "t1", "type": "task", "title": "Task", "future": {"keep": true}},
+        "body": "Body"
+      },
+      "expected": {
+        "eligible": true,
+        "path": "app/task.md",
+        "frontmatter": {"id": "t1", "title": "Task", "future": {"keep": true}, "kind": "task"},
+        "body": "Body",
+        "removeOldMarker": true,
+        "applyNewMarker": true,
+        "move": false
+      }
+    },
+    {
+      "name": "property_to_tag",
+      "objectType": "task",
+      "oldSignature": {"objectType": "task", "markerType": "property", "markerValue": "type: task"},
+      "newSignature": {"objectType": "task", "markerType": "tag", "markerValue": "#task"},
+      "candidate": {
+        "path": "app/task.md",
+        "frontmatter": {"id": "t1", "type": "task", "title": "Task"},
+        "body": "Body"
+      },
+      "expected": {
+        "eligible": true,
+        "path": "app/task.md",
+        "frontmatter": {"id": "t1", "title": "Task"},
+        "body": "Body\n\n#task",
+        "removeOldMarker": true,
+        "applyNewMarker": true,
+        "move": false
+      }
+    },
+    {
+      "name": "tag_to_property_preserves_unrelated_tags",
+      "objectType": "task",
+      "oldSignature": {"objectType": "task", "markerType": "tag", "markerValue": "#task"},
+      "newSignature": {"objectType": "task", "markerType": "property", "markerValue": "type: task"},
+      "candidate": {
+        "path": "app/task.md",
+        "frontmatter": {"id": "t1", "title": "Task", "tags": ["task", "deep-work"]},
+        "body": "Body #task #deep-work"
+      },
+      "expected": {
+        "eligible": true,
+        "path": "app/task.md",
+        "frontmatter": {"id": "t1", "title": "Task", "tags": ["deep-work"], "type": "task"},
+        "body": "Body  #deep-work",
+        "removeOldMarker": true,
+        "applyNewMarker": true,
+        "move": false
+      }
+    },
+    {
+      "name": "tag_to_tag",
+      "objectType": "task",
+      "oldSignature": {"objectType": "task", "markerType": "tag", "markerValue": "#task"},
+      "newSignature": {"objectType": "task", "markerType": "tag", "markerValue": "#todo"},
+      "candidate": {
+        "path": "app/task.md",
+        "frontmatter": {"id": "t1", "title": "Task", "tags": ["task", "weekly"]},
+        "body": "Body #task"
+      },
+      "expected": {
+        "eligible": true,
+        "path": "app/task.md",
+        "frontmatter": {"id": "t1", "title": "Task", "tags": ["weekly"]},
+        "body": "Body\n\n#todo",
+        "removeOldMarker": true,
+        "applyNewMarker": true,
+        "move": false
+      }
+    },
+    {
+      "name": "folder_to_folder",
+      "objectType": "note",
+      "oldSignature": {"objectType": "note", "markerType": "folder", "markerValue": "notes"},
+      "newSignature": {"objectType": "note", "markerType": "folder", "markerValue": "knowledge/notes"},
+      "candidate": {
+        "path": "notes/a.md",
+        "frontmatter": {"id": "n1", "title": "Note", "extra": 7},
+        "body": "Body"
+      },
+      "expected": {
+        "eligible": true,
+        "path": "knowledge/notes/a.md",
+        "frontmatter": {"id": "n1", "title": "Note", "extra": 7},
+        "body": "Body",
+        "removeOldMarker": false,
+        "applyNewMarker": false,
+        "move": true
+      }
+    },
+    {
+      "name": "property_to_folder",
+      "objectType": "task",
+      "oldSignature": {"objectType": "task", "markerType": "property", "markerValue": "type: task"},
+      "newSignature": {"objectType": "task", "markerType": "folder", "markerValue": "tasks"},
+      "candidate": {
+        "path": "app/task.md",
+        "frontmatter": {"id": "t1", "type": "task", "title": "Task"},
+        "body": "Body"
+      },
+      "expected": {
+        "eligible": true,
+        "path": "tasks/task.md",
+        "frontmatter": {"id": "t1", "title": "Task"},
+        "body": "Body",
+        "removeOldMarker": true,
+        "applyNewMarker": false,
+        "move": true
+      }
+    },
+    {
+      "name": "folder_to_property_keeps_path",
+      "objectType": "task",
+      "oldSignature": {"objectType": "task", "markerType": "folder", "markerValue": "tasks"},
+      "newSignature": {"objectType": "task", "markerType": "property", "markerValue": "type: task"},
+      "candidate": {
+        "path": "tasks/task.md",
+        "frontmatter": {"id": "t1", "title": "Task"},
+        "body": "Body"
+      },
+      "expected": {
+        "eligible": true,
+        "path": "tasks/task.md",
+        "frontmatter": {"id": "t1", "title": "Task", "type": "task"},
+        "body": "Body",
+        "removeOldMarker": false,
+        "applyNewMarker": true,
+        "move": false
+      }
+    },
+    {
+      "name": "folder_to_tag_keeps_path",
+      "objectType": "task",
+      "oldSignature": {"objectType": "task", "markerType": "folder", "markerValue": "tasks"},
+      "newSignature": {"objectType": "task", "markerType": "tag", "markerValue": "#task"},
+      "candidate": {
+        "path": "tasks/task.md",
+        "frontmatter": {"id": "t1", "title": "Task"},
+        "body": "Body"
+      },
+      "expected": {
+        "eligible": true,
+        "path": "tasks/task.md",
+        "frontmatter": {"id": "t1", "title": "Task"},
+        "body": "Body\n\n#task",
+        "removeOldMarker": false,
+        "applyNewMarker": true,
+        "move": false
+      }
+    },
+    {
+      "name": "noop",
+      "objectType": "task",
+      "oldSignature": {"objectType": "task", "markerType": "property", "markerValue": "type: task"},
+      "newSignature": {"objectType": "task", "markerType": "property", "markerValue": "type: task"},
+      "candidate": {
+        "path": "app/task.md",
+        "frontmatter": {"id": "t1", "type": "task", "title": "Task"},
+        "body": "Body"
+      },
+      "expected": {
+        "eligible": false,
+        "path": "app/task.md",
+        "frontmatter": {"id": "t1", "type": "task", "title": "Task"},
+        "body": "Body",
+        "removeOldMarker": false,
+        "applyNewMarker": false,
+        "move": false
+      }
+    },
+    {
+      "name": "already_migrated_retry_is_convergent",
+      "objectType": "task",
+      "oldSignature": {"objectType": "task", "markerType": "property", "markerValue": "type: task"},
+      "newSignature": {"objectType": "task", "markerType": "tag", "markerValue": "#task"},
+      "candidate": {
+        "path": "app/task.md",
+        "frontmatter": {"id": "t1", "title": "Task"},
+        "body": "Body\n\n#task"
+      },
+      "expected": {
+        "eligible": false,
+        "path": "app/task.md",
+        "frontmatter": {"id": "t1", "title": "Task"},
+        "body": "Body\n\n#task",
+        "removeOldMarker": false,
+        "applyNewMarker": false,
+        "move": false
+      }
+    }
+  ],
+  "preflightCases": [
+    {
+      "name": "destination_collision_blocks_before_mutation",
+      "objectType": "task",
+      "oldSignature": {"objectType": "task", "markerType": "property", "markerValue": "type: task"},
+      "newSignature": {"objectType": "task", "markerType": "folder", "markerValue": "tasks"},
+      "existingPaths": ["tasks/task.md"],
+      "candidates": [
+        {
+          "path": "app/task.md",
+          "frontmatter": {"id": "t1", "type": "task", "title": "Task"},
+          "body": "Body"
+        }
+      ],
+      "expectedBlockers": ["destination_exists"]
+    },
+    {
+      "name": "duplicate_destination_blocks_before_mutation",
+      "objectType": "task",
+      "oldSignature": {"objectType": "task", "markerType": "property", "markerValue": "type: task"},
+      "newSignature": {"objectType": "task", "markerType": "folder", "markerValue": "tasks"},
+      "existingPaths": [],
+      "candidates": [
+        {
+          "path": "a/task.md",
+          "frontmatter": {"id": "t1", "type": "task", "title": "Task"},
+          "body": "Body"
+        },
+        {
+          "path": "b/task.md",
+          "frontmatter": {"id": "t2", "type": "task", "title": "Task 2"},
+          "body": "Body"
+        }
+      ],
+      "expectedBlockers": ["duplicate_destination"]
+    }
+  ]
+}

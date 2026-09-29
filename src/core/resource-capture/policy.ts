@@ -33,6 +33,24 @@ export interface ResourceDuplicateCandidate {
   reasons: ResourceDuplicateReason[];
 }
 
+export type ResourceStatus = 'toConsume' | 'inProgress' | 'completed' | 'dropped';
+
+export const BUILT_IN_RESOURCE_MEDIA_TYPES = [
+  'Book',
+  'Movie',
+  'Show',
+  'Video',
+  'Video Essay',
+  'Podcast',
+  'Article',
+  'Sewing Pattern',
+  'Tool',
+  'Academic Paper',
+  'Reference',
+  'General',
+  'Course',
+] as const;
+
 function hostMatches(host: string, domain: string): boolean {
   return host === domain || host.endsWith(`.${domain}`);
 }
@@ -71,6 +89,57 @@ export function isFetchableResourceUrl(url: string): boolean {
 
 function normalizeText(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+export function normalizeResourceMediaType(value: string): string {
+  const normalized = value.trim().replace(/\s+/g, ' ');
+  if (!normalized) return '';
+  const known = BUILT_IN_RESOURCE_MEDIA_TYPES.find(type => normalizeText(type) === normalizeText(normalized));
+  return known ?? normalized;
+}
+
+export function resourceMediaTypeSuggestions(args: {
+  configured?: readonly string[];
+  existing?: readonly string[];
+  current?: string;
+  includeCourse?: boolean;
+} = {}): string[] {
+  const includeCourse = args.includeCourse ?? true;
+  const byKey = new Map<string, string>();
+  const add = (value: string | undefined): void => {
+    const normalized = normalizeResourceMediaType(value ?? '');
+    if (!normalized) return;
+    if (!includeCourse && normalizeText(normalized) === 'course') return;
+    const key = normalizeText(normalized);
+    if (!byKey.has(key)) byKey.set(key, normalized);
+  };
+
+  for (const type of BUILT_IN_RESOURCE_MEDIA_TYPES) add(type);
+  for (const type of args.configured ?? []) add(type);
+  for (const type of args.existing ?? []) add(type);
+  add(args.current);
+
+  return [...byKey.values()].sort((left, right) => left.localeCompare(right));
+}
+
+export function resourceStatusLabel(status: ResourceStatus, mediaType: string): string {
+  const normalized = normalizeText(mediaType);
+  if (normalized === 'sewing pattern') {
+    if (status === 'toConsume') return 'Want to make';
+    if (status === 'inProgress') return 'Making';
+    if (status === 'completed') return 'Made';
+    return 'Dropped';
+  }
+  if (normalized === 'tool') {
+    if (status === 'toConsume') return 'Want to try';
+    if (status === 'inProgress') return 'Using';
+    if (status === 'completed') return 'Used';
+    return 'Dropped';
+  }
+  if (status === 'toConsume') return 'To consume';
+  if (status === 'inProgress') return 'In progress';
+  if (status === 'completed') return 'Completed';
+  return 'Dropped';
 }
 
 function normalizedOptional(value: string | undefined, normalizeUrl = false): string {
