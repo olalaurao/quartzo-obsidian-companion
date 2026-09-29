@@ -50,6 +50,26 @@ function clockMinutes(value: string | undefined, allowDayEnd = false): number | 
   return hour * 60 + minute;
 }
 
+interface ClockRange {
+  start: number;
+  end: number | null;
+}
+
+function clockRange(value: string | undefined): ClockRange | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  const compact = clockMinutes(trimmed);
+  if (compact != null) return { start: compact, end: null };
+
+  const parts = trimmed.split(/\s*[-–—]\s*/u);
+  if (parts.length !== 2) return null;
+  const start = clockMinutes(parts[0]);
+  if (start == null) return null;
+  const end = clockMinutes(parts[1], true);
+  if (end == null) return null;
+  return { start, end };
+}
+
 function normalizeHex(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const candidate = value.trim();
@@ -174,12 +194,13 @@ function timedCandidates(
       invalidTimed.push({ item, reason: 'missing-start' });
       continue;
     }
-    const start = clockMinutes(item.start);
-    if (start == null) {
+    const startRange = clockRange(item.start);
+    if (startRange == null) {
       invalidTimed.push({ item, reason: 'invalid-start' });
       continue;
     }
-    const rawEnd = clockMinutes(item.end, true);
+    const start = startRange.start;
+    const rawEnd = item.end ? clockMinutes(item.end, true) : startRange.end;
     if (item.end && rawEnd == null) {
       invalidTimed.push({ item, reason: 'invalid-end' });
       continue;

@@ -94,6 +94,28 @@ describe('Day Dial canonical projection', () => {
     expect(projection.maxOverlapLanes).toBe(2);
   });
 
+  it('places compact time ranges from canonical schedule strings', () => {
+    const projection = projectDayDial([
+      item({ id: 'lunch', sourceId: 'lunch', start: '12:00–14:00', end: undefined }),
+      item({ id: 'review', sourceId: 'review', start: '15:00 - 15:20', end: undefined }),
+    ], { index: null });
+
+    const byId = new Map(projection.timed.map(entry => [entry.item.id, entry]));
+    expect(projection.invalidTimed).toEqual([]);
+    expect(byId.get('lunch')).toMatchObject({
+      startMinute: 12 * 60,
+      endMinute: 14 * 60,
+      durationMinutes: 120,
+      visual: 'arc',
+    });
+    expect(byId.get('review')).toMatchObject({
+      startMinute: 15 * 60,
+      endMinute: 15 * 60 + 20,
+      durationMinutes: 20,
+      visual: 'marker',
+    });
+  });
+
   it('keeps all-day facts outside the ring without inventing another occurrence', () => {
     const allDay = item({
       id: 'all-day',
