@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { NormalizedItem, NormalizedSchedule } from '../../src/core/daily_schedule/types';
+import { parseSharedSettings } from '../../src/core/shared-settings';
 import { renderDayDial } from '../../src/ui/day-dial/view';
 
 class FakeClassList {
@@ -80,6 +81,63 @@ function item(overrides: Partial<NormalizedItem> = {}): NormalizedItem {
 }
 
 describe('Day Dial accessibility DOM', () => {
+  it('uses the same resolved color for ring arcs and legend swatches', () => {
+    const originalDocument = globalThis.document;
+    const fakeDocument = {
+      createElement: (tagName: string) => new FakeElement(tagName),
+      createElementNS: (_namespace: string, tagName: string) => new FakeElement(tagName),
+    } as unknown as Document;
+    (globalThis as typeof globalThis & { document: Document }).document = fakeDocument;
+
+    try {
+      const container = new FakeElement('div') as unknown as HTMLElement;
+      const schedule: NormalizedSchedule = {
+        kind: 'daily_schedule',
+        count: 1,
+        items: [item({
+          id: 'time-block:morning',
+          sourceId: 'morning',
+          sourceType: 'time_block',
+          sourceLabel: 'Manha',
+          start: '07:00',
+          end: '11:59',
+          outcome: undefined,
+          isCompleted: false,
+        })],
+      };
+      const sharedSettings = parseSharedSettings(`---
+type: quartzo_shared_settings
+schema_version: 1
+type_signatures:
+  time_block:
+    objectType: time_block
+    markerType: property
+    markerValue: "type: time_block"
+    colorHex: "#F97316"
+---
+`)!;
+
+      renderDayDial(container, {
+        selectedDate: '2026-09-19',
+        schedule,
+        index: null,
+        sharedSettings,
+        now: new Date('2026-09-19T08:00:00'),
+      });
+
+      const root = container as unknown as FakeElement;
+      const arcs = findAll(root, element => element.classList.contains('quartzo-day-dial-arc'));
+      const swatches = findAll(root, element => element.className === 'quartzo-day-dial-swatch');
+
+      expect(arcs).toHaveLength(1);
+      expect(swatches).toHaveLength(1);
+      expect(arcs[0]?.style.stroke).toBe('#F97316');
+      expect(swatches[0]?.style.backgroundColor).toBe('#F97316');
+    } finally {
+      (globalThis as typeof globalThis & { document: Document | undefined }).document = originalDocument;
+    }
+  });
+
   it('exposes keyboard role, accessible label and non-color status text', () => {
     const originalDocument = globalThis.document;
     const fakeDocument = {

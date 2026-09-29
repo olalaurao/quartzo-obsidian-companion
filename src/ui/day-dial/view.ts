@@ -186,7 +186,7 @@ function renderProjectedItem(
       circle.setAttribute('stroke-width', String(strokeWidth(projected)));
       circle.classList.add('quartzo-day-dial-arc');
       if (classSuffix) circle.classList.add(classSuffix.trim());
-      if (projected.color) circle.setAttribute('stroke', projected.color);
+      if (projected.color) circle.style.stroke = projected.color;
       makeInteractive(circle, projected, options);
       svg.appendChild(circle);
       return;
@@ -196,7 +196,7 @@ function renderProjectedItem(
     path.setAttribute('stroke-width', String(strokeWidth(projected)));
     path.classList.add('quartzo-day-dial-arc');
     if (classSuffix) path.classList.add(classSuffix.trim());
-    if (projected.color) path.setAttribute('stroke', projected.color);
+    if (projected.color) path.style.stroke = projected.color;
     makeInteractive(path, projected, options);
     svg.appendChild(path);
     return;
@@ -206,7 +206,7 @@ function renderProjectedItem(
   const group = svgElement('g');
   group.classList.add('quartzo-day-dial-icon-marker');
   if (classSuffix) group.classList.add(classSuffix.trim());
-  if (projected.color) group.setAttribute('color', projected.color);
+  if (projected.color) group.style.color = projected.color;
 
   const hitTarget = svgElement('circle');
   hitTarget.setAttribute('cx', String(point.x));
