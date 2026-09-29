@@ -222,10 +222,15 @@ export class ReminderProjectionEngine {
         const explicitTrigger = parsePersistedInstant(config.trigger_time);
         if (explicitTrigger) {
           if (inWindow(explicitTrigger, fromExclusive, toInclusive)) {
+            const hasScheduler = object.scheduler != null && typeof object.scheduler === 'object' && !Array.isArray(object.scheduler);
+            const occurrence = hasScheduler
+              ? baseOccurrencesForDate(object, localIsoDate(explicitTrigger))[0]
+              : null;
+            if (hasScheduler && !occurrence) continue;
             deliveries.push(makeDelivery(
               object,
               config,
-              `reminder:${object.id}:${config.id}`,
+              occurrence?.occurrenceId ?? `reminder:${object.id}:${config.id}`,
               explicitTrigger,
               type,
             ));

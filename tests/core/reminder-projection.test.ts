@@ -46,6 +46,55 @@ describe('ReminderProjectionEngine', () => {
     expect(result[0].reminderId).toBe('course-before');
   });
 
+  it('does not let explicit trigger_time bypass scheduled habit applicability', () => {
+    const object: ReminderSourceObject = {
+      id: 'habit-tuesday',
+      type: 'habit',
+      title: 'Tuesday practice',
+      scheduler: {
+        start_date: '2026-09-15T00:00:00.000',
+        rules: [{ repeat_type: 'days_of_week', days_of_week: ['Tue'] }],
+      },
+      slots: [{ time: '10:00' }],
+      reminders: [{ id: 'stale', trigger_time: '2026-09-14T09:30:00.000', type: 'push' }],
+    };
+
+    const result = ReminderProjectionEngine.projectWindow(
+      [object],
+      new Date(2026, 8, 14, 9, 29, 59),
+      new Date(2026, 8, 14, 9, 30),
+    );
+
+    expect(result).toEqual([]);
+  });
+
+  it('keeps explicit trigger_time for scheduled habits on an accepted scheduler day', () => {
+    const object: ReminderSourceObject = {
+      id: 'habit-tuesday',
+      type: 'habit',
+      title: 'Tuesday practice',
+      scheduler: {
+        start_date: '2026-09-15T00:00:00.000',
+        rules: [{ repeat_type: 'days_of_week', days_of_week: ['Tue'] }],
+      },
+      slots: [{ time: '10:00' }],
+      reminders: [{ id: 'same-day', trigger_time: '2026-09-15T09:30:00.000', type: 'push' }],
+    };
+
+    const result = ReminderProjectionEngine.projectWindow(
+      [object],
+      new Date(2026, 8, 15, 9, 29, 59),
+      new Date(2026, 8, 15, 9, 30),
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      sourceId: 'habit-tuesday',
+      reminderId: 'same-day',
+      occurrenceId: 'legacyTime:habit:habit-tuesday:slot:0:reminder:slot_time:2026-09-15T10:00:00.000',
+    });
+  });
+
   it('applies days_before with local calendar-day arithmetic and time_of_day', () => {
     const object: ReminderSourceObject = {
       id: 'task-day-before', type: 'task', title: 'Travel',

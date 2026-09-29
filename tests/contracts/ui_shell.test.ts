@@ -169,7 +169,7 @@ folder_paths:
   });
 
   it('keeps schedule and major shell surfaces responsive in narrow panes', () => {
-    const styles = fs.readFileSync(path.join(process.cwd(), 'styles.css'), 'utf8');
+    const styles = fs.readFileSync(path.join(process.cwd(), 'styles.css'), 'utf8').replace(/\r\n/g, '\n');
 
     expect(styles).toContain('.quartzo-schedule-label {\n  min-width: min(100%, 14rem);\n  overflow-wrap: break-word;');
     expect(styles).toContain('.quartzo-schedule-row > .quartzo-occurrence-actions {\n  flex: 1 0 18rem;\n  justify-content: flex-end;');
