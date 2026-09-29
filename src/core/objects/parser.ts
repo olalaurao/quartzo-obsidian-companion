@@ -42,7 +42,7 @@ import {
 // Known field names for each object type
 const KNOWN_FIELDS: Record<ObjectType, Set<string>> = {
   task: new Set(['id', 'type', 'title', 'archived', 'organizers', 'scheduler', 'reminders', 'start_date', 'end_date', 'scheduled_time', 'time', 'duration', 'all_day', 'body']),
-  habit: new Set(['id', 'type', 'title', 'color', 'status', 'slots', 'negative', 'scheduler', 'body']),
+  habit: new Set(['id', 'type', 'title', 'color', 'status', 'slots', 'negative', 'is_negative', 'is_quitting', 'scheduler', 'schedulers', 'body']),
   tracker_definition: new Set(['id', 'type', 'title', 'sections', 'section_count', 'field_count', 'body']),
   tracker_record: new Set(['id', 'type', 'title', 'tracker_id', 'date', 'field_values', 'body']),
   entry: new Set(['id', 'type', 'title', 'date', 'time', 'body']),
@@ -288,7 +288,13 @@ export class ObjectParser {
           color: frontmatter.color as string,
           status: frontmatter.status as string,
           slots: frontmatter.slots as Habit['slots'],
-          negative: frontmatter.negative as boolean,
+          negative: (frontmatter.negative ?? frontmatter.is_negative) as boolean,
+          is_negative: frontmatter.is_negative as boolean,
+          is_quitting: frontmatter.is_quitting as boolean,
+          scheduler: frontmatter.scheduler as Record<string, unknown>,
+          schedulers: Array.isArray(frontmatter.schedulers)
+            ? frontmatter.schedulers as Habit['schedulers']
+            : undefined,
         } as Habit;
         break;
       

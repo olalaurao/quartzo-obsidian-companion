@@ -92,26 +92,46 @@ interface BaseOccurrence {
   dueAt: Date;
 }
 
-function schedulerOccurrenceForDate(object: ReminderSourceObject, date: string): BaseOccurrence[] {
-  const rawScheduler = object.scheduler;
-  if (!rawScheduler || typeof rawScheduler !== 'object' || Array.isArray(rawScheduler)) return [];
-  const scheduler = rawScheduler as SchedulerDefinition;
-  if (typeof scheduler.start_date !== 'string' || !Array.isArray(scheduler.rules) || scheduler.rules.length === 0) return [];
+function schedulerValues(object: ReminderSourceObject): unknown[] {
+  const values: unknown[] = [];
+  if (object.scheduler != null) values.push(object.scheduler);
+  if (Array.isArray(object.schedulers)) values.push(...object.schedulers);
+  return values;
+}
 
-  try {
-    const after = addLocalDays(parseLocalIsoDate(date), -1);
-    const result = SchedulerEngine.evaluate(
-      scheduler,
-      `${localIsoDate(after)}T00:00:00.000`,
-      date,
-    );
-    if (!result.shouldFire || !result.next) return [];
-    const dueAt = parsePersistedInstant(result.next);
-    if (!dueAt || localIsoDate(dueAt) !== date) return [];
-    return [{ occurrenceId: `schedule:${object.id}@${localDateTimeText(dueAt)}`, dueAt }];
-  } catch {
-    return [];
+function schedulerDefinitions(object: ReminderSourceObject): SchedulerDefinition[] {
+  return schedulerValues(object).flatMap(raw => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return [];
+    const scheduler = raw as SchedulerDefinition;
+    if (typeof scheduler.start_date !== 'string' || !Array.isArray(scheduler.rules)) return [];
+    return [scheduler];
+  });
+}
+
+function hasSchedulerSource(object: ReminderSourceObject): boolean {
+  return schedulerValues(object).length > 0;
+}
+
+function schedulerOccurrenceForDate(object: ReminderSourceObject, date: string): BaseOccurrence[] {
+  const occurrences: BaseOccurrence[] = [];
+  for (const scheduler of schedulerDefinitions(object)) {
+    if (scheduler.rules.length === 0) continue;
+    try {
+      const after = addLocalDays(parseLocalIsoDate(date), -1);
+      const result = SchedulerEngine.evaluate(
+        scheduler,
+        `${localIsoDate(after)}T00:00:00.000`,
+        date,
+      );
+      if (!result.shouldFire || !result.next) continue;
+      const dueAt = parsePersistedInstant(result.next);
+      if (!dueAt || localIsoDate(dueAt) !== date) continue;
+      occurrences.push({ occurrenceId: `schedule:${object.id}@${localDateTimeText(dueAt)}`, dueAt });
+    } catch {
+      continue;
+    }
   }
+  return occurrences;
 }
 
 function standaloneReminderOccurrenceForDate(object: ReminderSourceObject, date: string): BaseOccurrence[] {
@@ -148,7 +168,7 @@ function dailyOccurrencesForDate(object: ReminderSourceObject, date: string): Ba
 function baseOccurrencesForDate(object: ReminderSourceObject, date: string): BaseOccurrence[] {
   const standalone = standaloneReminderOccurrenceForDate(object, date);
   const daily = dailyOccurrencesForDate(object, date);
-  const hasScheduler = object.scheduler != null && typeof object.scheduler === 'object' && !Array.isArray(object.scheduler);
+  const hasScheduler = hasSchedulerSource(object);
   if (!hasScheduler) return standalone.length > 0 ? standalone : daily;
 
   const scheduled = schedulerOccurrenceForDate(object, date);
@@ -222,7 +242,7 @@ export class ReminderProjectionEngine {
         const explicitTrigger = parsePersistedInstant(config.trigger_time);
         if (explicitTrigger) {
           if (inWindow(explicitTrigger, fromExclusive, toInclusive)) {
-            const hasScheduler = object.scheduler != null && typeof object.scheduler === 'object' && !Array.isArray(object.scheduler);
+            const hasScheduler = hasSchedulerSource(object);
             const occurrence = hasScheduler
               ? baseOccurrencesForDate(object, localIsoDate(explicitTrigger))[0]
               : null;

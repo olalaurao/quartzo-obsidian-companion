@@ -118,6 +118,44 @@ describe('Daily Schedule Contract Vectors', () => {
     ]);
   });
 
+  it('uses Quartzo persisted schedulers array for Habit applicability', () => {
+    const result = DailyScheduleEngine.normalize({
+      date: '2026-09-22',
+      today: '2026-09-22',
+      objects: [{
+        type: 'habit',
+        id: 'habit-plural-scheduler',
+        title: 'Weekly review',
+        schedulers: [{
+          start_date: '2026-09-21T00:00:00.000',
+          rules: [{ repeat_type: 'days_of_week', days_of_week: ['Mon'] }],
+        }],
+        slots: [{ time: '10:00', label: 'Morning' }],
+      }],
+    });
+
+    expect(result.items).toEqual([]);
+  });
+
+  it('does not treat malformed persisted Habit schedulers as unscheduled daily habits', () => {
+    const result = DailyScheduleEngine.normalize({
+      date: '2026-09-22',
+      today: '2026-09-22',
+      objects: [{
+        type: 'habit',
+        id: 'habit-malformed-scheduler',
+        title: 'Malformed schedule',
+        schedulers: [{
+          start_date: '2026-09-21T00:00:00.000',
+          rules: [{ days_of_week: ['Mon'] }],
+        }],
+        slots: [{ time: '10:00', label: 'Morning' }],
+      }],
+    });
+
+    expect(result.items).toEqual([]);
+  });
+
   it('projects app-created one-off Tasks that carry their scheduled date in end_date', () => {
     const result = DailyScheduleEngine.normalize({
       date: '2026-09-23',

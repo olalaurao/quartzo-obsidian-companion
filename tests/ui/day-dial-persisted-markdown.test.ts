@@ -92,6 +92,34 @@ slots:
     expect(projection.invalidTimed).toEqual([]);
   });
 
+  it('does not show persisted Habit slots on Day Dial dates rejected by schedulers', () => {
+    const habit = parsedObject(`---
+id: weekly-practice
+type: habit
+title: Weekly practice
+archived: false
+schedulers:
+  - start_date: "2026-09-21T00:00:00.000"
+    rules:
+      - repeat_type: days_of_week
+        days_of_week: [Mon]
+slots:
+  - completed: false
+    time: "2026-09-21T10:00:00.000"
+---
+`, 'habits/weekly-practice.md');
+
+    const schedule = DailyScheduleEngine.normalize({
+      date: '2026-09-22',
+      objects: [habit],
+    });
+    const projection = projectDayDial(schedule.items, { index: null });
+
+    expect(schedule.items).toEqual([]);
+    expect(projection.timed).toEqual([]);
+    expect(projection.allDay).toEqual([]);
+  });
+
   it('falls back to an all-day Habit when slots have no canonical clock', () => {
     const habit = parsedObject(`---
 id: water-plants

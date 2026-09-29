@@ -95,6 +95,28 @@ describe('ReminderProjectionEngine', () => {
     });
   });
 
+  it('does not let explicit trigger_time bypass Quartzo persisted schedulers array', () => {
+    const object: ReminderSourceObject = {
+      id: 'habit-plural',
+      type: 'habit',
+      title: 'Plural scheduler habit',
+      schedulers: [{
+        start_date: '2026-09-15T00:00:00.000',
+        rules: [{ repeat_type: 'days_of_week', days_of_week: ['Tue'] }],
+      }],
+      slots: [{ time: '10:00' }],
+      reminders: [{ id: 'stale', trigger_time: '2026-09-16T09:30:00.000', type: 'push' }],
+    };
+
+    const result = ReminderProjectionEngine.projectWindow(
+      [object],
+      new Date(2026, 8, 16, 9, 29, 59),
+      new Date(2026, 8, 16, 9, 30),
+    );
+
+    expect(result).toEqual([]);
+  });
+
   it('applies days_before with local calendar-day arithmetic and time_of_day', () => {
     const object: ReminderSourceObject = {
       id: 'task-day-before', type: 'task', title: 'Travel',

@@ -72,3 +72,31 @@ Body`;
     });
   }
 });
+
+describe('Quartzo current Habit fields', () => {
+  it('recognizes persisted schedulers and negative/quitting flags as canonical fields', () => {
+    const result = ObjectParser.parse(`---
+id: habit-current-scheduler
+type: habit
+title: Current scheduler habit
+is_negative: false
+is_quitting: false
+schedulers:
+  - start_date: "2026-09-21T00:00:00.000"
+    rules:
+      - repeat_type: days_of_week
+        days_of_week: [Mon]
+slots:
+  - time: "2026-09-21T10:00:00.000"
+---
+Body`);
+
+    expect(result.unknownFields).not.toContain('schedulers');
+    expect(result.unknownFields).not.toContain('is_negative');
+    expect(result.unknownFields).not.toContain('is_quitting');
+    expect((result.object as Record<string, unknown>).schedulers).toEqual([{
+      start_date: '2026-09-21T00:00:00.000',
+      rules: [{ repeat_type: 'days_of_week', days_of_week: ['Mon'] }],
+    }]);
+  });
+});

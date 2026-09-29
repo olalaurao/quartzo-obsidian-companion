@@ -123,14 +123,14 @@ export class DailyScheduleEngine {
   private static processHabit(obj: Record<string, unknown>, date: string, items: RawNormalizedItem[]): void {
     const id = obj.id as string;
     const slots = Array.isArray(obj.slots) ? obj.slots : [];
-    const scheduler = this.schedulerDefinition(obj.scheduler);
+    const schedulers = this.schedulerDefinitions(obj);
 
     // Skip negative habits
-    if (obj.negative === true) {
+    if (obj.negative === true || obj.is_negative === true || obj.is_quitting === true) {
       return;
     }
 
-    if (!this.sourceOccursOnDate(scheduler, date, null, scheduler == null)) {
+    if (!this.sourcesOccurOnDate(schedulers, date, null, !this.hasSchedulerSource(obj))) {
       return;
     }
 
@@ -211,7 +211,7 @@ export class DailyScheduleEngine {
     const id = String(obj.id ?? '');
     if (!id) return;
 
-    const scheduler = this.schedulerDefinition(obj.scheduler);
+    const scheduler = this.firstSchedulerDefinition(obj);
     const rawStartDate = String(obj.start_date ?? scheduler?.start_date ?? obj.end_date ?? '');
     const fallbackDate = this.dateOnly(rawStartDate);
     const time = String(
@@ -258,7 +258,7 @@ export class DailyScheduleEngine {
     const id = String(obj.id ?? '');
     if (!id) return;
 
-    const scheduler = this.schedulerDefinition(obj.scheduler);
+    const scheduler = this.firstSchedulerDefinition(obj);
     const fallbackDate = this.dateOnly(String(obj.date ?? scheduler?.start_date ?? ''));
     const timeOfDay = String(
       obj.time_of_day ??
@@ -369,7 +369,7 @@ export class DailyScheduleEngine {
   private static processTimeBlock(obj: Record<string, unknown>, date: string, items: RawNormalizedItem[]): void {
     const id = String(obj.id ?? '');
     if (!id) return;
-    const scheduler = this.schedulerDefinition(obj.scheduler);
+    const scheduler = this.firstSchedulerDefinition(obj);
     const ranges = this.timeBlockRanges(obj);
     for (const range of ranges) {
       const duration = this.rangeDurationMinutes(range.start, range.end);
@@ -395,7 +395,7 @@ export class DailyScheduleEngine {
   private static processSystem(obj: Record<string, unknown>, date: string, items: RawNormalizedItem[]): void {
     const id = String(obj.id ?? '');
     if (!id) return;
-    const scheduler = this.schedulerDefinition(obj.scheduler);
+    const scheduler = this.firstSchedulerDefinition(obj);
     const fallbackDate = scheduler ? this.dateOnly(scheduler.start_date) : null;
     if (!this.sourceOccursOnDate(scheduler, date, fallbackDate, scheduler == null)) return;
 
@@ -421,7 +421,7 @@ export class DailyScheduleEngine {
     const id = String(obj.id ?? '');
     if (!id || obj.show_in_planner === false) return;
 
-    const scheduler = this.schedulerDefinition(obj.scheduler);
+    const scheduler = this.firstSchedulerDefinition(obj);
     const fallbackDate = this.dateOnly(String(obj.start_date ?? scheduler?.start_date ?? ''));
     const time = String(
       this.clockFromIso(scheduler?.exact_time) ??
@@ -734,6 +734,29 @@ export class DailyScheduleEngine {
     });
   }
 
+  private static firstSchedulerDefinition(obj: Record<string, unknown>): SchedulerDefinition | null {
+    return this.schedulerDefinitions(obj)[0] ?? null;
+  }
+
+  private static schedulerDefinitions(obj: Record<string, unknown>): SchedulerDefinition[] {
+    const values = this.schedulerValues(obj);
+    return values.flatMap(value => {
+      const scheduler = this.schedulerDefinition(value);
+      return scheduler ? [scheduler] : [];
+    });
+  }
+
+  private static schedulerValues(obj: Record<string, unknown>): unknown[] {
+    const values: unknown[] = [];
+    if (obj.scheduler != null) values.push(obj.scheduler);
+    if (Array.isArray(obj.schedulers)) values.push(...obj.schedulers);
+    return values;
+  }
+
+  private static hasSchedulerSource(obj: Record<string, unknown>): boolean {
+    return this.schedulerValues(obj).length > 0;
+  }
+
   private static schedulerDefinition(value: unknown): SchedulerDefinition | null {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
     const raw = value as Record<string, unknown>;
@@ -774,6 +797,19 @@ export class DailyScheduleEngine {
     defaultWhenUnscheduled = false,
   ): boolean {
     if (scheduler) return SchedulerEngine.occursOnDate(scheduler, date);
+    if (fallbackDate) return fallbackDate === date;
+    return defaultWhenUnscheduled;
+  }
+
+  private static sourcesOccurOnDate(
+    schedulers: SchedulerDefinition[],
+    date: string,
+    fallbackDate: string | null,
+    defaultWhenUnscheduled = false,
+  ): boolean {
+    if (schedulers.length > 0) {
+      return schedulers.some(scheduler => SchedulerEngine.occursOnDate(scheduler, date));
+    }
     if (fallbackDate) return fallbackDate === date;
     return defaultWhenUnscheduled;
   }
