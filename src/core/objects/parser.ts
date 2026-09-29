@@ -42,7 +42,7 @@ import {
 // Known field names for each object type
 const KNOWN_FIELDS: Record<ObjectType, Set<string>> = {
   task: new Set(['id', 'type', 'title', 'archived', 'organizers', 'scheduler', 'reminders', 'start_date', 'end_date', 'scheduled_time', 'time', 'duration', 'all_day', 'body']),
-  habit: new Set(['id', 'type', 'title', 'color', 'status', 'slots', 'negative', 'body']),
+  habit: new Set(['id', 'type', 'title', 'color', 'status', 'slots', 'negative', 'scheduler', 'body']),
   tracker_definition: new Set(['id', 'type', 'title', 'sections', 'section_count', 'field_count', 'body']),
   tracker_record: new Set(['id', 'type', 'title', 'tracker_id', 'date', 'field_values', 'body']),
   entry: new Set(['id', 'type', 'title', 'date', 'time', 'body']),

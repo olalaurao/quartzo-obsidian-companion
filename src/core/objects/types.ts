@@ -61,6 +61,7 @@ export interface Habit extends BaseObject {
   status?: string;
   slots?: Array<{time: string; label: string}>;
   negative?: boolean;
+  scheduler?: Record<string, unknown>;
 }
 
 export interface TrackerDefinition extends BaseObject {

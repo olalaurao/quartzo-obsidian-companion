@@ -123,9 +123,14 @@ export class DailyScheduleEngine {
   private static processHabit(obj: Record<string, unknown>, date: string, items: RawNormalizedItem[]): void {
     const id = obj.id as string;
     const slots = Array.isArray(obj.slots) ? obj.slots : [];
+    const scheduler = this.schedulerDefinition(obj.scheduler);
 
     // Skip negative habits
     if (obj.negative === true) {
+      return;
+    }
+
+    if (!this.sourceOccursOnDate(scheduler, date, null, scheduler == null)) {
       return;
     }
 

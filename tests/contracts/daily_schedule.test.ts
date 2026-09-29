@@ -78,6 +78,46 @@ describe('Daily Schedule Contract Vectors', () => {
     expect(result.items.map(item => item.id)).toEqual(['reminder:reminder-today']);
   });
 
+  it('does not project scheduled Habit slots on dates excluded by the scheduler', () => {
+    const result = DailyScheduleEngine.normalize({
+      date: '2026-09-22',
+      today: '2026-09-22',
+      objects: [{
+        type: 'habit',
+        id: 'habit-weekly',
+        title: 'Weekly review',
+        scheduler: {
+          start_date: '2026-09-21T00:00:00.000',
+          rules: [{ repeat_type: 'days_of_week', days_of_week: ['Mon'] }],
+        },
+        slots: [{ time: '10:00', label: 'Morning' }],
+      }],
+    });
+
+    expect(result.items).toEqual([]);
+  });
+
+  it('keeps scheduled Habit slots on dates accepted by the scheduler', () => {
+    const result = DailyScheduleEngine.normalize({
+      date: '2026-09-21',
+      today: '2026-09-21',
+      objects: [{
+        type: 'habit',
+        id: 'habit-weekly',
+        title: 'Weekly review',
+        scheduler: {
+          start_date: '2026-09-21T00:00:00.000',
+          rules: [{ repeat_type: 'days_of_week', days_of_week: ['Mon'] }],
+        },
+        slots: [{ time: '10:00', label: 'Morning' }],
+      }],
+    });
+
+    expect(result.items.map(item => item.id)).toEqual([
+      'legacyTime:habit:habit-weekly:slot:0:reminder:slot_time:2026-09-21T10:00:00.000',
+    ]);
+  });
+
   it('projects app-created one-off Tasks that carry their scheduled date in end_date', () => {
     const result = DailyScheduleEngine.normalize({
       date: '2026-09-23',
