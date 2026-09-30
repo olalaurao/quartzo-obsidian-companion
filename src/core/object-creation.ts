@@ -187,7 +187,12 @@ export function buildQuickAddDocument(
 
   const signature = resolveTypeSignature(settings, canonicalObjectType);
   const signed = applyTypeSignature(frontmatter, input.body, signature);
-  const path = `${folder}/${id}.md`.replace(/\\/g, '/').replace(/\/{2,}/g, '/');
+  
+  // Create a safe filename from the title
+  const safeTitle = title.replace(/[*"\\/<>:|?]/g, '').trim();
+  const filename = safeTitle.length > 0 ? safeTitle : id;
+  
+  const path = `${folder}/${filename}.md`.replace(/\\/g, '/').replace(/\/{2,}/g, '/');
   const content = ObjectParser.serializeMarkdown(signed.frontmatter, signed.body);
   const roundtrip = ObjectParser.parse(content);
   if (roundtrip.object.id !== id || roundtrip.object.type !== canonicalObjectType) {
