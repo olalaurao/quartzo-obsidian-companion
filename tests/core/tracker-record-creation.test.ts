@@ -37,7 +37,7 @@ describe('TrackingRecord Quick Add creation', () => {
       'record-1',
     );
 
-    expect(created.path).toBe('tracking-records/record-1.md');
+    expect(created.path).toBe('tracking-records/Energy 2026-09-17T000000.000.md');
     expect(ObjectParser.parse(created.content).object).toMatchObject({
       id: 'record-1',
       type: 'tracker_record',

@@ -63,8 +63,8 @@ folder_paths:
   });
 
   it('uses configured/folder-signature paths rather than hardcoded plural folders', () => {
-    expect(buildQuickAddDocument(settings, 'task', { title: 'T', body: '' }, 't1').path).toBe('tasks/custom/t1.md');
-    expect(buildQuickAddDocument(settings, 'note', { title: 'N', body: '' }, 'n1').path).toBe('notes/custom/n1.md');
+    expect(buildQuickAddDocument(settings, 'task', { title: 'T', body: '' }, 't1').path).toBe('tasks/custom/T.md');
+    expect(buildQuickAddDocument(settings, 'note', { title: 'N', body: '' }, 'n1').path).toBe('notes/custom/N.md');
   });
 
   it('registers one primary workspace view and no legacy top-level clones', () => {

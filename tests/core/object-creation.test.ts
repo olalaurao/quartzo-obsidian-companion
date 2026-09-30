@@ -49,7 +49,7 @@ describe('buildQuickAddDocument', () => {
       'resource-hobbit',
     );
 
-    expect(created.path).toBe('resources/resource-hobbit.md');
+    expect(created.path).toBe('resources/The Hobbit.md');
     const parsed = ObjectParser.parse(created.content);
     expect(parsed.object).toMatchObject({
       id: 'resource-hobbit',
@@ -138,7 +138,7 @@ describe('buildQuickAddDocument', () => {
       'recipe-potatoes',
     );
     const parsed = ObjectParser.parse(created.content).object;
-    expect(created.path).toBe('notes/custom/recipe-potatoes.md');
+    expect(created.path).toBe('notes/custom/Crispy Potatoes.md');
     expect(parsed).toMatchObject({
       id: 'recipe-potatoes',
       type: 'note',
@@ -166,7 +166,7 @@ describe('buildQuickAddDocument', () => {
       'social-instagram',
     );
     const parsed = ObjectParser.parse(created.content).object;
-    expect(created.path).toBe('social/custom/social-instagram.md');
+    expect(created.path).toBe('social/custom/Instagram Reel.md');
     expect(parsed).toMatchObject({
       id: 'social-instagram',
       type: 'social_post',
@@ -184,7 +184,7 @@ describe('buildQuickAddDocument', () => {
       'reminder-call-clinic',
     );
 
-    expect(created.path).toBe('reminders/reminder-call-clinic.md');
+    expect(created.path).toBe('reminders/Call clinic.md');
     const raw = ObjectParser.parseMarkdown(created.content).frontmatter;
     expect(raw).toMatchObject({
       date: '2026-09-17T09:30:00.000',
