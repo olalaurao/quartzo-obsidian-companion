@@ -1,4 +1,4 @@
-import { getIcon, ItemView, Notice, WorkspaceLeaf } from 'obsidian';
+import { getIcon, ItemView, Notice, TFolder, WorkspaceLeaf } from 'obsidian';
 import { DailyScheduleEngine } from '../../core/daily_schedule';
 import type { NormalizedItem, NormalizedSchedule } from '../../core/daily_schedule/types';
 import type { GoogleCalendarProjection } from '../../integrations/google/calendar';
@@ -27,6 +27,8 @@ import type { ViewContext } from '../types';
 import { buildConflictDiff, formatConflictDiff } from '../sync/conflict-diff';
 import {
   isOrganizationIssuePathExcluded,
+  isSystemIssuePath,
+  normalizeIssueIgnoredFolders,
   projectOrganizationIssues,
   type IssueCategory,
 } from '../../core/object-organization/issues-projection';
@@ -153,6 +155,7 @@ export class QuartzoView extends ItemView {
   private issueCategoryFilter: IssueCategory | 'All' = 'All';
   private issueSearchQuery: string = '';
   private issueActionableFilter: 'All' | 'Actionable' | 'Informational' = 'All';
+  private issueIgnoredFoldersExpanded = false;
 
   constructor(leaf: WorkspaceLeaf, private readonly context: ViewContext) {
     super(leaf);
@@ -476,133 +479,252 @@ export class QuartzoView extends ItemView {
 
     const allFiles = this.context.app.vault.getFiles().filter(f => f.name.endsWith('.md')).map(f => f.path);
     const settings = await this.sharedSettingsRepository.load();
-    const ignoredFolderPaths = this.context.plugin.settings.issueIgnoredFolders;
+    const ignoredFolderPaths = normalizeIssueIgnoredFolders(this.context.plugin.settings.issueIgnoredFolders);
 
     const issues = projectOrganizationIssues({
-       index,
-       settings,
-       allMarkdownPaths: new Set(allFiles),
-       ignoredFolderPaths,
+      index,
+      settings,
+      allMarkdownPaths: new Set(allFiles),
+      ignoredFolderPaths,
     });
 
-    const toolbar = wrapper.createEl('div', { cls: 'quartzo-issues-toolbar', attr: { style: 'display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;' } });
-    
+    const persistIgnoredFolders = async (nextFolders: readonly string[]): Promise<void> => {
+      const normalized = normalizeIssueIgnoredFolders(nextFolders).filter(folder => !isSystemIssuePath(folder));
+      this.context.plugin.settings.issueIgnoredFolders = normalized;
+      await this.context.plugin.saveSettings();
+      await this.renderIssues(container);
+    };
+
+    const toolbar = wrapper.createEl('div', {
+      cls: 'quartzo-issues-toolbar',
+      attr: { style: 'display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center;' },
+    });
+
     const catSelect = toolbar.createEl('select', { cls: 'qz-input' });
+    catSelect.setAttribute('aria-label', 'Filter Organization Issues by category');
     const categories: Array<IssueCategory | 'All'> = ['All', 'unidentified', 'ambiguous', 'mismatch', 'duplicate', 'broken_relationship', 'interrupted'];
     for (const cat of categories) {
-      catSelect.createEl('option', { value: cat, text: cat === 'All' ? 'All Categories' : labelForType(cat) }).selected = this.issueCategoryFilter === cat;
+      const count = cat === 'All' ? issues.length : issues.filter(issue => issue.category === cat).length;
+      const label = cat === 'All' ? 'All Categories' : labelForType(cat);
+      catSelect.createEl('option', { value: cat, text: `${label} (${count})` }).selected = this.issueCategoryFilter === cat;
     }
-    catSelect.addEventListener('change', () => {
-      this.issueCategoryFilter = catSelect.value as IssueCategory | 'All';
-      void this.renderIssues(container);
-    });
 
     const actSelect = toolbar.createEl('select', { cls: 'qz-input' });
-    for (const act of ['All', 'Actionable', 'Informational']) {
-      actSelect.createEl('option', { value: act, text: act }).selected = this.issueActionableFilter === act;
+    actSelect.setAttribute('aria-label', 'Filter Organization Issues by actionability');
+    const actionableCounts = {
+      All: issues.length,
+      Actionable: issues.filter(issue => issue.actionable).length,
+      Informational: issues.filter(issue => !issue.actionable).length,
+    };
+    for (const act of ['All', 'Actionable', 'Informational'] as const) {
+      actSelect.createEl('option', { value: act, text: `${act} (${actionableCounts[act]})` }).selected = this.issueActionableFilter === act;
     }
-    actSelect.addEventListener('change', () => {
-      this.issueActionableFilter = actSelect.value as 'All' | 'Actionable' | 'Informational';
-      void this.renderIssues(container);
-    });
 
-    const searchInput = toolbar.createEl('input', { type: 'text', placeholder: 'Search...', cls: 'qz-input' });
+    const searchInput = toolbar.createEl('input', { type: 'search', placeholder: 'Search issues...', cls: 'qz-input' });
+    searchInput.setAttribute('aria-label', 'Search Organization Issues');
     searchInput.value = this.issueSearchQuery;
-    searchInput.addEventListener('input', () => {
-      this.issueSearchQuery = searchInput.value;
-      void this.renderIssues(container);
-    });
 
     const clearBtn = toolbar.createEl('button', { text: 'Clear filters', cls: 'qz-btn qz-btn-ghost' });
+
+    const ignoredPanel = wrapper.createEl('details', {
+      cls: 'quartzo-issues-ignored-folders',
+      attr: { style: 'margin-bottom: 16px; border: 1px solid var(--background-modifier-border); border-radius: 8px; padding: 8px 10px;' },
+    });
+    ignoredPanel.open = this.issueIgnoredFoldersExpanded;
+    ignoredPanel.addEventListener('toggle', () => {
+      this.issueIgnoredFoldersExpanded = ignoredPanel.open;
+    });
+    const ignoredSummary = ignoredPanel.createEl('summary', {
+      text: `⚙️ Ignored folders (${ignoredFolderPaths.length})`,
+      attr: { style: 'cursor: pointer; font-weight: 600;' },
+    });
+    ignoredSummary.setAttribute('aria-label', 'Manage ignored folders for Organization Issues');
+    ignoredPanel.createEl('p', {
+      text: 'Ignored folders affect Organization Issues only. They do not change Object Identification, move files, or change sync.',
+      cls: 'qz-text-muted',
+    });
+
+    const systemRow = ignoredPanel.createEl('div', {
+      attr: { style: 'display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap;' },
+    });
+    systemRow.createEl('span', { text: 'app/**', cls: 'qz-badge qz-badge-neutral' });
+    systemRow.createEl('span', { text: 'System exclusion — cannot be removed. Interrupted migration diagnostics may still appear.' });
+
+    const ignoredList = ignoredPanel.createEl('div', {
+      attr: { style: 'display: grid; gap: 6px; margin-bottom: 10px;' },
+    });
+    if (ignoredFolderPaths.length === 0) {
+      ignoredList.createEl('small', { text: 'No user folders are ignored.', cls: 'qz-text-muted' });
+    } else {
+      for (const folderPath of ignoredFolderPaths) {
+        const row = ignoredList.createEl('div', {
+          attr: { style: 'display: flex; align-items: center; gap: 8px; flex-wrap: wrap;' },
+        });
+        row.createEl('code', { text: `${folderPath}/**` });
+        const remove = row.createEl('button', { text: 'Remove', cls: 'qz-btn qz-btn-ghost qz-btn-sm' });
+        remove.setAttribute('aria-label', `Stop ignoring ${folderPath}`);
+        remove.addEventListener('click', () => {
+          void persistIgnoredFolders(ignoredFolderPaths.filter(folder => folder !== folderPath));
+        });
+      }
+    }
+
+    const folderSuggestions = this.context.app.vault.getAllLoadedFiles()
+      .filter((entry): entry is TFolder => entry instanceof TFolder && entry.path.length > 0)
+      .map(folder => folder.path)
+      .filter(path => !isSystemIssuePath(path))
+      .sort((a, b) => a.localeCompare(b));
+    const normalizedSuggestionPaths = new Map(
+      folderSuggestions.map(path => [normalizeIssueIgnoredFolders([path])[0], path] as const),
+    );
+
+    const addRow = ignoredPanel.createEl('div', {
+      attr: { style: 'display: flex; gap: 8px; align-items: center; flex-wrap: wrap;' },
+    });
+    const folderInput = addRow.createEl('input', {
+      type: 'search',
+      placeholder: 'Choose a vault folder...',
+      cls: 'qz-input',
+      attr: { list: 'quartzo-issue-folder-options' },
+    });
+    folderInput.setAttribute('aria-label', 'Folder to ignore in Organization Issues');
+    const folderOptions = ignoredPanel.createEl('datalist', { attr: { id: 'quartzo-issue-folder-options' } });
+    for (const folderPath of folderSuggestions) {
+      folderOptions.createEl('option', { value: folderPath });
+    }
+    const addFolder = addRow.createEl('button', { text: 'Add folder', cls: 'qz-btn qz-btn-secondary qz-btn-sm' });
+    addFolder.addEventListener('click', () => {
+      const normalizedCandidate = normalizeIssueIgnoredFolders([folderInput.value])[0];
+      if (!normalizedCandidate) {
+        new Notice('Choose a vault folder to ignore.');
+        return;
+      }
+      if (isSystemIssuePath(normalizedCandidate)) {
+        new Notice('app/** is already excluded by the system and cannot be configured here.');
+        return;
+      }
+      const existingFolder = normalizedSuggestionPaths.get(normalizedCandidate);
+      if (!existingFolder) {
+        new Notice('Choose an existing vault folder.');
+        return;
+      }
+      if (ignoredFolderPaths.includes(normalizedCandidate)) {
+        new Notice(`${existingFolder} is already ignored in Organization Issues.`);
+        return;
+      }
+      void persistIgnoredFolders([...ignoredFolderPaths, existingFolder]);
+    });
+
+    const resultsHost = wrapper.createEl('div', { cls: 'quartzo-issues-results' });
+
+    const renderFilteredIssues = () => {
+      resultsHost.replaceChildren();
+
+      if (issues.length === 0) {
+        const success = resultsHost.createEl('div', { cls: 'qz-empty-state' });
+        success.createEl('p', { text: '🎉 No organization issues found.' });
+        return;
+      }
+
+      const filteredIssues = issues.filter(issue => {
+        if (this.issueCategoryFilter !== 'All' && issue.category !== this.issueCategoryFilter) return false;
+        if (this.issueActionableFilter === 'Actionable' && !issue.actionable) return false;
+        if (this.issueActionableFilter === 'Informational' && issue.actionable) return false;
+        const query = this.issueSearchQuery.trim().toLowerCase();
+        if (query) {
+          const subjectId = issue.subjectId?.toLowerCase() ?? '';
+          if (!issue.title.toLowerCase().includes(query)
+            && !issue.why.toLowerCase().includes(query)
+            && !issue.subjectPath.toLowerCase().includes(query)
+            && !subjectId.includes(query)) {
+            return false;
+          }
+        }
+        return true;
+      });
+
+      const showing = resultsHost.createEl('p', { cls: 'qz-text-muted' });
+      showing.textContent = `Showing ${filteredIssues.length} of ${issues.length} issues`;
+
+      if (filteredIssues.length === 0) {
+        const empty = resultsHost.createEl('div', { cls: 'qz-empty-state' });
+        empty.createEl('p', { text: 'No issues match the current filters.' });
+        return;
+      }
+
+      const table = resultsHost.createEl('table', { cls: 'quartzo-data-table' });
+      const thead = table.createEl('thead');
+      const headRow = thead.createEl('tr');
+      headRow.createEl('th', { text: 'Category' });
+      headRow.createEl('th', { text: 'Issue' });
+      headRow.createEl('th', { text: 'Action' });
+
+      const tbody = table.createEl('tbody');
+      const displayList = filteredIssues.slice(0, 50);
+
+      for (const issue of displayList) {
+        const row = tbody.createEl('tr');
+
+        const catTd = row.createEl('td');
+        catTd.createEl('span', { cls: 'qz-badge qz-badge-warning', text: issue.category });
+
+        const infoTd = row.createEl('td');
+        infoTd.createEl('strong', { text: issue.title });
+        infoTd.createEl('br');
+        infoTd.createEl('small', { text: issue.why, cls: 'qz-text-muted' });
+        infoTd.createEl('br');
+        infoTd.createEl('small', { text: `Path: ${issue.subjectPath}` });
+
+        const actionsTd = row.createEl('td');
+        if (issue.actionable && (issue.category === 'unidentified' || issue.category === 'ambiguous')) {
+          const orgBtn = actionsTd.createEl('button', { text: 'Organize...', cls: 'qz-btn qz-btn-primary qz-btn-sm' });
+          orgBtn.addEventListener('click', () => {
+            const { ObjectOrganizationModal } = require('../organization/modal');
+            new ObjectOrganizationModal(this.context, { files: [issue.subjectPath] }).open();
+          });
+        } else if (issue.category === 'duplicate') {
+          const mergeBtn = actionsTd.createEl('button', { text: 'Resolve merge...', cls: 'qz-btn qz-btn-secondary qz-btn-sm' });
+          mergeBtn.addEventListener('click', () => {
+            const duplicatePaths = Array.from(index.objects.values())
+              .filter(o => o.id === issue.subjectId && !isOrganizationIssuePathExcluded(o.path, ignoredFolderPaths))
+              .map(o => o.path);
+            const { ObjectMergeModal } = require('../organization/merge-modal');
+            new ObjectMergeModal(this.context, { files: duplicatePaths }).open();
+          });
+        }
+      }
+
+      if (filteredIssues.length > 50) {
+        resultsHost.createEl('p', {
+          text: `Showing first 50 of ${filteredIssues.length} matching issues.`,
+          cls: 'qz-text-muted',
+        });
+      }
+    };
+
+    catSelect.addEventListener('change', () => {
+      this.issueCategoryFilter = catSelect.value as IssueCategory | 'All';
+      renderFilteredIssues();
+    });
+    actSelect.addEventListener('change', () => {
+      this.issueActionableFilter = actSelect.value as 'All' | 'Actionable' | 'Informational';
+      renderFilteredIssues();
+    });
+    searchInput.addEventListener('input', () => {
+      this.issueSearchQuery = searchInput.value;
+      renderFilteredIssues();
+    });
     clearBtn.addEventListener('click', () => {
       this.issueCategoryFilter = 'All';
       this.issueActionableFilter = 'All';
       this.issueSearchQuery = '';
-      void this.renderIssues(container);
+      catSelect.value = 'All';
+      actSelect.value = 'All';
+      searchInput.value = '';
+      renderFilteredIssues();
     });
 
-    const settingsBtn = toolbar.createEl('button', { text: '⚙️ Ignored Folders', cls: 'qz-btn qz-btn-ghost', attr: { style: 'margin-left: auto;' } });
-    settingsBtn.addEventListener('click', () => {
-       this.context.plugin.openSettings();
-    });
-
-    if (issues.length === 0) {
-       const success = wrapper.createEl('div', { cls: 'qz-empty-state' });
-       success.createEl('p', { text: '🎉 No organization issues found.' });
-       return;
-    }
-
-    const filteredIssues = issues.filter(issue => {
-      if (this.issueCategoryFilter !== 'All' && issue.category !== this.issueCategoryFilter) return false;
-      if (this.issueActionableFilter === 'Actionable' && !issue.actionable) return false;
-      if (this.issueActionableFilter === 'Informational' && issue.actionable) return false;
-      if (this.issueSearchQuery) {
-        const q = this.issueSearchQuery.toLowerCase();
-        const subjectId = issue.subjectId?.toLowerCase() ?? '';
-        if (!issue.title.toLowerCase().includes(q)
-          && !issue.why.toLowerCase().includes(q)
-          && !issue.subjectPath.toLowerCase().includes(q)
-          && !subjectId.includes(q)) {
-          return false;
-        }
-      }
-      return true;
-    });
-
-    const showing = wrapper.createEl('p', { cls: 'qz-text-muted' });
-    showing.textContent = `Showing ${Math.min(filteredIssues.length, 50)} of ${issues.length} issues`;
-
-    if (filteredIssues.length === 0) {
-       const empty = wrapper.createEl('div', { cls: 'qz-empty-state' });
-       empty.createEl('p', { text: 'No issues match the current filters.' });
-       return;
-    }
-
-    const table = wrapper.createEl('table', { cls: 'quartzo-data-table' });
-    const thead = table.createEl('thead');
-    const headRow = thead.createEl('tr');
-    headRow.createEl('th', { text: 'Category' });
-    headRow.createEl('th', { text: 'Issue' });
-    headRow.createEl('th', { text: 'Action' });
-
-    const tbody = table.createEl('tbody');
-    const displayList = filteredIssues.slice(0, 50);
-
-    for (const issue of displayList) {
-       const row = tbody.createEl('tr');
-       
-       const catTd = row.createEl('td');
-       catTd.createEl('span', { cls: 'qz-badge qz-badge-warning', text: issue.category });
-       
-       const infoTd = row.createEl('td');
-       infoTd.createEl('strong', { text: issue.title });
-       infoTd.createEl('br');
-       infoTd.createEl('small', { text: issue.why, cls: 'qz-text-muted' });
-       infoTd.createEl('br');
-       infoTd.createEl('small', { text: `Path: ${issue.subjectPath}` });
-       
-       const actionsTd = row.createEl('td');
-       if (issue.actionable && (issue.category === 'unidentified' || issue.category === 'ambiguous')) {
-           const orgBtn = actionsTd.createEl('button', { text: 'Organize...', cls: 'qz-btn qz-btn-primary qz-btn-sm' });
-           orgBtn.addEventListener('click', () => {
-              const { ObjectOrganizationModal } = require('../organization/modal');
-              new ObjectOrganizationModal(this.context, { files: [issue.subjectPath] }).open();
-           });
-       } else if (issue.category === 'duplicate') {
-           const mergeBtn = actionsTd.createEl('button', { text: 'Resolve merge...', cls: 'qz-btn qz-btn-secondary qz-btn-sm' });
-           mergeBtn.addEventListener('click', () => {
-              const duplicatePaths = Array.from(index.objects.values())
-                .filter(o => o.id === issue.subjectId && !isOrganizationIssuePathExcluded(o.path, ignoredFolderPaths))
-                .map(o => o.path);
-              const { ObjectMergeModal } = require('../organization/merge-modal');
-              new ObjectMergeModal(this.context, { files: duplicatePaths }).open();
-           });
-       }
-    }
-
-    if (filteredIssues.length > 50) {
-       wrapper.createEl('p', { text: `Showing first 50 of ${filteredIssues.length} matching issues.`, cls: 'qz-text-muted' });
-    }
+    renderFilteredIssues();
   }
 
   private renderFolderReview(container: HTMLElement): void {
