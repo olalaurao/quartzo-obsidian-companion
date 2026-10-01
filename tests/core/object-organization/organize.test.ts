@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { planOrganize } from '../../../src/core/object-organization/organize';
+import type { ResolvedOrganizationScope } from '../../../src/core/object-organization/scope-resolver';
 import type { QuartzoSharedSettings } from '../../../src/core/shared-settings';
 
 function settings(): QuartzoSharedSettings {
@@ -27,6 +28,20 @@ function settings(): QuartzoSharedSettings {
   };
 }
 
+function scope(path: string): ResolvedOrganizationScope {
+  return {
+    files: [path],
+    folders: [],
+    includeSubfolders: false,
+    eligibleMarkdownPaths: [path],
+    indexedObjectIds: [],
+    unidentifiedMarkdownPaths: [path],
+    ignoredAttachments: [],
+    ignoredBases: [],
+    duplicatesRemoved: 0,
+  };
+}
+
 describe('planOrganize issue resolution', () => {
   it('uses the exact source bytes and assigns the caller-provided canonical ID to unidentified Markdown', () => {
     const source = [
@@ -40,15 +55,7 @@ describe('planOrganize issue resolution', () => {
     ].join('\n');
 
     const plan = planOrganize({
-      scope: {
-        requestedFiles: ['inbox/example.md'],
-        requestedFolders: [],
-        includeSubfolders: false,
-        eligibleMarkdownPaths: ['inbox/example.md'],
-        objectIds: [],
-        unidentifiedMarkdownPaths: ['inbox/example.md'],
-        excludedPaths: [],
-      },
+      scope: scope('inbox/example.md'),
       targetType: 'resource',
       settingsRevision: 7,
       settings: settings(),
@@ -71,15 +78,7 @@ describe('planOrganize issue resolution', () => {
   it('fails closed instead of writing an empty ID when no canonical identity is available', () => {
     const source = '# ordinary markdown\n';
     const plan = planOrganize({
-      scope: {
-        requestedFiles: ['inbox/no-id.md'],
-        requestedFolders: [],
-        includeSubfolders: false,
-        eligibleMarkdownPaths: ['inbox/no-id.md'],
-        objectIds: [],
-        unidentifiedMarkdownPaths: ['inbox/no-id.md'],
-        excludedPaths: [],
-      },
+      scope: scope('inbox/no-id.md'),
       targetType: 'resource',
       settingsRevision: 7,
       settings: settings(),
