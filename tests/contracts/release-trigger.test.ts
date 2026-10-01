@@ -14,8 +14,9 @@ describe('release tag trigger contract', () => {
     expect(workflow).toContain('git merge-base --is-ancestor "$RELEASE_SHA" origin/main');
     expect(workflow).toContain('select(.head_sha == env.RELEASE_SHA and .conclusion == "success")');
     expect(workflow).toContain('GITHUB_REF_TYPE=tag GITHUB_REF_NAME="$RELEASE_TAG" RELEASE_MODE=true npm run release:validate');
+    expect(workflow).toContain('Revalidate tag before publication');
+    expect(workflow).toContain('current_sha="$(git rev-list -n 1 "$RELEASE_TAG")"');
     expect(workflow).toContain('tag_name: ${{ env.RELEASE_TAG }}');
-    expect(workflow).toContain('target_commitish: ${{ env.RELEASE_SHA }}');
   });
 
   it('documents that GITHUB_TOKEN tag pushes do not recursively trigger Release', () => {
