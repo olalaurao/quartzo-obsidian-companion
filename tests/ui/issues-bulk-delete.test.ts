@@ -16,6 +16,16 @@ describe('Organization Issues bulk delete contract', () => {
     expect(shellSource).toContain('isDeletableIssue');
   });
 
+  it('renders observable preflight progress before scanning a large selection', () => {
+    expect(deleteModalSource).toMatch(/async onOpen\(\): Promise<void> \{[\s\S]*?this\.render\(\);[\s\S]*?await this\.refreshPreview\(\)/);
+    expect(deleteModalSource).toContain("phase: 'checking_files'");
+    expect(deleteModalSource).toContain('Checking files ${progress.completed}/${progress.total}…');
+    expect(deleteModalSource).toContain("phase: 'checking_sync'");
+    expect(deleteModalSource).toContain('Checking sync safety for ${progress.total} selected file');
+    expect(deleteModalSource).toContain("status.setAttribute('role', 'status')");
+    expect(deleteModalSource).toContain('window.setTimeout(resolve, 0)');
+  });
+
   it('uses canonical retirement instead of raw vault deletion', () => {
     expect(deleteModalSource).toContain('applyRetirements(preview.requests)');
     expect(deleteModalSource).toContain('preflightCanonicalRetire');

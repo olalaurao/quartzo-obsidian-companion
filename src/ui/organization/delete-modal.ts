@@ -22,10 +22,17 @@ interface DeletePreview {
   syncBlockers: CanonicalRetirePreflightBlocker[];
 }
 
+interface DeletePreflightProgress {
+  phase: 'checking_files' | 'checking_sync';
+  completed: number;
+  total: number;
+}
+
 export class ObjectBulkDeleteModal extends Modal {
   private readonly settingsRepository: SharedSettingsRepository;
   private readonly organizationRepository: ObjectOrganizationRepository;
   private preview: DeletePreview | null = null;
+  private preflightProgress: DeletePreflightProgress | null = null;
   private isApplying = false;
 
   constructor(
@@ -41,7 +48,18 @@ export class ObjectBulkDeleteModal extends Modal {
   }
 
   async onOpen(): Promise<void> {
-    await this.refreshPreview();
+    // Render before any vault reads so large selections never open as a blank modal.
+    this.render();
+    try {
+      await this.refreshPreview();
+    } catch (error) {
+      this.preflightProgress = null;
+      this.preview = {
+        requests: [],
+        blockers: [`Unable to prepare delete: ${error instanceof Error ? error.message : String(error)}`],
+        syncBlockers: [],
+      };
+    }
     this.render();
   }
 
@@ -54,55 +72,71 @@ export class ObjectBulkDeleteModal extends Modal {
     const requests: CanonicalRetirementRequest[] = [];
     const blockers: string[] = [];
     const usedTombstonePaths = new Map<string, string>();
+    this.preview = null;
+    this.preflightProgress = { phase: 'checking_files', completed: 0, total: paths.length };
+    this.render();
     const index = this.context.vaultIndexEngine?.getIndex()
       ?? this.context.plugin.vaultIndexEngine?.getIndex()
       ?? null;
 
-    for (const path of paths) {
-      if (path === 'app' || path.startsWith('app/') || path === '_deleted' || path.startsWith('_deleted/')) {
-        blockers.push(`${path}: system paths cannot be deleted from Organization Issues.`);
-        continue;
-      }
+    for (let position = 0; position < paths.length; position += 1) {
+      const path = paths[position]!;
+      try {
+        if (path === 'app' || path.startsWith('app/') || path === '_deleted' || path.startsWith('_deleted/')) {
+          blockers.push(`${path}: system paths cannot be deleted from Organization Issues.`);
+          continue;
+        }
 
-      const file = this.context.app.vault.getAbstractFileByPath(path);
-      if (!(file instanceof TFile) || file.extension.toLowerCase() !== 'md') {
-        blockers.push(`${path}: Markdown file no longer exists.`);
-        continue;
-      }
+        const file = this.context.app.vault.getAbstractFileByPath(path);
+        if (!(file instanceof TFile) || file.extension.toLowerCase() !== 'md') {
+          blockers.push(`${path}: Markdown file no longer exists.`);
+          continue;
+        }
 
-      const markdown = await this.context.app.vault.read(file);
-      const indexedObject = index
-        ? Array.from(index.objects.values()).find(object => normalizePath(object.path) === path)
-        : undefined;
-      const parsed = ObjectParser.parseMarkdown(markdown);
-      const explicitId = typeof parsed.frontmatter.id === 'string' ? parsed.frontmatter.id.trim() : '';
-      const id = indexedObject?.id || explicitId || createCanonicalObjectId();
-      const tombstonePath = normalizePath(canonicalRetirementPath(id));
-      const priorSource = usedTombstonePaths.get(tombstonePath);
-      if (priorSource && priorSource !== path) {
-        blockers.push(
-          `${path}: shares object ID ${id} with ${priorSource}; deleting both would collide at ${tombstonePath}. Resolve the duplicate ID first or delete one at a time.`,
-        );
-        continue;
-      }
-      usedTombstonePaths.set(tombstonePath, path);
+        const markdown = await this.context.app.vault.read(file);
+        const indexedObject = index
+          ? Array.from(index.objects.values()).find(object => normalizePath(object.path) === path)
+          : undefined;
+        const parsed = ObjectParser.parseMarkdown(markdown);
+        const explicitId = typeof parsed.frontmatter.id === 'string' ? parsed.frontmatter.id.trim() : '';
+        const id = indexedObject?.id || explicitId || createCanonicalObjectId();
+        const tombstonePath = normalizePath(canonicalRetirementPath(id));
+        const priorSource = usedTombstonePaths.get(tombstonePath);
+        if (priorSource && priorSource !== path) {
+          blockers.push(
+            `${path}: shares object ID ${id} with ${priorSource}; deleting both would collide at ${tombstonePath}. Resolve the duplicate ID first or delete one at a time.`,
+          );
+          continue;
+        }
+        usedTombstonePaths.set(tombstonePath, path);
 
-      const occupiedTombstone = this.context.app.vault.getAbstractFileByPath(tombstonePath);
-      if (occupiedTombstone) {
-        blockers.push(`${path}: tombstone destination already exists at ${tombstonePath}.`);
-        continue;
-      }
+        const occupiedTombstone = this.context.app.vault.getAbstractFileByPath(tombstonePath);
+        if (occupiedTombstone) {
+          blockers.push(`${path}: tombstone destination already exists at ${tombstonePath}.`);
+          continue;
+        }
 
-      requests.push({
-        path,
-        id,
-        expectedMarkdown: markdown,
-        deletedAt: new Date().toISOString(),
-      });
+        requests.push({
+          path,
+          id,
+          expectedMarkdown: markdown,
+          deletedAt: new Date().toISOString(),
+        });
+      } finally {
+        const completed = position + 1;
+        if (completed === paths.length || completed % 25 === 0) {
+          this.preflightProgress = { phase: 'checking_files', completed, total: paths.length };
+          this.render();
+          await new Promise<void>(resolve => window.setTimeout(resolve, 0));
+        }
+      }
     }
 
     let syncBlockers: CanonicalRetirePreflightBlocker[] = [];
     if (requests.length > 0 && blockers.length === 0 && this.context.plugin.settings.isPaired) {
+      this.preflightProgress = { phase: 'checking_sync', completed: 0, total: requests.length };
+      this.render();
+      await new Promise<void>(resolve => window.setTimeout(resolve, 0));
       const coordinator = this.context.driveSyncCoordinator ?? this.context.plugin.driveSyncCoordinator;
       if (!coordinator) {
         blockers.push('Google Drive sync is paired but its coordinator is unavailable. Reopen Obsidian or Sync Center before deleting.');
@@ -113,6 +147,7 @@ export class ObjectBulkDeleteModal extends Modal {
     }
 
     this.preview = { requests, blockers, syncBlockers };
+    this.preflightProgress = null;
   }
 
   private render(): void {
@@ -121,7 +156,29 @@ export class ObjectBulkDeleteModal extends Modal {
     contentEl.createEl('h2', { text: 'Delete selected objects?' });
 
     if (!this.preview) {
-      contentEl.createEl('p', { text: 'Checking deletion safety…' });
+      const status = contentEl.createEl('div', { cls: 'qz-empty-state' });
+      status.setAttribute('role', 'status');
+      status.setAttribute('aria-live', 'polite');
+      const progress = this.preflightProgress;
+      if (progress?.phase === 'checking_files') {
+        status.createEl('p', {
+          text: `Checking files ${progress.completed}/${progress.total}…`,
+        });
+        const progressBar = status.createEl('progress');
+        progressBar.max = Math.max(1, progress.total);
+        progressBar.value = progress.completed;
+        progressBar.setAttribute('aria-label', 'Bulk delete file safety preflight');
+      } else if (progress?.phase === 'checking_sync') {
+        status.createEl('p', {
+          text: `Checking sync safety for ${progress.total} selected file${progress.total === 1 ? '' : 's'}…`,
+        });
+        status.createEl('small', {
+          text: 'Quartzo is verifying the canonical Drive baseline before any deletion is allowed.',
+          cls: 'qz-text-muted',
+        });
+      } else {
+        status.createEl('p', { text: 'Checking deletion safety…' });
+      }
       return;
     }
 

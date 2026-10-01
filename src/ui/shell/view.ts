@@ -533,6 +533,15 @@ export class QuartzoView extends ItemView {
       }).open();
     };
 
+    const openIssueMarkdown = (path: string): void => {
+      const file = this.context.app.vault.getAbstractFileByPath(path);
+      if (!(file instanceof TFile)) {
+        new Notice(`Markdown file no longer exists: ${path}`);
+        return;
+      }
+      void this.context.app.workspace.openLinkText(path, '', true);
+    };
+
     const toolbar = wrapper.createEl('div', {
       cls: 'quartzo-issues-toolbar',
       attr: { style: 'display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center;' },
@@ -781,7 +790,15 @@ export class QuartzoView extends ItemView {
         catTd.createEl('span', { cls: 'qz-badge qz-badge-warning', text: issue.category });
 
         const infoTd = row.createEl('td');
-        infoTd.createEl('strong', { text: issue.title });
+        const titleLink = infoTd.createEl('a', {
+          text: issue.title,
+          cls: 'internal-link',
+          attr: { href: '#', 'data-href': issue.subjectPath, title: 'Open Markdown in Obsidian' },
+        });
+        titleLink.addEventListener('click', event => {
+          event.preventDefault();
+          openIssueMarkdown(issue.subjectPath);
+        });
         infoTd.createEl('br');
         infoTd.createEl('small', { text: issue.why, cls: 'qz-text-muted' });
         infoTd.createEl('br');
@@ -806,7 +823,7 @@ export class QuartzoView extends ItemView {
             cls: 'qz-btn qz-btn-secondary qz-btn-sm',
           });
           openMarkdown.addEventListener('click', () => {
-            void this.context.app.workspace.openLinkText(issue.subjectPath, '', true);
+            openIssueMarkdown(issue.subjectPath);
           });
         } else {
           actionsTd.createEl('span', { text: 'Review required', cls: 'qz-text-muted' });
