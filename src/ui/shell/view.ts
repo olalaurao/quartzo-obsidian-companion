@@ -146,6 +146,9 @@ export class QuartzoView extends ItemView {
   private sharedSettingsRepository: SharedSettingsRepository;
   private syncProgressTickerId: number | null = null;
   private renderGeneration = 0;
+  private issueCategoryFilter: string = 'All';
+  private issueSearchQuery: string = '';
+  private issueActionableFilter: 'All' | 'Actionable' | 'Informational' = 'All';
 
   constructor(leaf: WorkspaceLeaf, private readonly context: ViewContext) {
     super(leaf);
@@ -473,12 +476,73 @@ export class QuartzoView extends ItemView {
     const issues = projectOrganizationIssues({
        index,
        settings,
-       allMarkdownPaths: new Set(allFiles)
+       allMarkdownPaths: new Set(allFiles),
+       ignoredFolderPaths: this.context.plugin.settings.issueIgnoredFolders,
+    });
+
+    const toolbar = wrapper.createEl('div', { cls: 'quartzo-issues-toolbar', attr: { style: 'display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;' } });
+    
+    const catSelect = toolbar.createEl('select', { cls: 'qz-input' });
+    const categories = ['All', 'unidentified', 'ambiguous', 'mismatch', 'duplicate', 'broken-relationship', 'interrupted'];
+    for (const cat of categories) {
+      catSelect.createEl('option', { value: cat, text: cat === 'All' ? 'All Categories' : labelForType(cat) }).selected = this.issueCategoryFilter === cat;
+    }
+    catSelect.addEventListener('change', () => {
+      this.issueCategoryFilter = catSelect.value;
+      void this.renderIssues(container);
+    });
+
+    const actSelect = toolbar.createEl('select', { cls: 'qz-input' });
+    for (const act of ['All', 'Actionable', 'Informational']) {
+      actSelect.createEl('option', { value: act, text: act }).selected = this.issueActionableFilter === act;
+    }
+    actSelect.addEventListener('change', () => {
+      this.issueActionableFilter = actSelect.value as any;
+      void this.renderIssues(container);
+    });
+
+    const searchInput = toolbar.createEl('input', { type: 'text', placeholder: 'Search...', cls: 'qz-input' });
+    searchInput.value = this.issueSearchQuery;
+    searchInput.addEventListener('input', () => {
+      this.issueSearchQuery = searchInput.value;
+      void this.renderIssues(container);
+    });
+
+    const clearBtn = toolbar.createEl('button', { text: 'Clear filters', cls: 'qz-btn qz-btn-ghost' });
+    clearBtn.addEventListener('click', () => {
+      this.issueCategoryFilter = 'All';
+      this.issueActionableFilter = 'All';
+      this.issueSearchQuery = '';
+      void this.renderIssues(container);
+    });
+
+    const settingsBtn = toolbar.createEl('button', { text: '⚙️ Ignored Folders', cls: 'qz-btn qz-btn-ghost', attr: { style: 'margin-left: auto;' } });
+    settingsBtn.addEventListener('click', () => {
+       this.context.plugin.openSettings();
     });
 
     if (issues.length === 0) {
        const success = wrapper.createEl('div', { cls: 'qz-empty-state' });
        success.createEl('p', { text: '🎉 No organization issues found.' });
+       return;
+    }
+
+    const filteredIssues = issues.filter(issue => {
+      if (this.issueCategoryFilter !== 'All' && issue.category !== this.issueCategoryFilter) return false;
+      if (this.issueActionableFilter === 'Actionable' && !issue.actionable) return false;
+      if (this.issueActionableFilter === 'Informational' && issue.actionable) return false;
+      if (this.issueSearchQuery) {
+        const q = this.issueSearchQuery.toLowerCase();
+        if (!issue.title.toLowerCase().includes(q) && !issue.why.toLowerCase().includes(q) && !issue.subjectPath.toLowerCase().includes(q)) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    if (filteredIssues.length === 0) {
+       const empty = wrapper.createEl('div', { cls: 'qz-empty-state' });
+       empty.createEl('p', { text: 'No issues match the current filters.' });
        return;
     }
 
@@ -490,7 +554,7 @@ export class QuartzoView extends ItemView {
     headRow.createEl('th', { text: 'Action' });
 
     const tbody = table.createEl('tbody');
-    const displayList = issues.slice(0, 50);
+    const displayList = filteredIssues.slice(0, 50);
 
     for (const issue of displayList) {
        const row = tbody.createEl('tr');
@@ -523,8 +587,8 @@ export class QuartzoView extends ItemView {
        }
     }
 
-    if (issues.length > 50) {
-       wrapper.createEl('p', { text: `... and ${issues.length - 50} more. Resolve these to see the rest.`, cls: 'qz-text-muted' });
+    if (filteredIssues.length > 50) {
+       wrapper.createEl('p', { text: `... and ${filteredIssues.length - 50} more. Resolve these to see the rest.`, cls: 'qz-text-muted' });
     }
   }
 

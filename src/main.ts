@@ -124,6 +124,7 @@ interface QuartzoCompanionSettings {
   reminderDelivery: ReminderMode;
   focusControllerId: string;
   quickTypes: string[];
+  issueIgnoredFolders: string[];
 }
 
 const DEFAULT_SETTINGS: QuartzoCompanionSettings = {
@@ -140,6 +141,7 @@ const DEFAULT_SETTINGS: QuartzoCompanionSettings = {
   reminderDelivery: 'in_obsidian_only',
   focusControllerId: '',
   quickTypes: ['task', 'resource', 'note'],
+  issueIgnoredFolders: ['_diagnostics', '_trash'],
 };
 
 
@@ -3049,6 +3051,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
         : 'in_obsidian_only',
       focusControllerId,
       quickTypes: Array.isArray(stored.quickTypes) ? stored.quickTypes.map(String) : DEFAULT_SETTINGS.quickTypes,
+      issueIgnoredFolders: Array.isArray(stored.issueIgnoredFolders) ? stored.issueIgnoredFolders.map(String) : DEFAULT_SETTINGS.issueIgnoredFolders,
     };
 
     if (!existingFocusControllerId) {
@@ -3615,6 +3618,19 @@ class QuartzoSettingTab extends PluginSettingTab {
 
     this.addHeading(containerEl, 'Object Identification');
     this.renderObjectIdentificationSettings(containerEl);
+
+    this.addHeading(containerEl, 'Organization Issues');
+    new Setting(containerEl)
+      .setName('Ignored folders')
+      .setDesc('Vault folders excluded from Organization Issues. This does not change Object Identification. Stored only on this device.')
+      .addText(text => text
+        .setPlaceholder('_diagnostics, _trash')
+        .setValue(this.plugin.settings.issueIgnoredFolders.join(', '))
+        .onChange(async value => {
+          this.plugin.settings.issueIgnoredFolders = value.split(',').map(s => s.trim()).filter(Boolean);
+          await this.plugin.saveSettings();
+          await this.plugin.refreshQuartzoView();
+        }));
 
     this.addHeading(containerEl, 'Privacy');
 

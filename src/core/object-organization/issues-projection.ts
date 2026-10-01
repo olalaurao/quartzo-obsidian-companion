@@ -31,11 +31,33 @@ export interface IssuesProjectionInput {
   index: VaultIndex;
   settings: QuartzoSharedSettings | null;
   allMarkdownPaths: ReadonlySet<string>;
+  ignoredFolderPaths: readonly string[];
+}
+
+export function normalizeIssueFolderPath(folderPath: string): string {
+  if (!folderPath) return '';
+  let normalized = folderPath.replace(/\\/g, '/').trim().toLowerCase();
+  while (normalized.startsWith('/')) normalized = normalized.substring(1);
+  while (normalized.endsWith('/')) normalized = normalized.substring(0, normalized.length - 1);
+  return normalized;
+}
+
+export function isPathInsideIssueIgnoredFolder(filePath: string, normalizedFolders: readonly string[]): boolean {
+  if (!filePath) return false;
+  const normalizedPath = filePath.replace(/\\/g, '/').trim().toLowerCase();
+  for (const folder of normalizedFolders) {
+    if (!folder) continue;
+    if (normalizedPath === folder || normalizedPath.startsWith(folder + '/')) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function projectOrganizationIssues(input: IssuesProjectionInput): OrganizationIssue[] {
-  const { index, settings, allMarkdownPaths } = input;
+  const { index, settings, allMarkdownPaths, ignoredFolderPaths } = input;
   const issues: OrganizationIssue[] = [];
+  const normalizedIgnoredFolders = Array.from(new Set(ignoredFolderPaths.map(normalizeIssueFolderPath).filter(Boolean)));
 
   // §47: Unidentified files
   // Files that are valid markdown but don't exist in the VaultIndex (because they didn't match any rule).
@@ -46,6 +68,8 @@ export function projectOrganizationIssues(input: IssuesProjectionInput): Organiz
 
   for (const path of allMarkdownPaths) {
     if (path.startsWith('app/')) continue; // Ignore system
+    if (isPathInsideIssueIgnoredFolder(path, normalizedIgnoredFolders)) continue;
+    
     const normalized = path.toLowerCase();
     
     if (!indexedPaths.has(normalized)) {
@@ -62,8 +86,10 @@ export function projectOrganizationIssues(input: IssuesProjectionInput): Organiz
 
   // Iterate over indexed objects to find other issues
   const idCounts = new Map<string, number>();
+  
+  const issueEligibleObjects = Array.from(index.objects.values()).filter(obj => !isPathInsideIssueIgnoredFolder(obj.path, normalizedIgnoredFolders));
 
-  for (const obj of index.objects.values()) {
+  for (const obj of issueEligibleObjects) {
     idCounts.set(obj.id, (idCounts.get(obj.id) || 0) + 1);
 
     // §45: ambiguous (multiple identification rules match)
@@ -113,8 +139,9 @@ export function projectOrganizationIssues(input: IssuesProjectionInput): Organiz
   // §48/49: Duplicate IDs
   for (const [id, count] of idCounts.entries()) {
      if (count > 1) {
-        // Find all paths
-        const paths = Array.from(index.objects.values()).filter(o => o.id === id).map(o => o.path);
+        // Find all eligible paths
+        const paths = issueEligibleObjects.filter(o => o.id === id).map(o => o.path);
+        if (paths.length === 0) continue;
         issues.push({
            id: `duplicate:${id}`,
            category: 'duplicate',
