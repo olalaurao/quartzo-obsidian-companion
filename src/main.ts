@@ -358,7 +358,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
                 if (leaves.length > 0) {
                   this.app.workspace.revealLeaf(leaves[0]);
                   // Setting action to folder_review and storing path in selectedObjectId as a proxy for the param
-                  const view = leaves[0].view as any; // Cast to bypass strict types momentarily
+                  const view = leaves[0].view as unknown as { action: string; selectedFolder: string; render(): Promise<void> }; // Cast to bypass strict types momentarily
                   view.action = 'folder_review';
                   view.selectedFolder = file.path;
                   await view.render();
@@ -476,8 +476,8 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
               const leaves = this.app.workspace.getLeavesOfType('quartzo-view');
               if (leaves.length > 0) {
                 this.app.workspace.revealLeaf(leaves[0]);
-                const v = leaves[0].view as any;
-                await (v as any).setSection('issues');
+                const v = leaves[0].view as unknown as { setSection(s: string): Promise<void> };
+                await v.setSection('issues');
               } else {
                 new Notice('Open the Quartzo panel first.');
               }
@@ -556,7 +556,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
         const leaves = this.app.workspace.getLeavesOfType(QUARTZO_VIEW_TYPE);
         if (leaves.length > 0) {
           this.app.workspace.revealLeaf(leaves[0]);
-          await (leaves[0].view as any).setSection('issues');
+          await (leaves[0].view as unknown as { setSection(s: string): Promise<void> }).setSection('issues');
         } else {
           new Notice('Open the Quartzo panel first (View → Open Quartzo).');
         }
@@ -570,7 +570,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
         const leaves = this.app.workspace.getLeavesOfType(QUARTZO_VIEW_TYPE);
         if (leaves.length > 0) {
           this.app.workspace.revealLeaf(leaves[0]);
-          await (leaves[0].view as any).setSection('objects');
+          await (leaves[0].view as unknown as { setSection(s: string): Promise<void> }).setSection('objects');
         } else {
           new Notice('Open the Quartzo panel first.');
         }
@@ -586,7 +586,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
         const leaves = this.app.workspace.getLeavesOfType(QUARTZO_VIEW_TYPE);
         if (leaves.length > 0 && folderPath) {
           this.app.workspace.revealLeaf(leaves[0]);
-          const v = leaves[0].view as any;
+          const v = leaves[0].view as unknown as { action: string; selectedFolder: string; render(): Promise<void> };
           v.action = 'folder_review';
           v.selectedFolder = folderPath;
           await v.render();
@@ -608,7 +608,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
         const leaves = this.app.workspace.getLeavesOfType(QUARTZO_VIEW_TYPE);
         if (leaves.length > 0) {
           this.app.workspace.revealLeaf(leaves[0]);
-          await (leaves[0].view as any).setSection('issues');
+          await (leaves[0].view as unknown as { setSection(s: string): Promise<void> }).setSection('issues');
           new Notice(`Showing issues for folder: ${activeFile.parent?.path ?? 'root'}`);
         } else {
           new Notice('Open the Quartzo panel first.');
@@ -3402,7 +3402,7 @@ export class CreateRuleFromFolderModal extends Modal {
         }));
   }
 
-  private async previewAndMigrate(shared: any): Promise<void> {
+  private async previewAndMigrate(shared: QuartzoSharedSettings): Promise<void> {
     const oldSignature = shared.typeSignatures[this.selectedType];
     if (!oldSignature) return;
 
@@ -3428,8 +3428,8 @@ export class CreateRuleFromFolderModal extends Modal {
         migrationPlan: choice === 'migrate' ? plan : undefined,
       });
       new Notice(`Rule for ${labelForSettingsType(this.selectedType)} updated.`);
-    } catch (e: any) {
-      new Notice(e.message);
+    } catch (e: unknown) {
+      new Notice(e instanceof Error ? e.message : String(e));
     }
   }
 }

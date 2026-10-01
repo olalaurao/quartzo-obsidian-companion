@@ -177,7 +177,7 @@ export class ObjectOrganizationModal extends Modal {
         if (k === op.kind) opt.selected = true;
       });
       kindSelect.addEventListener('change', async (e) => {
-        op.kind = (e.target as HTMLSelectElement).value as any;
+        op.kind = (e.target as HTMLSelectElement).value as 'set' | 'add' | 'remove' | 'clear';
         await this.refreshPlan();
         this.render();
       });

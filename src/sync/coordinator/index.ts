@@ -668,8 +668,8 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       if (syncFile && syncFile.remoteFileId) {
         try {
           remoteFile = await this.driveAdapter.getFileMetadata(syncFile.remoteFileId);
-        } catch (e: any) {
-          if (e.message && e.message.includes('404')) {
+        } catch (e: unknown) {
+          if (e instanceof Error && e.message.includes('404')) {
             remoteFile = undefined;
           } else {
             throw e;
