@@ -32,6 +32,13 @@ describe('Organization Issues resolution UI contract', () => {
     expect(shellSource).toContain('const allSelectedOrganizable =');
   });
 
+  it('opens the exact Issue Markdown when its title is clicked', () => {
+    expect(shellSource).toContain("const openIssueMarkdown = (path: string): void =>");
+    expect(shellSource).toContain("cls: 'internal-link'");
+    expect(shellSource).toContain("title: 'Open Markdown in Obsidian'");
+    expect(shellSource).toContain('openIssueMarkdown(issue.subjectPath)');
+  });
+
   it('reprojects Issues after an applied organization operation instead of hiding rows optimistically', () => {
     expect(shellSource).toContain('onApplied: async () =>');
     expect(shellSource).toContain('await this.render()');
