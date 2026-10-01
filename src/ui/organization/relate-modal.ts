@@ -5,12 +5,11 @@
  * Reuses the canonical universal object picker (§95).
  * Writes via SafeObjectMutationRepository — NOT via companion_relations.
  */
-import { Modal, Notice } from 'obsidian';
+import { Modal, Notice, TFile } from 'obsidian';
 import type { ViewContext } from '../types';
 import { renderObjectPicker } from './object-picker';
 import type { IndexedObject } from '../../vault/index/types';
 import { SharedSettingsRepository } from '../../vault/shared-settings';
-import { SafeObjectMutationRepository } from '../../vault/object-mutation';
 
 export interface RelateModalOptions {
   sourceFiles: string[];
@@ -21,7 +20,6 @@ type RelationshipField = typeof RELATIONSHIP_FIELDS[number];
 
 export class RelateModal extends Modal {
   private settingsRepository: SharedSettingsRepository;
-  private mutationRepository: SafeObjectMutationRepository;
   private targetObject: IndexedObject | null = null;
   private relationshipField: RelationshipField = 'related_to';
 
@@ -31,7 +29,6 @@ export class RelateModal extends Modal {
   ) {
     super(context.app);
     this.settingsRepository = new SharedSettingsRepository(context.app.vault);
-    this.mutationRepository = new SafeObjectMutationRepository(context.app.vault);
   }
 
   onOpen(): void {
@@ -108,17 +105,17 @@ export class RelateModal extends Modal {
         try {
           const settings = await this.settingsRepository.load();
           if (!settings) throw new Error('Settings not available');
+          void settings; // used for validation above
 
-          await this.mutationRepository.mutate(filePath, (currentMarkdown) => {
-            // Parse and add the relationship field
+          const file = this.context.app.vault.getAbstractFileByPath(filePath);
+          if (!(file instanceof TFile)) throw new Error(`File not found: ${filePath}`);
+
+          await this.context.app.vault.process(file, (currentMarkdown: string) => {
             const lines = currentMarkdown.split('\n');
             const fmStart = lines.indexOf('---');
             const fmEnd = lines.indexOf('---', fmStart + 1);
 
-            if (fmStart === -1 || fmEnd === -1) {
-              // No frontmatter — just append
-              return currentMarkdown;
-            }
+            if (fmStart === -1 || fmEnd === -1) return currentMarkdown;
 
             const fieldLine = this.relationshipField + ':';
             let existingFieldIdx = -1;
@@ -130,24 +127,19 @@ export class RelateModal extends Modal {
             }
 
             if (existingFieldIdx >= 0) {
-              // Try to append to existing array field
               const existingValue = lines[existingFieldIdx].slice(fieldLine.length).trim();
               if (existingValue.startsWith('[') && existingValue.endsWith(']')) {
                 const inner = existingValue.slice(1, -1);
-                const parts = inner ? inner.split(',').map(s => s.trim()) : [];
-                if (!parts.includes(wikilinkTarget)) {
-                  parts.push(wikilinkTarget);
-                }
+                const parts: string[] = inner ? inner.split(',').map((s: string) => s.trim()) : [];
+                if (!parts.includes(wikilinkTarget)) parts.push(wikilinkTarget);
                 lines[existingFieldIdx] = `${fieldLine} [${parts.join(', ')}]`;
               } else {
-                // Convert to array
                 const existing = existingValue || '';
-                const parts = existing ? [existing] : [];
+                const parts: string[] = existing ? [existing] : [];
                 if (!parts.includes(wikilinkTarget)) parts.push(wikilinkTarget);
                 lines[existingFieldIdx] = `${fieldLine} [${parts.join(', ')}]`;
               }
             } else {
-              // Insert new field before closing ---
               lines.splice(fmEnd, 0, `${fieldLine} [${wikilinkTarget}]`);
             }
 

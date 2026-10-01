@@ -3048,6 +3048,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
         ? stored.reminderDelivery
         : 'in_obsidian_only',
       focusControllerId,
+      quickTypes: Array.isArray(stored.quickTypes) ? stored.quickTypes.map(String) : DEFAULT_SETTINGS.quickTypes,
     };
 
     if (!existingFocusControllerId) {

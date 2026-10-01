@@ -5,6 +5,7 @@ import type { QuartzoSharedSettings } from '../../src/core/shared-settings';
 
 const settings: QuartzoSharedSettings = {
   schemaVersion: 1,
+  objectIdentification: { revision: 0 },
   typeSignatures: {},
   typeAliases: {},
   typePriority: [],

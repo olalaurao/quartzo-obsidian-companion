@@ -26,6 +26,7 @@ import { QuickAddModal } from '../quick-add/modal';
 import type { ViewContext } from '../types';
 import { buildConflictDiff, formatConflictDiff } from '../sync/conflict-diff';
 import { projectOrganizationIssues } from '../../core/object-organization/issues-projection';
+import { renderFocusRuntime } from '../focus/view';
 
 export const QUARTZO_VIEW_TYPE = 'quartzo-view';
 export type QuartzoSection = 'home' | 'planner' | 'journal' | 'browse' | 'objects' | 'issues';

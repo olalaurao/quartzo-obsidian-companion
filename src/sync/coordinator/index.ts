@@ -676,21 +676,20 @@ export class DriveSyncCoordinator implements ConflictRegistry {
           }
         }
       } else {
-        // Fallback: lookup by path if not tracked yet
+        // Fallback: lookup by path traversal using listFiles
         const parts = settingsPath.split('/');
         let currentFolderId = driveFolderId;
         let found = true;
-        for (let i = 0; i < parts.length - 1; i++) {
-          const folderMeta = await this.driveAdapter.findFileByNameAndParent(parts[i], currentFolderId);
-          if (!folderMeta || folderMeta.mimeType !== 'application/vnd.google-apps.folder') {
-            found = false;
-            break;
-          }
-          currentFolderId = folderMeta.id;
+        for (let i = 0; i < parts.length - 1 && found; i++) {
+          const { files } = await this.driveAdapter.listFiles(currentFolderId);
+          const folder = files.find(f => f.name === parts[i] && f.mimeType === 'application/vnd.google-apps.folder');
+          if (!folder) { found = false; break; }
+          currentFolderId = folder.id;
         }
         if (found) {
-          const fileMeta = await this.driveAdapter.findFileByNameAndParent(parts[parts.length - 1], currentFolderId);
-          if (fileMeta) remoteFile = fileMeta;
+          const { files } = await this.driveAdapter.listFiles(currentFolderId);
+          const match = files.find(f => f.name === parts[parts.length - 1]);
+          if (match) remoteFile = match;
         }
       }
 
@@ -734,12 +733,12 @@ export class DriveSyncCoordinator implements ConflictRegistry {
           await this.handleConflict(settingsPath, { hash: localHash!, exists: true }, remoteFile, syncFile);
           break;
         case 'advance_baseline':
-          syncFile.baseHash = localHash;
+          syncFile.baseHash = localHash ?? null;
           if (remoteFile?.id) {
-            syncFile.remoteHash = remoteHash;
+            syncFile.remoteHash = remoteHash ?? null;
             syncFile.remoteFileId = remoteFile.id;
           }
-          syncFile.localHash = localHash;
+          syncFile.localHash = localHash ?? '';
           this.syncState.files.set(settingsPath, syncFile);
           break;
       }

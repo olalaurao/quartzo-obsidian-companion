@@ -189,7 +189,7 @@ export function parseSharedSettings(markdown: string): QuartzoSharedSettings | n
   };
 }
 
-function canonicalProductType(settings: QuartzoSharedSettings | null, type: string): string {
+export function canonicalProductType(settings: QuartzoSharedSettings | null, type: string): string {
   if (!settings) return type;
   for (const [canonical, aliases] of Object.entries(settings.typeAliases)) {
     if (canonical === type || aliases.includes(type)) return canonical;

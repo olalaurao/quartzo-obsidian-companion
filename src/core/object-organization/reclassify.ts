@@ -15,6 +15,7 @@ import {
 } from './preconditions';
 import {
   applyTypeSignature,
+  canonicalProductType,
   identifyObjectFromSignatures,
   normalizeSharedFolder,
   type QuartzoSharedSettings,
