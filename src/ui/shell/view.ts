@@ -25,7 +25,11 @@ import type { IndexedObject, VaultIndex } from '../../vault/index/types';
 import { QuickAddModal } from '../quick-add/modal';
 import type { ViewContext } from '../types';
 import { buildConflictDiff, formatConflictDiff } from '../sync/conflict-diff';
-import { projectOrganizationIssues } from '../../core/object-organization/issues-projection';
+import {
+  isOrganizationIssuePathExcluded,
+  projectOrganizationIssues,
+  type IssueCategory,
+} from '../../core/object-organization/issues-projection';
 import { renderFocusRuntime } from '../focus/view';
 
 export const QUARTZO_VIEW_TYPE = 'quartzo-view';
@@ -146,7 +150,7 @@ export class QuartzoView extends ItemView {
   private sharedSettingsRepository: SharedSettingsRepository;
   private syncProgressTickerId: number | null = null;
   private renderGeneration = 0;
-  private issueCategoryFilter: string = 'All';
+  private issueCategoryFilter: IssueCategory | 'All' = 'All';
   private issueSearchQuery: string = '';
   private issueActionableFilter: 'All' | 'Actionable' | 'Informational' = 'All';
 
@@ -472,23 +476,24 @@ export class QuartzoView extends ItemView {
 
     const allFiles = this.context.app.vault.getFiles().filter(f => f.name.endsWith('.md')).map(f => f.path);
     const settings = await this.sharedSettingsRepository.load();
+    const ignoredFolderPaths = this.context.plugin.settings.issueIgnoredFolders;
 
     const issues = projectOrganizationIssues({
        index,
        settings,
        allMarkdownPaths: new Set(allFiles),
-       ignoredFolderPaths: this.context.plugin.settings.issueIgnoredFolders,
+       ignoredFolderPaths,
     });
 
     const toolbar = wrapper.createEl('div', { cls: 'quartzo-issues-toolbar', attr: { style: 'display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;' } });
     
     const catSelect = toolbar.createEl('select', { cls: 'qz-input' });
-    const categories = ['All', 'unidentified', 'ambiguous', 'mismatch', 'duplicate', 'broken-relationship', 'interrupted'];
+    const categories: Array<IssueCategory | 'All'> = ['All', 'unidentified', 'ambiguous', 'mismatch', 'duplicate', 'broken_relationship', 'interrupted'];
     for (const cat of categories) {
       catSelect.createEl('option', { value: cat, text: cat === 'All' ? 'All Categories' : labelForType(cat) }).selected = this.issueCategoryFilter === cat;
     }
     catSelect.addEventListener('change', () => {
-      this.issueCategoryFilter = catSelect.value;
+      this.issueCategoryFilter = catSelect.value as IssueCategory | 'All';
       void this.renderIssues(container);
     });
 
@@ -533,12 +538,19 @@ export class QuartzoView extends ItemView {
       if (this.issueActionableFilter === 'Informational' && issue.actionable) return false;
       if (this.issueSearchQuery) {
         const q = this.issueSearchQuery.toLowerCase();
-        if (!issue.title.toLowerCase().includes(q) && !issue.why.toLowerCase().includes(q) && !issue.subjectPath.toLowerCase().includes(q)) {
+        const subjectId = issue.subjectId?.toLowerCase() ?? '';
+        if (!issue.title.toLowerCase().includes(q)
+          && !issue.why.toLowerCase().includes(q)
+          && !issue.subjectPath.toLowerCase().includes(q)
+          && !subjectId.includes(q)) {
           return false;
         }
       }
       return true;
     });
+
+    const showing = wrapper.createEl('p', { cls: 'qz-text-muted' });
+    showing.textContent = `Showing ${Math.min(filteredIssues.length, 50)} of ${issues.length} issues`;
 
     if (filteredIssues.length === 0) {
        const empty = wrapper.createEl('div', { cls: 'qz-empty-state' });
@@ -579,8 +591,9 @@ export class QuartzoView extends ItemView {
        } else if (issue.category === 'duplicate') {
            const mergeBtn = actionsTd.createEl('button', { text: 'Resolve merge...', cls: 'qz-btn qz-btn-secondary qz-btn-sm' });
            mergeBtn.addEventListener('click', () => {
-              // Find all paths for this duplicate ID
-              const duplicatePaths = Array.from(index.objects.values()).filter(o => o.id === issue.subjectId).map(o => o.path);
+              const duplicatePaths = Array.from(index.objects.values())
+                .filter(o => o.id === issue.subjectId && !isOrganizationIssuePathExcluded(o.path, ignoredFolderPaths))
+                .map(o => o.path);
               const { ObjectMergeModal } = require('../organization/merge-modal');
               new ObjectMergeModal(this.context, { files: duplicatePaths }).open();
            });
@@ -588,7 +601,7 @@ export class QuartzoView extends ItemView {
     }
 
     if (filteredIssues.length > 50) {
-       wrapper.createEl('p', { text: `... and ${filteredIssues.length - 50} more. Resolve these to see the rest.`, cls: 'qz-text-muted' });
+       wrapper.createEl('p', { text: `Showing first 50 of ${filteredIssues.length} matching issues.`, cls: 'qz-text-muted' });
     }
   }
 
