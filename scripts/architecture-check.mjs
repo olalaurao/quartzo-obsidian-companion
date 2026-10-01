@@ -115,7 +115,6 @@ function checkOAuthNotConnectedWithoutRealClientId() {
   return true;
 }
 
-
 function checkSingleQuartzoWorkspaceView() {
   const mainPath = path.join(rootDir, 'src/main.ts');
   const content = fs.readFileSync(mainPath, 'utf8');
@@ -139,8 +138,7 @@ function checkNoHardcodedQuickAddFolders() {
   const shell = fs.readFileSync(shellPath, 'utf8');
   const quickAdd = fs.readFileSync(quickAddPath, 'utf8');
   const creation = fs.readFileSync(creationPath, 'utf8');
-  const content = `${quickAdd}
-${creation}`;
+  const content = `${quickAdd}\n${creation}`;
   const forbidden = ['tasks/', 'notes/', 'journal/', 'reminders/'];
   const violations = forbidden.filter(value => content.includes(`'${value}`) || content.includes(`"${value}`));
   if (violations.length > 0) {
@@ -291,7 +289,7 @@ function checkConflictResolutionIsExplicit() {
     console.error('FAIL: conflict artifacts do not preserve both modification timestamps');
     return false;
   }
-  if (!shell.includes("['keep_newest', 'Keep newest']") || !shell.includes("button.disabled = true")) {
+  if (!shell.includes("['keep_newest', 'Keep newest'") || !shell.includes("button.disabled = true")) {
     console.error('FAIL: Conflict Center does not expose fail-closed explicit Keep newest UX');
     return false;
   }
@@ -918,7 +916,6 @@ function checkCanonicalManualExecution() {
   return true;
 }
 
-
 function checkCanonicalFocusRuntime() {
   const contractPath = path.join(rootDir, 'src/core/focus-runtime/contract.ts');
   const codecPath = path.join(rootDir, 'src/core/focus-runtime/state-codec.ts');
@@ -1133,7 +1130,6 @@ function checkCanonicalHomeAndDayDial() {
   return true;
 }
 
-
 function checkCanonicalPlannerProjection() {
   const shellPath = path.join(rootDir, 'src/ui/shell/view.ts');
   const plannerPath = path.join(rootDir, 'src/ui/planner/view.ts');
@@ -1186,7 +1182,6 @@ function checkCanonicalPlannerProjection() {
   console.log('PASS: Planner is a presentation-only projection of canonical Daily Schedule and occurrence policy');
   return true;
 }
-
 
 function checkCanonicalUniversalDetailMutation() {
   const capabilityPath = path.join(rootDir, 'src/core/object-mutation/capabilities.ts');
@@ -1242,7 +1237,6 @@ function checkCanonicalUniversalDetailMutation() {
   console.log('PASS: Universal Detail editing is coverage-gated, dirty-tracked and Vault.process-safe');
   return true;
 }
-
 
 function checkCanonicalObjectQueryOwner() {
   const queryPath = path.join(rootDir, 'src/core/object-query/index.ts');
@@ -1408,7 +1402,6 @@ function checkObjectIdentificationSingleOwnerAndDriftGate() {
   console.log('PASS: Object Identification, Type Conflicts and shared-settings drift gates are single-owner and contract-backed');
   return true;
 }
-
 
 function checkReminderTargetNavigation() {
   const notificationsPath = path.join(rootDir, 'src/platform/notifications.ts');
