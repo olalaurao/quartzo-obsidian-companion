@@ -32,4 +32,46 @@ describe('CI workflow contract', () => {
       expect(job).toContain(required);
     }
   });
+
+  it('keeps current release metadata aligned before tagging', () => {
+    const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8')) as { version: string };
+    const manifest = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'manifest.json'), 'utf8')) as {
+      version: string;
+      minAppVersion: string;
+    };
+    const versions = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'versions.json'), 'utf8')) as Record<string, string>;
+
+    expect(manifest.version).toBe(pkg.version);
+    expect(versions[pkg.version]).toBe(manifest.minAppVersion);
+  });
+
+  it('requires a successful preflight for the exact tagged commit before publishing', () => {
+    const release = fs.readFileSync(path.join(process.cwd(), '.github/workflows/release.yml'), 'utf8');
+
+    for (const required of [
+      'actions: read',
+      'Require successful Release Preflight for tag commit',
+      'actions/workflows/release-preflight.yml/runs',
+      '.head_sha == env.GITHUB_SHA',
+      '.conclusion == "success"',
+      'Run Release Preflight on this exact main commit before creating/pushing the release tag.',
+    ]) {
+      expect(release).toContain(required);
+    }
+  });
+
+  it('provides one canonical atomic release metadata preparation command', () => {
+    const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8')) as {
+      scripts?: Record<string, string>;
+    };
+    const prepareScript = path.join(process.cwd(), 'scripts/prepare-release.mjs');
+
+    expect(pkg.scripts?.['release:prepare']).toBe('node scripts/prepare-release.mjs');
+    expect(fs.existsSync(prepareScript)).toBe(true);
+
+    const source = fs.readFileSync(prepareScript, 'utf8');
+    for (const required of ['package.json', 'manifest.json', 'versions.json', 'package-lock.json']) {
+      expect(source).toContain(required);
+    }
+  });
 });

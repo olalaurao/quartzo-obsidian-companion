@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -34,6 +35,22 @@ jobs:
           git fetch origin main
           if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
             echo "::error::Release tags must point to a commit contained in main."
+            exit 1
+          fi
+
+      - name: Require successful Release Preflight for tag commit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          successful_preflights="$(
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/${GITHUB_REPOSITORY}/actions/workflows/release-preflight.yml/runs?branch=main&event=workflow_dispatch&status=completed&per_page=100" \
+              --jq '[.workflow_runs[] | select(.head_sha == env.GITHUB_SHA and .conclusion == "success")] | length'
+          )"
+          if [ "${successful_preflights:-0}" -lt 1 ]; then
+            echo "::error::No successful Release Preflight exists for tagged commit ${GITHUB_SHA}. Run Release Preflight on this exact main commit before creating/pushing the release tag."
             exit 1
           fi
 
