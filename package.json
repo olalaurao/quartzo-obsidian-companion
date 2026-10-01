@@ -1,6 +1,6 @@
 {
   "name": "quartzo-obsidian-companion",
-  "version": "1.0.25",
+  "version": "1.0.26",
   "description": "Quartzo Obsidian Companion V1",
   "main": "main.js",
   "scripts": {
@@ -14,6 +14,7 @@
     "contracts:sync": "node scripts/sync-contracts.mjs sync",
     "contracts:verify": "node scripts/sync-contracts.mjs verify",
     "architecture:check": "node scripts/architecture-check.mjs",
+    "release:prepare": "node scripts/prepare-release.mjs",
     "release:validate": "node scripts/release-validate.mjs",
     "smoke:clean-artifact": "node scripts/smoke-clean-artifact.mjs",
     "audit:prod": "node scripts/audit-prod.mjs",
