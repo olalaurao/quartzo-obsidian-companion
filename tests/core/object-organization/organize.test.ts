@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { planOrganize } from '../../../src/core/object-organization/organize';
+import { projectOrganizationIssues } from '../../../src/core/object-organization/issues-projection';
 import type { ResolvedOrganizationScope } from '../../../src/core/object-organization/scope-resolver';
-import type { QuartzoSharedSettings } from '../../../src/core/shared-settings';
+import { parseObjectWithSharedSettings, type QuartzoSharedSettings } from '../../../src/core/shared-settings';
+import type { VaultIndex } from '../../../src/vault/index/types';
 
 function settings(): QuartzoSharedSettings {
   return {
@@ -43,7 +45,7 @@ function scope(path: string): ResolvedOrganizationScope {
 }
 
 describe('planOrganize issue resolution', () => {
-  it('uses the exact source bytes and assigns the caller-provided canonical ID to unidentified Markdown', () => {
+  it('uses exact source bytes, assigns a canonical ID, and removes the unidentified Issue after reprojection', () => {
     const source = [
       '---',
       'title: Keep this title',
@@ -53,12 +55,13 @@ describe('planOrganize issue resolution', () => {
       'Body stays exactly meaningful.',
       '',
     ].join('\n');
+    const sharedSettings = settings();
 
     const plan = planOrganize({
       scope: scope('inbox/example.md'),
       targetType: 'resource',
       settingsRevision: 7,
-      settings: settings(),
+      settings: sharedSettings,
       objectIdsByPath: new Map([['inbox/example.md', '01KCANONICALTESTOBJECT000000']]),
       vaultState: {
         paths: new Set(['inbox/example.md']),
@@ -73,6 +76,35 @@ describe('planOrganize issue resolution', () => {
     expect(plan.actions[0].newMarkdown).toContain('type: resource');
     expect(plan.actions[0].newMarkdown).toContain('custom_field: keep-me');
     expect(plan.actions[0].newMarkdown).toContain('Body stays exactly meaningful.');
+
+    const parsed = parseObjectWithSharedSettings(
+      plan.actions[0].newMarkdown,
+      'inbox/example.md',
+      sharedSettings,
+    );
+    const index: VaultIndex = {
+      files: new Map(),
+      objects: new Map([[
+        parsed.object.id,
+        {
+          id: parsed.object.id,
+          type: parsed.object.type,
+          path: 'inbox/example.md',
+          frontmatter: parsed.object as Record<string, unknown>,
+          body: parsed.object.body || '',
+          identification: parsed.identification,
+        },
+      ]]),
+      lastModified: Date.now(),
+    };
+    const projected = projectOrganizationIssues({
+      index,
+      settings: sharedSettings,
+      allMarkdownPaths: new Set(['inbox/example.md']),
+      ignoredFolderPaths: [],
+    });
+
+    expect(projected.filter(issue => issue.subjectPath === 'inbox/example.md')).toEqual([]);
   });
 
   it('fails closed instead of writing an empty ID when no canonical identity is available', () => {
