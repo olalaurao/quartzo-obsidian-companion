@@ -1,1 +1,1 @@
-validate sync-safe bulk delete v2
+validate sync-safe bulk delete v3
