@@ -5,13 +5,19 @@ on:
     tags:
       - '0.*.*'
       - '1.*.*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing release tag to validate and publish (for example 1.0.31)'
+        required: true
+        type: string
 
 permissions:
   contents: write
   actions: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -22,18 +28,36 @@ jobs:
       QUARTZO_GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID }}
       QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET }}
       RELEASE_MODE: 'true'
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
 
     steps:
-      - name: Checkout
+      - name: Checkout release tag
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.release_tag) || github.ref }}
           fetch-depth: 0
-      
+
+      - name: Resolve and verify release tag commit
+        shell: bash
+        run: |
+          if ! [[ "$RELEASE_TAG" =~ ^[01]\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]]; then
+            echo "::error::Invalid release tag: $RELEASE_TAG"
+            exit 1
+          fi
+          git fetch origin main --no-tags
+          git fetch origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}" --force
+          release_sha="$(git rev-list -n 1 "$RELEASE_TAG")"
+          checkout_sha="$(git rev-parse HEAD)"
+          if [ "$release_sha" != "$checkout_sha" ]; then
+            echo "::error::Checkout SHA $checkout_sha does not match tag $RELEASE_TAG commit $release_sha."
+            exit 1
+          fi
+          echo "RELEASE_SHA=$release_sha" >> "$GITHUB_ENV"
+
       - name: Require tag commit on main
         shell: bash
         run: |
-          git fetch origin main
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+          if ! git merge-base --is-ancestor "$RELEASE_SHA" origin/main; then
             echo "::error::Release tags must point to a commit contained in main."
             exit 1
           fi
@@ -47,10 +71,10 @@ jobs:
             gh api \
               -H "Accept: application/vnd.github+json" \
               "/repos/${GITHUB_REPOSITORY}/actions/workflows/release-preflight.yml/runs?branch=main&event=workflow_dispatch&status=completed&per_page=100" \
-              --jq '[.workflow_runs[] | select(.head_sha == env.GITHUB_SHA and .conclusion == "success")] | length'
+              --jq '[.workflow_runs[] | select(.head_sha == env.RELEASE_SHA and .conclusion == "success")] | length'
           )"
           if [ "${successful_preflights:-0}" -lt 1 ]; then
-            echo "::error::No successful Release Preflight exists for tagged commit ${GITHUB_SHA}. Run Release Preflight on this exact main commit before creating/pushing the release tag."
+            echo "::error::No successful Release Preflight exists for tagged commit ${RELEASE_SHA}. Run Release Preflight on this exact main commit before publishing ${RELEASE_TAG}."
             exit 1
           fi
 
@@ -113,10 +137,12 @@ jobs:
           QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET }}
       
       - name: Release validate (production mode)
-        run: RELEASE_MODE=true npm run release:validate
+        shell: bash
+        run: GITHUB_REF_TYPE=tag GITHUB_REF_NAME="$RELEASE_TAG" RELEASE_MODE=true npm run release:validate
         env:
           RELEASE_MODE: 'true'
           QUARTZO_GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.QUARTZO_GOOGLE_DESKTOP_CLIENT_ID }}
+          QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET }}
       
       - name: Clean artifact smoke test
         run: npm run smoke:clean-artifact
@@ -127,7 +153,7 @@ jobs:
       - name: Upload validated release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: quartzo-companion-${{ github.ref_name }}
+          name: quartzo-companion-${{ env.RELEASE_TAG }}
           path: .release-artifact/
           if-no-files-found: error
           include-hidden-files: true
@@ -136,13 +162,15 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ env.RELEASE_SHA }}
           files: |
             .release-artifact/main.js
             .release-artifact/manifest.json
             .release-artifact/styles.css
             .release-artifact/SHA256SUMS.txt
           draft: false
-          prerelease: ${{ startsWith(github.ref_name, '0.') }}
+          prerelease: ${{ startsWith(env.RELEASE_TAG, '0.') }}
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
