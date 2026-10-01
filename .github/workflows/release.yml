@@ -150,6 +150,16 @@ jobs:
       - name: Package validated release artifact
         run: npm run release:package
 
+      - name: Revalidate tag before publication
+        shell: bash
+        run: |
+          git fetch origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}" --force
+          current_sha="$(git rev-list -n 1 "$RELEASE_TAG")"
+          if [ "$current_sha" != "$RELEASE_SHA" ]; then
+            echo "::error::Release tag moved during validation: expected $RELEASE_SHA but found $current_sha."
+            exit 1
+          fi
+
       - name: Upload validated release artifact
         uses: actions/upload-artifact@v4
         with:
@@ -163,7 +173,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
-          target_commitish: ${{ env.RELEASE_SHA }}
           files: |
             .release-artifact/main.js
             .release-artifact/manifest.json
