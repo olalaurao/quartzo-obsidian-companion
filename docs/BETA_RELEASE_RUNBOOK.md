@@ -12,7 +12,9 @@ The final V1 support envelope is tracked in [`docs/v1/COMPANION_V1_CAPABILITY_MA
 - User refresh tokens remain in Obsidian `SecretStorage`.
 - Release tags must point to commits contained in `main`.
 - `package.json`, `manifest.json`, `versions.json`, and the Git tag must describe the same release version.
+- A release tag is publishable only after **Release Preflight** succeeds for that exact `main` commit SHA.
 - The release workflow publishes only artifacts rebuilt and validated by GitHub Actions.
+- Do not move/rewrite a tag that already produced a published GitHub Release. A failed/unpublished version should be superseded by the next clean version instead of force-moving published history.
 
 ## Google Cloud setup
 
@@ -43,13 +45,40 @@ Never paste either OAuth build credential into committed source files, issue com
 
 The existing `QUARTZO_UPSTREAM_TOKEN` remains responsible only for reading the private canonical upstream contracts during CI/release.
 
+## Prepare release metadata
+
+Use the canonical release metadata command instead of editing version files independently:
+
+```bash
+npm run release:prepare -- 1.0.26
+```
+
+Replace `1.0.26` with the intended version. The command updates together:
+
+- `package.json`
+- `manifest.json`
+- `versions.json`
+- `package-lock.json` when present
+
+Review the diff and commit all generated metadata in the same release-preparation change. Do not create the tag yet.
+
+The current version must satisfy:
+
+- `package.json.version === manifest.json.version`
+- `versions.json[package.json.version] === manifest.json.minAppVersion`
+
+CI and `release:validate` enforce these invariants before tagging.
+
 ## Production preflight
 
-After the release changes are on `main`:
+After the release changes are merged to `main`:
 
-1. Open GitHub Actions.
-2. Run **Release Preflight** manually.
-3. The workflow must pass:
+1. Record the exact `main` commit SHA that contains the release metadata.
+2. Wait for the normal CI on that commit to finish successfully.
+3. Open GitHub Actions.
+4. Run **Release Preflight** manually on `main`.
+5. Confirm the successful preflight run reports the same exact `head_sha` as the intended release commit.
+6. The workflow must pass:
    - OAuth Client ID presence/shape
    - OAuth Client Secret presence and artifact injection for the matching Desktop client
    - canonical contract verification
@@ -59,18 +88,23 @@ After the release changes are on `main`:
    - production build
    - release validation
    - clean artifact smoke
-4. Download the generated `quartzo-companion-<sha>` Actions artifact if a manual install test is desired.
+7. Download the generated `quartzo-companion-<sha>` Actions artifact if a manual install test is desired.
 
-A failed preflight blocks tagging.
+A failed or missing exact-commit preflight blocks tagging. The Release workflow independently checks this provenance and refuses to publish a tag whose commit does not have a successful Release Preflight run.
 
 ## Publish release
 
 For the current version:
 
-1. Confirm `package.json`, `manifest.json`, and `versions.json` all contain the intended version.
-2. Create the tag with the exact version string, without a leading `v`.
-3. Push the tag.
-4. The **Release** workflow rebuilds from the tagged commit and publishes a GitHub release containing:
+1. Confirm the intended version is still the one in `package.json`, `manifest.json`, and `versions.json`.
+2. Confirm `main` has not moved since the successful Release Preflight. If it moved, run Release Preflight again on the new intended release commit.
+3. Create the tag with the exact version string, without a leading `v`, pointing to the preflighted commit.
+4. Push the tag.
+5. The **Release** workflow first verifies that:
+   - the tag commit is contained in `main`;
+   - a successful Release Preflight exists for that exact commit SHA;
+   - release metadata and tag version agree.
+6. The workflow then rebuilds from the tagged commit and publishes a GitHub release containing:
    - `main.js`
    - `manifest.json`
    - `styles.css`
