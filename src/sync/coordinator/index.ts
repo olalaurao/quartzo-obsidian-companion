@@ -306,7 +306,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
     if (effectiveResolution === 'keep_local') {
       if (!artifact.localExists) {
-        // Local delete wins
+        // Local delete wins — upload tombstone then trash (reversible) the original remote.
         if (effectiveRemoteFileId) {
           const deletedPath = `_deleted/${normalized}`;
           const folderId = this.syncState.driveFolderId || '';
@@ -316,7 +316,8 @@ export class DriveSyncCoordinator implements ConflictRegistry {
             content: artifact.remoteContent, 
             quartzoHash: artifact.remoteSha256 
           });
-          await this.driveAdapter.deleteFile(effectiveRemoteFileId);
+          // Use trashFile (reversible) instead of deleteFile per safe-cleanup contract.
+          await this.driveAdapter.trashFile(effectiveRemoteFileId);
         }
         this.syncState.files.delete(normalized);
       } else {
@@ -1087,12 +1088,22 @@ export class DriveSyncCoordinator implements ConflictRegistry {
   ): Promise<void> {
     const processedPaths = new Set<string>();
     let localProgressCompleted = 0;
+    // Compute a best-effort total so the UI can display real percentage progress
+    // rather than an always-indeterminate spinner. We count every distinct work
+    // item we will visit: pending renames, pending deletes, tracked sync files,
+    // and untracked local files. Items may overlap, so this is an upper bound,
+    // but it is never zero when there is actual work to do.
+    const localProgressTotal =
+      this.pendingRenames.length +
+      this.pendingDeletes.size +
+      this.syncState.files.size +
+      localInventory.size;
     const reportLocalProgress = (currentPath?: string) => {
       localProgressCompleted++;
       this.reportSyncProgress({
         phase: 'processing_local_changes',
         completed: localProgressCompleted,
-        total: 0,
+        total: localProgressTotal,
         ...(currentPath ? { currentPath } : {}),
       }, onProgress);
     };
@@ -1359,16 +1370,26 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
     while (currentParentId && currentParentId !== rootFolderId && depth < MAX_DEPTH) {
       let parentName: string | undefined;
+      let nextParentId = '';
 
       if (this.parentNameCache.has(currentParentId)) {
         parentName = this.parentNameCache.get(currentParentId);
+        // Cache only stores the name; we still need parents for the next hop.
+        try {
+          const parentMeta = await this.driveAdapter.getFileMetadata(currentParentId);
+          nextParentId = parentMeta.parents && parentMeta.parents.length > 0 ? parentMeta.parents[0] : '';
+        } catch {
+          break;
+        }
       } else {
+        // Single getFileMetadata call per level — fetches both name and parents.
         try {
           const metadata = await this.driveAdapter.getFileMetadata(currentParentId);
           parentName = metadata.name || undefined;
           if (parentName) {
             this.parentNameCache.set(currentParentId, parentName);
           }
+          nextParentId = metadata.parents && metadata.parents.length > 0 ? metadata.parents[0] : '';
         } catch {
           break;
         }
@@ -1376,13 +1397,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
       if (!parentName) break;
       segments.unshift(parentName);
-
-      try {
-        const parentMeta = await this.driveAdapter.getFileMetadata(currentParentId);
-        currentParentId = parentMeta.parents && parentMeta.parents.length > 0 ? parentMeta.parents[0] : '';
-      } catch {
-        break;
-      }
+      currentParentId = nextParentId;
       depth++;
     }
 
@@ -2489,7 +2504,10 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     try {
       const tempPath = `${this.stateStorePath}.tmp`;
       if (!fs.existsSync(this.stateStorePath) && fs.existsSync(tempPath)) {
-        JSON.parse(fs.readFileSync(tempPath, 'utf-8'));
+        // Validate the temp file is parseable before promoting it; if it throws,
+        // the outer catch will surface the error without corrupting state.
+        const tempContent = fs.readFileSync(tempPath, 'utf-8');
+        JSON.parse(tempContent); // throws on corrupt JSON — do not rename in that case
         fs.renameSync(tempPath, this.stateStorePath);
       }
       if (fs.existsSync(this.stateStorePath)) {
