@@ -18,12 +18,12 @@ export type IssueCategory =
   | 'interrupted';
 
 export interface OrganizationIssue {
-  id: string; // Deterministic ID for the issue
+  id: string;
   category: IssueCategory;
   subjectPath: string;
   subjectId?: string;
   title: string;
-  why: string; // Evidence-first reasoning (§46)
+  why: string;
   actionable: boolean;
 }
 
@@ -34,7 +34,7 @@ export interface IssuesProjectionInput {
   ignoredFolderPaths: readonly string[];
 }
 
-const SYSTEM_ISSUE_IGNORED_FOLDERS = ['app'] as const;
+const SYSTEM_ISSUE_IGNORED_FOLDERS = ['app', '_deleted'] as const;
 
 export function normalizeIssueFolderPath(folderPath: string): string {
   if (!folderPath) return '';
@@ -80,8 +80,6 @@ export function projectOrganizationIssues(input: IssuesProjectionInput): Organiz
   const isExcludedOrdinarySubject = (path: string): boolean =>
     isSystemIssuePath(path) || isPathInsideIssueIgnoredFolder(path, normalizedIgnoredFolders);
 
-  // §47: Unidentified files
-  // Files that are valid markdown but don't exist in the VaultIndex (because they didn't match any rule).
   const indexedPaths = new Set<string>();
   for (const obj of index.objects.values()) {
     indexedPaths.add(normalizeIssueFolderPath(obj.path));
@@ -103,8 +101,6 @@ export function projectOrganizationIssues(input: IssuesProjectionInput): Organiz
     }
   }
 
-  // Iterate only over objects eligible to be Organization Issues subjects/candidates.
-  // This does NOT alter VaultIndex membership or Object Identification.
   const issueEligibleObjects = Array.from(index.objects.values()).filter(
     obj => !isExcludedOrdinarySubject(obj.path),
   );
@@ -113,9 +109,7 @@ export function projectOrganizationIssues(input: IssuesProjectionInput): Organiz
   for (const obj of issueEligibleObjects) {
     idCounts.set(obj.id, (idCounts.get(obj.id) || 0) + 1);
 
-    // §45: ambiguous (multiple identification rules match)
     if (obj.identification && obj.identification.matchedSignatures.length > 1) {
-      // Only an issue if the rules conflict in type; the parser still applies canonical priority.
       const types = new Set(obj.identification.matchedSignatures.map(s => s.objectType));
       if (types.size > 1) {
         issues.push({
@@ -130,8 +124,6 @@ export function projectOrganizationIssues(input: IssuesProjectionInput): Organiz
       }
     }
 
-    // §45: broken_relationship
-    // Subject eligibility follows Issues scope, but target resolution still uses the full canonical VaultIndex.
     const rawLinks = obj.frontmatter.links;
     if (Array.isArray(rawLinks)) {
       for (const link of rawLinks) {
@@ -155,7 +147,6 @@ export function projectOrganizationIssues(input: IssuesProjectionInput): Organiz
     }
   }
 
-  // §48/49: Duplicate IDs. Ignored/system objects are not active organization candidates.
   for (const [id, count] of idCounts.entries()) {
     if (count > 1) {
       const paths = issueEligibleObjects.filter(o => o.id === id).map(o => o.path);
@@ -172,7 +163,6 @@ export function projectOrganizationIssues(input: IssuesProjectionInput): Organiz
     }
   }
 
-  // §45: Interrupted is a system issue and must remain visible even though its path is under app/**.
   if (settings && settings.objectIdentification.transition) {
     const t = settings.objectIdentification.transition;
     issues.push({

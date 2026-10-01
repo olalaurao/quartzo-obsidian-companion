@@ -216,4 +216,19 @@ describe('issues-projection path-ignore logic', () => {
       }),
     ]));
   });
+
+  it('keeps _deleted tombstones out of the live Issues projection', () => {
+    expect(isSystemIssuePath('_deleted/object-1.md')).toBe(true);
+    expect(isSystemIssuePath('_DELETED/sub/object-2.md')).toBe(true);
+
+    const issues = projectOrganizationIssues({
+      index: emptyIndex(),
+      settings: null,
+      allMarkdownPaths: new Set(['_deleted/object-1.md', 'notes/live.md']),
+      ignoredFolderPaths: [],
+    });
+
+    expect(issues.map(issue => issue.subjectPath)).toEqual(['notes/live.md']);
+  });
+
 });

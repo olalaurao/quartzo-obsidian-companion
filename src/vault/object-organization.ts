@@ -1,14 +1,41 @@
-import { TFile, Vault } from 'obsidian';
+import { TFile, Vault, normalizePath } from 'obsidian';
 import type { OrganizePlan, OrganizeActionPlan } from '../core/object-organization/organize';
 import type { MergePlan } from '../core/object-organization/merge';
+import {
+  buildCanonicalRetirementTombstone,
+  canonicalRetirementPath,
+} from '../core/object-organization/retire';
 import { SharedSettingsRepository } from './shared-settings';
-import { ObjectParser } from '../core/objects';
 
 export interface ObjectOrganizationResult {
   migrated: number;
   remaining: number;
   failedPath?: string;
   error?: Error;
+}
+
+export interface CanonicalRetirementRequest {
+  path: string;
+  id: string;
+  expectedMarkdown: string;
+  deletedAt: string;
+}
+
+export interface CanonicalRetirementApplied {
+  id: string;
+  sourcePath: string;
+  tombstonePath: string;
+}
+
+export interface CanonicalRetirementResult extends ObjectOrganizationResult {
+  retired: CanonicalRetirementApplied[];
+}
+
+interface RetireFileInput {
+  path: string;
+  id: string;
+  expectedMarkdown: string;
+  tombstoneMarkdown: string;
 }
 
 export class ObjectOrganizationRepository {
@@ -27,7 +54,6 @@ export class ObjectOrganizationRepository {
       throw new Error('Cannot apply operation with unresolved blockers.');
     }
 
-    // 1. Preflight: Verify settings revision hasn't changed since plan
     const currentSettings = await this.settingsRepo.load();
     if (!currentSettings) {
       throw new Error('Shared Quartzo settings are missing.');
@@ -61,18 +87,16 @@ export class ObjectOrganizationRepository {
   private async applyAction(action: OrganizeActionPlan): Promise<void> {
     const source = this.vault.getAbstractFileByPath(action.sourcePath);
     if (!(source instanceof TFile)) {
-      // Recovery check: Maybe it already moved?
       if (action.moves) {
         const dest = this.vault.getAbstractFileByPath(action.destinationPath);
         if (dest instanceof TFile) {
           const destContent = await this.vault.read(dest);
-          if (destContent === action.newMarkdown) return; // Already exactly as planned
+          if (destContent === action.newMarkdown) return;
         }
       }
       throw new Error(`Source file not found: ${action.sourcePath}`);
     }
 
-    // If it's a move, check destination isn't unexpectedly occupied
     if (action.moves) {
       const dest = this.vault.getAbstractFileByPath(action.destinationPath);
       if (dest) {
@@ -81,49 +105,83 @@ export class ObjectOrganizationRepository {
         }
         const destContent = await this.vault.read(dest);
         if (destContent !== action.newMarkdown) {
-           throw new Error(`Destination already exists: ${action.destinationPath}`);
+          throw new Error(`Destination already exists: ${action.destinationPath}`);
         }
-        // If content matches, it's a recovered partial state, but we shouldn't delete source blindly unless sure
-        // Actually, Obsidian might not allow rename to existing file.
       }
     }
 
-    let modifiedInPlace = false;
-    
-    // Process markdown changes if needed
     if (action.newMarkdown !== action.expectedMarkdown) {
       await this.vault.process(source, current => {
-        // §8: Check if changed unexpectedly
         if (current !== action.expectedMarkdown) {
-          // It might already be the *new* state (idempotency/retry)
           if (current === action.newMarkdown) return current;
           throw new Error(`File changed since preview: ${action.sourcePath}`);
         }
         return action.newMarkdown;
       });
-      modifiedInPlace = true;
     }
 
-    // Handle move
     if (action.moves) {
       await this.ensureFolder(action.destinationPath);
-      
+
       const sourceNow = this.vault.getAbstractFileByPath(action.sourcePath);
       if (!(sourceNow instanceof TFile)) {
-         throw new Error(`Source file vanished before move: ${action.sourcePath}`);
+        throw new Error(`Source file vanished before move: ${action.sourcePath}`);
       }
-      
+
       try {
         await this.vault.rename(sourceNow, action.destinationPath);
-      } catch (e) {
-        throw new Error(`Failed to move file to ${action.destinationPath}: ${e}`);
+      } catch (error) {
+        throw new Error(`Failed to move file to ${action.destinationPath}: ${error}`);
       }
     }
   }
 
   /**
+   * Canonically retires ordinary objects by converting each file to a tombstone and
+   * moving it under _deleted/<object-id>.md. The rename is intentionally observable
+   * by the existing sync watcher so a tracked remote keeps the same remoteFileId.
+   */
+  async applyRetirements(requests: readonly CanonicalRetirementRequest[]): Promise<CanonicalRetirementResult> {
+    const retired: CanonicalRetirementApplied[] = [];
+
+    for (const request of requests) {
+      try {
+        const tombstoneMarkdown = buildCanonicalRetirementTombstone({
+          id: request.id,
+          deletedAt: request.deletedAt,
+        });
+        const tombstonePath = await this.retireFile({
+          path: request.path,
+          id: request.id,
+          expectedMarkdown: request.expectedMarkdown,
+          tombstoneMarkdown,
+        });
+        retired.push({
+          id: request.id,
+          sourcePath: normalizePath(request.path),
+          tombstonePath,
+        });
+      } catch (error) {
+        return {
+          migrated: retired.length,
+          remaining: requests.length - retired.length,
+          failedPath: request.path,
+          error: error instanceof Error ? error : new Error(String(error)),
+          retired,
+        };
+      }
+    }
+
+    return {
+      migrated: retired.length,
+      remaining: 0,
+      retired,
+    };
+  }
+
+  /**
    * Applies a planned Merge operation.
-   * Updates survivor and moves losers to the _deleted/ folder as tombstones (§69).
+   * Updates survivor and retires losers through the same canonical tombstone lifecycle.
    */
   async applyMerge(plan: MergePlan): Promise<void> {
     if (plan.blockers.length > 0) {
@@ -136,12 +194,11 @@ export class ObjectOrganizationRepository {
       throw new Error('Object Identification revision conflict. Refresh preview before merging.');
     }
 
-    // 1. Update Survivor
     const survivorFile = this.vault.getAbstractFileByPath(plan.action.survivorPath);
     if (!(survivorFile instanceof TFile)) {
       throw new Error(`Survivor file missing: ${plan.action.survivorPath}`);
     }
-    
+
     if (plan.action.newSurvivorMarkdown !== plan.action.expectedSurvivorMarkdown) {
       await this.vault.process(survivorFile, current => {
         if (current !== plan.action.expectedSurvivorMarkdown) {
@@ -152,35 +209,57 @@ export class ObjectOrganizationRepository {
       });
     }
 
-    // 2. Retire Losers
-    // They are moved to _deleted/ folder to prevent resurrection
-    await this.ensureFolder('_deleted/x'); // Quick way to ensure _deleted exists
-
     for (const loser of plan.action.losersToRetire) {
-      const loserFile = this.vault.getAbstractFileByPath(loser.path);
-      if (!(loserFile instanceof TFile)) continue; // Already gone or not a file
-
-      await this.vault.process(loserFile, current => {
-        if (current !== loser.expectedMarkdown) {
-           if (current === loser.newMarkdown) return current;
-           // If it changed, we still want to retire it unless we decide to abort.
-           // Since survivor has been updated, aborting now leaves inconsistent state.
-           // In merge, we overwrite the loser with the tombstone anyway.
-        }
-        return loser.newMarkdown;
+      await this.retireFile({
+        path: loser.path,
+        id: loser.id,
+        expectedMarkdown: loser.expectedMarkdown,
+        tombstoneMarkdown: loser.newMarkdown,
       });
-
-      // Move to _deleted folder
-      const filename = loser.path.split('/').pop()!;
-      const destPath = `_deleted/${loser.id}.md`;
-      const existing = this.vault.getAbstractFileByPath(destPath);
-      if (!existing) {
-         await this.vault.rename(loserFile, destPath);
-      } else {
-         // If a tombstone with the same ID exists, we can just delete this duplicate instance
-         await this.vault.delete(loserFile);
-      }
     }
+  }
+
+  private async retireFile(input: RetireFileInput): Promise<string> {
+    const sourcePath = normalizePath(input.path);
+    const destinationPath = normalizePath(canonicalRetirementPath(input.id));
+    const source = this.vault.getAbstractFileByPath(sourcePath);
+
+    if (!(source instanceof TFile)) {
+      const existingTombstone = this.vault.getAbstractFileByPath(destinationPath);
+      if (existingTombstone instanceof TFile) {
+        const existingMarkdown = await this.vault.read(existingTombstone);
+        if (existingMarkdown === input.tombstoneMarkdown) return destinationPath;
+      }
+      throw new Error(`Source file not found for canonical retirement: ${sourcePath}`);
+    }
+
+    const occupied = this.vault.getAbstractFileByPath(destinationPath);
+    if (occupied) {
+      throw new Error(
+        `Canonical tombstone destination already exists: ${destinationPath}. Resolve the collision before deleting.`,
+      );
+    }
+
+    await this.vault.process(source, current => {
+      if (current !== input.expectedMarkdown) {
+        if (current === input.tombstoneMarkdown) return current;
+        throw new Error(`File changed since delete preview: ${sourcePath}`);
+      }
+      return input.tombstoneMarkdown;
+    });
+
+    await this.ensureFolder(destinationPath);
+    const sourceNow = this.vault.getAbstractFileByPath(sourcePath);
+    if (!(sourceNow instanceof TFile)) {
+      const recovered = this.vault.getAbstractFileByPath(destinationPath);
+      if (recovered instanceof TFile && await this.vault.read(recovered) === input.tombstoneMarkdown) {
+        return destinationPath;
+      }
+      throw new Error(`Source file vanished before canonical retirement move: ${sourcePath}`);
+    }
+
+    await this.vault.rename(sourceNow, destinationPath);
+    return destinationPath;
   }
 
   private async ensureFolder(filePath: string): Promise<void> {

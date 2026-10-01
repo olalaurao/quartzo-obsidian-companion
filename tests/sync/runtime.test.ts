@@ -1970,4 +1970,88 @@ describe('Runtime Sync Tests', () => {
     expect(snapshot.status).toBe('synced');
   });
 
+
+  it('50: canonical retirement preserves tracked remote identity and does not resurrect the old path', async () => {
+    const sourcePath = 'retire-safe.md';
+    const destinationPath = '_deleted/retire-safe-id.md';
+    const remoteId = 'retire-safe-remote-id';
+    const original = Buffer.from('---\nid: retire-safe-id\ntype: note\n---\nbody\n');
+    const tombstone = Buffer.from('---\nid: retire-safe-id\ntype: _deleted\ndeleted_at: 2026-10-01T12:00:00.000Z\n---\n');
+
+    fs.writeFileSync(path.join(tmpDir, sourcePath), original);
+    adapter.addRemoteFileWithId(sourcePath, remoteId, original);
+    await coordinator.reconcile();
+    adapter.pendingChanges.length = 0;
+
+    const preflight = await coordinator.preflightCanonicalRetire([sourcePath]);
+    expect(preflight.blockers).toEqual([]);
+    expect(preflight.safePaths).toEqual([sourcePath]);
+
+    fs.mkdirSync(path.join(tmpDir, '_deleted'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, sourcePath), tombstone);
+    fs.renameSync(path.join(tmpDir, sourcePath), path.join(tmpDir, destinationPath));
+    coordinator.queueRename(sourcePath, destinationPath);
+
+    const result = await coordinator.reconcile();
+    expect(result.errors).toEqual([]);
+    expect(result.conflicts).toBe(0);
+    expect(fs.existsSync(path.join(tmpDir, sourcePath))).toBe(false);
+    expect(adapter.files.has(sourcePath)).toBe(false);
+    expect(Array.from(adapter.files.values()).some(file => file.id === remoteId)).toBe(true);
+    expect(coordinator.getSyncState().files.get(destinationPath)?.remoteFileId).toBe(remoteId);
+    expect(coordinator.getSyncState().files.has(sourcePath)).toBe(false);
+  });
+
+  it('51: remote edit racing canonical retirement becomes conflict instead of pull-back or overwrite', async () => {
+    const sourcePath = 'retire-race.md';
+    const destinationPath = '_deleted/retire-race-id.md';
+    const remoteId = 'retire-race-remote-id';
+    const original = Buffer.from('---\nid: retire-race-id\ntype: note\n---\nbase\n');
+    const tombstone = Buffer.from('---\nid: retire-race-id\ntype: _deleted\ndeleted_at: 2026-10-01T12:00:00.000Z\n---\n');
+
+    fs.writeFileSync(path.join(tmpDir, sourcePath), original);
+    adapter.addRemoteFileWithId(sourcePath, remoteId, original);
+    await coordinator.reconcile();
+    adapter.pendingChanges.length = 0;
+
+    const preflight = await coordinator.preflightCanonicalRetire([sourcePath]);
+    expect(preflight.blockers).toEqual([]);
+
+    adapter.addRemoteFileWithId(sourcePath, remoteId, Buffer.from('remote concurrent edit'));
+    fs.mkdirSync(path.join(tmpDir, '_deleted'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, sourcePath), tombstone);
+    fs.renameSync(path.join(tmpDir, sourcePath), path.join(tmpDir, destinationPath));
+    coordinator.queueRename(sourcePath, destinationPath);
+
+    const result = await coordinator.reconcile();
+    expect(result.conflicts).toBeGreaterThanOrEqual(1);
+    expect(fs.existsSync(path.join(tmpDir, sourcePath))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, destinationPath))).toBe(true);
+    expect(adapter.files.has(sourcePath)).toBe(true);
+    expect(coordinator.getConflicts().some(conflict => conflict.originalPath === sourcePath)).toBe(true);
+    const snapshot = await coordinator.getSyncStatusSnapshot();
+    expect(snapshot.pendingDiagnostics).toContainEqual({ path: sourcePath, reason: 'conflict' });
+    expect(snapshot.pendingDiagnostics).toContainEqual({
+      path: sourcePath,
+      reason: 'pending_rename',
+      relatedPath: destinationPath,
+    });
+  });
+
+  it('52: paired delete preflight blocks an untracked remote copy instead of trusting local absence', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+    const sourcePath = 'untracked-delete.md';
+    fs.writeFileSync(path.join(tmpDir, sourcePath), 'local');
+    adapter.addRemoteFile(sourcePath, Buffer.from('remote'));
+
+    const preflight = await coordinator.preflightCanonicalRetire([sourcePath]);
+    expect(preflight.safePaths).toEqual([]);
+    expect(preflight.blockers).toEqual([
+      expect.objectContaining({
+        path: sourcePath,
+        reason: 'untracked_remote',
+      }),
+    ]);
+  });
+
 });
