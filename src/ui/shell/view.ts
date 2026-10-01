@@ -497,7 +497,7 @@ export class QuartzoView extends ItemView {
       actSelect.createEl('option', { value: act, text: act }).selected = this.issueActionableFilter === act;
     }
     actSelect.addEventListener('change', () => {
-      this.issueActionableFilter = actSelect.value as any;
+      this.issueActionableFilter = actSelect.value as 'All' | 'Actionable' | 'Informational';
       void this.renderIssues(container);
     });
 
