@@ -14,6 +14,7 @@ The final V1 support envelope is tracked in [`docs/v1/COMPANION_V1_CAPABILITY_MA
 - `package.json`, `manifest.json`, `versions.json`, and the Git tag must describe the same release version.
 - A release tag is publishable only after **Release Preflight** succeeds for that exact `main` commit SHA.
 - The release workflow publishes only artifacts rebuilt and validated by GitHub Actions.
+- A tag push created with a workflow's `GITHUB_TOKEN` does not recursively start the tag-triggered Release workflow. If automation creates the tag with `GITHUB_TOKEN`, it must explicitly dispatch the **same canonical Release workflow** with `release_tag`; that workflow must resolve the existing tag back to its commit and repeat the exact-SHA main/preflight/version checks before publishing.
 - Do not move/rewrite a tag that already produced a published GitHub Release. A failed/unpublished version should be superseded by the next clean version instead of force-moving published history.
 
 ## Google Cloud setup
@@ -99,8 +100,11 @@ For the current version:
 1. Confirm the intended version is still the one in `package.json`, `manifest.json`, and `versions.json`.
 2. Confirm `main` has not moved since the successful Release Preflight. If it moved, run Release Preflight again on the new intended release commit.
 3. Create the tag with the exact version string, without a leading `v`, pointing to the preflighted commit.
-4. Push the tag.
-5. The **Release** workflow first verifies that:
+4. Publish through the single canonical **Release** workflow:
+   - a normal human/PAT tag push may trigger it directly; or
+   - if a GitHub Action created/pushed the tag with its `GITHUB_TOKEN`, explicitly dispatch **Release** with `release_tag=<exact version>` because GitHub suppresses recursive workflow triggers from that token.
+5. In either trigger mode, the **Release** workflow verifies that:
+   - the named tag exists and resolves to the checked-out commit;
    - the tag commit is contained in `main`;
    - a successful Release Preflight exists for that exact commit SHA;
    - release metadata and tag version agree.
@@ -110,7 +114,7 @@ For the current version:
    - `styles.css`
    - `SHA256SUMS.txt`
 
-Do not manually upload a locally built `main.js` as the canonical release.
+Do not create a second release workflow to work around trigger behavior, do not bypass exact-SHA preflight checks, and do not manually upload a locally built `main.js` as the canonical release.
 
 ## Install with BRAT
 

@@ -45,16 +45,20 @@ describe('CI workflow contract', () => {
     expect(versions[pkg.version]).toBe(manifest.minAppVersion);
   });
 
-  it('requires a successful preflight for the exact tagged commit before publishing', () => {
+  it('requires a successful preflight for the exact resolved tag commit before publishing', () => {
     const release = fs.readFileSync(path.join(process.cwd(), '.github/workflows/release.yml'), 'utf8');
 
     for (const required of [
       'actions: read',
+      'Resolve and verify release tag commit',
+      'git rev-list -n 1 "$RELEASE_TAG"',
+      'RELEASE_SHA=$release_sha',
       'Require successful Release Preflight for tag commit',
       'actions/workflows/release-preflight.yml/runs',
-      '.head_sha == env.GITHUB_SHA',
+      '.head_sha == env.RELEASE_SHA',
       '.conclusion == "success"',
-      'Run Release Preflight on this exact main commit before creating/pushing the release tag.',
+      'Run Release Preflight on this exact main commit before publishing ${RELEASE_TAG}.',
+      'Revalidate tag before publication',
     ]) {
       expect(release).toContain(required);
     }
