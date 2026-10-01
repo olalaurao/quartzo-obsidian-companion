@@ -21,13 +21,15 @@ describe('Organization Issues resolution UI contract', () => {
     expect(modalSource).toContain('still have an Object Identification conflict');
   });
 
-  it('supports multi-select through the same canonical organization modal', () => {
+  it('supports multi-select while keeping Organize on the same canonical organization modal', () => {
     expect(shellSource).toContain('issueSelectedPaths = new Set<string>()');
     expect(shellSource).toContain("text: `Select matching (${matchingSelectablePaths.length})`");
     expect(shellSource).toContain("text: 'Organize selected…'");
-    expect(shellSource).toContain('openOrganization(Array.from(this.issueSelectedPaths)');
+    expect(shellSource).toContain('if (allSelectedOrganizable) openOrganization(selectedPaths)');
     expect(shellSource).toContain("type: 'checkbox'");
     expect(shellSource).toContain("new Set<IssueCategory>(['unidentified', 'ambiguous', 'mismatch'])");
+    expect(shellSource).toContain('const isDeletableIssue =');
+    expect(shellSource).toContain('const allSelectedOrganizable =');
   });
 
   it('reprojects Issues after an applied organization operation instead of hiding rows optimistically', () => {
