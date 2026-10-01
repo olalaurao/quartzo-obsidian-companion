@@ -33,6 +33,16 @@ jobs:
       - name: Add anti-resurrection regression cases
         run: python scripts/temp-bulk-delete-regressions.py
 
+      - name: Normalize generated documentation EOF
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          for filename in ['guidelines.md', 'agents.md', 'docs/specs/object-organization.md']:
+              path = Path(filename)
+              path.write_text(path.read_text().rstrip() + '\n')
+          PY
+
       - name: Install dependencies
         run: npm ci --audit=false
 
