@@ -146,7 +146,7 @@ describe('issues-projection path-ignore logic', () => {
     const issues = projectOrganizationIssues({
       index,
       settings: null,
-      allMarkdownPaths: new Set(index.objects.values().map(object => object.path)),
+      allMarkdownPaths: new Set(Array.from(index.objects.values(), object => object.path)),
       ignoredFolderPaths: ['_trash'],
     });
 
