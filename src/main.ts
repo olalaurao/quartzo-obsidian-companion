@@ -3406,7 +3406,7 @@ export class CreateRuleFromFolderModal extends Modal {
     const oldSignature = shared.typeSignatures[this.selectedType];
     if (!oldSignature) return;
 
-    const next = { ...oldSignature, markerType: 'folder', markerValue: `${this.folderPath}/` };
+    const next: TypeSignature = { ...oldSignature, markerType: 'folder', markerValue: `${this.folderPath}/` };
     
     try {
       const plan = await this.plugin.previewObjectIdentificationMigration(this.selectedType, next);
