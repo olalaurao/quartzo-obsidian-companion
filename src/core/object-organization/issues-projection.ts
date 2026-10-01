@@ -65,6 +65,14 @@ export function isSystemIssuePath(filePath: string): boolean {
   return isPathInsideIssueIgnoredFolder(filePath, SYSTEM_ISSUE_IGNORED_FOLDERS);
 }
 
+export function isOrganizationIssuePathExcluded(
+  filePath: string,
+  ignoredFolderPaths: readonly string[],
+): boolean {
+  return isSystemIssuePath(filePath)
+    || isPathInsideIssueIgnoredFolder(filePath, normalizeIssueIgnoredFolders(ignoredFolderPaths));
+}
+
 export function projectOrganizationIssues(input: IssuesProjectionInput): OrganizationIssue[] {
   const { index, settings, allMarkdownPaths, ignoredFolderPaths } = input;
   const issues: OrganizationIssue[] = [];
