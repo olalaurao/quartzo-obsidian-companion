@@ -101,3 +101,8 @@ Established by the Object Organization & Obsidian-native Organization V1 spec. T
 - **Operation IDs** → `src/core/object-organization/operation-id.ts`. Deterministic, not timestamp-based.
 - **Preconditions** → `src/core/object-organization/preconditions.ts`. Validates revision, hash, destination before Apply.
 - **UI** → consumers only. `src/ui/organization/` and `src/ui/shell/view.ts` call canonical owners; they do not mutate directly.
+
+### Canonical retirement owner
+
+- Object retirement (single, bulk, or Merge loser) is owned by `ObjectOrganizationRepository` using the pure tombstone helpers in `src/core/object-organization/retire.ts`; presentation code never performs raw file deletion.
+- Paired Drive anti-resurrection safety is owned by the existing `DriveSyncCoordinator`: preflight proves baseline/identity before local retirement, and queued rename processing revalidates the remote again before preserving the same `remoteFileId` at `_deleted/**`. Remote divergence becomes conflict, never silent pull-back or overwrite.

@@ -1,4 +1,4 @@
-import { getIcon, ItemView, Notice, TFolder, WorkspaceLeaf } from 'obsidian';
+import { getIcon, ItemView, Notice, TFile, TFolder, WorkspaceLeaf } from 'obsidian';
 import { DailyScheduleEngine } from '../../core/daily_schedule';
 import type { NormalizedItem, NormalizedSchedule } from '../../core/daily_schedule/types';
 import type { GoogleCalendarProjection } from '../../integrations/google/calendar';
@@ -487,8 +487,16 @@ export class QuartzoView extends ItemView {
     const bulkCategories = new Set<IssueCategory>(['unidentified', 'ambiguous', 'mismatch']);
     const isBulkOrganizeIssue = (issue: (typeof issues)[number]): boolean =>
       issue.actionable && bulkCategories.has(issue.category);
-    const selectablePaths = new Set(
+    const isDeletableIssue = (issue: (typeof issues)[number]): boolean => {
+      if (!issue.actionable || isOrganizationIssuePathExcluded(issue.subjectPath, ignoredFolderPaths)) return false;
+      const file = this.context.app.vault.getAbstractFileByPath(issue.subjectPath);
+      return file instanceof TFile && file.extension.toLowerCase() === 'md';
+    };
+    const bulkOrganizePaths = new Set(
       issues.filter(isBulkOrganizeIssue).map(issue => issue.subjectPath),
+    );
+    const selectablePaths = new Set(
+      issues.filter(isDeletableIssue).map(issue => issue.subjectPath),
     );
     for (const selectedPath of Array.from(this.issueSelectedPaths)) {
       if (!selectablePaths.has(selectedPath)) this.issueSelectedPaths.delete(selectedPath);
@@ -505,6 +513,18 @@ export class QuartzoView extends ItemView {
       if (files.length === 0) return;
       const { ObjectOrganizationModal } = require('../organization/modal');
       new ObjectOrganizationModal(this.context, {
+        files,
+        onApplied: async () => {
+          this.issueSelectedPaths.clear();
+          await this.render();
+        },
+      }).open();
+    };
+
+    const openBulkDelete = (files: string[]): void => {
+      if (files.length === 0) return;
+      const { ObjectBulkDeleteModal } = require('../organization/delete-modal');
+      new ObjectBulkDeleteModal(this.context, {
         files,
         onApplied: async () => {
           this.issueSelectedPaths.clear();
@@ -665,7 +685,7 @@ export class QuartzoView extends ItemView {
       showing.textContent = `Showing ${filteredIssues.length} of ${issues.length} issues`;
 
       const matchingSelectablePaths = Array.from(new Set(
-        filteredIssues.filter(isBulkOrganizeIssue).map(issue => issue.subjectPath),
+        filteredIssues.filter(isDeletableIssue).map(issue => issue.subjectPath),
       )).sort((left, right) => left.localeCompare(right));
 
       const selectionBar = resultsHost.createEl('div', {
@@ -697,13 +717,29 @@ export class QuartzoView extends ItemView {
         renderFilteredIssues();
       });
 
+      const selectedPaths = Array.from(this.issueSelectedPaths).sort((left, right) => left.localeCompare(right));
+      const allSelectedOrganizable = selectedPaths.length > 0
+        && selectedPaths.every(path => bulkOrganizePaths.has(path));
+
       const organizeSelected = selectionBar.createEl('button', {
         text: 'Organize selected…',
         cls: 'qz-btn qz-btn-primary qz-btn-sm',
       });
-      organizeSelected.disabled = this.issueSelectedPaths.size === 0;
+      organizeSelected.disabled = !allSelectedOrganizable;
+      if (!allSelectedOrganizable && selectedPaths.length > 0) {
+        organizeSelected.title = 'Organize is available only when every selected path is unidentified, ambiguous, or mismatched.';
+      }
       organizeSelected.addEventListener('click', () => {
-        openOrganization(Array.from(this.issueSelectedPaths).sort((left, right) => left.localeCompare(right)));
+        if (allSelectedOrganizable) openOrganization(selectedPaths);
+      });
+
+      const deleteSelected = selectionBar.createEl('button', {
+        text: 'Delete selected…',
+        cls: 'qz-btn qz-btn-sm mod-warning',
+      });
+      deleteSelected.disabled = selectedPaths.length === 0;
+      deleteSelected.addEventListener('click', () => {
+        openBulkDelete(selectedPaths);
       });
 
       if (filteredIssues.length === 0) {
@@ -725,7 +761,7 @@ export class QuartzoView extends ItemView {
 
       for (const issue of displayList) {
         const row = tbody.createEl('tr');
-        const selectable = isBulkOrganizeIssue(issue);
+        const selectable = isDeletableIssue(issue);
 
         const selectTd = row.createEl('td');
         if (selectable) {
@@ -752,7 +788,7 @@ export class QuartzoView extends ItemView {
         infoTd.createEl('small', { text: `Path: ${issue.subjectPath}` });
 
         const actionsTd = row.createEl('td');
-        if (selectable) {
+        if (isBulkOrganizeIssue(issue)) {
           const orgBtn = actionsTd.createEl('button', { text: 'Organize…', cls: 'qz-btn qz-btn-primary qz-btn-sm' });
           orgBtn.addEventListener('click', () => openOrganization([issue.subjectPath]));
         } else if (issue.category === 'duplicate') {
@@ -774,6 +810,15 @@ export class QuartzoView extends ItemView {
           });
         } else {
           actionsTd.createEl('span', { text: 'Review required', cls: 'qz-text-muted' });
+        }
+
+        if (selectable) {
+          const deleteBtn = actionsTd.createEl('button', {
+            text: 'Delete…',
+            cls: 'qz-btn qz-btn-sm mod-warning',
+            attr: { style: 'margin-left: 6px;' },
+          });
+          deleteBtn.addEventListener('click', () => openBulkDelete([issue.subjectPath]));
         }
       }
 

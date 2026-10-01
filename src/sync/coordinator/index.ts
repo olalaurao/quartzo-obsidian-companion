@@ -82,6 +82,27 @@ export interface SyncPendingDiagnostic {
   relatedPath?: string;
 }
 
+export type CanonicalRetirePreflightBlockerReason =
+  | 'sync_not_ready'
+  | 'conflict'
+  | 'missing_baseline'
+  | 'remote_changed'
+  | 'remote_moved'
+  | 'untracked_remote'
+  | 'ambiguous_remote'
+  | 'remote_unavailable';
+
+export interface CanonicalRetirePreflightBlocker {
+  path: string;
+  reason: CanonicalRetirePreflightBlockerReason;
+  message: string;
+}
+
+export interface CanonicalRetirePreflight {
+  safePaths: string[];
+  blockers: CanonicalRetirePreflightBlocker[];
+}
+
 export type SyncProgressPhase =
   | 'local_inventory'
   | 'remote_inventory'
@@ -245,6 +266,125 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
   getSyncProgress(): SyncProgress | null {
     return this.syncProgress ? { ...this.syncProgress } : null;
+  }
+
+  /**
+   * Proves that a local canonical retirement can be started without allowing a
+   * stale Drive copy to resurrect the source path. This is a preflight only;
+   * processLocalDirty revalidates the tracked remote again immediately before
+   * applying the queued rename so races remain fail-closed.
+   */
+  async preflightCanonicalRetire(filePaths: readonly string[]): Promise<CanonicalRetirePreflight> {
+    const paths = Array.from(new Set(filePaths.map(normalizeVaultPath))).sort((a, b) => a.localeCompare(b));
+    const safePaths: string[] = [];
+    const blockers: CanonicalRetirePreflightBlocker[] = [];
+    const driveFolderId = this.syncState.driveFolderId || '';
+
+    if (!driveFolderId) {
+      return {
+        safePaths,
+        blockers: paths.map(path => ({
+          path,
+          reason: 'sync_not_ready' as const,
+          message: 'Drive sync has no paired vault identity. Reopen Sync Center before deleting.',
+        })),
+      };
+    }
+
+    let remoteInventory: DriveFileMetadata[] | null = null;
+
+    for (const filePath of paths) {
+      if (this.conflicts.has(filePath)) {
+        blockers.push({
+          path: filePath,
+          reason: 'conflict',
+          message: 'This path already has an unresolved sync conflict.',
+        });
+        continue;
+      }
+
+      const syncFile = this.syncState.files.get(filePath);
+      if (syncFile?.remoteFileId) {
+        if (syncFile.baseHash === null) {
+          blockers.push({
+            path: filePath,
+            reason: 'missing_baseline',
+            message: 'The tracked remote has no safe three-way baseline yet. Run Sync now first.',
+          });
+          continue;
+        }
+
+        try {
+          const metadata = await this.driveAdapter.getFileMetadata(syncFile.remoteFileId);
+          const remotePath = await this.resolveRemotePath(metadata, driveFolderId);
+          const belongsToVault = await this.proveAncestryToRoot(metadata, driveFolderId);
+          if (!belongsToVault || !remotePath || normalizeVaultPath(remotePath) !== filePath) {
+            blockers.push({
+              path: filePath,
+              reason: 'remote_moved',
+              message: 'The tracked Drive file is no longer at the expected path. Run Sync now before deleting.',
+            });
+            continue;
+          }
+
+          const remoteHash = await this.driveAdapter.resolveRemoteHash(metadata);
+          if (remoteHash !== syncFile.baseHash) {
+            blockers.push({
+              path: filePath,
+              reason: 'remote_changed',
+              message: 'Drive changed since the shared baseline. Sync and resolve the concurrent edit before deleting.',
+            });
+            continue;
+          }
+
+          safePaths.push(filePath);
+          continue;
+        } catch (error) {
+          blockers.push({
+            path: filePath,
+            reason: 'remote_unavailable',
+            message: `Could not revalidate the tracked Drive file: ${error instanceof Error ? error.message : String(error)}`,
+          });
+          continue;
+        }
+      }
+
+      try {
+        if (!remoteInventory) remoteInventory = await this.driveAdapter.listAllFiles(driveFolderId);
+        const candidates: DriveFileMetadata[] = [];
+        for (const candidate of remoteInventory) {
+          if (!VaultSyncFilePolicy.shouldSyncRemoteFile(candidate.relativePath || candidate.name || '', candidate.mimeType)) continue;
+          const candidatePath = await this.resolveRemotePath(candidate, driveFolderId);
+          if (!candidatePath || normalizeVaultPath(candidatePath) !== filePath) continue;
+          if (!await this.proveAncestryToRoot(candidate, driveFolderId)) continue;
+          candidates.push(candidate);
+        }
+
+        if (candidates.length === 0) {
+          safePaths.push(filePath);
+        } else if (candidates.length === 1) {
+          blockers.push({
+            path: filePath,
+            reason: 'untracked_remote',
+            message: 'A Drive file exists at this path but is not safely baselined to this local file. Run Sync now first.',
+          });
+        } else {
+          blockers.push({
+            path: filePath,
+            reason: 'ambiguous_remote',
+            message: `Multiple live Drive candidates exist at this path (${candidates.map(candidate => candidate.id).join(', ')}). Resolve remote identity first.`,
+          });
+        }
+      } catch (error) {
+        blockers.push({
+          path: filePath,
+          reason: 'remote_unavailable',
+          message: `Could not prove that Drive has no stale copy: ${error instanceof Error ? error.message : String(error)}`,
+        });
+      }
+    }
+
+    return { safePaths, blockers };
   }
 
   private beginSyncProgress(
@@ -1152,9 +1292,28 @@ export class DriveSyncCoordinator implements ConflictRegistry {
         syncFile.remoteFileId = change.file.id;
 
         if (!localFile) {
+          const pendingRename = this.pendingRenames.find(rename => rename.oldPath === normalizedRemote);
           if (this.pendingDeletes.has(normalizedRemote)) {
             result.conflicts++;
             await this.handleConflict(normalizedRemote, { hash: syncFile.localHash, exists: false }, change.file, syncFile);
+          } else if (pendingRename) {
+            // A local canonical retirement/rename already owns this disappearance.
+            // Never pull the old remote path back. If Drive changed, surface the
+            // three-way conflict and keep the rename pending for explicit review.
+            if (syncFile.baseHash !== null && remoteHash === syncFile.baseHash) {
+              syncFile.remoteHash = remoteHash;
+              syncFile.remoteExists = true;
+              syncFile.remoteModifiedAt = change.file.modifiedTime || null;
+              this.syncState.files.set(normalizedRemote, syncFile);
+            } else {
+              result.conflicts++;
+              await this.handleConflict(
+                normalizedRemote,
+                { hash: syncFile.localHash, exists: false },
+                change.file,
+                syncFile,
+              );
+            }
           } else {
             await this.pullFile(normalizedRemote, change.file, syncFile);
             result.synced++;
@@ -1244,9 +1403,43 @@ export class DriveSyncCoordinator implements ConflictRegistry {
         continue; // Discard invalid intents
       }
 
+      if (this.conflicts.has(rename.oldPath) || this.conflicts.has(rename.newPath)) {
+        remainingRenames.push(rename);
+        processedPaths.add(rename.oldPath);
+        processedPaths.add(rename.newPath);
+        continue;
+      }
+
       const newLocalFile = localInventory.get(rename.newPath);
       if (newLocalFile) {
         try {
+          const currentRemote = await this.driveAdapter.getFileMetadata(oldSyncFile.remoteFileId);
+          const currentRemotePath = await this.resolveRemotePath(currentRemote, driveFolderId);
+          const belongsToVault = await this.proveAncestryToRoot(currentRemote, driveFolderId);
+          if (!belongsToVault || !currentRemotePath || normalizeVaultPath(currentRemotePath) !== rename.oldPath) {
+            throw new Error('Tracked remote identity moved before the queued rename could be applied.');
+          }
+          if (oldSyncFile.baseHash === null) {
+            throw new Error('Tracked remote identity has no safe three-way baseline for rename.');
+          }
+
+          const currentRemoteHash = await this.driveAdapter.resolveRemoteHash(currentRemote);
+          if (currentRemoteHash !== oldSyncFile.baseHash) {
+            result.conflicts++;
+            await this.handleConflict(
+              rename.oldPath,
+              { hash: oldSyncFile.localHash, exists: false },
+              currentRemote,
+              oldSyncFile,
+            );
+            remainingRenames.push(rename);
+            processedPaths.add(rename.oldPath);
+            processedPaths.add(rename.newPath);
+            continue;
+          }
+          oldSyncFile.remoteHash = currentRemoteHash;
+          oldSyncFile.remoteModifiedAt = currentRemote.modifiedTime || null;
+
           if (!renameRemoteInventory) renameRemoteInventory = await this.driveAdapter.listAllFiles(driveFolderId);
           const targetIds: string[] = [];
           for (const candidate of renameRemoteInventory) {

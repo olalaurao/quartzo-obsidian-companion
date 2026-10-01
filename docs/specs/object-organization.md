@@ -3640,3 +3640,13 @@ Its defining requirement is:
 > **An organization decision made from the Obsidian Companion must become a canonical Quartzo decision, survive sync/offline/restart, remain understandable on both clients, and never be undone merely because another client parsed the vault later.**
 
 END OF SPEC
+
+## Organization Issues — bulk delete / canonical retirement
+
+- Multi-select in Organization Issues may delete multiple ordinary Markdown subjects in one explicit confirmation. Selection scope is presentation only and does not alter Object Identification rules.
+- Delete is a canonical retirement, never a raw filesystem delete: each selected file is rewritten to a minimal `type: _deleted` tombstone and moved to `_deleted/<object-id>.md`. Merge losers reuse the same lifecycle.
+- `_deleted/**` participates in vault content sync so deletion state is transportable, but tombstones are excluded from the live Organization Issues projection.
+- In paired Drive mode, deletion preflight must prove each tracked remote is still the same path and same baseline hash; untracked/ambiguous remote identity blocks deletion until normal sync establishes a safe baseline.
+- The coordinator revalidates the remote hash again immediately before applying a queued rename. If Drive changed concurrently, it keeps the rename pending and creates an explicit conflict; it never pulls the old source path back over a pending retirement.
+- A safe remote rename preserves the existing `remoteFileId`, then normal local-dirty processing updates that same remote file with tombstone bytes. Manual mode persists the queued rename until `Sync now`; automatic mode may reconcile through the existing coordinator.
+- UI must show destructive confirmation, affected paths, sync-safety blockers, and partial-failure state. It must not create a second delete registry, database, sync engine, or source of truth.
