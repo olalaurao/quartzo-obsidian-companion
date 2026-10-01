@@ -14,8 +14,54 @@ export interface TypeSignature {
   colorHex?: string | null;
 }
 
+/**
+ * Phase of an in-progress structural Object Identification migration.
+ * §10 — Transition protocol.
+ * - planning: plan created, no mutations yet (not persisted remotely)
+ * - applying: local mutations in progress
+ * - awaiting_transport: local done, waiting for content transport to other clients
+ * - committing: transport confirmed, writing final revision
+ * - failed: migration failed, transition must be reviewed
+ */
+export type ObjectIdentificationTransitionPhase =
+  | 'planning'
+  | 'applying'
+  | 'awaiting_transport'
+  | 'committing'
+  | 'failed';
+
+/**
+ * Transition state present during a structural Object Identification migration (§10).
+ * While this is present:
+ *  - old and new signatures are both recognized as the same object type (§11)
+ *  - conflicting structural TypeSignature edits are disabled
+ *  - another client cannot start an incompatible migration
+ */
+export interface ObjectIdentificationTransition {
+  operationId: string;
+  objectType: string;
+  baseRevision: number;
+  targetRevision: number;
+  oldSignature: TypeSignature;
+  newSignature: TypeSignature;
+  phase: ObjectIdentificationTransitionPhase;
+  /** Optional: device/client identity for observability — never used for ownership or last-writer-wins. */
+  initiatedBy?: string;
+}
+
+/**
+ * Revision state for Object Identification (§9).
+ * revision: monotonic integer, not clock-based.
+ * transition: present only during structural migration.
+ */
+export interface ObjectIdentificationState {
+  revision: number;
+  transition?: ObjectIdentificationTransition | null;
+}
+
 export interface QuartzoSharedSettings {
   schemaVersion: number;
+  objectIdentification: ObjectIdentificationState;
   typeSignatures: Record<string, TypeSignature>;
   typeAliases: Record<string, string[]>;
   typePriority: string[];
@@ -72,6 +118,33 @@ function parseSignature(value: unknown, key: string): TypeSignature | null {
   };
 }
 
+function parseTransition(value: unknown, typeSignatures: Record<string, TypeSignature>): ObjectIdentificationTransition | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const operationId = String(raw.operation_id ?? '').trim();
+  const objectType = String(raw.object_type ?? '').trim();
+  const phase = String(raw.phase ?? '') as ObjectIdentificationTransitionPhase;
+  const validPhases: ObjectIdentificationTransitionPhase[] = ['planning', 'applying', 'awaiting_transport', 'committing', 'failed'];
+  if (!operationId || !objectType || !validPhases.includes(phase)) return null;
+  const baseRevision = Number(raw.base_revision);
+  const targetRevision = Number(raw.target_revision);
+  if (!Number.isInteger(baseRevision) || !Number.isInteger(targetRevision)) return null;
+  const oldSignature = parseSignature(raw.old_signature, objectType);
+  const newSignature = parseSignature(raw.new_signature, objectType);
+  if (!oldSignature || !newSignature) return null;
+  return {
+    operationId,
+    objectType,
+    baseRevision,
+    targetRevision,
+    oldSignature,
+    newSignature,
+    phase,
+    initiatedBy: raw.initiated_by != null ? String(raw.initiated_by) : undefined,
+  };
+  void typeSignatures; // available for future validation
+}
+
 export function parseSharedSettings(markdown: string): QuartzoSharedSettings | null {
   const parsed = ObjectParser.parseMarkdown(markdown);
   const fm = parsed.frontmatter;
@@ -84,6 +157,12 @@ export function parseSharedSettings(markdown: string): QuartzoSharedSettings | n
     if (signature) typeSignatures[key] = signature;
   }
 
+  // §9: parse monotonic revision for Object Identification
+  const rawOI = asRecord(fm.object_identification);
+  const revision = Number.isInteger(Number(rawOI.revision)) ? Number(rawOI.revision) : 0;
+  const transition = rawOI.transition != null ? parseTransition(rawOI.transition, typeSignatures) : null;
+  const objectIdentification: ObjectIdentificationState = { revision, transition: transition ?? undefined };
+
   const planner = asRecord(fm.planner);
   const calendar = asRecord(fm.calendar);
   const day = asRecord(fm.day);
@@ -94,6 +173,7 @@ export function parseSharedSettings(markdown: string): QuartzoSharedSettings | n
 
   return {
     schemaVersion: Number(fm.schema_version ?? 1),
+    objectIdentification,
     typeSignatures,
     typeAliases: stringListMap(fm.type_aliases),
     typePriority: Array.isArray(fm.type_priority) ? fm.type_priority.map(value => String(value)) : Object.keys(typeSignatures),
@@ -224,9 +304,37 @@ export function identifyObjectFromSignatures(
     };
   }
   const normalizedPath = normalizeSharedPath(filePath);
-  const matchedSignatures: ObjectIdentificationMatch[] = [];
 
-  for (const signature of Object.values(settings.typeSignatures)) {
+  // §11: During a structural migration, both old and new signatures are recognized as
+  // equivalent representations of the same object type — no false conflict between them.
+  const transition = settings.objectIdentification?.transition;
+  const activeTransition = transition && transition.phase !== 'planning' && transition.phase !== 'failed'
+    ? transition
+    : null;
+
+  // Build effective signature list: primary signatures + transition equivalents
+  const signaturesWithSource: Array<{ key: string; signature: TypeSignature; isTransitionEquivalent: boolean }> = [
+    ...Object.entries(settings.typeSignatures).map(([key, sig]) => ({ key, signature: sig, isTransitionEquivalent: false })),
+  ];
+  if (activeTransition) {
+    // Add old signature as an equivalent entry for the transitioning type
+    signaturesWithSource.push({
+      key: `__transition_old_${activeTransition.objectType}`,
+      signature: { ...activeTransition.oldSignature, objectType: activeTransition.objectType },
+      isTransitionEquivalent: true,
+    });
+    // Add new signature as an equivalent entry for the transitioning type
+    signaturesWithSource.push({
+      key: `__transition_new_${activeTransition.objectType}`,
+      signature: { ...activeTransition.newSignature, objectType: activeTransition.objectType },
+      isTransitionEquivalent: true,
+    });
+  }
+
+  const matchedSignatures: ObjectIdentificationMatch[] = [];
+  const seenMatchKeys = new Set<string>();
+
+  for (const { signature } of signaturesWithSource) {
     let matched = false;
     if (signature.markerType === 'folder') {
       const folder = normalizeSharedFolder(signature.markerValue);
@@ -237,15 +345,21 @@ export function identifyObjectFromSignatures(
       matched = tagSignatureMatches(frontmatter, body, signature.markerValue);
     }
     if (matched) {
-      matchedSignatures.push({
-        objectType: canonicalProductType(settings, signature.objectType),
-        markerType: signature.markerType,
-        markerValue: signature.markerValue,
-        source: signatureSource(signature.markerType, signature.markerValue),
-      });
+      const canonicalType = canonicalProductType(settings, signature.objectType);
+      const matchKey = `${canonicalType}|${signature.markerType}|${signature.markerValue}`;
+      if (!seenMatchKeys.has(matchKey)) {
+        seenMatchKeys.add(matchKey);
+        matchedSignatures.push({
+          objectType: canonicalType,
+          markerType: signature.markerType,
+          markerValue: signature.markerValue,
+          source: signatureSource(signature.markerType, signature.markerValue),
+        });
+      }
     }
   }
 
+  // Deduplicate by object type
   const candidates = [...new Set(matchedSignatures.map(match => match.objectType))];
   if (candidates.length === 0) {
     return {
@@ -266,7 +380,25 @@ export function identifyObjectFromSignatures(
       const normalizedRight = rightPriority < 0 ? Number.MAX_SAFE_INTEGER : rightPriority;
       return normalizedLeft - normalizedRight || left.localeCompare(right);
     })[0];
-  const hasConflict = candidates.some(candidate => !equivalentProductType(settings, candidate, resolvedType));
+
+  // §11: During transition, matches from both old/new signatures of the same type
+  // are NOT a conflict — they are equivalent representations of the same type.
+  const transitionCanonical = activeTransition
+    ? canonicalProductType(settings, activeTransition.objectType)
+    : null;
+  const hasConflict = candidates.some(candidate => {
+    if (equivalentProductType(settings, candidate, resolvedType)) return false;
+    // If both candidate and resolved are the transition type, no conflict
+    if (
+      transitionCanonical &&
+      canonicalProductType(settings, candidate) === transitionCanonical &&
+      canonicalProductType(settings, resolvedType) === transitionCanonical
+    ) {
+      return false;
+    }
+    return true;
+  });
+
   const resolutionReason = hasConflict
     ? `${labelForType(resolvedType)} has higher Object Identification priority.`
     : `${labelForType(resolvedType)} is identified by Object Identification.`;

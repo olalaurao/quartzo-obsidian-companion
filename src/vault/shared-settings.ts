@@ -4,6 +4,7 @@ import {
   normalizeSharedFolder,
   parseSharedSettings,
   type MarkerType,
+  type ObjectIdentificationTransition,
   type QuartzoSharedSettings,
   type TypeSignature,
 } from '../core/shared-settings';
@@ -67,6 +68,76 @@ export class SharedSettingsRepository {
     });
   }
 
+  /**
+   * Revision-aware compare-before-write (§92).
+   * Increments the Object Identification revision monotonically.
+   * Fails if the current persisted revision does not match `expectedRevision`,
+   * preventing stale overwrites.
+   */
+  async incrementRevision(expectedRevision: number): Promise<QuartzoSharedSettings> {
+    return this.processSettings(current => {
+      const parsed = ObjectParser.parseMarkdown(current);
+      const frontmatter = { ...parsed.frontmatter };
+      const oi = record(frontmatter.object_identification);
+      const currentRevision = Number.isInteger(Number(oi.revision)) ? Number(oi.revision) : 0;
+      if (currentRevision !== expectedRevision) {
+        throw new Error(
+          `Object Identification revision conflict: expected ${expectedRevision}, found ${currentRevision}. Refresh preview before applying.`,
+        );
+      }
+      frontmatter.object_identification = {
+        ...oi,
+        revision: currentRevision + 1,
+      };
+      return ObjectParser.serializeMarkdown(frontmatter, parsed.body);
+    });
+  }
+
+  /**
+   * Persists a transition state (§10) using compare-before-write.
+   * Does not persist `planning` phase remotely — only applies, awaiting_transport, committing.
+   * Pass `null` to clear the transition after commit.
+   */
+  async updateTransition(
+    expectedRevision: number,
+    transition: ObjectIdentificationTransition | null,
+  ): Promise<QuartzoSharedSettings> {
+    if (transition?.phase === 'planning') {
+      // §10: planning phase is not persisted remotely
+      const current = await this.load();
+      if (!current) throw new Error('Shared Quartzo settings are missing.');
+      return current;
+    }
+    return this.processSettings(current => {
+      const parsed = ObjectParser.parseMarkdown(current);
+      const frontmatter = { ...parsed.frontmatter };
+      const oi = record(frontmatter.object_identification);
+      const currentRevision = Number.isInteger(Number(oi.revision)) ? Number(oi.revision) : 0;
+      if (currentRevision !== expectedRevision) {
+        throw new Error(
+          `Object Identification revision conflict: expected ${expectedRevision}, found ${currentRevision}.`,
+        );
+      }
+      if (transition === null) {
+        // Commit: clear transition, advance to targetRevision
+        const rawTransition = record(oi.transition);
+        const targetRevision = Number(rawTransition.target_revision) || currentRevision + 1;
+        frontmatter.object_identification = {
+          ...oi,
+          revision: targetRevision,
+          transition: null,
+        };
+      } else {
+        // Persist active transition
+        frontmatter.object_identification = {
+          ...oi,
+          transition: serializeTransition(transition),
+        };
+      }
+      return ObjectParser.serializeMarkdown(frontmatter, parsed.body);
+    });
+  }
+
   private async processSettings(update: (current: string) => string): Promise<QuartzoSharedSettings> {
     const file = this.vault.getAbstractFileByPath(SHARED_SETTINGS_PATH);
     if (!(file instanceof TFile)) {
@@ -83,6 +154,19 @@ export class SharedSettingsRepository {
     if (!parsed) throw new Error('Shared settings update failed.');
     return parsed;
   }
+}
+
+function serializeTransition(transition: ObjectIdentificationTransition): Record<string, unknown> {
+  return {
+    operation_id: transition.operationId,
+    object_type: transition.objectType,
+    base_revision: transition.baseRevision,
+    target_revision: transition.targetRevision,
+    old_signature: transition.oldSignature,
+    new_signature: transition.newSignature,
+    phase: transition.phase,
+    ...(transition.initiatedBy !== undefined ? { initiated_by: transition.initiatedBy } : {}),
+  };
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -102,3 +186,5 @@ function ensurePriority(frontmatter: Record<string, unknown>, objectType: string
   if (!priority.includes(objectType)) priority.push(objectType);
   frontmatter.type_priority = priority;
 }
+
+

@@ -628,6 +628,133 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     return result;
   }
 
+  /**
+   * §14 Targeted shared settings sync.
+   * Reconciles ONLY app/quartzo_shared_settings.md using the existing Drive adapter 
+   * and coordinator state, without creating a second sync engine.
+   */
+  async syncSharedSettingsNow(): Promise<SyncResult> {
+    if (this.syncMutex) {
+      return { synced: 0, conflicts: 0, errors: ['Sync already in progress, skipped targeted settings sync'] };
+    }
+
+    this.syncMutex = true;
+    this.currentTransactionId = `sync-settings-${Date.now()}-${++this.transactionCounter}`;
+    const result: SyncResult = { synced: 0, conflicts: 0, errors: [] };
+    const settingsPath = 'app/quartzo_shared_settings.md';
+
+    try {
+      await this.loadSyncState();
+      
+      const driveFolderId = await this.driveAdapter.getFolderId();
+      if (!driveFolderId) {
+        throw new Error('Drive folder not configured');
+      }
+
+      // 1. Build local state
+      const localFilePath = pathModule.join(this.vaultPath, settingsPath);
+      const localExists = fs.existsSync(localFilePath);
+      let localHash: string | null = null;
+      let localContent: Uint8Array | null = null;
+      if (localExists) {
+        localContent = new Uint8Array(fs.readFileSync(localFilePath));
+        localHash = this.calculateHash(localContent);
+      }
+
+      // 2. Discover remote state
+      let syncFile = this.syncState.files.get(settingsPath);
+      let remoteFile: DriveFileMetadata | undefined;
+      
+      if (syncFile && syncFile.remoteFileId) {
+        try {
+          remoteFile = await this.driveAdapter.getFileMetadata(syncFile.remoteFileId);
+        } catch (e: any) {
+          if (e.message && e.message.includes('404')) {
+            remoteFile = undefined;
+          } else {
+            throw e;
+          }
+        }
+      } else {
+        // Fallback: lookup by path if not tracked yet
+        const parts = settingsPath.split('/');
+        let currentFolderId = driveFolderId;
+        let found = true;
+        for (let i = 0; i < parts.length - 1; i++) {
+          const folderMeta = await this.driveAdapter.findFileByNameAndParent(parts[i], currentFolderId);
+          if (!folderMeta || folderMeta.mimeType !== 'application/vnd.google-apps.folder') {
+            found = false;
+            break;
+          }
+          currentFolderId = folderMeta.id;
+        }
+        if (found) {
+          const fileMeta = await this.driveAdapter.findFileByNameAndParent(parts[parts.length - 1], currentFolderId);
+          if (fileMeta) remoteFile = fileMeta;
+        }
+      }
+
+      if (!syncFile) {
+        syncFile = this.createSyncFile(settingsPath, { hash: localHash || '', exists: localExists });
+        if (remoteFile) syncFile.remoteFileId = remoteFile.id;
+      }
+
+      const remoteHash = remoteFile ? await this.resolveRemoteHashCached(remoteFile) : null;
+
+      // 3. Three-way reconciliation
+      const vector = {
+        id: settingsPath,
+        baseHash: syncFile.baseHash,
+        localHash,
+        remoteHash,
+        localExists,
+        remoteExists: remoteFile !== undefined,
+        expected: '' 
+      };
+
+      const syncDecision = SyncEngine.reconcile(vector);
+
+      switch (syncDecision.action) {
+        case 'push':
+          await this.pushFile(settingsPath, { hash: localHash!, exists: true }, syncFile);
+          result.synced++;
+          break;
+        case 'pull':
+          if (remoteFile) {
+            await this.pullFile(settingsPath, remoteFile, syncFile);
+            result.synced++;
+          }
+          break;
+        case 'delete_local':
+          await this.deleteLocalFile(settingsPath);
+          result.synced++;
+          break;
+        case 'conflict':
+          result.conflicts++;
+          await this.handleConflict(settingsPath, { hash: localHash!, exists: true }, remoteFile, syncFile);
+          break;
+        case 'advance_baseline':
+          syncFile.baseHash = localHash;
+          if (remoteFile?.id) {
+            syncFile.remoteHash = remoteHash;
+            syncFile.remoteFileId = remoteFile.id;
+          }
+          syncFile.localHash = localHash;
+          this.syncState.files.set(settingsPath, syncFile);
+          break;
+      }
+      
+      await this.saveSyncState();
+    } catch (error) {
+      result.errors.push(`Targeted settings sync failed: ${error}`);
+    } finally {
+      this.syncMutex = false;
+      this.currentTransactionId = null;
+    }
+    
+    return result;
+  }
+
   private async fullInventory(
     localInventory: Map<string, { hash: string; exists: boolean }>,
     result: SyncResult,

@@ -23,13 +23,13 @@ import {
 } from '../../vault/shared-settings';
 import type { IndexedObject, VaultIndex } from '../../vault/index/types';
 import { QuickAddModal } from '../quick-add/modal';
-import { renderFocusRuntime } from '../focus/view';
 import type { ViewContext } from '../types';
 import { buildConflictDiff, formatConflictDiff } from '../sync/conflict-diff';
+import { projectOrganizationIssues } from '../../core/object-organization/issues-projection';
 
 export const QUARTZO_VIEW_TYPE = 'quartzo-view';
-export type QuartzoSection = 'home' | 'planner' | 'journal' | 'browse';
-export type QuartzoAction = 'focus' | 'search' | 'add' | 'sync' | 'conflicts' | 'type-conflicts' | 'settings';
+export type QuartzoSection = 'home' | 'planner' | 'journal' | 'browse' | 'objects' | 'issues';
+export type QuartzoAction = 'focus' | 'search' | 'add' | 'sync' | 'conflicts' | 'type-conflicts' | 'settings' | 'organize' | 'folder_review';
 function isoDate(date: Date): string {
   return localIsoDate(date);
 }
@@ -135,8 +135,9 @@ function scheduleObjects(index: VaultIndex | null): Array<Record<string, unknown
 
 export class QuartzoView extends ItemView {
   private section: QuartzoSection = 'home';
-  private action: QuartzoAction | null = null;
+  public action: QuartzoAction | null = null;
   private selectedObjectId: string | null = null;
+  public selectedFolder: string | null = null;
   private editingSelectedObject = false;
   private selectedDate = isoDate(new Date());
   private plannerMode: 'day' | 'week' | 'month' = 'day';
@@ -249,9 +250,9 @@ export class QuartzoView extends ItemView {
     const nav = document.createElement('nav');
     nav.className = 'qz-nav-tabs';
     const sectionIcons: Record<QuartzoSection, string> = {
-      home: '🏠', planner: '📅', journal: '📓', browse: '🔍',
+      home: '🏠', planner: '📅', journal: '📓', browse: '🔍', objects: '🗂', issues: '⚠️'
     };
-    for (const section of ['home', 'planner', 'journal', 'browse'] as QuartzoSection[]) {
+    for (const section of ['home', 'planner', 'journal', 'browse', 'objects', 'issues'] as QuartzoSection[]) {
       const button = document.createElement('button');
       button.className = 'qz-nav-tab';
       button.textContent = `${sectionIcons[section]} ${labelForType(section)}`;
@@ -393,11 +394,191 @@ export class QuartzoView extends ItemView {
       this.renderTypeConflicts(content);
       return;
     }
+    if (this.action === 'folder_review') {
+      this.renderFolderReview(content);
+      return;
+    }
 
     if (this.section === 'home') await this.renderHome(content, generation);
     if (this.section === 'planner') await this.renderPlanner(content, generation);
     if (this.section === 'journal') await this.renderJournal(content, generation);
     if (this.section === 'browse') this.renderBrowse(content);
+    if (this.section === 'objects') this.renderObjects(content);
+    if (this.section === 'issues') await this.renderIssues(content);
+  }
+
+  private renderObjects(container: HTMLElement): void {
+    container.empty();
+    const wrapper = container.createEl('div', { cls: 'quartzo-page-content' });
+    wrapper.createEl('h2', { text: 'Objects Overview' });
+    wrapper.createEl('p', { text: 'Breakdown of your identified Quartzo objects (§39).' });
+
+    const index = this.getIndex();
+    if (!index) {
+       wrapper.createEl('p', { text: 'Vault index not loaded yet.' });
+       return;
+    }
+
+    // Tally types
+    const counts = new Map<string, number>();
+    for (const obj of index.objects.values()) {
+       const t = obj.type;
+       counts.set(t, (counts.get(t) || 0) + 1);
+    }
+
+    if (counts.size === 0) {
+       wrapper.createEl('div', { cls: 'qz-empty-state', text: 'No identified objects found in the vault.' });
+       return;
+    }
+
+    const table = wrapper.createEl('table', { cls: 'quartzo-data-table' });
+    const thead = table.createEl('thead');
+    const headRow = thead.createEl('tr');
+    headRow.createEl('th', { text: 'Type' });
+    headRow.createEl('th', { text: 'Count' });
+    headRow.createEl('th', { text: 'Actions' });
+
+    const tbody = table.createEl('tbody');
+    const sortedTypes = Array.from(counts.keys()).sort();
+    
+    for (const t of sortedTypes) {
+       const row = tbody.createEl('tr');
+       row.createEl('td', { text: t });
+       row.createEl('td', { text: String(counts.get(t)) });
+       
+       const actionsTd = row.createEl('td');
+       const filterBtn = actionsTd.createEl('button', { text: 'Filter', cls: 'qz-btn qz-btn-ghost qz-btn-sm' });
+       filterBtn.addEventListener('click', () => {
+          // Re-route to browse section with a filter
+          // Simplest approximation without breaking view routing:
+          new Notice(`Filtering by type: ${t} (Switching to browse)`);
+          this.setSection('browse'); 
+       });
+    }
+  }
+
+  private async renderIssues(container: HTMLElement): Promise<void> {
+    container.empty();
+    const wrapper = container.createEl('div', { cls: 'quartzo-page-content' });
+    wrapper.createEl('h2', { text: 'Organization Issues' });
+    wrapper.createEl('p', { text: 'Actionable items requiring your attention to keep Quartzo organized (§40).' });
+
+    const index = this.getIndex();
+    if (!index) return;
+
+    const allFiles = this.context.app.vault.getFiles().filter(f => f.name.endsWith('.md')).map(f => f.path);
+    const settings = await this.sharedSettingsRepository.load();
+
+    const issues = projectOrganizationIssues({
+       index,
+       settings,
+       allMarkdownPaths: new Set(allFiles)
+    });
+
+    if (issues.length === 0) {
+       const success = wrapper.createEl('div', { cls: 'qz-empty-state' });
+       success.createEl('p', { text: '🎉 No organization issues found.' });
+       return;
+    }
+
+    const table = wrapper.createEl('table', { cls: 'quartzo-data-table' });
+    const thead = table.createEl('thead');
+    const headRow = thead.createEl('tr');
+    headRow.createEl('th', { text: 'Category' });
+    headRow.createEl('th', { text: 'Issue' });
+    headRow.createEl('th', { text: 'Action' });
+
+    const tbody = table.createEl('tbody');
+    const displayList = issues.slice(0, 50);
+
+    for (const issue of displayList) {
+       const row = tbody.createEl('tr');
+       
+       const catTd = row.createEl('td');
+       catTd.createEl('span', { cls: 'qz-badge qz-badge-warning', text: issue.category });
+       
+       const infoTd = row.createEl('td');
+       infoTd.createEl('strong', { text: issue.title });
+       infoTd.createEl('br');
+       infoTd.createEl('small', { text: issue.why, cls: 'qz-text-muted' });
+       infoTd.createEl('br');
+       infoTd.createEl('small', { text: `Path: ${issue.subjectPath}` });
+       
+       const actionsTd = row.createEl('td');
+       if (issue.actionable && (issue.category === 'unidentified' || issue.category === 'ambiguous')) {
+           const orgBtn = actionsTd.createEl('button', { text: 'Organize...', cls: 'qz-btn qz-btn-primary qz-btn-sm' });
+           orgBtn.addEventListener('click', () => {
+              const { ObjectOrganizationModal } = require('../organization/modal');
+              new ObjectOrganizationModal(this.context, { files: [issue.subjectPath] }).open();
+           });
+       } else if (issue.category === 'duplicate') {
+           const mergeBtn = actionsTd.createEl('button', { text: 'Resolve merge...', cls: 'qz-btn qz-btn-secondary qz-btn-sm' });
+           mergeBtn.addEventListener('click', () => {
+              // Find all paths for this duplicate ID
+              const duplicatePaths = Array.from(index.objects.values()).filter(o => o.id === issue.subjectId).map(o => o.path);
+              const { ObjectMergeModal } = require('../organization/merge-modal');
+              new ObjectMergeModal(this.context, { files: duplicatePaths }).open();
+           });
+       }
+    }
+
+    if (issues.length > 50) {
+       wrapper.createEl('p', { text: `... and ${issues.length - 50} more. Resolve these to see the rest.`, cls: 'qz-text-muted' });
+    }
+  }
+
+  private renderFolderReview(container: HTMLElement): void {
+    container.empty();
+    const wrapper = container.createEl('div', { cls: 'quartzo-page-content' });
+    const folderPath = this.selectedFolder || 'Unknown Folder';
+    wrapper.createEl('h2', { text: `Review Folder: ${folderPath}` });
+    wrapper.createEl('p', { text: 'Files grouped semantically by Quartzo Object Type (§43).' });
+
+    const index = this.getIndex();
+    if (!index) return;
+
+    const allObjects = Array.from(index.objects.values());
+    const folderObjects = allObjects.filter(o => o.path.startsWith(folderPath + '/') && !o.path.slice(folderPath.length + 1).includes('/'));
+
+    if (folderObjects.length === 0) {
+       wrapper.createEl('div', { cls: 'qz-empty-state', text: 'No identified objects found directly in this folder.' });
+       return;
+    }
+
+    // Group by type
+    const byType = new Map<string, typeof folderObjects>();
+    for (const obj of folderObjects) {
+       const group = byType.get(obj.type) || [];
+       group.push(obj);
+       byType.set(obj.type, group);
+    }
+
+    const sortedTypes = Array.from(byType.keys()).sort();
+    
+    for (const t of sortedTypes) {
+       const section = wrapper.createEl('section', { cls: 'quartzo-review-section', attr: { style: 'margin-bottom: 20px;' } });
+       const group = byType.get(t)!;
+       
+       const header = section.createEl('div', { attr: { style: 'display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--background-modifier-border); padding-bottom: 5px; margin-bottom: 10px;' } });
+       header.createEl('h3', { text: `${t} (${group.length})`, attr: { style: 'margin: 0;' } });
+       
+       const orgBtn = header.createEl('button', { text: 'Organize this group...', cls: 'qz-btn qz-btn-sm' });
+       orgBtn.addEventListener('click', () => {
+          const { ObjectOrganizationModal } = require('../organization/modal');
+          new ObjectOrganizationModal(this.context, { files: group.map(o => o.path) }).open();
+       });
+
+       const list = section.createEl('ul', { attr: { style: 'list-style: none; padding: 0;' } });
+       for (const obj of group.sort((a, b) => a.path.localeCompare(b.path))) {
+          const item = list.createEl('li', { attr: { style: 'padding: 4px 0; display: flex; justify-content: space-between;' } });
+          const link = item.createEl('a', { text: obj.path.split('/').pop()?.replace('.md', '') || obj.path });
+          link.addEventListener('click', (e) => {
+             e.preventDefault();
+             void this.openObjectById(obj.id);
+          });
+          item.createEl('small', { text: obj.id, cls: 'qz-text-muted', attr: { style: 'font-family: monospace; font-size: 0.8em;' } });
+       }
+    }
   }
 
   private buildSchedule(date: string, googleEvents: GoogleCalendarProjection[] = []) {

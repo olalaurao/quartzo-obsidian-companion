@@ -1,0 +1,446 @@
+{
+  "version": "1.0.0",
+  "description": "Test vectors for Object Organization V1. Covers reclassify, scope resolution, bulk_mutate, rule_migration (revision/transition), merge, reference_rewrite, and sync interactions.",
+
+  "reclassifyCases": [
+    {
+      "name": "property_to_property_resource_to_note",
+      "description": "Reclassify: change from Resource (property type=resource) to Note (property type=note). ID preserved, body preserved, unknown fields preserved.",
+      "input": {
+        "objectId": "obj-001",
+        "targetType": "note",
+        "settingsRevision": 5,
+        "settings": {
+          "typeSignatures": {
+            "resource": {"objectType": "resource", "markerType": "property", "markerValue": "type: resource"},
+            "note": {"objectType": "note", "markerType": "property", "markerValue": "type: note"}
+          }
+        },
+        "candidate": {
+          "path": "Resources/foo.md",
+          "frontmatter": {"id": "obj-001", "type": "resource", "title": "Foo", "custom_field": "keep_me"},
+          "body": "Body content"
+        }
+      },
+      "expected": {
+        "actions": [
+          {
+            "kind": "set_property",
+            "key": "type",
+            "value": "note"
+          }
+        ],
+        "frontmatter": {"id": "obj-001", "type": "note", "title": "Foo", "custom_field": "keep_me"},
+        "body": "Body content",
+        "moves": false,
+        "idPreserved": true,
+        "bodyPreserved": true,
+        "unknownFieldsPreserved": true,
+        "typeSignatureUnchanged": true
+      }
+    },
+    {
+      "name": "reclassify_tag_to_folder_requires_move",
+      "description": "Reclassify to folder-based type requires file move.",
+      "input": {
+        "objectId": "obj-002",
+        "targetType": "resource",
+        "settingsRevision": 5,
+        "settings": {
+          "typeSignatures": {
+            "note": {"objectType": "note", "markerType": "tag", "markerValue": "#note"},
+            "resource": {"objectType": "resource", "markerType": "folder", "markerValue": "Resources"}
+          }
+        },
+        "candidate": {
+          "path": "Notes/bar.md",
+          "frontmatter": {"id": "obj-002", "title": "Bar"},
+          "body": "#note Body"
+        }
+      },
+      "expected": {
+        "destinationPath": "Resources/bar.md",
+        "moves": true,
+        "removeOldTagMarker": true,
+        "idPreserved": true
+      }
+    },
+    {
+      "name": "reclassify_with_competing_markers",
+      "description": "Object matches both Resource and Note. Reclassify to Project must plan removal of competing markers.",
+      "input": {
+        "objectId": "obj-003",
+        "targetType": "project",
+        "settingsRevision": 5,
+        "settings": {
+          "typeSignatures": {
+            "resource": {"objectType": "resource", "markerType": "property", "markerValue": "type: resource"},
+            "note": {"objectType": "note", "markerType": "folder", "markerValue": "Notes"},
+            "project": {"objectType": "project", "markerType": "property", "markerValue": "type: project"}
+          }
+        },
+        "candidate": {
+          "path": "Notes/baz.md",
+          "frontmatter": {"id": "obj-003", "type": "resource", "title": "Baz"},
+          "body": "Body"
+        }
+      },
+      "expected": {
+        "competingMarkersRemoved": ["type: resource"],
+        "targetMarkerApplied": "type: project",
+        "previewIncludes": {
+          "identificationChanges": [
+            {"action": "remove", "signature": "Resource — Property type=resource"},
+            {"action": "apply", "signature": "Project — Property type=project"}
+          ]
+        }
+      }
+    },
+    {
+      "name": "reclassify_unidentified_markdown",
+      "description": "Turn unidentified Markdown into an object. Only canonical ID and type identification marker are added.",
+      "input": {
+        "objectId": null,
+        "targetType": "note",
+        "settingsRevision": 5,
+        "candidate": {
+          "path": "some/plain.md",
+          "frontmatter": {"title": "Plain note"},
+          "body": "Some content"
+        }
+      },
+      "expected": {
+        "canonicalIdAdded": true,
+        "markerAdded": true,
+        "noInventedOptionalFields": true
+      }
+    },
+    {
+      "name": "reclassify_stale_hash_blocks",
+      "description": "If hash changed since preview, Apply is blocked.",
+      "input": {
+        "objectId": "obj-004",
+        "expectedHash": "abc123",
+        "currentHash": "def456"
+      },
+      "expected": {
+        "blocker": "stale_hash",
+        "applyBlocked": true
+      }
+    },
+    {
+      "name": "reclassify_destination_exists_blocks",
+      "description": "If destination already exists (different content), Apply is blocked.",
+      "input": {
+        "objectId": "obj-005",
+        "targetType": "resource",
+        "destinationPath": "Resources/existing.md",
+        "existingPaths": ["Resources/existing.md"]
+      },
+      "expected": {
+        "blocker": "destination_exists",
+        "applyBlocked": true
+      }
+    }
+  ],
+
+  "scopeCases": [
+    {
+      "name": "folder_scope_direct_only",
+      "description": "Folder scope with includeSubfolders=false counts only direct children.",
+      "input": {
+        "folder": "Costura",
+        "includeSubfolders": false,
+        "vault": ["Costura/a.md", "Costura/b.md", "Costura/Sub/c.md", "Costura/img.png"]
+      },
+      "expected": {
+        "eligibleMarkdownPaths": ["Costura/a.md", "Costura/b.md"],
+        "ignoredAttachments": ["Costura/img.png"],
+        "count": 2
+      }
+    },
+    {
+      "name": "folder_scope_recursive",
+      "description": "Folder scope with includeSubfolders=true includes subfolders.",
+      "input": {
+        "folder": "Costura",
+        "includeSubfolders": true,
+        "vault": ["Costura/a.md", "Costura/b.md", "Costura/Sub/c.md", "Costura/img.png"]
+      },
+      "expected": {
+        "eligibleMarkdownPaths": ["Costura/a.md", "Costura/b.md", "Costura/Sub/c.md"],
+        "ignoredAttachments": ["Costura/img.png"],
+        "count": 3
+      }
+    },
+    {
+      "name": "mixed_scope_deduplicated",
+      "description": "File already contained by selected folder is deduplicated.",
+      "input": {
+        "files": ["Costura/a.md"],
+        "folders": ["Costura"],
+        "includeSubfolders": false,
+        "vault": ["Costura/a.md", "Costura/b.md"]
+      },
+      "expected": {
+        "eligibleMarkdownPaths": ["Costura/a.md", "Costura/b.md"],
+        "duplicatesRemoved": 1
+      }
+    },
+    {
+      "name": "base_files_ignored_for_object_mutation",
+      "description": ".base files are excluded from object mutation scope.",
+      "input": {
+        "folder": "Resources",
+        "includeSubfolders": false,
+        "vault": ["Resources/a.md", "Resources/data.base"]
+      },
+      "expected": {
+        "eligibleMarkdownPaths": ["Resources/a.md"],
+        "ignoredBases": ["Resources/data.base"]
+      }
+    },
+    {
+      "name": "deleted_excluded",
+      "description": "_deleted/ paths are excluded from scope.",
+      "input": {
+        "folder": "",
+        "includeSubfolders": true,
+        "vault": ["Resources/a.md", "_deleted/old.md"]
+      },
+      "expected": {
+        "eligibleMarkdownPaths": ["Resources/a.md"]
+      }
+    }
+  ],
+
+  "bulkMutateCases": [
+    {
+      "name": "set_operation",
+      "description": "Set property value explicitly.",
+      "input": {
+        "operation": "set",
+        "key": "category",
+        "value": "Sewing"
+      },
+      "expected": {"result": "category: Sewing"}
+    },
+    {
+      "name": "add_to_list",
+      "description": "Add value to list property without duplicating.",
+      "input": {
+        "operation": "add",
+        "key": "tags",
+        "value": "sewing",
+        "existing": ["craft"]
+      },
+      "expected": {"result": ["craft", "sewing"]}
+    },
+    {
+      "name": "remove_from_list",
+      "description": "Remove specific value from list property.",
+      "input": {
+        "operation": "remove",
+        "key": "tags",
+        "value": "old-tag",
+        "existing": ["old-tag", "keep"]
+      },
+      "expected": {"result": ["keep"]}
+    },
+    {
+      "name": "clear_operation",
+      "description": "Clear field entirely.",
+      "input": {
+        "operation": "clear",
+        "key": "category",
+        "existing": "Sewing"
+      },
+      "expected": {"result": null, "fieldAbsent": true}
+    },
+    {
+      "name": "leave_unchanged",
+      "description": "Leave unchanged does not touch the field.",
+      "input": {
+        "operation": "leave_unchanged",
+        "key": "category",
+        "existing": "Sewing"
+      },
+      "expected": {"result": "Sewing", "unchanged": true}
+    },
+    {
+      "name": "empty_string_is_not_delete",
+      "description": "Empty string input is not treated as delete.",
+      "input": {
+        "operation": "set",
+        "key": "notes",
+        "value": ""
+      },
+      "expected": {"result": "", "fieldPresent": true}
+    },
+    {
+      "name": "unknown_fields_preserved",
+      "description": "Unrecognized frontmatter fields survive bulk mutation.",
+      "input": {
+        "operation": "set",
+        "key": "category",
+        "value": "New",
+        "existingFrontmatter": {"id": "x", "category": "Old", "future_field": "keep"}
+      },
+      "expected": {
+        "resultFrontmatter": {"id": "x", "category": "New", "future_field": "keep"}
+      }
+    }
+  ],
+
+  "revisionTransitionCases": [
+    {
+      "name": "active_old_resolves",
+      "description": "In ACTIVE state with old signature, object with old marker resolves to correct type.",
+      "state": "ACTIVE",
+      "revision": 42,
+      "signature": {"markerType": "property", "markerValue": "type: resource"},
+      "candidate": {"frontmatter": {"id": "x", "type": "resource"}},
+      "expected": {"resolvedType": "resource"}
+    },
+    {
+      "name": "transition_old_marker_resolves",
+      "description": "During TRANSITION, old marker still resolves to target type.",
+      "state": "TRANSITION",
+      "oldSignature": {"markerType": "property", "markerValue": "type: resource"},
+      "newSignature": {"markerType": "folder", "markerValue": "Resources"},
+      "candidate": {"frontmatter": {"id": "x", "type": "resource"}, "path": "other/x.md"},
+      "expected": {"resolvedType": "resource", "noFalseConflict": true}
+    },
+    {
+      "name": "transition_new_marker_resolves",
+      "description": "During TRANSITION, new marker (folder) also resolves to target type.",
+      "state": "TRANSITION",
+      "oldSignature": {"markerType": "property", "markerValue": "type: resource"},
+      "newSignature": {"markerType": "folder", "markerValue": "Resources"},
+      "candidate": {"frontmatter": {"id": "y"}, "path": "Resources/y.md"},
+      "expected": {"resolvedType": "resource", "noFalseConflict": true}
+    },
+    {
+      "name": "committed_old_marker_is_mismatch",
+      "description": "After transition commits (ACTIVE new), old-only object becomes mismatch Issue.",
+      "state": "ACTIVE",
+      "revision": 43,
+      "signature": {"markerType": "folder", "markerValue": "Resources"},
+      "candidate": {"frontmatter": {"id": "x", "type": "resource"}, "path": "other/x.md"},
+      "expected": {"resolvedType": null, "issueKind": "identification_mismatch"}
+    }
+  ],
+
+  "mergeCases": [
+    {
+      "name": "same_type_merge",
+      "description": "Merge two Resource objects. Survivor explicitly chosen.",
+      "input": {
+        "survivorId": "obj-A",
+        "targetType": "resource",
+        "losingIds": ["obj-B"],
+        "propertyResolutions": {
+          "title": {"strategy": "use_survivor"},
+          "tags": {"strategy": "union_dedupe", "result": ["craft", "sewing"]},
+          "notes": {"strategy": "explicit_choice", "chosen": "obj-A"}
+        },
+        "bodyResolution": "keep_survivor"
+      },
+      "expected": {
+        "survivorPreserved": true,
+        "loserRetiredThroughLifecycle": true,
+        "referencesRewritten": true,
+        "noSilentFieldDiscard": true
+      }
+    },
+    {
+      "name": "mixed_type_merge_explicit_target",
+      "description": "Merge Note + Resource into Resource. Target type and survivor are independent choices.",
+      "input": {
+        "survivorId": "obj-note",
+        "targetType": "resource",
+        "losingIds": ["obj-resource-2"]
+      },
+      "expected": {
+        "survivorReclassifiedBeforeDestructiveMerge": true,
+        "targetTypeApplied": "resource"
+      }
+    },
+    {
+      "name": "merge_blocked_by_unsupported_reference",
+      "description": "If reference representation is unknown, merge is blocked.",
+      "input": {
+        "unsupportedReferenceCount": 2
+      },
+      "expected": {
+        "blocker": "unsupported_reference_representation",
+        "losersNotDeleted": true
+      }
+    },
+    {
+      "name": "merge_unknown_fields_conflict",
+      "description": "Both losers have different values for custom_field — requires explicit resolution.",
+      "input": {
+        "loser1": {"custom_field": "foo"},
+        "loser2": {"custom_field": "bar"}
+      },
+      "expected": {
+        "conflictRequiresExplicitChoice": true,
+        "fieldNotSilentlyDiscarded": true
+      }
+    }
+  ],
+
+  "antiResurrectionCases": [
+    {
+      "name": "companion_merge_quartzo_stale_unchanged",
+      "description": "Companion merges B into A. Quartzo still has B unchanged. After sync, B remains deleted.",
+      "steps": [
+        "A and B synced to both clients",
+        "Companion merges B into A",
+        "Quartzo still has B unchanged",
+        "sync",
+        "B remains deleted/retired — NOT resurrected"
+      ],
+      "expected": {"loserResurrected": false}
+    },
+    {
+      "name": "companion_merge_quartzo_edited_loser_offline",
+      "description": "Companion merges B into A. Quartzo edited B offline. sync => explicit conflict, no silent resurrection.",
+      "steps": [
+        "Companion merges B into A",
+        "Quartzo edited B offline",
+        "sync"
+      ],
+      "expected": {"explicitConflict": true, "silentResurrection": false}
+    }
+  ],
+
+  "syncInteractionCases": [
+    {
+      "name": "shared_settings_targeted_does_not_transport_object_bytes",
+      "description": "Targeted shared-settings sync reconciles only app/quartzo_shared_settings.md.",
+      "expected": {
+        "onlySharedSettingsFileSynced": true,
+        "objectBytesNotTransported": true
+      }
+    },
+    {
+      "name": "content_sync_off_shared_settings_still_converge",
+      "description": "With vault content sync Manual, shared settings still reconcile via targeted sync.",
+      "expected": {
+        "sharedSettingsConverge": true,
+        "objectMutationsRemainLocal": true
+      }
+    },
+    {
+      "name": "structural_migrate_awaiting_transport",
+      "description": "Structural migrate completes local mutations but content sync is off. Transition persists until transport confirmed.",
+      "expected": {
+        "transitionPhase": "awaiting_transport",
+        "revision43NotActive": true,
+        "oldAndNewSignaturesBothValid": true
+      }
+    }
+  ]
+}

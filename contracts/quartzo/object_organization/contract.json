@@ -1,0 +1,223 @@
+{
+  "version": "1.0.0",
+  "description": "Object Organization V1 — cross-client contract for reclassify, bulk_mutate, move, organize, relate, merge, reference_rewrite, fix_identification, rule_change, and rule_migration operations.",
+
+  "operationModel": {
+    "description": "Every structural or bulk operation must carry a stable operationId, scope, preconditions, plannedActions, warnings, blockers, and recoverySemantics. Rerunning the same operation after UI rerender, retry, restart, or partial I/O failure must not duplicate effects.",
+    "fields": {
+      "operationId": "Stable deterministic ID for idempotency. NOT a timestamp.",
+      "kind": "One of the operation kinds listed in this contract.",
+      "createdAt": "ISO-8601 timestamp — informational only, not used as idempotency key.",
+      "baseSettingsRevision": "The object_identification.revision value at plan time. Precondition: must still match at Apply time.",
+      "scope": "ResolvedOrganizationScope describing files, folders, eligibleMarkdownPaths, indexedObjectIds, unidentifiedMarkdownPaths, ignoredAttachments, ignoredBases, duplicatesRemoved.",
+      "affectedObjectIds": "Object IDs that will be mutated.",
+      "affectedPaths": "Vault-relative paths that will be read or written.",
+      "preconditions": "Conditions that must hold at Apply time: settings revision valid, object ID still matches, source path valid, hash/markdown matches preview, destination absent, reference graph valid, survivor/losers exist, no new incompatibilities.",
+      "plannedActions": "Ordered list of actions; each action is individually idempotent.",
+      "warnings": "Non-blocking issues visible to user before Apply.",
+      "blockers": "Blocking issues that prevent Apply. Must be shown before Apply is offered.",
+      "recoverySemantics": "How to resume or roll back after partial I/O failure. Must distinguish: not-yet-applied, already-applied-exactly, state-changed-abort."
+    }
+  },
+
+  "operationKinds": {
+    "reclassify": {
+      "description": "Change identified objects to satisfy an existing TypeSignature. Does NOT change the TypeSignature itself.",
+      "inputs": ["objectId", "targetType", "expectedPath", "expectedHash", "settingsRevision"],
+      "plannerSteps": [
+        "resolve current object",
+        "obtain current Object Identification evidence",
+        "obtain target TypeSignature",
+        "calculate markers to remove",
+        "calculate target marker",
+        "calculate eventual move",
+        "preserve ID",
+        "preserve body",
+        "preserve unknown fields",
+        "validate destination",
+        "detect ambiguities",
+        "generate preview"
+      ],
+      "invariants": [
+        "ID is preserved",
+        "body is preserved",
+        "unknown frontmatter fields are preserved",
+        "TypeSignature is not modified",
+        "rule is not modified"
+      ]
+    },
+    "bulk_mutate": {
+      "description": "Apply explicit property operations (Set, Add, Remove, Clear, Leave unchanged) to a scope of objects. Empty input never means delete.",
+      "propertyOperations": ["leave_unchanged", "set", "add", "remove", "clear"],
+      "invariants": [
+        "empty string != delete",
+        "explicit null/clear != empty string",
+        "unknown fields preserved",
+        "capability intersection applied for mixed types"
+      ]
+    },
+    "move": {
+      "description": "Move objects to a destination folder. Does NOT automatically change type unless reclassify is composed.",
+      "invariants": [
+        "manual Explorer move is observed, not auto-reversed",
+        "mismatch after manual move becomes an Issue, not automatic correction"
+      ]
+    },
+    "organize": {
+      "description": "Composite operation: reclassify + move + property mutations + relationship mutations. Planned as a single operation, not improvised sequence.",
+      "invariants": [
+        "one global plan",
+        "all validations before Apply",
+        "blockers shown before Apply",
+        "no improvised sequential execution without preflight"
+      ]
+    },
+    "relate": {
+      "description": "Add relationships between selected objects and an existing object. Uses canonical relationship fields.",
+      "invariants": [
+        "no companion_relations created",
+        "picker uses object-query/VaultIndex"
+      ]
+    },
+    "merge": {
+      "description": "Consolidate multiple object IDs into one survivor, rewrite references, and retire losers through canonical delete lifecycle.",
+      "inputs": {
+        "survivorId": "Explicitly chosen by user — NOT automatic latest-updatedAt.",
+        "targetType": "Explicitly chosen — independent from survivor identity.",
+        "losingIds": "Object IDs to absorb.",
+        "propertyResolutions": "Per-field resolution: equal=auto, one-side=suggest, collection=union-dedupe, conflict=explicit-choice.",
+        "bodyResolution": "keep_survivor | use_object_x | combine | custom",
+        "referencePlan": "List of reference rewrites.",
+        "deletePlan": "Loser deletion through canonical lifecycle.",
+        "preconditions": "Survivor and losers must still exist; references must still be valid."
+      },
+      "invariants": [
+        "merge is ID-based, never title/filename",
+        "survivor is explicit, never automatic",
+        "cross-type merge requires explicit target type",
+        "losers exit through canonical delete lifecycle",
+        "no silent field discard",
+        "unknown fields preserved when serializer supports it",
+        "merge Undo only when evidence and hashes allow it"
+      ]
+    },
+    "reference_rewrite": {
+      "description": "Repoint references from absorbed loser IDs to survivor ID. Reuses MergeService.repointReferences semantics via contract vectors.",
+      "invariants": [
+        "unsupported reference representation is a blocker, not ignored",
+        "losers not deleted if reference rewrite fails"
+      ]
+    },
+    "fix_identification": {
+      "description": "Fix an Issue where an object no longer matches its identification rule. Presents options without auto-correcting.",
+      "invariants": [
+        "no automatic correction",
+        "presents: Keep as Type, Change type, Review rule"
+      ]
+    },
+    "rule_change": {
+      "description": "Appearance-only rule change: icon, color, emoji. No content migration needed.",
+      "invariants": [
+        "increments revision",
+        "triggers targeted shared-settings sync",
+        "no content migration"
+      ]
+    },
+    "rule_migration": {
+      "description": "Structural rule change: markerType or markerValue. Requires revision + transition protocol.",
+      "choices": ["Cancel", "Save only", "Migrate"],
+      "saveOnly": {
+        "description": "Writes new signature, increments revision, reindexes. Does NOT touch object content.",
+        "invariants": ["revision incremented", "content unchanged", "reindex happens"]
+      },
+      "migrate": {
+        "description": "Starts transition, applies object migration, syncs/transports, commits revision.",
+        "invariants": [
+          "transition persisted before first content write",
+          "old and new signatures are equivalent during transition",
+          "revision N+1 not ACTIVE until content transport confirmed",
+          "fail-closed if structural migrate and content sync is off without pending transport"
+        ]
+      }
+    }
+  },
+
+  "scopeContract": {
+    "description": "Selection scope is a set of objects to operate on. A folder used as scope is NOT an Object Identification rule.",
+    "rule": "Folder/file selection is a scope, not an Object Identification rule.",
+    "fields": {
+      "files": "Explicitly selected TFile paths.",
+      "folders": "Selected folder paths.",
+      "includeSubfolders": "Boolean — always shown, never inferred silently.",
+      "eligibleMarkdownPaths": "Markdown files that can be operated on.",
+      "indexedObjectIds": "Object IDs already in VaultIndex.",
+      "unidentifiedMarkdownPaths": "Markdown files not yet identified as Quartzo objects.",
+      "ignoredAttachments": "Non-Markdown files ignored for object mutation.",
+      "ignoredBases": ".base files ignored for object mutation.",
+      "duplicatesRemoved": "Count of paths deduplicated by normalized path."
+    }
+  },
+
+  "revisionProtocol": {
+    "description": "Monotonic revision for Object Identification. Not clock-based.",
+    "fields": {
+      "revision": "Integer. Increments only when shared Object Identification semantics change.",
+      "transition": {
+        "description": "Present during structural migration. Both old and new signatures recognized as equivalent during transition.",
+        "fields": {
+          "operation_id": "Stable ID of the migration operation.",
+          "object_type": "The type being migrated.",
+          "base_revision": "Revision before migration.",
+          "target_revision": "Revision after migration commits.",
+          "old_signature": "Previous TypeSignature.",
+          "new_signature": "New TypeSignature.",
+          "phase": "One of: planning, applying, awaiting_transport, committing, failed"
+        }
+      }
+    },
+    "rules": [
+      "revision does not use updated_at as conflict resolver",
+      "revision participates in operation preconditions",
+      "planning phase NOT persisted remotely if no mutation has begun",
+      "transition cleared when revision N+1 commits",
+      "second client cannot start incompatible migration during active transition",
+      "structural TypeSignature edit is disabled during transition"
+    ]
+  },
+
+  "issuesProjection": {
+    "description": "Reconstructible projection — not a persisted database.",
+    "categories": [
+      "unidentified",
+      "ambiguous_identification",
+      "identification_mismatch",
+      "possible_duplicate",
+      "broken_relationship",
+      "interrupted_operation"
+    ],
+    "duplicateEvidence": {
+      "strong": ["same_canonical_external_id", "same_normalized_url", "isbn", "google_books_id", "imdb_id"],
+      "weak": ["normalized_title_and_same_type"]
+    },
+    "rules": [
+      "every Issue must answer Why",
+      "no confidence percent",
+      "possible_duplicate never auto-merges",
+      "not_duplicates suppression requires canonical owner — otherwise omit from V1"
+    ]
+  },
+
+  "syncRules": {
+    "sharedSettingsTargetedSync": {
+      "description": "Reconciles only app/quartzo_shared_settings.md using existing coordinator.",
+      "rule": "Object operations do NOT use Shared Settings Sync to transport object bytes."
+    },
+    "contentSyncOff": {
+      "description": "Object mutations remain local until content transport is available. Shared settings can still reconcile independently.",
+      "structuralMigrate": "Cannot finalize new TypeSignature remotely while object content has no transport path. Transition persists until awaiting_transport resolves."
+    },
+    "localOnly": {
+      "description": "No false Synced status. UI shows Local only."
+    }
+  }
+}

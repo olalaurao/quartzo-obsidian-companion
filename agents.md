@@ -83,3 +83,21 @@ A arquitetura do Companion é dividida nestas camadas:
 - **Canonical Smart Link Capture:** `src/core/link-capture` owns pure URL destination suggestion, override precedence, common metadata merge and URL normalization. UI never persists `suggestedDestination` directly; `selectedDestination` wins. Resource metadata stays in `src/integrations/resource-metadata`, Recipe import stays in the Recipe importer, Social metadata stays in the Social adapter, and all persistence routes through `src/core/object-creation.ts`. Generic page/Recipe imports must use `secureRemoteFetch`; UI and feature services may not bypass that security boundary.
 
 - **Resource media types remain Resource-owned:** `Tool`, `Sewing Pattern` and future user-defined values are `Resource.media_type` strings, not ObjectTypes, TypeSignatures, stores or dedicated duplicate/metadata owners. `src/core/resource-capture/policy.ts` owns media type normalization, suggestions and contextual status labels. Quick Add and Save Link must build suggestions from built-ins plus existing vault Resources through `object-query`, while preserving custom media type text and persisting relationships only through the existing `links` field.
+
+## Object Organization V1 — Owner Map (§130)
+
+Established by the Object Organization & Obsidian-native Organization V1 spec. These ownership boundaries are permanent:
+
+- **Shared settings persistence** → `SharedSettingsRepository` / `SettingsNotifier`. No second settings store.
+- **Object Identification** → `TypeSignature` / shared identification resolver (`src/core/shared-settings`). Parsing uses transition-aware logic during rule migrations.
+- **Structural migration** → `ObjectIdentificationMigrationRepository` + planner (`src/core/object-identification-migration.ts`). Must use `revision` + `transition` protocol.
+- **Safe field mutation** → `SafeObjectMutationRepository` (`src/vault/object-mutation.ts`). Mandatory for any single-object property write.
+- **Merge planning** → Pure planner `src/core/object-organization/merge.ts` applied via `ObjectOrganizationRepository`. Must use canonical delete lifecycle; must NOT use bare `vault.delete()`.
+- **Vault lifecycle** → `VaultNotifier` / Companion vault adapter. Merge losers exit through this lifecycle.
+- **Sync** → existing `DriveSyncCoordinator`. Targeted `syncSharedSettingsNow()` must extend this coordinator only.
+- **Queries** → `queryVaultObjects` / `VaultIndex` / `object-query`. No second index. Object picker uses this owner.
+- **Scope resolution** → `src/core/object-organization/scope-resolver.ts`. Not persisted; not an identification rule.
+- **Issues projection** → `src/core/object-organization/issues-projection.ts`. Non-persisted, reconstructible.
+- **Operation IDs** → `src/core/object-organization/operation-id.ts`. Deterministic, not timestamp-based.
+- **Preconditions** → `src/core/object-organization/preconditions.ts`. Validates revision, hash, destination before Apply.
+- **UI** → consumers only. `src/ui/organization/` and `src/ui/shell/view.ts` call canonical owners; they do not mutate directly.

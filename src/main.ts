@@ -123,6 +123,7 @@ interface QuartzoCompanionSettings {
   isPaired: boolean;
   reminderDelivery: ReminderMode;
   focusControllerId: string;
+  quickTypes: string[];
 }
 
 const DEFAULT_SETTINGS: QuartzoCompanionSettings = {
@@ -138,6 +139,7 @@ const DEFAULT_SETTINGS: QuartzoCompanionSettings = {
   isPaired: false,
   reminderDelivery: 'in_obsidian_only',
   focusControllerId: '',
+  quickTypes: ['task', 'resource', 'note'],
 };
 
 
@@ -325,6 +327,336 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
       void this.initializeVaultRuntime().catch(error => {
         console.error('Quartzo vault runtime initialization failed:', error);
       });
+    });
+
+    this.registerEvent(
+      this.app.workspace.on('file-menu', (menu, file) => {
+        const isFolder = !file.name.endsWith('.md') && !file.name.includes('.');
+        
+        menu.addItem((item) => {
+          item
+            .setTitle(file.name.endsWith('.md') ? 'Set Quartzo object type...' : 'Quartzo: Organize folder...')
+            .setIcon('lucide-tags')
+            .onClick(() => {
+              if (this.viewContext) {
+                 const { ObjectOrganizationModal } = require('./ui/organization/modal');
+                 new ObjectOrganizationModal(this.viewContext, {
+                   files: isFolder ? undefined : [file.path],
+                   folders: isFolder ? [file.path] : undefined
+                 }).open();
+              }
+            });
+        });
+
+        if (isFolder) {
+          menu.addItem((item) => {
+            item
+              .setTitle('Quartzo: Review Folder')
+              .setIcon('lucide-folder-search')
+              .onClick(async () => {
+                const leaves = this.app.workspace.getLeavesOfType('quartzo-view');
+                if (leaves.length > 0) {
+                  this.app.workspace.revealLeaf(leaves[0]);
+                  // Setting action to folder_review and storing path in selectedObjectId as a proxy for the param
+                  const view = leaves[0].view as any; // Cast to bypass strict types momentarily
+                  view.action = 'folder_review';
+                  view.selectedFolder = file.path;
+                  await view.render();
+                } else {
+                  new Notice('Please open the Quartzo view first.');
+                }
+              });
+          });
+
+          // §55: Rule-from-folder action
+          menu.addItem((item) => {
+            item
+              .setTitle('Quartzo: Create identification rule from folder...')
+              .setIcon('lucide-rule-folder')
+              .onClick(() => {
+                new CreateRuleFromFolderModal(this.app, this, file.path).open();
+              });
+          });
+        }
+
+        // §28: Add to... / Relate for single file
+        if (!isFolder) {
+          menu.addItem((item) => {
+            item
+              .setTitle('Quartzo: Add to...')
+              .setIcon('lucide-link-2')
+              .onClick(() => {
+                if (this.viewContext) {
+                  const { RelateModal } = require('./ui/organization/relate-modal');
+                  new RelateModal(this.viewContext, { sourceFiles: [file.path] }).open();
+                }
+              });
+          });
+        }
+      })
+    );
+
+    this.registerEvent(
+      this.app.workspace.on('files-menu', (menu, files) => {
+        const filePaths = files.filter(f => f.name.endsWith('.md')).map(f => f.path);
+        const folderPaths = files.filter(f => !f.name.endsWith('.md') && !f.name.includes('.')).map(f => f.path);
+        
+        menu.addItem((item) => {
+          item
+            .setTitle(`Quartzo: Organize ${files.length} items...`)
+            .setIcon('lucide-layers')
+            .onClick(() => {
+              if (this.viewContext) {
+                 const { ObjectOrganizationModal } = require('./ui/organization/modal');
+                 new ObjectOrganizationModal(this.viewContext, {
+                   files: filePaths,
+                   folders: folderPaths
+                 }).open();
+              }
+            });
+        });
+
+        if (filePaths.length >= 2 && folderPaths.length === 0) {
+          menu.addItem((item) => {
+            item
+              .setTitle(`Quartzo: Merge ${filePaths.length} objects...`)
+              .setIcon('lucide-git-merge')
+              .onClick(() => {
+                if (this.viewContext) {
+                   const { ObjectMergeModal } = require('./ui/organization/merge-modal');
+                   new ObjectMergeModal(this.viewContext, { files: filePaths }).open();
+                }
+              });
+          });
+
+          // §29: Add to... for multi-selection
+          menu.addItem((item) => {
+            item
+              .setTitle(`Quartzo: Add ${filePaths.length} objects to...`)
+              .setIcon('lucide-link-2')
+              .onClick(() => {
+                if (this.viewContext) {
+                  const { RelateModal } = require('./ui/organization/relate-modal');
+                  new RelateModal(this.viewContext, { sourceFiles: filePaths }).open();
+                }
+              });
+          });
+        }
+      })
+    );
+
+    // ── Slice L: editor context menu (§74, §75, §76) ─────────────────────────
+    this.registerEvent(
+      this.app.workspace.on('editor-menu', (menu, editor, view) => {
+        const selection = editor.getSelection();
+        const file = view.file;
+        if (!file) return;
+
+        menu.addSeparator();
+
+        // §74: Set object type / Edit properties / Add to / duplicates / review
+        menu.addItem((item) => {
+          item
+            .setTitle('Quartzo: Set object type...')
+            .setIcon('lucide-tags')
+            .onClick(() => {
+              if (this.viewContext) {
+                const { ObjectOrganizationModal } = require('./ui/organization/modal');
+                new ObjectOrganizationModal(this.viewContext, { files: [file.path] }).open();
+              }
+            });
+        });
+
+        menu.addItem((item) => {
+          item
+            .setTitle('Quartzo: Review identification')
+            .setIcon('lucide-shield-check')
+            .onClick(async () => {
+              // Navigate to Issues tab filtering by this file
+              const leaves = this.app.workspace.getLeavesOfType('quartzo-view');
+              if (leaves.length > 0) {
+                this.app.workspace.revealLeaf(leaves[0]);
+                const v = leaves[0].view as any;
+                await (v as any).setSection('issues');
+              } else {
+                new Notice('Open the Quartzo panel first.');
+              }
+            });
+        });
+
+        // §75: Turn selection into object (only when text selected)
+        if (selection.trim().length > 0) {
+          menu.addItem((item) => {
+            item
+              .setTitle('Quartzo: Turn selection into...')
+              .setIcon('lucide-sparkles')
+              .onClick(() => {
+                // Use canonical QuickAddModal with pre-filled title from selection
+                const modal = new QuickAddModal(this.viewContext!, undefined, {
+                  onCreated: async (created) => {
+                    // After creation, offer to replace selection with wikilink
+                    const link = `[[${created.path.replace(/\.md$/, '')}]]`;
+                    editor.replaceSelection(link);
+                  },
+                });
+                modal.open();
+              });
+          });
+        }
+
+        // §76: URL context — Capture as Resource (when selection is a URL)
+        const trimmedSel = selection.trim();
+        if (trimmedSel.startsWith('http://') || trimmedSel.startsWith('https://')) {
+          menu.addItem((item) => {
+            item
+              .setTitle('Quartzo: Capture as Resource')
+              .setIcon('lucide-link')
+              .onClick(() => {
+                const modal = new QuickAddModal(this.viewContext!, 'resource');
+                modal.open();
+              });
+          });
+        }
+      })
+    );
+
+    // ── Slice L: Command Palette commands (§77) ───────────────────────────────
+    this.addCommand({
+      id: 'quartzo-set-selected-files-as',
+      name: 'Set selected files as...',
+      callback: () => {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (activeFile && this.viewContext) {
+          const { ObjectOrganizationModal } = require('./ui/organization/modal');
+          new ObjectOrganizationModal(this.viewContext, { files: [activeFile.path] }).open();
+        } else {
+          new Notice('No file active or Quartzo not ready.');
+        }
+      },
+    });
+
+    this.addCommand({
+      id: 'quartzo-organize-selected-files',
+      name: 'Organize selected files',
+      callback: () => {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (activeFile && this.viewContext) {
+          const { ObjectOrganizationModal } = require('./ui/organization/modal');
+          new ObjectOrganizationModal(this.viewContext, { files: [activeFile.path] }).open();
+        } else {
+          new Notice('No file active or Quartzo not ready.');
+        }
+      },
+    });
+
+    this.addCommand({
+      id: 'quartzo-open-organization-inbox',
+      name: 'Open Organization Inbox',
+      callback: async () => {
+        const leaves = this.app.workspace.getLeavesOfType(QUARTZO_VIEW_TYPE);
+        if (leaves.length > 0) {
+          this.app.workspace.revealLeaf(leaves[0]);
+          await (leaves[0].view as any).setSection('issues');
+        } else {
+          new Notice('Open the Quartzo panel first (View → Open Quartzo).');
+        }
+      },
+    });
+
+    this.addCommand({
+      id: 'quartzo-open-object-identification',
+      name: 'Open Object Identification (Objects tab)',
+      callback: async () => {
+        const leaves = this.app.workspace.getLeavesOfType(QUARTZO_VIEW_TYPE);
+        if (leaves.length > 0) {
+          this.app.workspace.revealLeaf(leaves[0]);
+          await (leaves[0].view as any).setSection('objects');
+        } else {
+          new Notice('Open the Quartzo panel first.');
+        }
+      },
+    });
+
+    this.addCommand({
+      id: 'quartzo-review-current-folder',
+      name: 'Review current folder',
+      callback: async () => {
+        const activeFile = this.app.workspace.getActiveFile();
+        const folderPath = activeFile?.parent?.path ?? '';
+        const leaves = this.app.workspace.getLeavesOfType(QUARTZO_VIEW_TYPE);
+        if (leaves.length > 0 && folderPath) {
+          this.app.workspace.revealLeaf(leaves[0]);
+          const v = leaves[0].view as any;
+          v.action = 'folder_review';
+          v.selectedFolder = folderPath;
+          await v.render();
+        } else {
+          new Notice('No active file or Quartzo panel not open.');
+        }
+      },
+    });
+
+    this.addCommand({
+      id: 'quartzo-find-duplicates-current-folder',
+      name: 'Find duplicates in current folder',
+      callback: async () => {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (!activeFile) {
+          new Notice('Open a file first.');
+          return;
+        }
+        const leaves = this.app.workspace.getLeavesOfType(QUARTZO_VIEW_TYPE);
+        if (leaves.length > 0) {
+          this.app.workspace.revealLeaf(leaves[0]);
+          await (leaves[0].view as any).setSection('issues');
+          new Notice(`Showing issues for folder: ${activeFile.parent?.path ?? 'root'}`);
+        } else {
+          new Notice('Open the Quartzo panel first.');
+        }
+      },
+    });
+
+    this.addCommand({
+      id: 'quartzo-edit-object-properties',
+      name: 'Edit selected object properties',
+      callback: () => {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (activeFile && this.viewContext) {
+          const { ObjectOrganizationModal } = require('./ui/organization/modal');
+          new ObjectOrganizationModal(this.viewContext, { files: [activeFile.path] }).open();
+        } else {
+          new Notice('No file active or Quartzo not ready.');
+        }
+      },
+    });
+
+    // §77: Add to / Relate command
+    this.addCommand({
+      id: 'quartzo-add-selected-objects-to',
+      name: 'Add selected objects to...',
+      callback: () => {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (activeFile && this.viewContext) {
+          const { RelateModal } = require('./ui/organization/relate-modal');
+          new RelateModal(this.viewContext, { sourceFiles: [activeFile.path] }).open();
+        } else {
+          new Notice('No file active or Quartzo not ready.');
+        }
+      },
+    });
+
+    // §77: Merge selected objects command
+    this.addCommand({
+      id: 'quartzo-merge-selected-objects',
+      name: 'Merge selected objects',
+      callback: () => {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (activeFile && this.viewContext) {
+          new Notice('Select 2+ files in the File Explorer and right-click → Quartzo: Merge objects...');
+        } else {
+          new Notice('Select 2+ files in the File Explorer first.');
+        }
+      },
     });
 
     this.addSettingTab(new QuartzoSettingTab(this.app, this));
@@ -2808,6 +3140,7 @@ class ObjectIdentificationEditModal extends Modal {
     contentEl.empty();
     contentEl.createEl('h2', { text: `Edit ${labelForSettingsType(this.objectType)}` });
 
+    contentEl.createEl('h3', { text: 'IDENTIFICATION', attr: { style: 'margin-top: 16px; margin-bottom: 8px;' } });
     new Setting(contentEl)
       .setName('Identifier type')
       .addDropdown(dropdown => dropdown
@@ -2828,6 +3161,7 @@ class ObjectIdentificationEditModal extends Modal {
           this.markerValue = value.trim();
         }));
 
+    contentEl.createEl('h3', { text: 'APPEARANCE', attr: { style: 'margin-top: 24px; margin-bottom: 8px;' } });
     new Setting(contentEl)
       .setName('Icon')
       .addText(text => text
@@ -2896,6 +3230,7 @@ class ObjectIdentificationEditModal extends Modal {
         this.signature,
         next,
         plan,
+        this.plugin.settings.syncMode === 'manual'
       ).choose();
       if (choice === 'cancel') return;
       await this.plugin.saveObjectIdentificationSignatureEdit({
@@ -2919,6 +3254,7 @@ class ObjectIdentificationMigrationConfirmModal extends Modal {
     private readonly oldSignature: TypeSignature,
     private readonly newSignature: TypeSignature,
     private readonly plan: ObjectIdentificationMigrationPlan,
+    private readonly isManualSync: boolean,
   ) {
     super(app);
   }
@@ -2936,6 +3272,14 @@ class ObjectIdentificationMigrationConfirmModal extends Modal {
     contentEl.createEl('h2', {
       text: this.plan.blockers.length > 0 ? 'Cannot migrate' : 'Migrate existing objects?',
     });
+    
+    if (this.isManualSync && this.plan.blockers.length === 0) {
+      const warning = contentEl.createEl('div', { cls: 'quartzo-warning-box', attr: { style: 'margin-bottom: 16px; padding: 12px; background: var(--background-modifier-error); border-radius: 4px;' } });
+      warning.createEl('p', { text: `This migration changes ${this.plan.actions.length} files.`, attr: { style: 'margin-top: 0;' } });
+      warning.createEl('p', { text: 'Shared settings can sync independently, but these object changes require vault transport before the new rule can be finalized on other clients.' });
+      warning.createEl('p', { text: 'Rule will remain "Transition in progress" until object changes are synchronized.', attr: { style: 'font-weight: bold; margin-bottom: 0;' } });
+    }
+
     contentEl.createEl('pre', { text: this.summaryText() });
 
     new Setting(contentEl)
@@ -2946,10 +3290,15 @@ class ObjectIdentificationMigrationConfirmModal extends Modal {
         .setButtonText('Save only')
         .onClick(() => this.finish('saveOnly')))
       .addButton(button => button
-        .setButtonText('Migrate')
+        .setButtonText(this.isManualSync ? 'Migrate locally' : 'Migrate')
         .setDisabled(this.plan.blockers.length > 0)
         .setCta()
-        .onClick(() => this.finish('migrate')));
+        .onClick(() => {
+          this.finish('migrate');
+          if (this.isManualSync) {
+            new Notice('Rule is migrating locally. Run a manual sync to transport the changes.');
+          }
+        }));
   }
 
   onClose(): void {
@@ -2963,6 +3312,7 @@ class ObjectIdentificationMigrationConfirmModal extends Modal {
     this.close();
     resolve?.(choice);
   }
+
 
   private summaryText(): string {
     const summary = objectIdentificationPlanSummary(this.plan);
@@ -2994,6 +3344,92 @@ class ObjectIdentificationMigrationConfirmModal extends Modal {
       }
     }
     return lines.join('\n');
+  }
+}
+
+export class CreateRuleFromFolderModal extends Modal {
+  private selectedType: string = '';
+
+  constructor(
+    app: App,
+    private readonly plugin: QuartzoCompanionPlugin,
+    private readonly folderPath: string,
+  ) {
+    super(app);
+    const shared = this.plugin.getSharedSettingsSnapshot();
+    if (shared) {
+      const keys = Object.keys(shared.typeSignatures);
+      if (keys.length > 0) this.selectedType = keys[0];
+    }
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    
+    const shared = this.plugin.getSharedSettingsSnapshot();
+    if (!shared) {
+      contentEl.createEl('p', { text: 'Shared settings unavailable.' });
+      return;
+    }
+
+    contentEl.createEl('h2', { text: `Use folder "${this.folderPath}/" to identify:` });
+    
+    const dropdownDiv = contentEl.createEl('div', { attr: { style: 'margin-bottom: 16px;' } });
+    const select = dropdownDiv.createEl('select', { cls: 'quartzo-input' });
+    
+    for (const objectType of Object.keys(shared.typeSignatures)) {
+      const opt = select.createEl('option', { value: objectType, text: labelForSettingsType(objectType) });
+      if (objectType === this.selectedType) opt.selected = true;
+    }
+    
+    select.addEventListener('change', (e) => {
+      this.selectedType = (e.target as HTMLSelectElement).value;
+    });
+
+    contentEl.createEl('p', { text: `This changes the ${labelForSettingsType(this.selectedType)} identification rule globally.`, attr: { style: 'color: var(--text-muted);' } });
+
+    new Setting(contentEl)
+      .addButton(button => button
+        .setButtonText('Cancel')
+        .onClick(() => this.close()))
+      .addButton(button => button
+        .setButtonText('Preview changes')
+        .setCta()
+        .onClick(async () => {
+          await this.previewAndMigrate(shared);
+        }));
+  }
+
+  private async previewAndMigrate(shared: any): Promise<void> {
+    const oldSignature = shared.typeSignatures[this.selectedType];
+    if (!oldSignature) return;
+
+    const next = { ...oldSignature, markerType: 'folder', markerValue: `${this.folderPath}/` };
+    
+    try {
+      const plan = await this.plugin.previewObjectIdentificationMigration(this.selectedType, next);
+      this.close();
+      
+      const choice = await new ObjectIdentificationMigrationConfirmModal(
+        this.app,
+        oldSignature,
+        next,
+        plan,
+        this.plugin.settings.syncMode === 'manual'
+      ).choose();
+      
+      if (choice === 'cancel') return;
+      
+      await this.plugin.saveObjectIdentificationSignatureEdit({
+        objectType: this.selectedType,
+        newSignature: next,
+        migrationPlan: choice === 'migrate' ? plan : undefined,
+      });
+      new Notice(`Rule for ${labelForSettingsType(this.selectedType)} updated.`);
+    } catch (e: any) {
+      new Notice(e.message);
+    }
   }
 }
 
@@ -3163,6 +3599,18 @@ class QuartzoSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName('Shared Quartzo appearance')
       .setDesc('Accent color, type colors and semantic type identification come from app/quartzo_shared_settings.md. Companion Settings do not create a second appearance source of truth.');
+
+    new Setting(containerEl)
+      .setName('Quick types')
+      .setDesc('Comma-separated list of up to 5 object types to show as quick action buttons in the editor. Stored only on this device.')
+      .addText(text => text
+        .setPlaceholder('task, resource, note')
+        .setValue(this.plugin.settings.quickTypes.join(', '))
+        .onChange(async value => {
+          const types = value.split(',').map(s => s.trim().toLowerCase()).filter(s => s);
+          this.plugin.settings.quickTypes = types.slice(0, 5);
+          await this.plugin.saveSettings();
+        }));
 
     this.addHeading(containerEl, 'Object Identification');
     this.renderObjectIdentificationSettings(containerEl);

@@ -73,3 +73,17 @@ Estas regras são permanentes para o desenvolvimento do Quartzo Obsidian Compani
 
 35. **Alterações futuras de vault object começam no upstream:** qualquer novo `ObjectType`, rename/alias persistido, campo persistido, enum persistido, TypeSignature default, regra de Object Identification, fixture ou mutation support deve atualizar primeiro os contratos e fixtures canônicos em `olalaurao/aplicativo`. O Companion consome a cópia vendorizada e deve falhar CI quando coverage, shared-settings fixture ou implementação TypeScript divergir. Runtime continua offline-first e usa apenas contratos empacotados.
 
+36. **Selection scope is not an identification rule.** Folder/file selection is a scope, not an Object Identification rule. Using a folder as a scope for bulk operations never mutates the TypeSignature for that folder. (§3.3, §129.1)
+
+37. **Reclassify mutates objects to satisfy an existing TypeSignature; it never edits TypeSignature.** The Reclassify operation changes the object's markers (properties, tags, folder location) to satisfy a target TypeSignature. It does not modify the TypeSignature itself. Altering a TypeSignature is a Rule Mutation and requires revision + transition. (§3.4, §129.2)
+
+38. **Structural TypeSignature migration uses revision + transition and cannot finalize while dependent content transport is unresolved.** When a structural identification rule changes (markerType or markerValue), the shared settings must record a `transition` block with `base_revision` → `target_revision`. The new revision cannot become ACTIVE on remote clients until all dependent content writes have been transported. During transition, old and new signatures are treated as equivalent for the same type. (§10, §17, §129.3)
+
+39. **Shared Object Identification may reconcile independently of full vault content sync, but uses the same canonical shared-settings file and existing sync coordinator.** A targeted `syncSharedSettingsNow()` operation reconciles only `app/quartzo_shared_settings.md` using the existing Drive adapter and coordinator. It does not create a second sync engine. Object mutations (Reclassify/Merge/Move) remain content mutations and travel through vault content sync. (§13, §14, §86, §129.4)
+
+40. **Object Organization operations never create a second canonical object store.** No database, no `ObjectOrganizationSync`, no `MergeSync`, no second index, no second settings store, no second relationship store. All organization results are expressed as vault file mutations routed through existing canonical owners. (§1, §129.5)
+
+41. **Merge is ID-based and cross-type merge requires explicit target type + survivor + reconciliation.** Merge never happens by title/filename match. The user must explicitly choose the survivor object and the final target type. Mixed-type merges are supported when the planner declares compatibility, but require explicit reconciliation of each conflicting field. Never auto-merge or silently choose latest-wins. (§58, §61, §62, §129.6)
+
+42. **Manual File Explorer moves are respected; mismatch becomes an Issue instead of automatic move-back.** When the user manually moves a file in the Obsidian File Explorer, the Companion observes the move and creates an Identification Mismatch Issue if the new location violates the object's TypeSignature rule. The Companion never automatically moves the file back. Resolution requires explicit user action. (§37, §38, §129.7)
+
