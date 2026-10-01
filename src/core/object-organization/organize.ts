@@ -7,8 +7,6 @@
 
 import { generateOperationId } from './operation-id';
 import {
-  aggregatePreconditions,
-  checkContentHash,
   checkDestinationAbsent,
   checkNoConcurrentMigration,
   checkSettingsRevision,
@@ -35,8 +33,15 @@ export interface OrganizePlanInput {
   propertyOperations?: PropertyOperation[];
   settingsRevision: number;
   settings: QuartzoSharedSettings;
+  /**
+   * Canonical object identity resolved by the caller from the VaultIndex or the
+   * platform ID owner. This lets ordinary Markdown receive one stable ID during
+   * preview instead of inventing an empty or per-render identity.
+   */
+  objectIdsByPath?: ReadonlyMap<string, string>;
   vaultState: {
     paths: ReadonlySet<string>;
+    /** Exact current Markdown bytes used by the stale-preview precondition. */
     readMarkdown: (path: string) => string | undefined;
   };
 }
@@ -55,6 +60,7 @@ export interface OrganizePlan {
   operationId: string;
   kind: 'organize';
   scope: ResolvedOrganizationScope;
+  targetType?: string;
   baseSettingsRevision: number;
   actions: OrganizeActionPlan[];
   blockers: OperationPreconditionFailure[];
@@ -69,6 +75,7 @@ export function planOrganize(input: OrganizePlanInput): OrganizePlan {
     propertyOperations = [],
     settingsRevision,
     settings,
+    objectIdsByPath,
     vaultState,
   } = input;
 
@@ -111,8 +118,31 @@ export function planOrganize(input: OrganizePlanInput): OrganizePlan {
       continue;
     }
 
-    const parsed = ObjectParser.parseMarkdown(currentMarkdown);
-    const objectId = String(parsed.frontmatter.id || '');
+    let parsed: ReturnType<typeof ObjectParser.parseMarkdown>;
+    try {
+      parsed = ObjectParser.parseMarkdown(currentMarkdown);
+    } catch (error) {
+      blockers.push({
+        kind: 'object_id_mismatch',
+        message: `Could not safely parse ${path}: ${error instanceof Error ? error.message : String(error)}`,
+        subject: path,
+      });
+      continue;
+    }
+
+    const parsedId = typeof parsed.frontmatter.id === 'string'
+      ? parsed.frontmatter.id.trim()
+      : String(parsed.frontmatter.id ?? '').trim();
+    const objectId = parsedId || objectIdsByPath?.get(path)?.trim() || '';
+
+    if (targetType && !objectId) {
+      blockers.push({
+        kind: 'object_id_mismatch',
+        message: `Cannot set a Quartzo type for ${path} without a canonical object ID. Refresh the preview and try again.`,
+        subject: path,
+      });
+      continue;
+    }
 
     // 1. Reclassify if requested
     let reclassifyPlan: ReclassifyPlan | undefined;
@@ -133,17 +163,26 @@ export function planOrganize(input: OrganizePlanInput): OrganizePlan {
     }
 
     // 2. Compute current active frontmatter/body
-    let currentFrontmatter = reclassifyPlan
-      ? ObjectParser.parseMarkdown(reclassifyPlan.newMarkdown).frontmatter
+    const reclassified = reclassifyPlan
+      ? ObjectParser.parseMarkdown(reclassifyPlan.newMarkdown)
+      : null;
+    const currentFrontmatter = reclassified
+      ? { ...reclassified.frontmatter }
       : { ...parsed.frontmatter };
-    let currentBody = reclassifyPlan
-      ? ObjectParser.parseMarkdown(reclassifyPlan.newMarkdown).body
-      : parsed.body;
+    const currentBody = reclassified?.body ?? parsed.body;
 
     // 3. Apply Bulk Properties
     const propertyChanges: OrganizeActionPlan['propertyChanges'] = [];
     for (const op of propertyOperations) {
       if (op.kind === 'leave_unchanged') continue;
+      if (!op.key.trim()) {
+        blockers.push({
+          kind: 'object_id_mismatch',
+          message: `Property operation for ${path} has an empty property name.`,
+          subject: path,
+        });
+        continue;
+      }
 
       const before = currentFrontmatter[op.key];
       let after: unknown = before;
@@ -202,7 +241,7 @@ export function planOrganize(input: OrganizePlanInput): OrganizePlan {
     }
 
     const newMarkdown = ObjectParser.serializeMarkdown(currentFrontmatter, currentBody);
-    
+
     // Check if anything actually changes (skip no-ops)
     if (newMarkdown === currentMarkdown && !moves) {
       continue;
@@ -223,6 +262,7 @@ export function planOrganize(input: OrganizePlanInput): OrganizePlan {
     operationId,
     kind: 'organize',
     scope,
+    targetType,
     baseSettingsRevision: settingsRevision,
     actions,
     blockers,
