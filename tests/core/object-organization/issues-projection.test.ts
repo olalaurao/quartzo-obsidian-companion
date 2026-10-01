@@ -27,7 +27,7 @@ describe('issues-projection path-ignore logic', () => {
   });
 
   it('ignores files in system and ignored folders', () => {
-    const index: VaultIndex = { objects: new Map() };
+    const index: VaultIndex = { objects: new Map(), files: new Map(), lastModified: Date.now() };
     
     // Add an object that is valid but inside an ignored folder
     index.objects.set('1', {
@@ -36,7 +36,7 @@ describe('issues-projection path-ignore logic', () => {
       path: '_trash/my-object.md',
       frontmatter: { id: '1', type: 'test_type' },
       body: '',
-      identification: { rulesMatched: 1, typeMatch: 'folder', matchedSignatures: [] }
+      identification: { resolvedType: 'test_type', matchedSignatures: [], hasConflict: false }
     });
     
     // Add an object inside app (system)
@@ -46,7 +46,7 @@ describe('issues-projection path-ignore logic', () => {
       path: 'app/system-object.md',
       frontmatter: { id: '2', type: 'test_type' },
       body: '',
-      identification: { rulesMatched: 1, typeMatch: 'folder', matchedSignatures: [] }
+      identification: { resolvedType: 'test_type', matchedSignatures: [], hasConflict: false }
     });
     
     // Add a valid unignored object
@@ -56,7 +56,7 @@ describe('issues-projection path-ignore logic', () => {
       path: 'valid/object.md',
       frontmatter: { id: '3', type: 'test_type' },
       body: '',
-      identification: { rulesMatched: 1, typeMatch: 'folder', matchedSignatures: [] }
+      identification: { resolvedType: 'test_type', matchedSignatures: [], hasConflict: false }
     });
 
     const allMarkdownPaths = new Set([

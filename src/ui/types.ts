@@ -45,6 +45,8 @@ export interface ViewContext {
       isPaired: boolean;
       reminderDelivery: ReminderMode;
       focusControllerId: string;
+      quickTypes?: string[];
+      issueIgnoredFolders: string[];
     };
     saveSettings(): Promise<void>;
     setSyncMode(mode: 'manual' | 'automatic'): Promise<void>;
