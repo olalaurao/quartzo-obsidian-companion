@@ -1,0 +1,95 @@
+name: Temporary Publish 1.0.33
+
+on:
+  push:
+    branches:
+      - release/1.0.33
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  publish:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    env:
+      EXPECTED_SHA: 42bbcf4ee4b51049f9b907abc469b04f1f73b179
+      RELEASE_TAG: 1.0.33
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout operation branch
+        uses: actions/checkout@v4
+        with:
+          ref: release/1.0.33
+          fetch-depth: 0
+      - name: Verify exact main and absent tag
+        shell: bash
+        run: |
+          git fetch origin main --no-tags
+          main_sha="$(git rev-parse origin/main)"
+          if [ "$main_sha" != "$EXPECTED_SHA" ]; then
+            echo "::error::main moved: expected $EXPECTED_SHA but found $main_sha"
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $RELEASE_TAG already exists; never move or recreate a published release tag."
+            exit 1
+          fi
+      - name: Dispatch exact-main Release Preflight
+        shell: bash
+        run: |
+          before="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          gh workflow run release-preflight.yml --ref main
+          for i in $(seq 1 30); do
+            run_json="$(gh run list --workflow release-preflight.yml --branch main --event workflow_dispatch --limit 10 --json databaseId,headSha,status,conclusion,createdAt)"
+            run_id="$(echo "$run_json" | jq -r --arg sha "$EXPECTED_SHA" --arg before "$before" '[.[] | select(.headSha == $sha and .createdAt >= $before)] | sort_by(.createdAt) | last | .databaseId // empty')"
+            if [ -n "$run_id" ]; then
+              echo "Release Preflight run: $run_id"
+              gh run watch "$run_id" --exit-status
+              result="$(gh run view "$run_id" --json headSha,conclusion,status)"
+              head_sha="$(echo "$result" | jq -r '.headSha')"
+              conclusion="$(echo "$result" | jq -r '.conclusion')"
+              status="$(echo "$result" | jq -r '.status')"
+              if [ "$head_sha" != "$EXPECTED_SHA" ] || [ "$status" != "completed" ] || [ "$conclusion" != "success" ]; then
+                echo "::error::Release Preflight did not succeed on the exact expected SHA."
+                exit 1
+              fi
+              echo "PREFLIGHT_RUN_ID=$run_id" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Could not find the dispatched Release Preflight on the exact SHA."
+          exit 1
+      - name: Reverify main and create immutable release tag
+        shell: bash
+        run: |
+          git fetch origin main --no-tags
+          main_sha="$(git rev-parse origin/main)"
+          if [ "$main_sha" != "$EXPECTED_SHA" ]; then
+            echo "::error::main moved after preflight; refusing to tag."
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $RELEASE_TAG appeared after preflight; refusing to move/recreate it."
+            exit 1
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -a "$RELEASE_TAG" "$EXPECTED_SHA" -m "Quartzo Obsidian Companion $RELEASE_TAG"
+          git push origin "refs/tags/$RELEASE_TAG"
+      - name: Dispatch canonical Release workflow
+        shell: bash
+        run: |
+          gh workflow run release.yml --ref main -f release_tag="$RELEASE_TAG"
+      - name: Remove temporary publisher
+        if: always()
+        shell: bash
+        run: |
+          git checkout release/1.0.33
+          git rm .github/workflows/temp-publish-1.0.33.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore: remove temporary 1.0.33 publisher'
+          git push origin HEAD:release/1.0.33
