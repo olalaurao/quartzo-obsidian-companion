@@ -597,7 +597,39 @@ export class ObjectParser {
         break;
       }
 
-      
+      case 'resource':
+        object = {
+          ...baseObject,
+          type: 'resource',
+          media_type: frontmatter.media_type as string,
+          cover: frontmatter.cover as string,
+          source_url: frontmatter.source_url as string,
+          book_id: frontmatter.book_id as string,
+          status: frontmatter.status as string,
+          rating: frontmatter.rating as number,
+          priority: frontmatter.priority as string,
+          author: frontmatter.author as string,
+          year: frontmatter.year as number,
+          pages: frontmatter.pages as number,
+          category: frontmatter.category as string,
+          isbn: frontmatter.isbn as string,
+          title_pt_br: frontmatter.title_pt_br as string,
+          title_original: frontmatter.title_original as string,
+          publisher: frontmatter.publisher as string,
+          language: frontmatter.language as string,
+          google_books_id: frontmatter.google_books_id as string,
+          imdb_id: frontmatter.imdb_id as string,
+          read: frontmatter.read as string,
+          start_date: frontmatter.start_date as string,
+          end_date: frontmatter.end_date as string,
+          scheduler: frontmatter.scheduler as Record<string, unknown>,
+          links: Array.isArray(frontmatter.links) ? frontmatter.links as string[] : undefined,
+          categories: Array.isArray(frontmatter.categories) ? frontmatter.categories as string[] : undefined,
+          tags: Array.isArray(frontmatter.tags) ? frontmatter.tags as string[] : undefined,
+          aliases: Array.isArray(frontmatter.aliases) ? frontmatter.aliases as string[] : undefined,
+        } as Resource;
+        break;
+
       case 'mood_definition':
         object = {
           ...baseObject,
