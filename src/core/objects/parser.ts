@@ -25,6 +25,7 @@ import {
   DailyNote,
   CombinedAnalysis,
   WellbeingIndicator,
+  Resource,
   Area,
   Project,
   Activity,

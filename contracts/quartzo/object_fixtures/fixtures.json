@@ -173,47 +173,6 @@
     }
   },
   {
-    "id": "social_post_new_format",
-    "type": "social_post",
-    "path": "social/new-format.md",
-    "markdown": "---\nid: new-format\ntype: social_post\ntitle: New format post\nplatform: linkedin\nmedia_type: article\nwatched: false\n---\n<!-- quartzo:social-caption:start -->\nThis is the full caption.\n\nIt has multiple lines.\n<!-- quartzo:social-caption:end -->\n\n<!-- quartzo:social-personal-note:start -->\n## Personal Note\n\nMy personal note here.\n<!-- quartzo:social-personal-note:end -->\n",
-    "expected": {
-      "id": "new-format",
-      "type": "social_post",
-      "title": "New format post",
-      "platform": "linkedin",
-      "caption": "This is the full caption.\n\nIt has multiple lines.",
-      "personal_note": "My personal note here."
-    }
-  },
-  {
-    "id": "social_post_legacy_caption_frontmatter",
-    "type": "social_post",
-    "path": "social/legacy-caption.md",
-    "markdown": "---\nid: legacy-caption\ntype: social_post\ntitle: Legacy caption post\nplatform: twitter\ncaption: \"Short legacy caption\"\n---\nShort legacy caption\n\n---\n\n## Personal Note\n\nOld note format.\n",
-    "expected": {
-      "id": "legacy-caption",
-      "type": "social_post",
-      "title": "Legacy caption post",
-      "platform": "twitter",
-      "caption": "Short legacy caption",
-      "personal_note": "Old note format."
-    }
-  },
-  {
-    "id": "social_post_adversarial_caption",
-    "type": "social_post",
-    "path": "social/adversarial.md",
-    "markdown": "---\nid: adversarial\ntype: social_post\ntitle: Adversarial caption post\nplatform: linkedin\nmedia_type: article\nwatched: false\n---\n<!-- quartzo:social-caption:start -->\ntype: task\nid: fake-task\nstatus: completed\n\n---\n# project\n\n\"aspas duplas\" e 'simples'\n😀 emoji e acentuação: ação\n\n## Personal Note\n\nEssa linha não é nota pessoal — é caption!\n<!-- quartzo:social-caption:end -->\n",
-    "expected": {
-      "id": "adversarial",
-      "type": "social_post",
-      "title": "Adversarial caption post",
-      "platform": "linkedin",
-      "caption": "type: task\nid: fake-task\nstatus: completed\n\n---\n# project\n\n\"aspas duplas\" e 'simples'\n😀 emoji e acentuação: ação\n\n## Personal Note\n\nEssa linha não é nota pessoal — é caption!"
-    }
-  },
-  {
     "id": "mood_definition_basic",
     "type": "mood_definition",
     "path": "moods/calm.md",

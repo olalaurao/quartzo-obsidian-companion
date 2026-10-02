@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DriveSyncCoordinator } from '../../src/sync/coordinator/index';
+import { GoogleDriveAdapter } from '../../src/integrations/google/drive/adapter';
 import { VaultSyncFilePolicy } from '../../src/sync/coordinator/file-policy';
 import { normalizeVaultPath, isSameVaultPath } from '../../src/sync/coordinator/path-utils';
 import type { DriveAdapter, DriveFileMetadata, DriveChange, UploadFileParams } from '../../src/sync/coordinator/types';
@@ -251,8 +252,7 @@ describe('Sync Regression Tests', () => {
   });
 
   describe('TS2352 fix: withRetry is accessible on adapter', () => {
-    it('GoogleDriveAdapter exposes withRetry via unknown cast', async () => {
-      const { GoogleDriveAdapter } = await import('../../src/integrations/google/drive/adapter');
+    it('GoogleDriveAdapter exposes withRetry via unknown cast', () => {
       const realAdapter = new GoogleDriveAdapter();
       expect(typeof (realAdapter as unknown as Record<string, unknown>).withRetry).toBe('function');
     });

@@ -765,10 +765,10 @@ export class QuartzoView extends ItemView {
         for (const subjectPath of selectedPaths) {
           try {
             const file = this.context.app.vault.getAbstractFileByPath(subjectPath);
-            if (file && 'extension' in file && file.extension === 'md') {
-              const content = await this.context.app.vault.read(file as any);
+            if (file instanceof TFile && file.extension === 'md') {
+              const content = await this.context.app.vault.read(file);
               const repaired = ObjectParser.roundtrip(content);
-              await this.context.app.vault.modify(file as any, repaired);
+              await this.context.app.vault.modify(file, repaired);
             }
           } catch (e) {
             errors++;
@@ -878,11 +878,11 @@ export class QuartzoView extends ItemView {
             repairBtn.textContent = 'Repairing...';
             try {
               const file = this.context.app.vault.getAbstractFileByPath(issue.subjectPath);
-              if (file && 'extension' in file && file.extension === 'md') {
-                const content = await this.context.app.vault.read(file as any);
+              if (file instanceof TFile && file.extension === 'md') {
+                const content = await this.context.app.vault.read(file);
                 const { ObjectParser } = require('../../core/objects/parser');
                 const repaired = ObjectParser.roundtrip(content);
-                await this.context.app.vault.modify(file as any, repaired);
+                await this.context.app.vault.modify(file, repaired);
                 new Notice('Format repaired successfully.');
                 // Wait for Obsidian index/vault events to propagate, then re-render
                 setTimeout(() => void this.render(), 300);
