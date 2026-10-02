@@ -15,7 +15,7 @@ describe('Organization Issues ignored folders surface', () => {
 
   it('filters the already-projected issue list without rebuilding the projection per interaction', () => {
     expect(source).toContain('const renderFilteredIssues = () => {');
-    expect(source).toContain("catSelect.addEventListener('change', () => {\n      this.issueCategoryFilter = catSelect.value as IssueCategory | 'All';\n      renderFilteredIssues();");
-    expect(source).toContain("searchInput.addEventListener('input', () => {\n      this.issueSearchQuery = searchInput.value;\n      renderFilteredIssues();");
+    expect(source).toMatch(/catSelect\.addEventListener\('change',\s*\(\)\s*=>\s*\{\s*this\.issueCategoryFilter = catSelect\.value as IssueCategory \| 'All';\s*renderFilteredIssues\(\);/);
+    expect(source).toMatch(/searchInput\.addEventListener\('input',\s*\(\)\s*=>\s*\{\s*this\.issueSearchQuery = searchInput\.value;\s*renderFilteredIssues\(\);/);
   });
 });

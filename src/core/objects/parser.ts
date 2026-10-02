@@ -67,7 +67,8 @@ const KNOWN_FIELDS: Record<ObjectType, Set<string>> = {
   social_post: new Set([
     'id', 'type', 'title', 'url', 'platform', 'media_type', 'caption',
     'creator', 'author_handle', 'author_name', 'thumbnail', 'embed_url',
-    'video_url', 'posted_at', 'personal_note', 'watched', 'body',
+    'video_url', 'media_urls', 'primary_media_index', 'posted_at',
+    'personal_note', 'transcription', 'watched', 'body',
   ]),
   mood_definition: new Set(['id', 'type', 'title', 'numeric_value', 'pleasantness', 'body']),
   idea: new Set(['id', 'type', 'title', 'horizon', 'body']),
@@ -476,14 +477,112 @@ export class ObjectParser {
         } as Routine;
         break;
       
-      case 'social_post':
+      case 'social_post': {
+        // ─── Three-generation body parser (mirrors Quartzo) ─────────────────
+        // Gen 1: HTML comment markers in body (new canonical format).
+        // Gen 2: caption: in frontmatter + legacy headings in body.
+        // Gen 3: plain body without any markers → treat as personal_note
+        //        (Companion legacy contract: social_post_basic fixture).
+        const CAPTION_START = '<!-- quartzo:social-caption:start -->';
+        const CAPTION_END   = '<!-- quartzo:social-caption:end -->';
+        const NOTE_START    = '<!-- quartzo:social-personal-note:start -->';
+        const NOTE_END      = '<!-- quartzo:social-personal-note:end -->';
+        const TRANS_START   = '<!-- quartzo:social-transcription:start -->';
+        const TRANS_END     = '<!-- quartzo:social-transcription:end -->';
+
+        const extractMarker = (text: string, start: string, end: string): string | undefined => {
+          const si = text.indexOf(start);
+          if (si === -1) return undefined;
+          const contentStart = si + start.length;
+          const ei = text.indexOf(end, contentStart);
+          const raw = ei === -1 ? text.slice(contentStart) : text.slice(contentStart, ei);
+          const trimmed = raw.trim();
+          return trimmed.length > 0 ? trimmed : undefined;
+        };
+
+        const stripHeading = (text: string | undefined, heading: string): string | undefined => {
+          if (!text) return undefined;
+          const stripped = text.startsWith(heading) ? text.slice(heading.length).trim() : text;
+          return stripped.length > 0 ? stripped : undefined;
+        };
+
+        const hasNewMarkers = body.includes(CAPTION_START) || body.includes(NOTE_START) || body.includes(TRANS_START);
+        const legacyCaption = frontmatter.caption as string | undefined;
+
+        let caption: string | undefined;
+        let personal_note: string | undefined;
+        let transcription: string | undefined;
+
+        if (hasNewMarkers) {
+          // Gen 1: marker-based.
+          caption = extractMarker(body, CAPTION_START, CAPTION_END);
+          let rawNote = extractMarker(body, NOTE_START, NOTE_END);
+          rawNote = stripHeading(rawNote, '## Personal Note');
+          rawNote = stripHeading(rawNote, '## Nota pessoal');
+          personal_note = rawNote;
+          let rawTrans = extractMarker(body, TRANS_START, TRANS_END);
+          rawTrans = stripHeading(rawTrans, '## Transcription');
+          transcription = rawTrans;
+        } else if (legacyCaption) {
+          // Gen 2: caption: in frontmatter.
+          caption = String(legacyCaption).trim() || undefined;
+          // Strip caption text from body top, then look for headings.
+          let remainder = body.trim();
+          if (caption && remainder.startsWith(caption)) {
+            remainder = remainder.slice(caption.length).trim();
+            if (remainder.startsWith('---')) remainder = remainder.slice(3).trim();
+          }
+          const noteMarkers = ['## Personal Note', '## Nota pessoal'];
+          for (const marker of noteMarkers) {
+            const idx = remainder.indexOf(marker);
+            if (idx !== -1) {
+              const after = remainder.slice(idx + marker.length);
+              const transIdx = after.indexOf('## Transcription');
+              const noteText = transIdx === -1 ? after : after.slice(0, transIdx);
+              personal_note = noteText.trim() || undefined;
+              break;
+            }
+          }
+          const transIdx2 = body.indexOf('## Transcription');
+          if (transIdx2 !== -1) {
+            const t = body.slice(transIdx2 + '## Transcription'.length).trim();
+            transcription = t || undefined;
+          }
+        } else {
+          // Gen 3: old Companion body-only — treat body as personal_note.
+          const trimmedBody = body.trim();
+          if (trimmedBody) {
+            // But if it has legacy headings, extract them.
+            const hasNoteHeading = trimmedBody.includes('## Personal Note') || trimmedBody.includes('## Nota pessoal');
+            const hasTransHeading = trimmedBody.includes('## Transcription');
+            if (hasNoteHeading || hasTransHeading) {
+              const noteMarkers = ['## Personal Note', '## Nota pessoal'];
+              for (const marker of noteMarkers) {
+                const idx = trimmedBody.indexOf(marker);
+                if (idx !== -1) {
+                  const after = trimmedBody.slice(idx + marker.length);
+                  const transIdx = after.indexOf('## Transcription');
+                  personal_note = (transIdx === -1 ? after : after.slice(0, transIdx)).trim() || undefined;
+                  break;
+                }
+              }
+              const transIdx = trimmedBody.indexOf('## Transcription');
+              if (transIdx !== -1) {
+                transcription = trimmedBody.slice(transIdx + '## Transcription'.length).trim() || undefined;
+              }
+            } else {
+              personal_note = trimmedBody;
+            }
+          }
+        }
+
         object = {
           ...baseObject,
           type: 'social_post',
           url: frontmatter.url as string,
           platform: frontmatter.platform as string,
           media_type: frontmatter.media_type as string,
-          caption: frontmatter.caption as string,
+          caption,
           creator: frontmatter.creator as string,
           author_handle: frontmatter.author_handle as string,
           author_name: frontmatter.author_name as string,
@@ -491,10 +590,13 @@ export class ObjectParser {
           embed_url: frontmatter.embed_url as string,
           video_url: frontmatter.video_url as string,
           posted_at: frontmatter.posted_at as string,
-          personal_note: body,
+          personal_note,
+          transcription,
           watched: frontmatter.watched as boolean,
         } as SocialPost;
         break;
+      }
+
       
       case 'mood_definition':
         object = {

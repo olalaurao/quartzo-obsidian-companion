@@ -495,6 +495,9 @@ export class QuartzoView extends ItemView {
     const bulkOrganizePaths = new Set(
       issues.filter(isBulkOrganizeIssue).map(issue => issue.subjectPath),
     );
+    const bulkRepairPaths = new Set(
+      issues.filter(issue => issue.category === 'repair').map(issue => issue.subjectPath),
+    );
     const selectablePaths = new Set(
       issues.filter(isDeletableIssue).map(issue => issue.subjectPath),
     );
@@ -549,7 +552,7 @@ export class QuartzoView extends ItemView {
 
     const catSelect = toolbar.createEl('select', { cls: 'qz-input' });
     catSelect.setAttribute('aria-label', 'Filter Organization Issues by category');
-    const categories: Array<IssueCategory | 'All'> = ['All', 'unidentified', 'ambiguous', 'mismatch', 'duplicate', 'broken_relationship', 'interrupted'];
+    const categories: Array<IssueCategory | 'All'> = ['All', 'unidentified', 'ambiguous', 'mismatch', 'duplicate', 'broken_relationship', 'repair', 'interrupted'];
     for (const cat of categories) {
       const count = cat === 'All' ? issues.length : issues.filter(issue => issue.category === cat).length;
       const label = cat === 'All' ? 'All Categories' : labelForType(cat);
@@ -742,6 +745,46 @@ export class QuartzoView extends ItemView {
         if (allSelectedOrganizable) openOrganization(selectedPaths);
       });
 
+      const allSelectedRepairable = selectedPaths.length > 0
+        && selectedPaths.every(path => bulkRepairPaths.has(path));
+
+      const repairSelected = selectionBar.createEl('button', {
+        text: 'Repair selected…',
+        cls: 'qz-btn qz-btn-primary qz-btn-sm',
+      });
+      repairSelected.disabled = !allSelectedRepairable;
+      if (!allSelectedRepairable && selectedPaths.length > 0) {
+        repairSelected.title = 'Available only when every selected path is a repairable format issue.';
+      }
+      repairSelected.addEventListener('click', async () => {
+        if (!allSelectedRepairable) return;
+        repairSelected.disabled = true;
+        repairSelected.textContent = 'Repairing...';
+        let errors = 0;
+        const { ObjectParser } = require('../../core/objects/parser');
+        for (const subjectPath of selectedPaths) {
+          try {
+            const file = this.context.app.vault.getAbstractFileByPath(subjectPath);
+            if (file && 'extension' in file && file.extension === 'md') {
+              const content = await this.context.app.vault.read(file as any);
+              const repaired = ObjectParser.roundtrip(content);
+              await this.context.app.vault.modify(file as any, repaired);
+            }
+          } catch (e) {
+            errors++;
+            console.error(`Repair failed for ${subjectPath}`, e);
+          }
+        }
+        if (errors > 0) {
+          new Notice(`Repaired ${selectedPaths.length - errors} issues. ${errors} failed.`);
+        } else {
+          new Notice(`Successfully repaired ${selectedPaths.length} issues.`);
+        }
+        this.issueSelectedPaths.clear();
+        // Wait for Obsidian index/vault events to propagate, then re-render
+        setTimeout(() => void this.render(), 300);
+      });
+
       const deleteSelected = selectionBar.createEl('button', {
         text: 'Delete selected…',
         cls: 'qz-btn qz-btn-sm mod-warning',
@@ -824,6 +867,33 @@ export class QuartzoView extends ItemView {
           });
           openMarkdown.addEventListener('click', () => {
             openIssueMarkdown(issue.subjectPath);
+          });
+        } else if (issue.category === 'repair') {
+          const repairBtn = actionsTd.createEl('button', {
+            text: 'Repair format',
+            cls: 'qz-btn qz-btn-primary qz-btn-sm',
+          });
+          repairBtn.addEventListener('click', async () => {
+            repairBtn.disabled = true;
+            repairBtn.textContent = 'Repairing...';
+            try {
+              const file = this.context.app.vault.getAbstractFileByPath(issue.subjectPath);
+              if (file && 'extension' in file && file.extension === 'md') {
+                const content = await this.context.app.vault.read(file as any);
+                const { ObjectParser } = require('../../core/objects/parser');
+                const repaired = ObjectParser.roundtrip(content);
+                await this.context.app.vault.modify(file as any, repaired);
+                new Notice('Format repaired successfully.');
+                // Wait for Obsidian index/vault events to propagate, then re-render
+                setTimeout(() => void this.render(), 300);
+              } else {
+                new Notice('File not found or not a markdown file.');
+              }
+            } catch (error) {
+              new Notice('Repair failed: ' + String(error));
+              repairBtn.disabled = false;
+              repairBtn.textContent = 'Repair format';
+            }
           });
         } else {
           actionsTd.createEl('span', { text: 'Review required', cls: 'qz-text-muted' });

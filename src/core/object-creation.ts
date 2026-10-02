@@ -95,6 +95,7 @@ export function buildQuickAddDocument(
     ? `${recordTrackerTitle} ${record?.date ?? ''}`.trim()
     : trimmedTitle || (type === 'entry' ? 'Journal Entry' : 'Untitled');
   const frontmatter: Record<string, unknown> = { id, type: canonicalObjectType, title };
+  let socialBodyOverride: string | undefined;
 
   if (type === 'recipe') {
     const recipe = input.recipe;
@@ -115,7 +116,8 @@ export function buildQuickAddDocument(
     frontmatter.url = social.url.trim();
     frontmatter.platform = social.platform.trim();
     frontmatter.media_type = social.mediaType?.trim() || 'other';
-    assignText(frontmatter, 'caption', social.caption);
+    // NOTE: caption is NOT written to frontmatter (new canonical contract).
+    // It is written to the body with HTML comment markers below.
     assignText(frontmatter, 'creator', social.creator);
     assignText(frontmatter, 'author_handle', social.authorHandle);
     assignText(frontmatter, 'author_name', social.authorName);
@@ -124,6 +126,32 @@ export function buildQuickAddDocument(
     assignText(frontmatter, 'video_url', social.videoUrl);
     assignText(frontmatter, 'posted_at', social.postedAt);
     frontmatter.watched = false;
+
+    // Build body with marker-delimited sections.
+    const bodyParts: string[] = [];
+    const trimCaption = social.caption?.trim();
+    if (trimCaption) {
+      bodyParts.push(
+        '<!-- quartzo:social-caption:start -->',
+        trimCaption,
+        '<!-- quartzo:social-caption:end -->',
+      );
+    }
+    const trimNote = social.personalNote?.trim();
+    if (trimNote) {
+      bodyParts.push(
+        '<!-- quartzo:social-personal-note:start -->',
+        '## Personal Note',
+        '',
+        trimNote,
+        '<!-- quartzo:social-personal-note:end -->',
+      );
+    }
+    // Merge with any caller-supplied body (appended after the marker sections).
+    const callerBody = input.body?.trim();
+    if (callerBody) bodyParts.push(callerBody);
+    // Inject into local variable so applyTypeSignature picks it up.
+    socialBodyOverride = bodyParts.join('\n');
   }
 
   if (type === 'entry') {
@@ -186,7 +214,10 @@ export function buildQuickAddDocument(
   }
 
   const signature = resolveTypeSignature(settings, canonicalObjectType);
-  const signed = applyTypeSignature(frontmatter, input.body, signature);
+  const effectiveBody = type === 'social_post'
+    ? (socialBodyOverride ?? '')
+    : (input.body ?? '');
+  const signed = applyTypeSignature(frontmatter, effectiveBody, signature);
   
   // Create a safe filename from the title
   const safeTitle = title.replace(/[*"\\/<>:|?]/g, '').trim();

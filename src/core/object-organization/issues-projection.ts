@@ -15,6 +15,7 @@ export type IssueCategory =
   | 'mismatch'
   | 'duplicate'
   | 'broken_relationship'
+  | 'repair'
   | 'interrupted';
 
 export interface OrganizationIssue {
@@ -144,6 +145,18 @@ export function projectOrganizationIssues(input: IssuesProjectionInput): Organiz
           }
         }
       }
+    }
+
+    if (obj.type === 'social_post' && obj.frontmatter.caption !== undefined) {
+      issues.push({
+        id: `repair:legacy_caption:${obj.path}`,
+        category: 'repair',
+        subjectPath: obj.path,
+        subjectId: obj.id,
+        title: 'Social Post Legacy Caption',
+        why: 'Post uses legacy "caption" frontmatter property instead of the new HTML comment body markers. The canonical contract has been updated to prevent YAML corruption.',
+        actionable: true,
+      });
     }
   }
 

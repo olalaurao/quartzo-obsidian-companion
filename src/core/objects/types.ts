@@ -224,8 +224,11 @@ export interface SocialPost extends BaseObject {
   thumbnail?: string;
   embed_url?: string;
   video_url?: string;
+  media_urls?: string[];
+  primary_media_index?: number;
   posted_at?: string;
   personal_note?: string;
+  transcription?: string;
   watched?: boolean;
 }
 
