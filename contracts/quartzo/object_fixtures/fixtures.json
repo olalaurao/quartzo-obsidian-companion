@@ -343,48 +343,6 @@
     }
   },
   {
-    "id": "resource_movie",
-    "type": "resource",
-    "path": "resources/arrival.md",
-    "markdown": "---\nid: resource-arrival\ntype: resource\ntitle: Arrival\nmedia_type: Movie\nsource_url: https://www.themoviedb.org/movie/329865\nstatus: planned\nrating: 5\npriority: medium\nyear: 2016\nimdb_id: tt2543164\naliases:\n  - A Chegada\ncategories:\n  - sci-fi\n---\nA linguist works with the military to communicate with alien lifeforms.\n",
-    "expected": {
-      "id": "resource-arrival",
-      "type": "resource",
-      "title": "Arrival",
-      "media_type": "Movie",
-      "source_url": "https://www.themoviedb.org/movie/329865",
-      "status": "planned",
-      "rating": 5,
-      "priority": "medium",
-      "year": 2016,
-      "imdb_id": "tt2543164",
-      "aliases": ["A Chegada"],
-      "categories": ["sci-fi"],
-      "body": "A linguist works with the military to communicate with alien lifeforms."
-    }
-  },
-  {
-    "id": "resource_tv",
-    "type": "resource",
-    "path": "resources/severance.md",
-    "markdown": "---\nid: resource-severance\ntype: resource\ntitle: Severance\nmedia_type: TV\nsource_url: https://www.themoviedb.org/tv/95396\nstatus: inProgress\nrating: 4\npriority: high\nyear: 2022\nimdb_id: tt11280740\naliases:\n  - Ruptura\ntags:\n  - work\n---\nOffice workers undergo a procedure that separates work memories from personal memories.\n",
-    "expected": {
-      "id": "resource-severance",
-      "type": "resource",
-      "title": "Severance",
-      "media_type": "TV",
-      "source_url": "https://www.themoviedb.org/tv/95396",
-      "status": "inProgress",
-      "rating": 4,
-      "priority": "high",
-      "year": 2022,
-      "imdb_id": "tt11280740",
-      "aliases": ["Ruptura"],
-      "tags": ["work"],
-      "body": "Office workers undergo a procedure that separates work memories from personal memories."
-    }
-  },
-  {
     "id": "area_basic",
     "type": "area",
     "path": "organizers/areas/health.md",
