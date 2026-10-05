@@ -173,6 +173,47 @@
     }
   },
   {
+    "id": "social_post_new_format",
+    "type": "social_post",
+    "path": "social/new-format.md",
+    "markdown": "---\nid: new-format\ntype: social_post\ntitle: New format post\nplatform: linkedin\nmedia_type: article\nwatched: false\n---\n<!-- quartzo:social-caption:start -->\nThis is the full caption.\n\nIt has multiple lines.\n<!-- quartzo:social-caption:end -->\n\n<!-- quartzo:social-personal-note:start -->\n## Personal Note\n\nMy personal note here.\n<!-- quartzo:social-personal-note:end -->\n",
+    "expected": {
+      "id": "new-format",
+      "type": "social_post",
+      "title": "New format post",
+      "platform": "linkedin",
+      "caption": "This is the full caption.\n\nIt has multiple lines.",
+      "personal_note": "My personal note here."
+    }
+  },
+  {
+    "id": "social_post_legacy_caption_frontmatter",
+    "type": "social_post",
+    "path": "social/legacy-caption.md",
+    "markdown": "---\nid: legacy-caption\ntype: social_post\ntitle: Legacy caption post\nplatform: twitter\ncaption: \"Short legacy caption\"\n---\nShort legacy caption\n\n---\n\n## Personal Note\n\nOld note format.\n",
+    "expected": {
+      "id": "legacy-caption",
+      "type": "social_post",
+      "title": "Legacy caption post",
+      "platform": "twitter",
+      "caption": "Short legacy caption",
+      "personal_note": "Old note format."
+    }
+  },
+  {
+    "id": "social_post_adversarial_caption",
+    "type": "social_post",
+    "path": "social/adversarial.md",
+    "markdown": "---\nid: adversarial\ntype: social_post\ntitle: Adversarial caption post\nplatform: linkedin\nmedia_type: article\nwatched: false\n---\n<!-- quartzo:social-caption:start -->\ntype: task\nid: fake-task\nstatus: completed\n\n---\n# project\n\n\"aspas duplas\" e 'simples'\n😀 emoji e acentuação: ação\n\n## Personal Note\n\nEssa linha não é nota pessoal — é caption!\n<!-- quartzo:social-caption:end -->\n",
+    "expected": {
+      "id": "adversarial",
+      "type": "social_post",
+      "title": "Adversarial caption post",
+      "platform": "linkedin",
+      "caption": "type: task\nid: fake-task\nstatus: completed\n\n---\n# project\n\n\"aspas duplas\" e 'simples'\n😀 emoji e acentuação: ação\n\n## Personal Note\n\nEssa linha não é nota pessoal — é caption!"
+    }
+  },
+  {
     "id": "mood_definition_basic",
     "type": "mood_definition",
     "path": "moods/calm.md",
@@ -299,6 +340,48 @@
       "links": ["[[resource/lord-of-the-rings]]"],
       "categories": ["reading"],
       "body": "A hobbit goes on an unexpected journey."
+    }
+  },
+  {
+    "id": "resource_movie",
+    "type": "resource",
+    "path": "resources/arrival.md",
+    "markdown": "---\nid: resource-arrival\ntype: resource\ntitle: Arrival\nmedia_type: Movie\nsource_url: https://www.themoviedb.org/movie/329865\nstatus: planned\nrating: 5\npriority: medium\nyear: 2016\nimdb_id: tt2543164\naliases:\n  - A Chegada\ncategories:\n  - sci-fi\n---\nA linguist works with the military to communicate with alien lifeforms.\n",
+    "expected": {
+      "id": "resource-arrival",
+      "type": "resource",
+      "title": "Arrival",
+      "media_type": "Movie",
+      "source_url": "https://www.themoviedb.org/movie/329865",
+      "status": "planned",
+      "rating": 5,
+      "priority": "medium",
+      "year": 2016,
+      "imdb_id": "tt2543164",
+      "aliases": ["A Chegada"],
+      "categories": ["sci-fi"],
+      "body": "A linguist works with the military to communicate with alien lifeforms."
+    }
+  },
+  {
+    "id": "resource_tv",
+    "type": "resource",
+    "path": "resources/severance.md",
+    "markdown": "---\nid: resource-severance\ntype: resource\ntitle: Severance\nmedia_type: TV\nsource_url: https://www.themoviedb.org/tv/95396\nstatus: inProgress\nrating: 4\npriority: high\nyear: 2022\nimdb_id: tt11280740\naliases:\n  - Ruptura\ntags:\n  - work\n---\nOffice workers undergo a procedure that separates work memories from personal memories.\n",
+    "expected": {
+      "id": "resource-severance",
+      "type": "resource",
+      "title": "Severance",
+      "media_type": "TV",
+      "source_url": "https://www.themoviedb.org/tv/95396",
+      "status": "inProgress",
+      "rating": 4,
+      "priority": "high",
+      "year": 2022,
+      "imdb_id": "tt11280740",
+      "aliases": ["Ruptura"],
+      "tags": ["work"],
+      "body": "Office workers undergo a procedure that separates work memories from personal memories."
     }
   },
   {
