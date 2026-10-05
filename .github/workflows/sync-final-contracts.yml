@@ -1,0 +1,33 @@
+name: Generate Final Contract Lock
+
+on:
+  push:
+    branches:
+      - work/sync-final-quartzo-fixtures
+    paths:
+      - .github/workflows/sync-final-contracts.yml
+
+permissions:
+  contents: read
+
+jobs:
+  generate-lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Sync canonical contracts from final Quartzo SHA
+        run: node scripts/sync-contracts.mjs sync 2a5b50111a4aeba097d560034d454f91ea9ac6cc
+        env:
+          GITHUB_TOKEN: ${{ secrets.QUARTZO_UPSTREAM_TOKEN }}
+      - name: Upload canonical sync output
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-contract-sync-output
+          path: |
+            contracts/UPSTREAM.lock.json
+            contracts/quartzo/object_fixtures/fixtures.json
+          if-no-files-found: error
+          retention-days: 1
