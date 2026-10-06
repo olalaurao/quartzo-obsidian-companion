@@ -12,6 +12,12 @@ export interface OccurrenceActionServiceOptions {
   store: OccurrenceResponseStore;
   completeDomainOccurrence?: OccurrenceDomainCompletion;
   clearDomainOccurrence?: OccurrenceDomainClear;
+  onApplied?(event: {
+    target: OccurrenceActionTarget;
+    actionId: string;
+    action: CanonicalOccurrenceAction;
+    responseState: OccurrenceResponseState;
+  }): Promise<void>;
 }
 
 function cloneResponse(response: OccurrenceResponseState): OccurrenceResponseState {
@@ -212,6 +218,12 @@ export class OccurrenceActionService {
     await this.options.store.replaceResponses(nextResponses);
     try {
       await afterSave?.();
+      await this.options.onApplied?.({
+        target,
+        actionId: normalizedActionId,
+        action,
+        responseState: nextResponse,
+      });
     } catch (error) {
       await this.options.store.replaceResponses(previousResponses);
       throw error;

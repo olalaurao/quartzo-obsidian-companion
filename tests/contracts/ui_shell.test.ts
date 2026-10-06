@@ -183,6 +183,22 @@ folder_paths:
     expect(styles).toContain('.quartzo-detail-section dl {\n    grid-template-columns: 1fr;');
   });
 
+  it('renders Activity from range-scoped canonical history with explicit loading and real bucket intensity', () => {
+    const shell = fs.readFileSync(path.join(process.cwd(), 'src/ui/shell/view.ts'), 'utf8');
+    const styles = fs.readFileSync(path.join(process.cwd(), 'styles.css'), 'utf8');
+
+    expect(shell).toContain("new ActivityHistoryRepository(this.context.app.vault).loadRange(range.start, range.end)");
+    expect(shell).toContain('this.context.plugin.driveSyncCoordinator.getSyncStatusSnapshot()');
+    expect(shell).toContain('renderActivitySyncState(wrapper, syncSnapshot)');
+    expect(shell).toContain("normalize(diagnostic.path).startsWith(ACTIVITY_HISTORY_ROOT)");
+    expect(shell).toContain("loadingState.setAttribute('role', 'status')");
+    expect(shell).toContain("loadingState.setAttribute('aria-live', 'polite')");
+    expect(shell).toContain("bar.style.setProperty('--qz-activity-bucket-fill'");
+    expect(shell).toContain("bar.toggleClass('is-empty', bucket.count === 0)");
+    expect(styles).toContain('height: var(--qz-activity-bucket-fill, 10%);');
+    expect(styles).toContain('.quartzo-activity-bucket.is-empty');
+  });
+
   it('guards async UI renders against stale Calendar responses', () => {
     const shell = fs.readFileSync(path.join(process.cwd(), 'src/ui/shell/view.ts'), 'utf8');
 

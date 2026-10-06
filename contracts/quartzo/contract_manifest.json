@@ -10,5 +10,6 @@
   "adaptivePlanningContractVersion": "1.0.0",
   "linkCaptureContractVersion": "1.0.0",
   "objectIdentificationMigrationContractVersion": "1.0.0",
-  "objectOrganizationContractVersion": "1.0.0"
+  "objectOrganizationContractVersion": "1.0.0",
+  "activityHistoryContractVersion": "1.0.0"
 }

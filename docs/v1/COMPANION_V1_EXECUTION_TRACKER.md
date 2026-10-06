@@ -15,7 +15,7 @@
 >
 > Quando este tracker descobrir uma regra permanente nova, a regra deve ser promovida ao documento/contract canônico correspondente no mesmo milestone.
 
-Última atualização operacional: **2026-09-23**.
+Última atualização operacional: **2026-10-06**.
 
 ---
 
@@ -40,6 +40,7 @@ A V1 só é considerada pronta quando todos os quatro marcos abaixo estiverem co
 - [x] Routine manual execution no Companion.
 - [x] Focus/Pomodoro parity.
 - [x] Home/Planner/Dial/Detail/Search/Browse/Journal polish final.
+- [ ] Activity History V1: contrato upstream ✅; projeção ✅; leitura real de log ✅; leitura mensal por range ✅; emissão por owners incluindo tracking/move/retire ✅; loading/empty/error/offline/pending-sync states ✅; buckets reais ✅; UI funcional inicial ✅; visual system/Figma parity e E2E ainda abertos.
 - [x] Reminder/Calendar edge-case closure.
 - [x] Sync Center diagnostics finais sem reescrever o sync.
 

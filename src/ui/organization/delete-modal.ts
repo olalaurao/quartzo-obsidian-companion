@@ -195,7 +195,7 @@ export class ObjectBulkDeleteModal extends Modal {
       cls: 'qz-text-muted',
     });
 
-    const list = contentEl.createEl('ul', { attr: { style: 'max-height: 260px; overflow: auto;' } });
+    const list = contentEl.createEl('ul', { cls: 'quartzo-scroll-list' });
     for (const request of requests.slice(0, 100)) {
       list.createEl('li', { text: `${request.path} → ${canonicalRetirementPath(request.id)}` });
     }

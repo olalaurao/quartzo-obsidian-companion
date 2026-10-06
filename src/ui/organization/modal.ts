@@ -338,7 +338,6 @@ export class ObjectOrganizationModal extends Modal {
     contentEl.createEl('h3', { text: 'Preview' });
     const previewBox = contentEl.createEl('div', {
       cls: 'quartzo-preview-box',
-      attr: { style: 'max-height: 200px; overflow-y: auto; background: var(--background-secondary); padding: 10px;' },
     });
 
     if (this.currentPlan.blockers.length > 0) {

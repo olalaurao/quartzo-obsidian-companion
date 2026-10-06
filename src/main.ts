@@ -4,7 +4,9 @@ import type { IndexedObject } from './vault/index/types';
 import { SafeObjectMutationRepository } from './vault/object-mutation';
 import { ManualExecutionRepository } from './vault/manual-execution';
 import { FOCUS_RUNTIME_PATH, FocusRuntimeRepository } from './vault/focus-runtime';
+import { ActivityHistoryWriter } from './vault/activity-history';
 import type { SafeObjectMutation } from './core/object-mutation';
+import type { ActivityEvent, ActivityEventType } from './core/activity-history';
 import { ObjectParser } from './core/objects';
 import type { ObjectIdentificationMatch } from './core/objects/types';
 import type { TrackerDefinition } from './core/objects/types';
@@ -161,6 +163,18 @@ const OAUTH_CONFIG: OAuthConfig = {
   // Google verification/testing requirements apply before production listing.
 };
 
+function occurrenceActivityEventType(action: CanonicalOccurrenceAction): ActivityEventType | null {
+  if (action === 'done') return 'occurrence_completed';
+  if (action === 'already_did') return 'occurrence_already_did';
+  if (action === 'skip') return 'occurrence_skipped';
+  return null;
+}
+
+function objectTitleSnapshot(object: IndexedObject | undefined, fallback: string): string {
+  const title = object?.frontmatter.title;
+  return typeof title === 'string' && title.trim() ? title : fallback;
+}
+
 export default class QuartzoCompanionPlugin extends Plugin implements FocusRuntimeUiController {
   settings!: QuartzoCompanionSettings;
   vaultIndexEngine: VaultIndexEngine | null = null;
@@ -180,6 +194,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
   private planningStateRepository: SharedPlanningStateRepository | null = null;
   private occurrenceDomainMutationRepository: OccurrenceDomainMutationRepository | null = null;
   private safeObjectMutationRepository: SafeObjectMutationRepository | null = null;
+  private activityHistoryWriter: ActivityHistoryWriter | null = null;
   private manualExecutionRepository: ManualExecutionRepository | null = null;
   private focusRuntimeRepository: FocusRuntimeRepository | null = null;
   private focusRuntimeState: FocusRuntimeState = createIdleFocusRuntimeState();
@@ -224,6 +239,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     this.planningStateRepository = new SharedPlanningStateRepository(this.app.vault);
     this.occurrenceDomainMutationRepository = new OccurrenceDomainMutationRepository(this.app.vault);
     this.safeObjectMutationRepository = new SafeObjectMutationRepository(this.app.vault);
+    this.activityHistoryWriter = new ActivityHistoryWriter(this.app.vault);
     this.manualExecutionRepository = new ManualExecutionRepository(this.app.vault);
     this.focusRuntimeRepository = new FocusRuntimeRepository(this.app.vault);
     try {
@@ -245,6 +261,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
       completeDomainOccurrence: (target, completedAt, recordedAt, actionId) =>
         this.completeOccurrenceDomain(target, completedAt, recordedAt, actionId),
       clearDomainOccurrence: target => this.clearOccurrenceDomain(target),
+      onApplied: event => this.appendOccurrenceActivity(event),
     });
 
     this.viewContext = {
@@ -962,6 +979,39 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     return result;
   }
 
+  private async appendOccurrenceActivity(event: {
+    target: OccurrenceActionTarget;
+    actionId: string;
+    action: CanonicalOccurrenceAction;
+    responseState: OccurrenceResponseState;
+  }): Promise<void> {
+    const eventType = occurrenceActivityEventType(event.action);
+    if (!eventType) return;
+    const writer = this.activityHistoryWriter;
+    if (!writer) return;
+    const object = this.vaultIndexEngine?.getIndex()?.objects.get(event.target.sourceId);
+    const occurredAt =
+      event.responseState.recordedAt ??
+      event.responseState.completedAt ??
+      event.responseState.skippedAt ??
+      new Date().toISOString();
+    const activity: ActivityEvent = {
+      eventId: `occurrence:${event.actionId}`,
+      occurredAt,
+      eventType,
+      sourceId: event.target.sourceId,
+      sourceType: event.target.sourceType,
+      ...(object ? { sourcePath: object.path } : {}),
+      originClient: 'obsidian_companion',
+      originKind: 'companion',
+      titleSnapshot: objectTitleSnapshot(object, event.target.sourceId),
+      operationId: event.actionId,
+      occurrenceId: event.target.occurrenceId,
+      ...(event.target.dueAt ? { scheduledFor: event.target.dueAt.slice(0, 10) } : {}),
+    };
+    await writer.append(activity);
+  }
+
   private manualExecutionObjects(): ManualExecutionObject[] {
     const index = this.vaultIndexEngine?.getIndex();
     if (!index) throw new Error('Vault index is not initialized.');
@@ -1314,6 +1364,11 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
             { id: latest.source.id, type: 'system' },
           );
           await this.refreshIndexedFile(persisted.summaryPath);
+          await this.appendManualExecutionActivity(
+            latest.source,
+            run,
+            'system_manually_run',
+          );
           await this.refreshQuartzoView();
           return {
             completed: true,
@@ -1335,13 +1390,19 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
           persisted.sourceMarkdown,
           { id: latest.source.id, type: 'routine' },
         );
-        await this.refreshQuartzoView();
         if (persisted.result.isCompleted) {
+          await this.appendManualExecutionActivity(
+            latest.source,
+            run,
+            'routine_manually_run',
+          );
+          await this.refreshQuartzoView();
           return {
             completed: true,
             message: `Routine “${String(latest.source.frontmatter.title ?? latest.source.id)}” completed.`,
           };
         }
+        await this.refreshQuartzoView();
         const byId = new Map(persisted.result.execution.steps.map(step => [step.step_id, step]));
         const remaining = latest.steps.filter(step =>
           step.required && byId.get(step.id)?.completed !== true
@@ -1379,7 +1440,9 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
       if (!object || object.type !== 'task') {
         throw new Error('Task source is not available for safe rescheduling.');
       }
-      await this.mutateObject(object, plan.patch);
+      const operationId = `client:obsidian:${createCanonicalObjectId()}:reschedule`;
+      await this.mutateObject(object, plan.patch, { operationId, emitActivity: false });
+      await this.appendRescheduleActivity(item, occurrenceId, operationId, object.path);
       await this.refreshQuartzoView();
       return;
     }
@@ -1387,15 +1450,21 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     if (!this.planningStateRepository) {
       throw new Error('Shared planning state is not initialized.');
     }
+    const operationId = `client:obsidian:${createCanonicalObjectId()}:reschedule`;
     await this.planningStateRepository.upsertTimeOverride(plan.override);
     this.occurrenceOverrides = {
       ...this.occurrenceOverrides,
       [plan.override.occurrenceId]: plan.override,
     };
+    await this.appendRescheduleActivity(item, occurrenceId, operationId);
     await this.refreshQuartzoView();
   }
 
-  async mutateObject(object: IndexedObject, patch: SafeObjectMutation): Promise<void> {
+  async mutateObject(
+    object: IndexedObject,
+    patch: SafeObjectMutation,
+    options: { operationId?: string; emitActivity?: boolean } = {},
+  ): Promise<void> {
     const repository = this.safeObjectMutationRepository;
     const engine = this.vaultIndexEngine;
     const index = engine?.getIndex();
@@ -1403,12 +1472,88 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
       throw new Error('Object mutation is not initialized.');
     }
 
-    const markdown = await repository.mutate(object, patch);
+    const operationId = options.operationId ?? `client:obsidian:${createCanonicalObjectId()}:object_edit`;
+    const markdown = await repository.mutate(object, patch, operationId, options.emitActivity !== false);
     await this.applyIndexedMarkdown(
       object.path,
       markdown,
       { id: object.id, type: object.type },
     );
+  }
+
+  private async appendRescheduleActivity(
+    item: NormalizedItem,
+    occurrenceId: string,
+    operationId: string,
+    sourcePath?: string,
+  ): Promise<void> {
+    const writer = this.activityHistoryWriter;
+    if (!writer) return;
+    const object = this.vaultIndexEngine?.getIndex()?.objects.get(item.sourceId);
+    await writer.append({
+      eventId: `occurrence_rescheduled:${operationId}`,
+      occurredAt: new Date().toISOString(),
+      eventType: 'occurrence_rescheduled',
+      sourceId: item.sourceId,
+      sourceType: item.sourceType,
+      sourcePath: sourcePath ?? object?.path,
+      originClient: 'obsidian_companion',
+      originKind: 'companion',
+      titleSnapshot: objectTitleSnapshot(object, item.sourceId),
+      operationId,
+      occurrenceId,
+      scheduledFor: item.date,
+    });
+  }
+
+  private async appendManualExecutionActivity(
+    source: IndexedObject,
+    run: ManualExecutionRunContext,
+    eventType: Extract<ActivityEventType, 'system_manually_run' | 'routine_manually_run'>,
+  ): Promise<void> {
+    const writer = this.activityHistoryWriter;
+    if (!writer) return;
+    const operationId = `manual_execution:${source.id}:${run.startedAt}`;
+    await writer.append({
+      eventId: `${eventType}:${operationId}`,
+      occurredAt: new Date().toISOString(),
+      eventType,
+      sourceId: source.id,
+      sourceType: source.type,
+      sourcePath: source.path,
+      originClient: 'obsidian_companion',
+      originKind: 'companion',
+      titleSnapshot: objectTitleSnapshot(source, source.id),
+      operationId,
+      ...(run.occurrenceId ? { occurrenceId: run.occurrenceId } : {}),
+      scheduledFor: run.scheduledFor,
+    });
+  }
+
+  private async appendFocusActivity(
+    state: FocusRuntimeState,
+    evidencePath: string | undefined,
+  ): Promise<void> {
+    const writer = this.activityHistoryWriter;
+    if (!writer || !state.currentSessionId) return;
+    const operationId = `focus:${state.currentSessionId}`;
+    await writer.append({
+      eventId: `focus_session_completed:${operationId}`,
+      occurredAt: new Date().toISOString(),
+      eventType: 'focus_session_completed',
+      sourceId: state.currentSessionId,
+      sourceType: 'focus_session',
+      ...(evidencePath ? { sourcePath: evidencePath } : {}),
+      originClient: 'obsidian_companion',
+      originKind: 'companion',
+      titleSnapshot: state.currentItemTitle?.trim() || 'Focus session',
+      operationId,
+      metadata: {
+        runtimeMode: state.runtimeMode,
+        actualWorkSeconds: state.actualWorkSeconds,
+        actualBreakSeconds: state.actualBreakSeconds,
+      },
+    });
   }
 
   async resolveTypeConflictMarker(object: IndexedObject, match: ObjectIdentificationMatch): Promise<void> {
@@ -1536,6 +1681,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
   }
 
   async finishFocus(disposition: FocusSessionDisposition): Promise<void> {
+    const before = this.focusRuntimeState;
     const result = await this.requireFocusRuntimeRepository().finish({
       localControllerId: this.settings.focusControllerId,
       now: new Date(),
@@ -1544,6 +1690,9 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     this.focusRuntimeState = result.state;
     if (result.evidencePath) {
       await this.refreshIndexedFile(result.evidencePath);
+    }
+    if (before.currentSessionId && disposition !== 'discard') {
+      await this.appendFocusActivity(before, result.evidencePath);
     }
     await this.refreshQuartzoView();
   }

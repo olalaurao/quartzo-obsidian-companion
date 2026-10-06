@@ -1,0 +1,179 @@
+{
+  "version": "1.0.0",
+  "description": "Activity History V1 — cross-client, append-only Quartzo history for user-visible object, occurrence, capture, organization, manual execution, tracking, and focus events.",
+  "scope": {
+    "canonicalMeaning": "Activity is Quartzo activity shared between clients. It is not limited to Obsidian-local plugin actions.",
+    "navigation": "Activity is a primary Companion shell surface beside Home, Planner, Journal, and Browse.",
+    "nonGoals": [
+      "do not reconstruct full history from filesystem mtime",
+      "do not store UI analytics or clicks",
+      "do not create a second object index",
+      "do not invent integration/provider names",
+      "do not expose unsupported Canvas activity in V1"
+    ]
+  },
+  "persistence": {
+    "strategy": "append_only_partitioned_log",
+    "root": "sessions/activity_history_v1/",
+    "partition": "YYYY/MM/activity_events_YYYY_MM.jsonl",
+    "recordFormat": "One canonical ActivityEvent JSON object per line.",
+    "rules": [
+      "eventId is stable and deterministic for a completed operation",
+      "replaying the same operationId and eventType must not append a duplicate event",
+      "events are appended only after the owning operation has completed",
+      "sync conflicts must preserve all distinct eventIds",
+      "clients must never mutate source objects only to record activity",
+      "history starts when this contract is active; clients must not backfill invented events from mtime"
+    ]
+  },
+  "eventModel": {
+    "requiredFields": {
+      "eventId": "Stable deterministic idempotency key.",
+      "occurredAt": "ISO-8601 instant when the owning operation completed.",
+      "eventType": "One of eventTypes.",
+      "sourceId": "Canonical object, occurrence, routine, system, tracking, capture, or focus source ID.",
+      "sourceType": "Canonical source type.",
+      "sourcePath": "Vault-relative source path when a file-backed source exists.",
+      "originClient": "Stable client identifier such as quartzo_app or obsidian_companion.",
+      "originKind": "One of app, companion, import, sync, automation, or external_integration.",
+      "titleSnapshot": "Short title captured at event time."
+    },
+    "optionalFields": {
+      "summary": "Short non-sensitive event summary.",
+      "excerpt": "Privacy-gated preview; never a full diff or full note body.",
+      "previousPath": "Previous vault-relative path when the event moved or renamed a file.",
+      "changedFieldCount": "Integer count of changed semantic fields when known.",
+      "operationId": "Owning operation id used for idempotency.",
+      "occurrenceId": "Occurrence id for occurrence events.",
+      "scheduledFor": "Canonical local date for scheduled occurrence events.",
+      "folder": "Derived folder path used for folder filters.",
+      "provenance": "Real provider/source metadata when known; absent when unknown.",
+      "metadata": "Event-type-specific metadata; must not contain secrets."
+    },
+    "forbiddenFields": [
+      "accessToken",
+      "refreshToken",
+      "clientSecret",
+      "password",
+      "fullDiff",
+      "fullBody",
+      "providerLabelWhenUnknown"
+    ]
+  },
+  "eventTypes": [
+    "object_created",
+    "object_edited",
+    "object_moved",
+    "object_retired",
+    "capture_created",
+    "occurrence_completed",
+    "occurrence_already_did",
+    "occurrence_skipped",
+    "occurrence_rescheduled",
+    "tracking_record_created",
+    "system_manually_run",
+    "routine_manually_run",
+    "focus_session_completed"
+  ],
+  "categories": {
+    "notes": ["object_created", "object_edited", "object_moved", "object_retired"],
+    "tasks": [
+      "occurrence_completed",
+      "occurrence_already_did",
+      "occurrence_skipped",
+      "occurrence_rescheduled"
+    ],
+    "captures": ["capture_created"],
+    "tracking": ["tracking_record_created"],
+    "systems": ["system_manually_run", "routine_manually_run"],
+    "focus": ["focus_session_completed"]
+  },
+  "ownerBoundaries": {
+    "rule": "Activity events are emitted by canonical operation owners after confirmed mutation or runtime completion, never by UI surfaces.",
+    "owners": {
+      "object_created": "Object Creation owner",
+      "object_edited": "Safe Object Mutation owner",
+      "object_moved": "Object Organization owner",
+      "object_retired": "Object Organization owner",
+      "capture_created": "Capture owner",
+      "occurrence_completed": "Occurrence Actions owner",
+      "occurrence_already_did": "Occurrence Actions owner",
+      "occurrence_skipped": "Occurrence Actions owner",
+      "occurrence_rescheduled": "Occurrence Reschedule owner",
+      "tracking_record_created": "Tracking Record owner",
+      "system_manually_run": "Manual System Execution owner",
+      "routine_manually_run": "Manual Routine Execution owner",
+      "focus_session_completed": "Focus Runtime owner"
+    },
+    "forbiddenEmitters": [
+      "Home view",
+      "Planner view",
+      "Journal view",
+      "Browse view",
+      "Activity view",
+      "Search view",
+      "Quick Add modal"
+    ]
+  },
+  "privacy": {
+    "excerptPolicy": "Excerpt is optional and privacy-gated. Clients may omit it without weakening the event.",
+    "rules": [
+      "do not persist full note bodies or diffs",
+      "do not persist excerpts from private or sensitive fields",
+      "privacy mode must suppress excerpt rendering",
+      "metadata must describe the event without exposing secrets",
+      "provider labels are shown only from real provenance"
+    ]
+  },
+  "projection": {
+    "singleOwner": "Clients must use one Activity History reader/projection owner. UI surfaces must not maintain independent counts.",
+    "inputs": [
+      "events",
+      "period",
+      "rangeStart",
+      "rangeEnd",
+      "categoryFilter",
+      "folderFilter",
+      "privacyMode"
+    ],
+    "outputs": [
+      "visibleEvents",
+      "groups",
+      "total",
+      "byType",
+      "hourlyBuckets",
+      "heatmapBuckets",
+      "folderBuckets",
+      "emptyKind",
+      "staleState"
+    ],
+    "rules": [
+      "all counts, groups, charts, heatmaps, folder buckets, and totals are derived from the same filtered projection",
+      "Day aggregation uses hourly buckets for the selected local day",
+      "Week aggregation uses daily buckets across the selected week and may include recent-week context",
+      "Month aggregation must represent days or weeks in the selected month, not a mislabeled 12-month heatmap",
+      "Year aggregation must represent all twelve months or real daily/year buckets, not a short fake heatmap",
+      "unsupported event categories must be hidden or disabled, never rendered with fake events"
+    ]
+  },
+  "filters": {
+    "periods": ["day", "week", "month", "year"],
+    "categoryFilters": ["all", "notes", "tasks", "captures", "tracking", "systems", "focus"],
+    "folderFilter": "Vault-relative folder prefix or all folders.",
+    "dateNavigation": {
+      "day": "plus or minus one local day",
+      "week": "plus or minus one ISO week",
+      "month": "plus or minus one calendar month",
+      "year": "plus or minus one calendar year"
+    }
+  },
+  "accessibility": {
+    "rules": [
+      "period and filter controls expose selected state",
+      "timeline events are keyboard reachable when they have a target",
+      "heatmap and chart buckets expose date/range and count labels",
+      "stat bars expose textual value equivalents",
+      "loading, empty, filtered-empty, stale/offline, and error states are distinct"
+    ]
+  }
+}

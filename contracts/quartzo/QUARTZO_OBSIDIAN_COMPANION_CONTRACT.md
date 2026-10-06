@@ -260,7 +260,7 @@ The central view contains:
 │ Planner  │                                         │
 │ Journal  │           CURRENT VIEW                  │
 │ Browse   │                                         │
-│          │                                         │
+│ Activity │                                         │
 │          │                                         │
 └──────────┴─────────────────────────────────────────┘
 ```
@@ -271,6 +271,7 @@ Primary navigation intentionally remains small:
 2. **Planner**
 3. **Journal**
 4. **Browse**
+5. **Activity**
 
 Search, Add, Sync and Settings are actions rather than permanent navigation destinations.
 
@@ -531,7 +532,69 @@ not another independent navigation architecture.
 
 ---
 
-# 7.7 Universal Object Detail
+# 7.7 Activity
+
+Activity is the canonical cross-client history surface for Quartzo events.
+
+It is backed by:
+
+```text
+contracts/quartzo/activity_history/contract.json
+contracts/quartzo/activity_history/vectors.json
+```
+
+Activity must not be implemented as:
+
+- an Obsidian-local filesystem `mtime` scan;
+- a UI click log;
+- a second `VaultIndex`;
+- hardcoded mock data;
+- a provider-name demo;
+- a Canvas/snippets surface without a future Canvas contract.
+
+Supported V1 periods:
+
+```text
+Day
+Week
+Month
+Year
+```
+
+Date navigation must move by the selected period, not by a fixed approximate number of days.
+
+The Activity projection is a single owner that returns:
+
+- visible events;
+- timeline groups;
+- filtered totals;
+- by-type counts;
+- hourly buckets;
+- period-appropriate heatmap/chart buckets;
+- folder buckets;
+- loading, empty, filtered-empty, stale/offline and error states.
+
+The UI must not maintain separate counts for cards, group labels, charts or totals.
+
+Activity events are emitted only after canonical owners complete their work:
+
+- Object Creation;
+- Safe Object Mutation;
+- Object Organization;
+- Capture;
+- Occurrence Actions;
+- Occurrence Reschedule;
+- Tracking Record;
+- Manual System/Routine Execution;
+- Focus Runtime.
+
+Home, Planner, Journal, Browse, Search, Activity and Quick Add must not emit duplicate activity events for the same operation.
+
+Excerpts are optional and privacy-gated. Activity must never persist full note bodies, full diffs, OAuth tokens, secrets or invented provenance.
+
+---
+
+# 7.8 Universal Object Detail
 
 Selecting a Quartzo item opens its detail view.
 
@@ -2590,9 +2653,12 @@ Use fixture vaults to validate that:
 Home
 Planner
 Day Dial
+Activity
 ```
 
 show the same occurrence set under equivalent filters.
+
+Activity-specific visual and semantic tests must also prove that timeline groups, totals, by-type counts, folder buckets and charts are derived from the same filtered Activity projection.
 
 This is a release gate, not an optional visual test.
 
@@ -2749,6 +2815,7 @@ It may not expose a Save button before full contract coverage.
 | Journal | Full |
 | Universal Search | Full |
 | Browse | Full |
+| Activity | Full cross-client history after Activity History contract tests |
 | Object Detail | Full/read-only by type |
 | Quick Add Task | Full |
 | Quick Add Entry | Full |

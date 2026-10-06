@@ -19,8 +19,17 @@ import { renderScheduleList as renderDailyScheduleList } from '../daily/schedule
 import { projectJournalDay } from '../journal/journal-projection';
 import { projectOverdueObjects } from '../../core/overdue_projection';
 import {
+  projectActivityHistory,
+  shiftActivityPeriodAnchor,
+  type ActivityCategoryFilter,
+  type ActivityEvent,
+  type ActivityPeriod,
+  type ProjectedActivityEvent,
+} from '../../core/activity-history';
+import {
   SharedSettingsRepository,
 } from '../../vault/shared-settings';
+import { ACTIVITY_HISTORY_ROOT, ActivityHistoryRepository } from '../../vault/activity-history';
 import type { IndexedObject, VaultIndex } from '../../vault/index/types';
 import { QuickAddModal } from '../quick-add/modal';
 import type { ViewContext } from '../types';
@@ -35,7 +44,7 @@ import {
 import { renderFocusRuntime } from '../focus/view';
 
 export const QUARTZO_VIEW_TYPE = 'quartzo-view';
-export type QuartzoSection = 'home' | 'planner' | 'journal' | 'browse' | 'objects' | 'issues';
+export type QuartzoSection = 'home' | 'planner' | 'journal' | 'browse' | 'activity' | 'objects' | 'issues';
 export type QuartzoAction = 'focus' | 'search' | 'add' | 'sync' | 'conflicts' | 'type-conflicts' | 'settings' | 'organize' | 'folder_review';
 function isoDate(date: Date): string {
   return localIsoDate(date);
@@ -59,6 +68,19 @@ function formatDurationSeconds(totalSeconds: number): string {
   const minutes = Math.floor(seconds / 60);
   const remainder = seconds % 60;
   return minutes > 0 ? `${minutes}m ${remainder}s` : `${remainder}s`;
+}
+
+function formatActivityRange(start: string, end: string, period: ActivityPeriod): string {
+  if (period === 'day') return start;
+  if (period === 'month') return start.slice(0, 7);
+  if (period === 'year') return start.slice(0, 4);
+  return `${start} - ${end}`;
+}
+
+function activityTimeLabel(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
 }
 
 function formatSyncProgress(progress: SyncProgress | null): string {
@@ -147,6 +169,11 @@ export class QuartzoView extends ItemView {
   public selectedFolder: string | null = null;
   private editingSelectedObject = false;
   private selectedDate = isoDate(new Date());
+  private activityAnchorDate = isoDate(new Date());
+  private activityPeriod: ActivityPeriod = 'week';
+  private activityCategoryFilter: ActivityCategoryFilter = 'all';
+  private activityFolderFilter: string | null = null;
+  private activityVisibleLimit = 200;
   private plannerMode: 'day' | 'week' | 'month' = 'day';
   private plannerDayLens: PlannerDayLens = 'timeline';
   private sharedSettingsRepository: SharedSettingsRepository;
@@ -260,9 +287,9 @@ export class QuartzoView extends ItemView {
     const nav = document.createElement('nav');
     nav.className = 'qz-nav-tabs';
     const sectionIcons: Record<QuartzoSection, string> = {
-      home: '🏠', planner: '📅', journal: '📓', browse: '🔍', objects: '🗂', issues: '⚠️'
+      home: '🏠', planner: '📅', journal: '📓', browse: '🔍', activity: '📈', objects: '🗂', issues: '⚠️'
     };
-    for (const section of ['home', 'planner', 'journal', 'browse', 'objects', 'issues'] as QuartzoSection[]) {
+    for (const section of ['home', 'planner', 'journal', 'browse', 'activity', 'objects', 'issues'] as QuartzoSection[]) {
       const button = document.createElement('button');
       button.className = 'qz-nav-tab';
       button.textContent = `${sectionIcons[section]} ${labelForType(section)}`;
@@ -413,8 +440,243 @@ export class QuartzoView extends ItemView {
     if (this.section === 'planner') await this.renderPlanner(content, generation);
     if (this.section === 'journal') await this.renderJournal(content, generation);
     if (this.section === 'browse') this.renderBrowse(content);
+    if (this.section === 'activity') await this.renderActivity(content);
     if (this.section === 'objects') this.renderObjects(content);
     if (this.section === 'issues') await this.renderIssues(content);
+  }
+
+  private async renderActivity(container: HTMLElement): Promise<void> {
+    container.empty();
+    const wrapper = container.createEl('div', { cls: 'quartzo-page-content quartzo-activity-page' });
+
+    const header = wrapper.createEl('header', { cls: 'quartzo-activity-header' });
+    header.createEl('div', { cls: 'quartzo-page-kicker', text: 'Quartzo activity' });
+    header.createEl('h2', { text: 'Activity timeline' });
+
+    const controls = header.createEl('div', { cls: 'quartzo-activity-controls' });
+    const periodGroup = controls.createEl('div', { cls: 'qz-segmented-control' });
+    periodGroup.setAttribute('aria-label', 'Activity period');
+    for (const period of ['day', 'week', 'month', 'year'] as ActivityPeriod[]) {
+      const button = periodGroup.createEl('button', { text: labelForType(period), cls: 'qz-segmented-option' });
+      button.setAttribute('aria-pressed', String(this.activityPeriod === period));
+      if (this.activityPeriod === period) button.classList.add('is-active');
+      button.addEventListener('click', () => {
+        this.activityPeriod = period;
+        this.activityVisibleLimit = 200;
+        void this.render();
+      });
+    }
+
+    const rangeControls = controls.createEl('div', { cls: 'quartzo-activity-range-controls' });
+    const previous = rangeControls.createEl('button', { text: '‹', cls: 'qz-btn qz-btn-ghost qz-btn-sm' });
+    previous.setAttribute('aria-label', `Previous ${this.activityPeriod}`);
+    previous.addEventListener('click', () => {
+      this.activityAnchorDate = shiftActivityPeriodAnchor(this.activityAnchorDate, this.activityPeriod, -1);
+      void this.render();
+    });
+    const range = this.activityRange();
+    rangeControls.createEl('span', { cls: 'quartzo-activity-range-label', text: formatActivityRange(range.start, range.end, this.activityPeriod) });
+    const next = rangeControls.createEl('button', { text: '›', cls: 'qz-btn qz-btn-ghost qz-btn-sm' });
+    next.setAttribute('aria-label', `Next ${this.activityPeriod}`);
+    next.addEventListener('click', () => {
+      this.activityAnchorDate = shiftActivityPeriodAnchor(this.activityAnchorDate, this.activityPeriod, 1);
+      void this.render();
+    });
+
+    const filterGroup = wrapper.createEl('div', { cls: 'quartzo-activity-filters' });
+    filterGroup.setAttribute('aria-label', 'Activity filters');
+    const filters: ActivityCategoryFilter[] = ['all', 'notes', 'tasks', 'captures', 'tracking', 'systems', 'focus'];
+    for (const filter of filters) {
+      const button = filterGroup.createEl('button', {
+        text: filter === 'all' ? 'All' : labelForType(filter),
+        cls: 'quartzo-activity-filter',
+      });
+      button.setAttribute('aria-pressed', String(this.activityCategoryFilter === filter));
+      if (this.activityCategoryFilter === filter) button.classList.add('is-active');
+      button.addEventListener('click', () => {
+        this.activityCategoryFilter = filter;
+        this.activityVisibleLimit = 200;
+        void this.render();
+      });
+    }
+
+    let events: ActivityEvent[] = [];
+    let diagnostics: Array<{ path: string; line: number; message: string }> = [];
+    let syncSnapshot: SyncStatusSnapshot | null = null;
+    try {
+      syncSnapshot = this.context.plugin.driveSyncCoordinator
+        ? await this.context.plugin.driveSyncCoordinator.getSyncStatusSnapshot()
+        : null;
+    } catch {
+      syncSnapshot = null;
+    }
+    const loadingState = wrapper.createEl('div', { cls: 'qz-empty-state quartzo-activity-loading' });
+    loadingState.setAttribute('role', 'status');
+    loadingState.setAttribute('aria-live', 'polite');
+    loadingState.createEl('div', { cls: 'qz-empty-state-title', text: 'Loading Activity History' });
+    loadingState.createEl('p', { text: 'Reading the canonical shared log for this period.' });
+    try {
+      const result = await new ActivityHistoryRepository(this.context.app.vault).loadRange(range.start, range.end);
+      events = result.events;
+      diagnostics = result.diagnostics;
+    } catch (error) {
+      loadingState.remove();
+      const alert = wrapper.createEl('div', { cls: 'quartzo-warning-state' });
+      alert.setAttribute('role', 'alert');
+      alert.createEl('span', { text: `Activity History could not be loaded: ${error instanceof Error ? error.message : String(error)}` });
+      return;
+    }
+    loadingState.remove();
+
+    const folderOptionsProjection = projectActivityHistory(events, {
+      period: this.activityPeriod,
+      rangeStart: range.start,
+      rangeEnd: range.end,
+      categoryFilter: this.activityCategoryFilter,
+      folderFilter: null,
+      privacyMode: this.context.plugin.settings.hideSensitivePreviews,
+    });
+    if (
+      this.activityFolderFilter &&
+      !folderOptionsProjection.folderBuckets.some(bucket => bucket.id === this.activityFolderFilter)
+    ) {
+      this.activityFolderFilter = null;
+    }
+    const projection = projectActivityHistory(events, {
+      period: this.activityPeriod,
+      rangeStart: range.start,
+      rangeEnd: range.end,
+      categoryFilter: this.activityCategoryFilter,
+      folderFilter: this.activityFolderFilter,
+      privacyMode: this.context.plugin.settings.hideSensitivePreviews,
+    });
+
+    const folderControl = filterGroup.createEl('label', { cls: 'quartzo-activity-folder-filter' });
+    folderControl.createEl('span', { text: 'Folder' });
+    const folderSelect = folderControl.createEl('select');
+    folderSelect.setAttribute('aria-label', 'Activity folder filter');
+    folderSelect.createEl('option', { value: 'all', text: 'All folders' });
+    for (const bucket of folderOptionsProjection.folderBuckets) {
+      folderSelect.createEl('option', { value: bucket.id, text: bucket.label });
+    }
+    folderSelect.value = this.activityFolderFilter ?? 'all';
+    folderSelect.addEventListener('change', () => {
+      this.activityFolderFilter = folderSelect.value === 'all' ? null : folderSelect.value;
+      this.activityVisibleLimit = 200;
+      void this.render();
+    });
+
+    this.renderActivitySyncState(wrapper, syncSnapshot);
+
+    const layout = wrapper.createEl('section', { cls: 'quartzo-activity-layout' });
+    const timeline = layout.createEl('section', { cls: 'quartzo-activity-timeline' });
+    timeline.setAttribute('aria-label', 'Activity timeline events');
+    if (projection.visibleEvents.length === 0) {
+      const empty = timeline.createEl('div', { cls: 'qz-empty-state' });
+      empty.setAttribute('role', 'status');
+      empty.createEl('div', { cls: 'qz-empty-state-title', text: projection.emptyKind === 'no-history' ? 'No activity history yet' : 'No activity' });
+      empty.createEl('p', {
+        text: projection.emptyKind === 'no-history'
+          ? 'Activity will appear here after canonical Quartzo operations begin writing the shared Activity History log.'
+          : 'Nothing in this period matches the selected filters.',
+      });
+    } else {
+      const visibleIds = new Set(projection.visibleEvents.slice(0, this.activityVisibleLimit).map(event => event.eventId));
+      const visibleById = new Map(projection.visibleEvents.map(event => [event.eventId, event]));
+      for (const group of projection.groups) {
+        const eventIds = group.eventIds.filter(eventId => visibleIds.has(eventId));
+        if (eventIds.length === 0) continue;
+        const groupEl = timeline.createEl('section', { cls: 'quartzo-activity-group' });
+        groupEl.createEl('h3', { text: `${group.label} · ${eventIds.length} of ${group.count} ${group.count === 1 ? 'event' : 'events'}` });
+        for (const eventId of eventIds) {
+          const event = visibleById.get(eventId);
+          if (event) this.renderActivityEvent(groupEl, event);
+        }
+      }
+      if (projection.visibleEvents.length > this.activityVisibleLimit) {
+        const more = timeline.createEl('button', { cls: 'qz-btn qz-btn-secondary', text: 'Show more activity' });
+        more.addEventListener('click', () => {
+          this.activityVisibleLimit += 200;
+          void this.render();
+        });
+      }
+    }
+
+    const context = layout.createEl('aside', { cls: 'quartzo-activity-context' });
+    context.createEl('div', { cls: 'quartzo-section-label', text: 'By type' });
+    context.createEl('p', { text: `${projection.total} activities recorded` });
+    context.createEl('div', { cls: 'quartzo-section-label', text: this.activityPeriod === 'day' ? 'Activity by hour' : 'Activity chart' });
+    const bucketList = context.createEl('div', { cls: 'quartzo-activity-buckets' });
+    const buckets = this.activityPeriod === 'day' ? projection.hourlyBuckets : projection.heatmapBuckets;
+    const maxBucketCount = Math.max(1, ...buckets.map(bucket => bucket.count));
+    for (const bucket of buckets) {
+      const bar = bucketList.createEl('span', { cls: 'quartzo-activity-bucket' });
+      const intensity = bucket.count / maxBucketCount;
+      bar.toggleClass('is-empty', bucket.count === 0);
+      bar.style.setProperty('--qz-activity-bucket-fill', `${Math.max(10, Math.round(intensity * 100))}%`);
+      bar.setAttribute('aria-label', `${bucket.label}: ${bucket.count} activities`);
+      bar.title = `${bucket.label}: ${bucket.count} activities`;
+    }
+    if (diagnostics.length > 0) {
+      const warning = context.createEl('p', { cls: 'quartzo-muted' });
+      warning.textContent = `${diagnostics.length} Activity History lines were ignored because they failed the contract.`;
+    }
+  }
+
+  private renderActivityEvent(container: HTMLElement, event: ProjectedActivityEvent): void {
+    const canOpen = this.getIndex()?.objects.has(event.sourceId) === true;
+    const card = container.createEl(canOpen ? 'button' : 'article', { cls: 'quartzo-activity-event' });
+    if (canOpen) {
+      card.addEventListener('click', () => {
+        void this.openObjectById(event.sourceId);
+      });
+    }
+    card.setAttribute('aria-label', `${event.renderedEyebrow}: ${event.titleSnapshot}`);
+    const meta = card.createEl('div', { cls: 'quartzo-activity-event-meta' });
+    meta.createEl('time', { text: activityTimeLabel(event.occurredAt) });
+    meta.createEl('span', { text: event.renderedEyebrow });
+    card.createEl('strong', { text: event.titleSnapshot });
+    if (event.sourcePath) card.createEl('div', { cls: 'quartzo-activity-event-path', text: event.previousPath ? `${event.previousPath} → ${event.sourcePath}` : event.sourcePath });
+    if (event.renderExcerpt) card.createEl('p', { cls: 'quartzo-activity-event-excerpt', text: event.renderExcerpt });
+  }
+
+  private renderActivitySyncState(container: HTMLElement, snapshot: SyncStatusSnapshot | null): void {
+    const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+    const normalize = (path: string): string => path.replace(/\\/g, '/');
+    const pendingActivity = snapshot?.pendingDiagnostics.filter(diagnostic =>
+      normalize(diagnostic.path).startsWith(ACTIVITY_HISTORY_ROOT),
+    ) ?? [];
+    const message = offline
+      ? 'Offline: Activity is showing local history. Drive updates will appear after sync runs.'
+      : !this.context.plugin.settings.isPaired
+        ? 'Local only: Activity is showing this vault history until Drive pairing is connected.'
+        : pendingActivity.length > 0
+          ? `${pendingActivity.length} Activity History sync item${pendingActivity.length === 1 ? '' : 's'} pending. Counts may change after sync.`
+          : snapshot?.status === 'conflict'
+            ? 'Sync has unresolved conflicts. Activity may change after conflicts are resolved.'
+            : null;
+    if (!message) return;
+    const state = container.createEl('div', { cls: 'quartzo-activity-sync-state quartzo-warning-state' });
+    state.setAttribute('role', 'status');
+    state.createEl('span', { text: message });
+  }
+
+  private activityRange(): { start: string; end: string } {
+    const anchor = parseIsoDate(this.activityAnchorDate);
+    if (this.activityPeriod === 'day') return { start: this.activityAnchorDate, end: this.activityAnchorDate };
+    if (this.activityPeriod === 'week') {
+      const day = anchor.getDay();
+      const mondayOffset = day === 0 ? -6 : 1 - day;
+      const start = isoDate(addDays(anchor, mondayOffset));
+      return { start, end: isoDate(addDays(parseIsoDate(start), 6)) };
+    }
+    if (this.activityPeriod === 'month') {
+      const start = isoDate(new Date(anchor.getFullYear(), anchor.getMonth(), 1));
+      const end = isoDate(new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0));
+      return { start, end };
+    }
+    const start = `${anchor.getFullYear()}-01-01`;
+    return { start, end: `${anchor.getFullYear()}-12-31` };
   }
 
   private renderObjects(container: HTMLElement): void {
@@ -545,10 +807,7 @@ export class QuartzoView extends ItemView {
       void this.context.app.workspace.openLinkText(path, '', true);
     };
 
-    const toolbar = wrapper.createEl('div', {
-      cls: 'quartzo-issues-toolbar',
-      attr: { style: 'display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center;' },
-    });
+    const toolbar = wrapper.createEl('div', { cls: 'quartzo-issues-toolbar' });
 
     const catSelect = toolbar.createEl('select', { cls: 'qz-input' });
     catSelect.setAttribute('aria-label', 'Filter Organization Issues by category');
@@ -576,17 +835,13 @@ export class QuartzoView extends ItemView {
 
     const clearBtn = toolbar.createEl('button', { text: 'Clear filters', cls: 'qz-btn qz-btn-ghost' });
 
-    const ignoredPanel = wrapper.createEl('details', {
-      cls: 'quartzo-issues-ignored-folders',
-      attr: { style: 'margin-bottom: 16px; border: 1px solid var(--background-modifier-border); border-radius: 8px; padding: 8px 10px;' },
-    });
+    const ignoredPanel = wrapper.createEl('details', { cls: 'quartzo-issues-ignored-folders' });
     ignoredPanel.open = this.issueIgnoredFoldersExpanded;
     ignoredPanel.addEventListener('toggle', () => {
       this.issueIgnoredFoldersExpanded = ignoredPanel.open;
     });
     const ignoredSummary = ignoredPanel.createEl('summary', {
-      text: `⚙️ Ignored folders (${ignoredFolderPaths.length})`,
-      attr: { style: 'cursor: pointer; font-weight: 600;' },
+      text: `Ignored folders (${ignoredFolderPaths.length})`,
     });
     ignoredSummary.setAttribute('aria-label', 'Manage ignored folders for Organization Issues');
     ignoredPanel.createEl('p', {
@@ -594,22 +849,16 @@ export class QuartzoView extends ItemView {
       cls: 'qz-text-muted',
     });
 
-    const systemRow = ignoredPanel.createEl('div', {
-      attr: { style: 'display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap;' },
-    });
+    const systemRow = ignoredPanel.createEl('div', { cls: 'quartzo-inline-row quartzo-issues-system-row' });
     systemRow.createEl('span', { text: 'app/**', cls: 'qz-badge qz-badge-neutral' });
     systemRow.createEl('span', { text: 'System exclusion — cannot be removed. Interrupted migration diagnostics may still appear.' });
 
-    const ignoredList = ignoredPanel.createEl('div', {
-      attr: { style: 'display: grid; gap: 6px; margin-bottom: 10px;' },
-    });
+    const ignoredList = ignoredPanel.createEl('div', { cls: 'quartzo-issues-ignored-list' });
     if (ignoredFolderPaths.length === 0) {
       ignoredList.createEl('small', { text: 'No user folders are ignored.', cls: 'qz-text-muted' });
     } else {
       for (const folderPath of ignoredFolderPaths) {
-        const row = ignoredList.createEl('div', {
-          attr: { style: 'display: flex; align-items: center; gap: 8px; flex-wrap: wrap;' },
-        });
+        const row = ignoredList.createEl('div', { cls: 'quartzo-inline-row' });
         row.createEl('code', { text: `${folderPath}/**` });
         const remove = row.createEl('button', { text: 'Remove', cls: 'qz-btn qz-btn-ghost qz-btn-sm' });
         remove.setAttribute('aria-label', `Stop ignoring ${folderPath}`);
@@ -628,9 +877,7 @@ export class QuartzoView extends ItemView {
       folderSuggestions.map(path => [normalizeIssueIgnoredFolders([path])[0], path] as const),
     );
 
-    const addRow = ignoredPanel.createEl('div', {
-      attr: { style: 'display: flex; gap: 8px; align-items: center; flex-wrap: wrap;' },
-    });
+    const addRow = ignoredPanel.createEl('div', { cls: 'quartzo-inline-row' });
     const folderInput = addRow.createEl('input', {
       type: 'search',
       placeholder: 'Choose a vault folder...',
@@ -700,10 +947,7 @@ export class QuartzoView extends ItemView {
         filteredIssues.filter(isDeletableIssue).map(issue => issue.subjectPath),
       )).sort((left, right) => left.localeCompare(right));
 
-      const selectionBar = resultsHost.createEl('div', {
-        cls: 'quartzo-issues-selection-bar',
-        attr: { style: 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0 12px;' },
-      });
+      const selectionBar = resultsHost.createEl('div', { cls: 'quartzo-issues-selection-bar' });
       const selectedLabel = selectionBar.createEl('strong', {
         text: `${this.issueSelectedPaths.size} selected`,
       });
@@ -902,8 +1146,7 @@ export class QuartzoView extends ItemView {
         if (selectable) {
           const deleteBtn = actionsTd.createEl('button', {
             text: 'Delete…',
-            cls: 'qz-btn qz-btn-sm mod-warning',
-            attr: { style: 'margin-left: 6px;' },
+            cls: 'qz-btn qz-btn-sm mod-warning quartzo-action-spaced',
           });
           deleteBtn.addEventListener('click', () => openBulkDelete([issue.subjectPath]));
         }
@@ -970,11 +1213,11 @@ export class QuartzoView extends ItemView {
     const sortedTypes = Array.from(byType.keys()).sort();
 
     for (const type of sortedTypes) {
-      const section = wrapper.createEl('section', { cls: 'quartzo-review-section', attr: { style: 'margin-bottom: 20px;' } });
+      const section = wrapper.createEl('section', { cls: 'quartzo-review-section' });
       const group = byType.get(type)!;
 
-      const header = section.createEl('div', { attr: { style: 'display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--background-modifier-border); padding-bottom: 5px; margin-bottom: 10px;' } });
-      header.createEl('h3', { text: `${type} (${group.length})`, attr: { style: 'margin: 0;' } });
+      const header = section.createEl('div', { cls: 'quartzo-review-section-header' });
+      header.createEl('h3', { text: `${type} (${group.length})` });
 
       const orgBtn = header.createEl('button', { text: 'Organize this group...', cls: 'qz-btn qz-btn-sm' });
       orgBtn.addEventListener('click', () => {
@@ -982,15 +1225,15 @@ export class QuartzoView extends ItemView {
         new ObjectOrganizationModal(this.context, { files: group.map(object => object.path) }).open();
       });
 
-      const list = section.createEl('ul', { attr: { style: 'list-style: none; padding: 0;' } });
+      const list = section.createEl('ul', { cls: 'quartzo-review-list' });
       for (const object of group.sort((left, right) => left.path.localeCompare(right.path))) {
-        const item = list.createEl('li', { attr: { style: 'padding: 4px 0; display: flex; justify-content: space-between;' } });
+        const item = list.createEl('li', { cls: 'quartzo-review-list-item' });
         const link = item.createEl('a', { text: object.path.split('/').pop()?.replace('.md', '') || object.path });
         link.addEventListener('click', event => {
           event.preventDefault();
           void this.openObjectById(object.id);
         });
-        item.createEl('small', { text: object.id, cls: 'qz-text-muted', attr: { style: 'font-family: monospace; font-size: 0.8em;' } });
+        item.createEl('small', { text: object.id, cls: 'qz-text-muted quartzo-monospace-small' });
       }
     }
   }

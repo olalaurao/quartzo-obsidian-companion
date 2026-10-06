@@ -18,6 +18,7 @@ import { VaultIndexEngine } from '../../vault/index';
 import {
   SharedSettingsRepository,
 } from '../../vault/shared-settings';
+import { ObjectCreationRepository } from '../../vault/object-creation';
 import type { IndexedObject, VaultIndex } from '../../vault/index/types';
 import { renderTrackerRecordQuickAdd, type TrackerRecordFormController } from './record-form';
 import { renderLinkCaptureQuickAdd } from './link-capture/view';
@@ -42,6 +43,7 @@ export interface QuickAddModalOptions {
 export class QuickAddModal extends Modal {
   private type: QuickAddType = 'task';
   private settingsRepository: SharedSettingsRepository;
+  private objectCreationRepository: ObjectCreationRepository;
   private readonly resourceMetadataService = new ResourceMetadataService();
 
   constructor(
@@ -52,6 +54,7 @@ export class QuickAddModal extends Modal {
     super(context.app);
     if (initialType) this.type = initialType;
     this.settingsRepository = new SharedSettingsRepository(context.app.vault);
+    this.objectCreationRepository = new ObjectCreationRepository(context.app.vault);
   }
 
   onOpen(): void {
@@ -77,7 +80,7 @@ export class QuickAddModal extends Modal {
       renderLinkCaptureQuickAdd(contentEl, this.context, {
         settingsRepository: this.settingsRepository,
         getIndex: () => this.getIndex(),
-        ensureParentFolders: path => this.ensureParentFolders(path),
+        createDocument: (type, document) => this.objectCreationRepository.create(type, document, 'capture_created'),
         openIndexedObject: object => this.openIndexedObject(object),
         onCreated: this.options.onCreated,
         close: () => this.close(),
@@ -321,12 +324,8 @@ export class QuickAddModal extends Modal {
           resource: resourceInput,
           record: recordInput,
         }, id);
-        await this.ensureParentFolders(documentData.path);
-        if (this.context.app.vault.getAbstractFileByPath(documentData.path)) {
-          throw new Error(`Target already exists: ${documentData.path}`);
-        }
-        await this.context.app.vault.create(documentData.path, documentData.content);
-        await this.options.onCreated?.({ id, type: this.type, path: documentData.path });
+        const created = await this.objectCreationRepository.create(this.type, documentData);
+        await this.options.onCreated?.(created);
         new Notice(`${labelForType(this.type)} created`);
         this.close();
       } catch (error) {
@@ -461,14 +460,4 @@ export class QuickAddModal extends Modal {
     }
   }
 
-  private async ensureParentFolders(filePath: string): Promise<void> {
-    const segments = normalizePath(filePath).split('/').slice(0, -1);
-    let current = '';
-    for (const segment of segments) {
-      current = current ? `${current}/${segment}` : segment;
-      if (!this.context.app.vault.getAbstractFileByPath(current)) {
-        await this.context.app.vault.createFolder(current);
-      }
-    }
-  }
 }

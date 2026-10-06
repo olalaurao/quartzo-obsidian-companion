@@ -47,12 +47,12 @@ export class RelateModal extends Modal {
     contentEl.createEl('h2', { text: `Add ${count} object${count !== 1 ? 's' : ''} to...` });
     contentEl.createEl('p', {
       text: 'Select an existing object to relate these to.',
-      attr: { style: 'color: var(--text-muted); margin-bottom: 12px;' }
+      cls: 'qz-text-muted quartzo-modal-copy',
     });
 
     // Relationship field selector
-    const fieldRow = contentEl.createEl('div', { attr: { style: 'margin-bottom: 12px;' } });
-    fieldRow.createEl('label', { text: 'Relationship field:', attr: { style: 'margin-right: 8px;' } });
+    const fieldRow = contentEl.createEl('div', { cls: 'quartzo-modal-field-row' });
+    fieldRow.createEl('label', { text: 'Relationship field:' });
     const fieldSelect = fieldRow.createEl('select', { cls: 'quartzo-input' });
     for (const field of RELATIONSHIP_FIELDS) {
       const opt = fieldSelect.createEl('option', { value: field, text: field });
@@ -66,9 +66,7 @@ export class RelateModal extends Modal {
     const pickerContainer = contentEl.createEl('div');
 
     // Show current selection
-    const selectedPreview = contentEl.createEl('div', {
-      attr: { style: 'margin-top: 12px; padding: 8px; background: var(--background-secondary); border-radius: 4px; min-height: 40px;' }
-    });
+    const selectedPreview = contentEl.createEl('div', { cls: 'quartzo-selection-preview' });
     selectedPreview.createEl('em', { text: 'No target object selected.' });
 
     renderObjectPicker(pickerContainer, this.context, {
@@ -86,7 +84,7 @@ export class RelateModal extends Modal {
     });
 
     // Apply button
-    const actionsEl = contentEl.createEl('div', { cls: 'modal-button-container', attr: { style: 'margin-top: 16px;' } });
+    const actionsEl = contentEl.createEl('div', { cls: 'modal-button-container quartzo-modal-actions-row' });
 
     const applyBtn = actionsEl.createEl('button', { text: 'Add relationship', cls: 'mod-cta' });
     applyBtn.addEventListener('click', async () => {

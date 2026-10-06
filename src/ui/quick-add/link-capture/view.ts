@@ -1,5 +1,6 @@
 import { Notice, TFile } from 'obsidian';
 import { buildQuickAddDocument, type QuickAddType } from '../../../core/object-creation';
+import type { ObjectCreationDocument, ObjectCreationResult } from '../../../vault/object-creation';
 import { findRecipeDuplicates, findSocialPostDuplicates } from '../../../core/link-capture/duplicate-policy';
 import {
   applyUserLinkSelection,
@@ -27,7 +28,7 @@ import type { ViewContext } from '../../types';
 export interface LinkCaptureRendererOptions {
   settingsRepository: SharedSettingsRepository;
   getIndex(): VaultIndex | null;
-  ensureParentFolders(path: string): Promise<void>;
+  createDocument(type: QuickAddType, document: ObjectCreationDocument): Promise<ObjectCreationResult>;
   openIndexedObject(object: IndexedObject): Promise<void>;
   onCreated?(created: { id: string; type: QuickAddType; path: string }): void | Promise<void>;
   close(): void;
@@ -282,12 +283,8 @@ async function saveSelected(args: {
       personalNote: common.description,
     } : undefined,
   }, id);
-  await options.ensureParentFolders(documentData.path);
-  if (context.app.vault.getAbstractFileByPath(documentData.path)) {
-    throw new Error(`Target already exists: ${documentData.path}`);
-  }
-  await context.app.vault.create(documentData.path, documentData.content);
-  await options.onCreated?.({ id, type, path: documentData.path });
+  const created = await options.createDocument(type, documentData);
+  await options.onCreated?.(created);
   new Notice(`${labelForDestination(selected.destination)} created`);
   options.close();
 }

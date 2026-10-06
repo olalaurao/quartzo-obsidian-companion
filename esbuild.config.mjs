@@ -42,8 +42,10 @@ const context = await esbuild.context({
 
 if (prod) {
   const result = await context.rebuild();
+  const fs = await import('fs');
+  const bundle = fs.readFileSync('main.js', 'utf8');
+  fs.writeFileSync('main.js', bundle.replace(/[ \t]+$/gm, ''), 'utf8');
   if (result.metafile) {
-    const fs = await import('fs');
     fs.writeFileSync('metafile.json', JSON.stringify(result.metafile, null, 2));
   }
   process.exit(0);
