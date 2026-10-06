@@ -19,7 +19,7 @@ jobs:
         with:
           node-version: '20'
       - name: Sync canonical contracts from final Quartzo SHA
-        run: node scripts/sync-contracts.mjs sync 2a5b50111a4aeba097d560034d454f91ea9ac6cc
+        run: node scripts/sync-contracts.mjs sync 72d8427358b7f2dacf260bde2aa140044bd2d520
         env:
           GITHUB_TOKEN: ${{ secrets.QUARTZO_UPSTREAM_TOKEN }}
       - name: Upload canonical sync output
@@ -28,6 +28,6 @@ jobs:
           name: final-contract-sync-output
           path: |
             contracts/UPSTREAM.lock.json
-            contracts/quartzo/object_fixtures/fixtures.json
+            contracts/quartzo
           if-no-files-found: error
           retention-days: 1
