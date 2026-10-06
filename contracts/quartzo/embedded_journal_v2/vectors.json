@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "description": "Embedded Daily Note Journal Entry V2 codec vectors.",
+  "v2_marker_start": "<!-- quartzo:journal-entry:v2:start id=\"{id}\" -->",
+  "v2_marker_end": "<!-- quartzo:journal-entry:v2:end id=\"{id}\" -->",
+  "cases": [
+    {
+      "name": "adversarial_markdown_body",
+      "id": "entry_ext_wa_0123456789abcdef0123456789abcdef",
+      "body": "First line with [[page]].\n\n### 12:34\n\nThis must not become another Entry.\n\nmood:: [[not-real-metadata]]\norganizers:: [[project/not-real-metadata]]\nphotos:: not-real.jpg\n\n---\n\n# Heading\n\n**bold**\n\nUnicode: ação, coração, 日本語, 😀",
+      "metadata_after_marker": {
+        "mood": "[[calm]]",
+        "organizers": "[[project/real]]",
+        "photos": "_attachments/whatsapp/entry_ext_wa_0123456789abcdef0123456789abcdef-0.jpg"
+      }
+    }
+  ]
+}

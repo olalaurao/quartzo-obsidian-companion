@@ -28,7 +28,7 @@ const EXCLUDED_FILE_SUFFIXES = [
 ];
 
 const CANONICAL_TEXT_EXTENSIONS = ['.md', '.base'];
-const CANONICAL_BINARY_ROOTS = new Set(['_attachments', '_deleted']);
+const CANONICAL_BINARY_ROOTS = new Set(['_attachments', '_capture_ingress', '_deleted']);
 const GOOGLE_WORKSPACE_MIME_PREFIX = 'application/vnd.google-apps.';
 
 /**
@@ -37,7 +37,8 @@ const GOOGLE_WORKSPACE_MIME_PREFIX = 'application/vnd.google-apps.';
  *
  * The sync contract is an allow-list, not merely a deny-list:
  * - Markdown and Bases are canonical anywhere outside excluded directories.
- * - _attachments/** and _deleted/** may contain arbitrary raw-byte files.
+ * - _attachments/**, _capture_ingress/**, and _deleted/** may contain arbitrary
+ *   raw-byte files.
  * - unrelated Drive sidecars (for example Finance's Google Sheet) are not
  *   Obsidian-vault content and must never enter pairing/reconciliation.
  */

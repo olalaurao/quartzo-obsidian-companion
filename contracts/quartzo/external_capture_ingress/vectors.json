@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "hash_vectors": [
+    {
+      "provider": "whatsapp",
+      "provider_message_id": "wamid.example",
+      "capture_id_pattern": "^wa_[a-f0-9]{32}$",
+      "entry_id_pattern": "^entry_ext_wa_[a-f0-9]{32}$"
+    }
+  ],
+  "envelopes": [
+    {
+      "name": "text_with_wikilink",
+      "input": {
+        "schema_version": 1,
+        "provider": "whatsapp",
+        "operation_id": "waop_text_001",
+        "operation": "create",
+        "capture_id": "wa_0123456789abcdef0123456789abcdef",
+        "target_capture_id": null,
+        "sender": {
+          "wa_id": "5511999999999"
+        },
+        "occurred_at": "2026-10-06T15:43:00-03:00",
+        "received_at": "2026-10-06T15:44:00-03:00",
+        "content": {
+          "text": "hello [[page]]",
+          "media": []
+        },
+        "context": {
+          "conversation_kind": "direct"
+        }
+      },
+      "expected": {
+        "journal_entry_id": "entry_ext_wa_0123456789abcdef0123456789abcdef",
+        "body_contains": "hello [[page]]",
+        "wikilink_preserved": true
+      }
+    },
+    {
+      "name": "image_caption_with_wikilink",
+      "input": {
+        "schema_version": 1,
+        "provider": "whatsapp",
+        "operation_id": "waop_image_001",
+        "operation": "create",
+        "capture_id": "wa_abcdefabcdefabcdefabcdefabcdefab",
+        "target_capture_id": null,
+        "sender": {
+          "wa_id": "5511999999999"
+        },
+        "occurred_at": "2026-10-06T15:43:00-03:00",
+        "received_at": "2026-10-06T15:44:00-03:00",
+        "content": {
+          "text": "this is related to [[project/book]]",
+          "media": [
+            {
+              "media_id": "wamedia_001",
+              "mime_type": "image/jpeg",
+              "vault_path": "_capture_ingress/whatsapp/media/wa_abcdefabcdefabcdefabcdefabcdefab-0.jpg",
+              "index": 0
+            }
+          ]
+        },
+        "context": {
+          "conversation_kind": "direct"
+        }
+      },
+      "expected": {
+        "journal_entry_id": "entry_ext_wa_abcdefabcdefabcdefabcdefabcdefab",
+        "attachment_path": "_attachments/whatsapp/entry_ext_wa_abcdefabcdefabcdefabcdefabcdefab-0.jpg",
+        "body_contains": "this is related to [[project/book]]",
+        "wikilink_preserved": true
+      }
+    }
+  ]
+}

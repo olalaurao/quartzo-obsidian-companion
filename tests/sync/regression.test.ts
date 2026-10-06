@@ -466,6 +466,12 @@ describe('Sync Regression Tests', () => {
       expect(VaultSyncFilePolicy.shouldSyncFile('_attachments/photo.jpg')).toBe(true);
     });
 
+    it('includes external capture ingress transport bytes', () => {
+      expect(VaultSyncFilePolicy.shouldSyncDirectory('_capture_ingress')).toBe(true);
+      expect(VaultSyncFilePolicy.shouldSyncFile('_capture_ingress/whatsapp/events/waop_abc.json')).toBe(true);
+      expect(VaultSyncFilePolicy.shouldSyncFile('_capture_ingress/whatsapp/media/wa_abc-0.jpg')).toBe(true);
+    });
+
     it('excludes conflict artifacts', () => {
       expect(VaultSyncFilePolicy.shouldSyncFile('file.conflict')).toBe(false);
       expect(VaultSyncFilePolicy.shouldSyncFile('file.conflict.json')).toBe(false);

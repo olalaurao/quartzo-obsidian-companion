@@ -2885,9 +2885,15 @@ Flutter and Companion must both synchronize:
 Markdown
 Bases
 attachments/assets
+external capture transport under _capture_ingress/**
 ```
 
 under the same inclusion/exclusion rules.
+
+Companion V1 preserves `_capture_ingress/**` byte-safely during sync, but it
+does not canonicalize WhatsApp captures or write embedded Daily Journal Entries.
+Daily Note Journal V2 markers are raw Daily Note Markdown from Companion's
+perspective and must be preserved.
 
 ---
 

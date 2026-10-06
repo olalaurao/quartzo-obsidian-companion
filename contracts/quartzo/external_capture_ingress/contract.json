@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "description": "Quartzo external capture ingress transport contract. The bridge writes only envelopes/media under _capture_ingress; Quartzo app canonicalizes into normal Journal Entries.",
+  "providers": ["whatsapp"],
+  "operations": ["create", "edit", "delete"],
+  "required_fields": [
+    "schema_version",
+    "provider",
+    "operation_id",
+    "operation",
+    "capture_id",
+    "sender.wa_id",
+    "occurred_at",
+    "received_at",
+    "content"
+  ],
+  "identity": {
+    "whatsapp_capture_id": "wa_ + first 32 lowercase hex chars of sha256('whatsapp\\0' + provider_message_id)",
+    "journal_entry_id": "entry_ext_ + capture_id",
+    "raw_provider_message_id_persisted_in_journal": false
+  },
+  "storage": {
+    "transport_root": "_capture_ingress/whatsapp",
+    "event_path": "_capture_ingress/whatsapp/events/{operation_id}.json",
+    "media_path": "_capture_ingress/whatsapp/media/{capture_id}-{index}.{extension}",
+    "canonical_attachment_path": "_attachments/whatsapp/{journal_entry_id}-{index}.{extension}"
+  },
+  "free_only_invariants": [
+    "No external database is canonical state.",
+    "No bridge writes final daily note Markdown.",
+    "No outbound WhatsApp response is required.",
+    "Retries must be idempotent by capture_id and operation_id."
+  ],
+  "forward_compatibility": {
+    "unknown_fields": "ignore",
+    "unknown_schema_version": "fail_closed"
+  }
+}

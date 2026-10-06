@@ -16,6 +16,8 @@
   {"id":"text_file_scope","path":"notes/example.md","expected":"include_live"},
   {"id":"base_file_scope","path":"notes/collection.base","expected":"include_live"},
   {"id":"binary_attachment_scope","path":"_attachments/photo.jpg","expected":"include_live"},
+  {"id":"external_capture_event_scope","path":"_capture_ingress/whatsapp/events/waop_abc.json","expected":"include_live"},
+  {"id":"external_capture_media_scope","path":"_capture_ingress/whatsapp/media/wa_abc-0.jpg","expected":"include_live"},
   {"id":"deleted_scope","path":"_deleted/tasks/old.md","expected":"include_deleted"},
   {"id":"binary_conflict","baseHash":"sha256:base","localHash":"sha256:local","remoteHash":"sha256:remote","localExists":true,"remoteExists":true,"contentEncoding":"raw_bytes","expected":"conflict"}
 ]
