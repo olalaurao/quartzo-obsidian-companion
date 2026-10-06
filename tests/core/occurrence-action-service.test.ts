@@ -40,7 +40,13 @@ const target: OccurrenceActionTarget = {
 describe('OccurrenceActionService', () => {
   it('persists Done and treats an identical actionId replay as an idempotent no-op', async () => {
     const store = new MemoryStore();
-    const service = new OccurrenceActionService({ store });
+    const applied: string[] = [];
+    const service = new OccurrenceActionService({
+      store,
+      onApplied: async event => {
+        applied.push(`${event.action}:${event.actionId}`);
+      },
+    });
     const now = new Date('2026-09-19T10:00:00.000Z');
 
     const first = await service.completeNow(target, 'work-pc:done-1', now);
@@ -54,6 +60,7 @@ describe('OccurrenceActionService', () => {
     expect(replay.applied).toBe(false);
     expect(replay.idempotentReplay).toBe(true);
     expect(store.responses[target.occurrenceId].processedActionIds).toEqual(['work-pc:done-1']);
+    expect(applied).toEqual(['done:work-pc:done-1']);
   });
 
   it('keeps Done and Skip mutually exclusive and Clear removes only the outcome', async () => {

@@ -177,21 +177,21 @@ export class ObjectMergeModal extends Modal {
 
     // 2. Property Reconciliation
     contentEl.createEl('h3', { text: '2. Field Reconciliation' });
-    const propsEl = contentEl.createEl('div', { cls: 'quartzo-merge-props', attr: { style: 'max-height: 250px; overflow-y: auto;' } });
+    const propsEl = contentEl.createEl('div', { cls: 'quartzo-merge-props' });
     
     for (const res of this.propertyResolutions) {
-       const row = propsEl.createEl('div', { attr: { style: 'display: flex; justify-content: space-between; margin-bottom: 8px;' } });
-       row.createEl('strong', { text: res.field, attr: { style: 'flex: 1' } });
+       const row = propsEl.createEl('div', { cls: 'quartzo-merge-prop-row' });
+       row.createEl('strong', { text: res.field });
        
-       const stratSelect = row.createEl('select', { attr: { style: 'flex: 1' } });
+       const stratSelect = row.createEl('select', { cls: 'quartzo-input' });
        stratSelect.createEl('option', { value: 'use_survivor', text: 'Use Survivor' });
        stratSelect.createEl('option', { value: 'union_dedupe', text: 'Union / Combine' });
        stratSelect.createEl('option', { value: 'explicit_choice', text: 'Explicit Value' });
        stratSelect.value = res.strategy;
 
-       const explicitInput = row.createEl('input', { type: 'text', placeholder: 'Value', attr: { style: 'flex: 1; display: none;' } });
+       const explicitInput = row.createEl('input', { type: 'text', placeholder: 'Value', cls: 'quartzo-input quartzo-explicit-value-input' });
        if (res.strategy === 'explicit_choice') {
-         explicitInput.style.display = 'block';
+         explicitInput.classList.add('is-visible');
          explicitInput.value = String(res.chosenValue || '');
        }
 
@@ -226,7 +226,7 @@ export class ObjectMergeModal extends Modal {
 
     // 4. Preview / Apply
     contentEl.createEl('h3', { text: 'Preview' });
-    const previewBox = contentEl.createEl('div', { cls: 'quartzo-preview-box', attr: { style: 'background: var(--background-secondary); padding: 10px;' } });
+    const previewBox = contentEl.createEl('div', { cls: 'quartzo-preview-box' });
     
     if (this.currentPlan.blockers.length > 0) {
       previewBox.createEl('div', { text: `⚠️ Blockers:`, cls: 'has-error' });
@@ -237,7 +237,7 @@ export class ObjectMergeModal extends Modal {
       previewBox.createEl('small', { text: `${this.currentPlan.action.losersToRetire.length} objects will be safely retired.` });
     }
 
-    const actionsEl = contentEl.createEl('div', { cls: 'modal-button-container', attr: { style: 'margin-top: 15px;' } });
+    const actionsEl = contentEl.createEl('div', { cls: 'modal-button-container quartzo-modal-actions-row' });
     const applyBtn = actionsEl.createEl('button', { text: 'Merge Objects', cls: 'mod-cta mod-warning' });
     applyBtn.disabled = this.currentPlan.blockers.length > 0 || this.isApplying;
     

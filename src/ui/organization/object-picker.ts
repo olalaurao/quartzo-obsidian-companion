@@ -48,12 +48,12 @@ export function renderObjectPicker(
     type: 'text',
     placeholder: options.placeholder ?? 'Search objects...',
     cls: 'quartzo-input',
-    attr: { 'aria-label': 'Search objects', style: 'width: 100%; margin-bottom: 8px;' }
+    attr: { 'aria-label': 'Search objects' },
   });
 
   const listEl = container.createEl('ul', {
     cls: 'quartzo-object-picker-list',
-    attr: { role: 'listbox', style: 'max-height: 300px; overflow-y: auto; list-style: none; padding: 0;' }
+    attr: { role: 'listbox' },
   });
 
   const renderList = (filter: string): void => {
@@ -68,14 +68,14 @@ export function renderObjectPicker(
     const display = filtered.slice(0, 100);
     for (const obj of display) {
       const li = listEl.createEl('li', {
+        cls: selected.has(obj.id) ? 'is-selected' : '',
         attr: {
           role: 'option',
           'aria-selected': selected.has(obj.id) ? 'true' : 'false',
-          style: `padding: 6px 8px; cursor: pointer; border-radius: 4px; display: flex; justify-content: space-between; ${selected.has(obj.id) ? 'background: var(--interactive-accent); color: white;' : ''}`
-        }
+        },
       });
       li.createEl('span', { text: String(obj.frontmatter.title ?? obj.id) });
-      li.createEl('small', { text: obj.type, attr: { style: 'opacity: 0.7; font-size: 0.85em;' } });
+      li.createEl('small', { text: obj.type, cls: 'qz-text-muted' });
 
       li.addEventListener('click', () => {
         if (options.multiple) {
@@ -95,7 +95,7 @@ export function renderObjectPicker(
     if (filtered.length > 100) {
       listEl.createEl('li', {
         text: `${filtered.length - 100} more results. Refine your search.`,
-        attr: { style: 'padding: 6px 8px; opacity: 0.6; font-size: 0.85em;' }
+        cls: 'quartzo-object-picker-more qz-text-muted',
       });
     }
   };
@@ -104,7 +104,7 @@ export function renderObjectPicker(
   renderList('');
 
   if (options.multiple) {
-    const footer = container.createEl('div', { attr: { style: 'margin-top: 10px; display: flex; gap: 8px;' } });
+    const footer = container.createEl('div', { cls: 'quartzo-object-picker-footer' });
     const confirmBtn = footer.createEl('button', { text: 'Add selected', cls: 'mod-cta' });
     confirmBtn.addEventListener('click', () => {
       const picks = allObjects.filter(o => selected.has(o.id));

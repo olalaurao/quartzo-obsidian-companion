@@ -1,0 +1,113 @@
+[
+  {
+    "id": "idempotent_occurrence_completion",
+    "input": {
+      "operationId": "occurrence-action:done:occ-2026-10-06",
+      "eventType": "occurrence_completed",
+      "sourceId": "task-review-weekly-project-notes",
+      "sourceType": "task",
+      "occurrenceId": "occ-2026-10-06",
+      "replayed": true
+    },
+    "expected": {
+      "appendedEvents": 1,
+      "category": "tasks",
+      "owner": "Occurrence Actions owner"
+    }
+  },
+  {
+    "id": "notes_filter_recalculates_groups_and_total",
+    "input": {
+      "period": "week",
+      "categoryFilter": "notes",
+      "folderFilter": "all",
+      "events": [
+        {"eventId": "e1", "eventType": "object_edited", "sourcePath": "Wiki/calm-software.md", "occurredAt": "2026-10-06T12:05:00Z"},
+        {"eventId": "e2", "eventType": "occurrence_completed", "sourcePath": "Tasks/Open.md", "occurredAt": "2026-10-06T13:00:00Z"},
+        {"eventId": "e3", "eventType": "object_created", "sourcePath": "Library/reading-list-october.md", "occurredAt": "2026-10-05T18:30:00Z"}
+      ]
+    },
+    "expected": {
+      "visibleEventIds": ["e1", "e3"],
+      "total": 2,
+      "groupCountsAreFiltered": true,
+      "byTypeIsFiltered": true
+    }
+  },
+  {
+    "id": "folder_filter_recalculates_all_aggregates",
+    "input": {
+      "period": "month",
+      "categoryFilter": "all",
+      "folderFilter": "Projects",
+      "events": [
+        {"eventId": "e1", "eventType": "object_edited", "sourcePath": "Projects/alpha.md", "occurredAt": "2026-10-07T12:00:00Z"},
+        {"eventId": "e2", "eventType": "capture_created", "sourcePath": "Inbox/capture.md", "occurredAt": "2026-10-07T12:05:00Z"},
+        {"eventId": "e3", "eventType": "object_moved", "sourcePath": "Projects/beta.md", "occurredAt": "2026-10-08T12:05:00Z"}
+      ]
+    },
+    "expected": {
+      "visibleEventIds": ["e3", "e1"],
+      "total": 2,
+      "folderBucketsAreFiltered": true,
+      "heatmapBucketsAreFiltered": true
+    }
+  },
+  {
+    "id": "privacy_mode_suppresses_excerpt",
+    "input": {
+      "privacyMode": true,
+      "event": {
+        "eventId": "e-private",
+        "eventType": "object_edited",
+        "sourcePath": "Journal/2026-10-06.md",
+        "titleSnapshot": "Daily note",
+        "excerpt": "Sensitive private text"
+      }
+    },
+    "expected": {
+      "renderExcerpt": false,
+      "eventRemainsVisible": true
+    }
+  },
+  {
+    "id": "unknown_provider_label_is_not_invented",
+    "input": {
+      "event": {
+        "eventId": "e-capture",
+        "eventType": "capture_created",
+        "sourcePath": "Inbox/second-brain.md",
+        "originKind": "external_integration"
+      }
+    },
+    "expected": {
+      "providerLabel": null,
+      "renderedEyebrow": "Captured"
+    }
+  },
+  {
+    "id": "canvas_hidden_without_contract",
+    "input": {
+      "requestedFilter": "canvas",
+      "capabilities": {
+        "canvasActivity": false
+      }
+    },
+    "expected": {
+      "filterVisible": false,
+      "fakeEventsAllowed": false
+    }
+  },
+  {
+    "id": "year_uses_real_year_aggregation",
+    "input": {
+      "period": "year",
+      "rangeStart": "2026-01-01",
+      "rangeEnd": "2026-12-31"
+    },
+    "expected": {
+      "minimumMonthlyBuckets": 12,
+      "allowsShortFakeHeatmap": false
+    }
+  }
+]

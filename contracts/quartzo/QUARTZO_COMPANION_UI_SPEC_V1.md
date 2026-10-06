@@ -13,9 +13,20 @@ Home
 Planner
 Journal
 Browse
+Activity
 ```
 
 Search, Add, Sync and Settings are actions, not independent top-level clones of every Flutter screen.
+
+## Activity
+
+Activity is a primary V1 surface backed by the Activity History contract, not a decorative local log. It shows cross-client Quartzo history from the canonical append-only log in `contracts/quartzo/activity_history/contract.json`.
+
+Activity must render Day, Week, Month and Year periods with functional date navigation. Filters, folder selection, timeline groups, charts, heatmaps, by-type breakdowns and totals all come from one filtered Activity projection. A UI surface may not recalculate or hardcode separate counts.
+
+Activity events are emitted by the canonical owners of completed operations: Object Creation, Safe Object Mutation, Object Organization, Capture, Occurrence Actions, Occurrence Reschedule, Tracking Record, Manual System/Routine Execution and Focus Runtime. Home, Planner, Journal, Browse, Search, Activity and Quick Add must not emit their own duplicate activity events.
+
+Activity never invents data to match a mockup. Provider labels appear only from real provenance. Canvas/snippet filters remain hidden unless a future contract adds real Canvas activity support. Excerpts are optional and privacy-gated; full note bodies and full diffs are never stored in Activity events.
 
 ## Daily Surfaces
 

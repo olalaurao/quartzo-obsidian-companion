@@ -1,11 +1,14 @@
 import { TFile, Vault, normalizePath } from 'obsidian';
 import type { OrganizePlan, OrganizeActionPlan } from '../core/object-organization/organize';
 import type { MergePlan } from '../core/object-organization/merge';
+import type { ActivityEvent } from '../core/activity-history';
+import { ObjectParser } from '../core/objects';
 import {
   buildCanonicalRetirementTombstone,
   canonicalRetirementPath,
 } from '../core/object-organization/retire';
 import { SharedSettingsRepository } from './shared-settings';
+import { ActivityHistoryWriter } from './activity-history';
 
 export interface ObjectOrganizationResult {
   migrated: number;
@@ -39,10 +42,14 @@ interface RetireFileInput {
 }
 
 export class ObjectOrganizationRepository {
+  private readonly activityWriter: ActivityHistoryWriter;
+
   constructor(
     private readonly vault: Vault,
     private readonly settingsRepo: SharedSettingsRepository,
-  ) {}
+  ) {
+    this.activityWriter = new ActivityHistoryWriter(vault);
+  }
 
   /**
    * Applies a planned composite Organize operation.
@@ -70,6 +77,7 @@ export class ObjectOrganizationRepository {
     for (const action of plan.actions) {
       try {
         await this.applyAction(action);
+        if (action.moves) await this.appendMovedActivity(action, plan.operationId);
         migrated++;
       } catch (error) {
         return {
@@ -161,6 +169,13 @@ export class ObjectOrganizationRepository {
           sourcePath: normalizePath(request.path),
           tombstonePath,
         });
+        await this.appendRetiredActivity({
+          id: request.id,
+          sourcePath: request.path,
+          tombstonePath,
+          expectedMarkdown: request.expectedMarkdown,
+          occurredAt: request.deletedAt,
+        });
       } catch (error) {
         return {
           migrated: retired.length,
@@ -210,13 +225,63 @@ export class ObjectOrganizationRepository {
     }
 
     for (const loser of plan.action.losersToRetire) {
-      await this.retireFile({
+      const tombstonePath = await this.retireFile({
         path: loser.path,
         id: loser.id,
         expectedMarkdown: loser.expectedMarkdown,
         tombstoneMarkdown: loser.newMarkdown,
       });
+      await this.appendRetiredActivity({
+        id: loser.id,
+        sourcePath: loser.path,
+        tombstonePath,
+        expectedMarkdown: loser.expectedMarkdown,
+        operationId: plan.operationId,
+      });
     }
+  }
+
+  private async appendMovedActivity(action: OrganizeActionPlan, operationId: string): Promise<void> {
+    const snapshot = objectSnapshot(action.newMarkdown, action.destinationPath);
+    const activity: ActivityEvent = {
+      eventId: `object_moved:${operationId}:${snapshot.id}:${normalizePath(action.sourcePath)}:${normalizePath(action.destinationPath)}`,
+      occurredAt: new Date().toISOString(),
+      eventType: 'object_moved',
+      sourceId: snapshot.id,
+      sourceType: snapshot.type,
+      sourcePath: normalizePath(action.destinationPath),
+      previousPath: normalizePath(action.sourcePath),
+      originClient: 'obsidian_companion',
+      originKind: 'companion',
+      titleSnapshot: snapshot.title,
+      operationId,
+    };
+    await this.activityWriter.append(activity);
+  }
+
+  private async appendRetiredActivity(input: {
+    id: string;
+    sourcePath: string;
+    tombstonePath: string;
+    expectedMarkdown: string;
+    occurredAt?: string;
+    operationId?: string;
+  }): Promise<void> {
+    const snapshot = objectSnapshot(input.expectedMarkdown, input.sourcePath);
+    const activity: ActivityEvent = {
+      eventId: `object_retired:${input.operationId ?? input.id}:${snapshot.id}:${normalizePath(input.tombstonePath)}`,
+      occurredAt: input.occurredAt ?? new Date().toISOString(),
+      eventType: 'object_retired',
+      sourceId: snapshot.id,
+      sourceType: snapshot.type,
+      sourcePath: normalizePath(input.tombstonePath),
+      previousPath: normalizePath(input.sourcePath),
+      originClient: 'obsidian_companion',
+      originKind: 'companion',
+      titleSnapshot: snapshot.title,
+      ...(input.operationId ? { operationId: input.operationId } : {}),
+    };
+    await this.activityWriter.append(activity);
   }
 
   private async retireFile(input: RetireFileInput): Promise<string> {
@@ -272,4 +337,18 @@ export class ObjectOrganizationRepository {
       }
     }
   }
+}
+
+function objectSnapshot(markdown: string, fallbackPath: string): { id: string; type: string; title: string } {
+  const parsed = ObjectParser.parseMarkdown(markdown);
+  const id = typeof parsed.frontmatter.id === 'string' && parsed.frontmatter.id.trim()
+    ? parsed.frontmatter.id.trim()
+    : fallbackPath;
+  const type = typeof parsed.frontmatter.type === 'string' && parsed.frontmatter.type.trim()
+    ? parsed.frontmatter.type.trim()
+    : 'object';
+  const title = typeof parsed.frontmatter.title === 'string' && parsed.frontmatter.title.trim()
+    ? parsed.frontmatter.title.trim()
+    : id;
+  return { id, type, title };
 }

@@ -1269,6 +1269,118 @@ function checkCanonicalObjectQueryOwner() {
   return true;
 }
 
+function checkCanonicalActivityHistory() {
+  const manifestPath = path.join(rootDir, 'contracts/quartzo/contract_manifest.json');
+  const contractPath = path.join(rootDir, 'contracts/quartzo/activity_history/contract.json');
+  const vectorsPath = path.join(rootDir, 'contracts/quartzo/activity_history/vectors.json');
+  const corePath = path.join(rootDir, 'src/core/activity-history/projection.ts');
+  const vaultPath = path.join(rootDir, 'src/vault/activity-history.ts');
+  const creationPath = path.join(rootDir, 'src/vault/object-creation.ts');
+  const mutationPath = path.join(rootDir, 'src/vault/object-mutation.ts');
+  const organizationPath = path.join(rootDir, 'src/vault/object-organization.ts');
+  const occurrenceServicePath = path.join(rootDir, 'src/core/occurrence_actions/service.ts');
+  const mainPath = path.join(rootDir, 'src/main.ts');
+  const shellPath = path.join(rootDir, 'src/ui/shell/view.ts');
+  const quickAddPath = path.join(rootDir, 'src/ui/quick-add/modal.ts');
+  const linkCapturePath = path.join(rootDir, 'src/ui/quick-add/link-capture/view.ts');
+  const testPath = path.join(rootDir, 'tests/contracts/activity-history.test.ts');
+  for (const file of [manifestPath, contractPath, vectorsPath, corePath, vaultPath, creationPath, mutationPath, organizationPath, occurrenceServicePath, mainPath, testPath]) {
+    if (!fs.existsSync(file)) {
+      console.error(`FAIL: Activity History required file is missing: ${path.relative(rootDir, file)}`);
+      return false;
+    }
+  }
+
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  const contract = fs.readFileSync(contractPath, 'utf8');
+  const vectors = fs.readFileSync(vectorsPath, 'utf8');
+  const core = fs.readFileSync(corePath, 'utf8');
+  const vault = fs.readFileSync(vaultPath, 'utf8');
+  const creation = fs.readFileSync(creationPath, 'utf8');
+  const mutation = fs.readFileSync(mutationPath, 'utf8');
+  const organization = fs.readFileSync(organizationPath, 'utf8');
+  const occurrenceService = fs.readFileSync(occurrenceServicePath, 'utf8');
+  const main = fs.readFileSync(mainPath, 'utf8');
+  const shell = fs.readFileSync(shellPath, 'utf8');
+  const quickAdd = fs.readFileSync(quickAddPath, 'utf8');
+  const linkCapture = fs.readFileSync(linkCapturePath, 'utf8');
+  const tests = fs.readFileSync(testPath, 'utf8');
+
+  if (manifest.activityHistoryContractVersion !== '1.0.0' ||
+      !contract.includes('append_only_partitioned_log') ||
+      !contract.includes('do not reconstruct full history from filesystem mtime') ||
+      !vectors.includes('canvas_hidden_without_contract')) {
+    console.error('FAIL: Activity History contract is not registered with the required V1 semantics');
+    return false;
+  }
+
+  if (!core.includes('projectActivityHistory') ||
+      !core.includes('visibleEvents') ||
+      !core.includes('groupEvents') ||
+      !core.includes('countByType') ||
+      !core.includes('buildHeatmapBuckets') ||
+      core.includes('Raindrop') ||
+      core.includes('MacWhisper') ||
+      core.includes('Canvas updated')) {
+    console.error('FAIL: Activity projection must be one canonical owner without provider/mockup literals');
+    return false;
+  }
+
+  if (!vault.includes("ACTIVITY_HISTORY_ROOT = 'sessions/activity_history_v1/'") ||
+      !vault.includes('activityPartitionMonthFromPath') ||
+      !vault.includes('activityPartitionMonthsForRange') ||
+      !vault.includes('if (!byId.has(event.eventId))') ||
+      vault.includes('mtime')) {
+    console.error('FAIL: Activity vault adapter must read canonical partitioned JSONL logs, dedupe eventId and avoid mtime history');
+    return false;
+  }
+
+  if (!shell.includes("'activity'") ||
+      !shell.includes('ActivityHistoryRepository') ||
+      !shell.includes('loadRange(range.start, range.end)') ||
+      !shell.includes('projectActivityHistory(events') ||
+      !shell.includes('hideSensitivePreviews') ||
+      !shell.includes('openObjectById(event.sourceId)')) {
+    console.error('FAIL: Activity shell surface is not wired to the canonical Activity History owner');
+    return false;
+  }
+
+  if (!creation.includes('ObjectCreationRepository') ||
+      !creation.includes("'tracking_record_created'") ||
+      !creation.includes('activityEventTypeForCreation') ||
+      !creation.includes('this.activityWriter.append(activity)') ||
+      quickAdd.includes("documentData, 'object_created'") ||
+      quickAdd.includes('vault.create(documentData.path') ||
+      linkCapture.includes('vault.create(documentData.path')) {
+    console.error('FAIL: Object creation must emit Activity through the canonical creation owner, not Quick Add UI');
+    return false;
+  }
+
+  if (!mutation.includes('object_edited') ||
+      !mutation.includes('emitActivity = true') ||
+      !organization.includes('ActivityHistoryWriter') ||
+      !organization.includes("'object_moved'") ||
+      !organization.includes("'object_retired'") ||
+      !occurrenceService.includes('onApplied?') ||
+      !main.includes('appendOccurrenceActivity') ||
+      !main.includes('appendRescheduleActivity') ||
+      !main.includes('appendManualExecutionActivity') ||
+      !main.includes('appendFocusActivity')) {
+    console.error('FAIL: Activity events are not emitted by the canonical operation owners');
+    return false;
+  }
+
+  if (!tests.includes('privacy mode') ||
+      !tests.includes('does not invent provider labels') ||
+      !tests.includes('hides Canvas filters')) {
+    console.error('FAIL: Activity History contract tests do not guard privacy, provenance and unsupported Canvas traps');
+    return false;
+  }
+
+  console.log('PASS: Activity History is contract-backed, JSONL-backed, projection-owned and mock-data-free');
+  return true;
+}
+
 function parseFrontmatterDocument(filePath) {
   const source = fs.readFileSync(filePath, 'utf8').replace(/\r\n/g, '\n');
   const match = source.match(/^---\n([\s\S]*?)\n---/);
@@ -1773,6 +1885,7 @@ function main() {
   if (!checkCanonicalPlannerProjection()) allPassed = false;
   if (!checkCanonicalUniversalDetailMutation()) allPassed = false;
   if (!checkCanonicalObjectQueryOwner()) allPassed = false;
+  if (!checkCanonicalActivityHistory()) allPassed = false;
   if (!checkObjectIdentificationSingleOwnerAndDriftGate()) allPassed = false;
   if (!checkReminderTargetNavigation()) allPassed = false;
   if (!checkCalendarExternalNavigation()) allPassed = false;

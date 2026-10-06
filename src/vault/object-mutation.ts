@@ -1,5 +1,8 @@
 import { TFile, type Vault } from 'obsidian';
 import type { IndexedObject } from './index/types';
+import { ObjectParser } from '../core/objects';
+import { ActivityHistoryWriter } from './activity-history';
+import type { ActivityEvent } from '../core/activity-history';
 import {
   applySafeObjectMutation,
   type SafeObjectMutation,
@@ -11,9 +14,18 @@ import {
 import type { QuartzoSharedSettings } from '../core/shared-settings';
 
 export class SafeObjectMutationRepository {
-  constructor(private readonly vault: Vault) {}
+  private readonly activityWriter: ActivityHistoryWriter;
 
-  async mutate(object: IndexedObject, patch: SafeObjectMutation): Promise<string> {
+  constructor(private readonly vault: Vault) {
+    this.activityWriter = new ActivityHistoryWriter(vault);
+  }
+
+  async mutate(
+    object: IndexedObject,
+    patch: SafeObjectMutation,
+    operationId: string,
+    emitActivity = true,
+  ): Promise<string> {
     const file = this.vault.getAbstractFileByPath(object.path);
     if (!(file instanceof TFile)) {
       throw new Error(`Object file not found: ${object.path}`);
@@ -27,6 +39,23 @@ export class SafeObjectMutationRepository {
       }, patch);
       return updated;
     });
+    if (emitActivity) {
+      const parsed = ObjectParser.parse(updated).object;
+      const activity: ActivityEvent = {
+        eventId: `object_edited:${operationId}`,
+        occurredAt: new Date().toISOString(),
+        eventType: 'object_edited',
+        sourceId: object.id,
+        sourceType: object.type,
+        sourcePath: object.path,
+        originClient: 'obsidian_companion',
+        originKind: 'companion',
+        titleSnapshot: typeof parsed.title === 'string' && parsed.title.trim() ? parsed.title : object.id,
+        operationId,
+        changedFieldCount: mutationChangeCount(patch),
+      };
+      await this.activityWriter.append(activity);
+    }
     return updated;
   }
 
@@ -52,4 +81,10 @@ export class SafeObjectMutationRepository {
     });
     return updated;
   }
+}
+
+function mutationChangeCount(patch: SafeObjectMutation): number {
+  return Object.keys(patch.set ?? {}).length +
+    (patch.unset?.length ?? 0) +
+    (patch.body === undefined ? 0 : 1);
 }
