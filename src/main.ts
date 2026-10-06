@@ -1,6 +1,6 @@
 import { App, Modal, Plugin, PluginSettingTab, Setting, Notice, TFile, TAbstractFile, FileSystemAdapter } from 'obsidian';
 import { VaultIndexEngine } from './vault/index';
-import type { IndexedObject } from './vault/index/types';
+import type { IndexedObject, VaultFile } from './vault/index/types';
 import { SafeObjectMutationRepository } from './vault/object-mutation';
 import { ManualExecutionRepository } from './vault/manual-execution';
 import { FOCUS_RUNTIME_PATH, FocusRuntimeRepository } from './vault/focus-runtime';
@@ -1837,11 +1837,26 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
   private async initializeVaultRuntime(): Promise<void> {
     if (this.unloaded || this.vaultRuntimeReady) return;
 
-    this.sharedSettings = await this.sharedSettingsRepository?.load() ?? null;
+    try {
+      this.sharedSettings = await this.sharedSettingsRepository?.load() ?? null;
+    } catch (error) {
+      console.error('Failed to load shared Quartzo settings:', error);
+      this.sharedSettings = null;
+    }
     if (this.unloaded) return;
-    await this.reloadFocusRuntime(false);
+    try {
+      await this.reloadFocusRuntime(false);
+    } catch (error) {
+      console.error('Failed to load focus runtime:', error);
+    }
     if (this.unloaded) return;
-    await this.initializeVaultIndex();
+    try {
+      await this.initializeVaultIndex();
+    } catch (error) {
+      console.error('Failed to initialize Quartzo vault index:', error);
+      this.vaultIndexEngine?.setIndex(VaultIndexEngine.createInitialIndex([]));
+      new Notice('Quartzo loaded with an empty vault index. Check the developer console for details.');
+    }
     if (this.unloaded) return;
 
     if (!this.vaultEventsRegistered) {
@@ -1862,12 +1877,25 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
   private async initializeVaultIndex() {
     if (this.unloaded || !this.vaultIndexEngine) return;
     const files = this.app.vault.getMarkdownFiles().filter(file => this.shouldIndexPath(file.path));
-    const vaultFiles = await Promise.all(files.map(async file => ({
+    const settled = await Promise.allSettled(files.map(async (file): Promise<VaultFile> => ({
       path: file.path,
       content: await this.app.vault.read(file),
       modified: file.stat.mtime,
       size: file.stat.size
     })));
+    const vaultFiles: VaultFile[] = [];
+    let failedReads = 0;
+    for (const result of settled) {
+      if (result.status === 'fulfilled') {
+        vaultFiles.push(result.value);
+      } else {
+        failedReads += 1;
+        console.warn('Quartzo skipped an unreadable vault file while indexing:', result.reason);
+      }
+    }
+    if (failedReads > 0) {
+      new Notice(`Quartzo skipped ${failedReads} unreadable vault file${failedReads === 1 ? '' : 's'} while indexing.`);
+    }
     if (this.unloaded || !this.vaultIndexEngine) return;
     const index = VaultIndexEngine.createInitialIndex(
       vaultFiles,

@@ -235,7 +235,20 @@ folder_paths:
     expect(main).toContain('this.sharedSettingsReloadRequested = true');
     expect(main).toContain('await this.initializeVaultIndex()');
     expect(main).toContain('} while (this.sharedSettingsReloadRequested && !this.unloaded);');
-    expect((main.match(/VaultIndexEngine\.createInitialIndex/g) ?? []).length).toBe(1);
+    expect(main).toContain('this.vaultIndexEngine?.setIndex(VaultIndexEngine.createInitialIndex([]))');
+    expect(main).toContain('const index = VaultIndexEngine.createInitialIndex(');
+    expect((main.match(/const index = VaultIndexEngine\.createInitialIndex/g) ?? []).length).toBe(1);
+  });
+
+  it('does not leave the shell permanently loading when vault indexing has partial failures', () => {
+    const main = fs.readFileSync(path.join(process.cwd(), 'src/main.ts'), 'utf8');
+
+    expect(main).toContain('await this.initializeVaultIndex()');
+    expect(main).toContain("console.error('Failed to initialize Quartzo vault index:', error)");
+    expect(main).toContain('this.vaultIndexEngine?.setIndex(VaultIndexEngine.createInitialIndex([]))');
+    expect(main).toContain('this.vaultRuntimeReady = true');
+    expect(main).toContain('Promise.allSettled');
+    expect(main).toContain('Quartzo skipped an unreadable vault file while indexing');
   });
 
 });

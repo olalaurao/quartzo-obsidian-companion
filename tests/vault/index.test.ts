@@ -27,6 +27,40 @@ describe('Vault Index Engine', () => {
     expect(index.objects.has('note-1')).toBe(true);
   });
 
+  it('should keep indexing valid files when a parser rejects one file', () => {
+    const files: VaultFile[] = [
+      {
+        path: 'tasks/task.md',
+        content: 'valid',
+        modified: Date.now(),
+        size: 5
+      },
+      {
+        path: 'tasks/broken.md',
+        content: 'broken',
+        modified: Date.now(),
+        size: 6
+      }
+    ];
+
+    const index = VaultIndexEngine.createInitialIndex(files, (_content, filePath) => {
+      if (filePath === 'tasks/broken.md') throw new Error('bad frontmatter');
+      return {
+        object: {
+          id: 'task-1',
+          type: 'task',
+          title: 'Test Task',
+          body: 'Task body',
+        },
+        unknownFields: [],
+      };
+    });
+
+    expect(index.files.size).toBe(2);
+    expect(index.objects.size).toBe(1);
+    expect(index.objects.has('task-1')).toBe(true);
+  });
+
   it('should update index with changes', () => {
     const files: VaultFile[] = [
       {
