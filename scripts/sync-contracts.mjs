@@ -35,6 +35,25 @@ function sha256(bytes) {
   return crypto.createHash('sha256').update(bytes).digest('hex');
 }
 
+/**
+ * Normalize contract file bytes:
+ *  1. Strip UTF-8 BOM (EF BB BF) if present.
+ *  2. Normalize CRLF → LF for text files.
+ * Binary files (containing NUL bytes) are returned unchanged.
+ */
+function normalizeBytes(bytes) {
+  // Strip UTF-8 BOM
+  if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+    bytes = bytes.subarray(3);
+  }
+  // Normalize CRLF → LF for text files (no NUL bytes).
+  if (!bytes.includes(0x00) && bytes.includes(0x0d)) {
+    const str = bytes.toString('latin1').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    bytes = Buffer.from(str, 'latin1');
+  }
+  return bytes;
+}
+
 function walkDir(dir) {
   const out = [];
   if (!fs.existsSync(dir)) return out;
@@ -120,9 +139,10 @@ async function sync(commit) {
   const manifest = {};
   const sources = {};
   for (const [vendorPath, source] of [...entries.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-    const bytes = process.env.LOCAL_UPSTREAM_DIR
+    let bytes = process.env.LOCAL_UPSTREAM_DIR
       ? fs.readFileSync(source.absolutePath)
       : await getBlob(repository, source.blobSha);
+    bytes = normalizeBytes(bytes);
     const target = path.join(CONTRACTS_DIR, ...vendorPath.split('/'));
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, bytes);
@@ -168,9 +188,10 @@ async function verify() {
     if (!source || lock.sources[vendorPath] !== source.sourcePath) {
       throw new Error(`Source path mismatch for ${vendorPath}`);
     }
-    const upstreamBytes = process.env.LOCAL_UPSTREAM_DIR
+    const rawBytes = process.env.LOCAL_UPSTREAM_DIR
       ? fs.readFileSync(source.absolutePath)
       : await getBlob(lock.repository, source.blobSha);
+    const upstreamBytes = normalizeBytes(rawBytes);
     const upstreamHash = sha256(upstreamBytes);
     if (lock.manifest[vendorPath] !== upstreamHash) {
       throw new Error(`Lock hash does not match upstream bytes for ${vendorPath}`);
