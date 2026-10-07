@@ -18,7 +18,9 @@ Included:
 - `*.md`
 - `*.base`
 - `_attachments/**`
+- `_capture_ingress/**` as external capture transport bytes before app canonicalization
 - `_deleted/**` as soft-delete state when reconciliation requires it
+- `sessions/activity_history_v1/YYYY/MM/activity_events_YYYY_MM.jsonl` as append-only Activity History partitions
 
 Excluded from live canonical scans:
 

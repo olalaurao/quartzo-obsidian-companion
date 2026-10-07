@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": "1.1.0",
   "description": "Quartzo external capture ingress transport contract. The bridge writes only envelopes/media under _capture_ingress; Quartzo app canonicalizes into normal Journal Entries.",
   "providers": ["whatsapp"],
   "operations": ["create", "edit", "delete"],
@@ -24,6 +24,33 @@
     "event_path": "_capture_ingress/whatsapp/events/{operation_id}.json",
     "media_path": "_capture_ingress/whatsapp/media/{capture_id}-{index}.{extension}",
     "canonical_attachment_path": "_attachments/whatsapp/{journal_entry_id}-{index}.{extension}"
+  },
+  "bridge_auth": {
+    "worker_to_apps_script": "POST body contains timestamp, payload, and signature. signature = hex(hmac_sha256(BRIDGE_SHARED_SECRET, timestamp + '.' + payload)). Apps Script verifies the exact payload string before JSON parsing.",
+    "replay_window_seconds": 300,
+    "vault_folder": "Apps Script requires VAULT_DRIVE_FOLDER_ID and must open that exact Drive folder with DriveApp.getFolderById.",
+    "sender_allowlist": "Worker and Apps Script both validate ALLOWED_WA_IDS.",
+    "graph_version": "META_GRAPH_VERSION is the only configurable Graph API version source. Bridge code must not hardcode scattered Graph API versions."
+  },
+  "processing": {
+    "owner": "Quartzo app canonical Journal owner via UnifiedCaptureEngine and JournalNotifier.",
+    "rules": [
+      "Validate ingress files independently.",
+      "A malformed envelope never blocks other envelopes.",
+      "Process creates before dependent edits/deletes.",
+      "Run multiple passes while progress is made.",
+      "Edit-before-create remains pending.",
+      "Missing stable targets never append fallback entries.",
+      "Delete is disabled in V1 and must not block other files.",
+      "Only successful envelopes are removed from _capture_ingress.",
+      "Temporary media is removed only after canonical persistence succeeds."
+    ]
+  },
+  "activity_history": {
+    "eventType": "capture_created",
+    "originKind": "external_integration",
+    "provenance.provider": "whatsapp",
+    "privacy": "Activity events must not persist the private message body."
   },
   "free_only_invariants": [
     "No external database is canonical state.",

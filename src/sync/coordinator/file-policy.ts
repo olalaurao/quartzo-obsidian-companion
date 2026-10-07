@@ -1,4 +1,5 @@
 import { normalizeVaultPath } from './path-utils';
+import { isActivityHistoryPath } from '../../vault/activity-history';
 
 /**
  * Canonical excluded directory segments.
@@ -39,6 +40,7 @@ const GOOGLE_WORKSPACE_MIME_PREFIX = 'application/vnd.google-apps.';
  * - Markdown and Bases are canonical anywhere outside excluded directories.
  * - _attachments/**, _capture_ingress/**, and _deleted/** may contain arbitrary
  *   raw-byte files.
+ * - Activity History JSONL partitions are canonical append-only text logs.
  * - unrelated Drive sidecars (for example Finance's Google Sheet) are not
  *   Obsidian-vault content and must never enter pairing/reconciliation.
  */
@@ -59,6 +61,8 @@ export class VaultSyncFilePolicy {
     if (CANONICAL_TEXT_EXTENSIONS.some(extension => lowerPath.endsWith(extension))) {
       return true;
     }
+
+    if (isActivityHistoryPath(filePath)) return true;
 
     return segments.length > 1 && CANONICAL_BINARY_ROOTS.has(segments[0]);
   }

@@ -18,6 +18,7 @@
   {"id":"binary_attachment_scope","path":"_attachments/photo.jpg","expected":"include_live"},
   {"id":"external_capture_event_scope","path":"_capture_ingress/whatsapp/events/waop_abc.json","expected":"include_live"},
   {"id":"external_capture_media_scope","path":"_capture_ingress/whatsapp/media/wa_abc-0.jpg","expected":"include_live"},
+  {"id":"activity_history_scope","path":"sessions/activity_history_v1/2026/10/activity_events_2026_10.jsonl","expected":"include_live"},
   {"id":"deleted_scope","path":"_deleted/tasks/old.md","expected":"include_deleted"},
   {"id":"binary_conflict","baseHash":"sha256:base","localHash":"sha256:local","remoteHash":"sha256:remote","localExists":true,"remoteExists":true,"contentEncoding":"raw_bytes","expected":"conflict"}
 ]

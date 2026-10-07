@@ -13,5 +13,5 @@
   "objectOrganizationContractVersion": "1.0.0",
   "activityHistoryContractVersion": "1.0.0",
   "embeddedJournalV2ContractVersion": "1.0.0",
-  "externalCaptureIngressContractVersion": "1.0.0"
+  "externalCaptureIngressContractVersion": "1.1.0"
 }

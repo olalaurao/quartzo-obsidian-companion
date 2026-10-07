@@ -2287,6 +2287,9 @@ plugin-local sync state
 ```
 
 `_attachments/` is **included**.
+`_capture_ingress/**` is **included** as raw external capture transport bytes.
+`sessions/activity_history_v1/YYYY/MM/activity_events_YYYY_MM.jsonl` is
+**included** as the append-only Activity History partition shape.
 
 `.base` files are **included**.
 

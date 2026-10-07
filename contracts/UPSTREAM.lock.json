@@ -1,7 +1,7 @@
 {
   "repository": "olalaurao/aplicativo",
-  "sourceCommit": "0a62ea4ba3e2e60dab593cf637efb238a219fbd7",
-  "syncTimestamp": "2026-10-06T19:17:03.833Z",
+  "sourceCommit": "c3950e900740a48df46b88feb12569b5b65f18fc",
+  "syncTimestamp": "2026-10-07T00:07:00.000Z",
   "contractVersions": {
     "vaultInteropVersion": "1.0.0",
     "syncProtocolVersion": "1.0.0",
@@ -15,7 +15,9 @@
     "linkCaptureContractVersion": "1.0.0",
     "objectIdentificationMigrationContractVersion": "1.0.0",
     "objectOrganizationContractVersion": "1.0.0",
-    "activityHistoryContractVersion": "1.0.0"
+    "activityHistoryContractVersion": "1.0.0",
+    "embeddedJournalV2ContractVersion": "1.0.0",
+    "externalCaptureIngressContractVersion": "1.1.0"
   },
   "sources": {
     "activity_history/contract.json": "contracts/quartzo/activity_history/contract.json",
@@ -24,6 +26,9 @@
     "adaptive_planning/vectors.json": "contracts/quartzo/adaptive_planning/vectors.json",
     "contract_manifest.json": "contracts/quartzo/contract_manifest.json",
     "daily_schedule/vectors.json": "contracts/quartzo/daily_schedule/vectors.json",
+    "embedded_journal_v2/vectors.json": "contracts/quartzo/embedded_journal_v2/vectors.json",
+    "external_capture_ingress/contract.json": "contracts/quartzo/external_capture_ingress/contract.json",
+    "external_capture_ingress/vectors.json": "contracts/quartzo/external_capture_ingress/vectors.json",
     "focus_runtime/vectors.json": "contracts/quartzo/focus_runtime/vectors.json",
     "link_capture/vectors.json": "contracts/quartzo/link_capture/vectors.json",
     "object_fixtures/coverage.json": "contracts/quartzo/object_fixtures/coverage.json",
@@ -54,8 +59,11 @@
     "activity_history/README.md": "022ac6ebf5dc5ee30a8498f6ac68596477b9efeb5b05cefece510413d1d58474",
     "activity_history/vectors.json": "3cede3c909fe93454095d82166f24be86a0bceb8c79c150823e4ebad63d8c306",
     "adaptive_planning/vectors.json": "c38a429ebfa8e1736e44a4c68d3c5ad1549977cb416812e1cda6b95a045b28cd",
-    "contract_manifest.json": "e744277bfb292d60cb0da1fb654c368b88225106c0291c2211b46b29fc31e052",
+    "contract_manifest.json": "05a71915c847e640fd7a9a51b66d2560155a08f009bb5118e898570a8ce87bbe",
     "daily_schedule/vectors.json": "6e2329093504cefa39351f568f59f5a87374056a483e290adbbdff066350538b",
+    "embedded_journal_v2/vectors.json": "d60c8c3ce7d159d7f0e1b8643737146e937c5adfbf2d80a36451797fd87a3029",
+    "external_capture_ingress/contract.json": "3ce4a1f6e4deccd6a76d95792707204562ae3f3295ddd78a6e4213d9dceb3074",
+    "external_capture_ingress/vectors.json": "f8a06d20d80f4185aca5cb85c6fb24c6f32a35e5b968b63892209b0ee4adf9d3",
     "focus_runtime/vectors.json": "e2a3edc49d712c5cd69660bd89546e1616b57fc8127e2b284dd35d30d6864c59",
     "link_capture/vectors.json": "01b36f5784b976921aecd97930834d1dd50b00c068c7c6ba6b66677ee4e29933",
     "object_fixtures/coverage.json": "5ac238b554b1e31e2b904df6fbe55724a8918b02c247556e69982920a673f71d",
@@ -71,14 +79,14 @@
     "overdue_projection/vectors.json": "469a72a77d31257be161e933835110f8cf3879b3f44f32313af27266e53cc95d",
     "P0_COMPLIANCE_MATRIX.md": "af317bef3ad61aaa1b5880ed524f97344d6fa55811c3f3f1ae4aab2ed8b4d2c1",
     "QUARTZO_COMPANION_UI_SPEC_V1.md": "1500bd2ec7fc08b5e1c534f63df1e03611d4762bfb16274b4abed847fa3b37f4",
-    "QUARTZO_OBSIDIAN_COMPANION_CONTRACT.md": "8809abd1ce5ef24f44e6bf85c6962ff27ef31f5e5e5406d025a0011157acfdc0",
-    "QUARTZO_SYNC_PROTOCOL_V1.md": "b64cb2a498462f58b081a1fcb81d949085be6ad9768c8468e22e1eb5149b69a3",
+    "QUARTZO_OBSIDIAN_COMPANION_CONTRACT.md": "5fde250c499df0871b51cc5d4b1bbe56babbf7f2cefa85df0d6f6dcdf1495a54",
+    "QUARTZO_SYNC_PROTOCOL_V1.md": "acf8646c510ae083fa71370bc4687b282256d37270cc23d511563fd49f86937e",
     "QUARTZO_VAULT_INTEROP_CONTRACT_V1.md": "c76fe9959b666f5bb0e111b067a5eff7170479187d915e702f8ebe4ee52f9c58",
     "README.md": "db53ed3508f809256c1e3c491196aef7b0a7b208f29c7cdce83454fd0d4f56f4",
     "resource_capture/vectors.json": "c5e50758529dc98617392654fa058a54cb786569a8c7f4eb94a01fffcf5e03cf",
     "scheduler/vectors.json": "82c7326f9ee8c3bf7c2398b9c7ff41aabb8c8fd535768faf614164cfa2ea9b01",
     "shared_settings/v1.md": "807e8eb49dcba8e7d9637c5084f454f6788994630833545059647b75e6cfc3f6",
-    "sync/vectors.json": "c2af75c58cbc0bec4888bfa33796bb029f9387753e5a3a5f108f442ea016dbe1",
+    "sync/vectors.json": "083dda3eeef79798328c5f621fd6edcd8826ec32fd3f5e42ff8fbcc928f19a6f",
     "system_routine_execution/vectors.json": "20e053ef80258656a65fcdb3a927a29d237d58771452e91af2266df220a7e45f"
   }
 }
