@@ -47,30 +47,48 @@ function walkDir(dir) {
 }
 
 async function sourceEntries(repository, commit) {
-  const commitData = await getJson(`https://api.github.com/repos/${repository}/git/commits/${commit}`);
-  const tree = await getJson(`https://api.github.com/repos/${repository}/git/trees/${commitData.tree.sha}?recursive=1`);
-  if (tree.truncated) throw new Error('Upstream tree response is truncated; refusing incomplete contract verification.');
-
   const entries = new Map();
-  for (const item of tree.tree || []) {
-    if (item.type !== 'blob' || !item.path || !item.sha) continue;
-    let vendorPath = null;
-    if (item.path.startsWith(DOC_ROOT)) {
-      const rel = item.path.slice(DOC_ROOT.length);
-      if (rel && !rel.includes('/')) vendorPath = rel;
-    } else if (item.path.startsWith(CONTRACT_ROOT)) {
-      const rel = item.path.slice(CONTRACT_ROOT.length);
-      // docs/integrations/obsidian_companion/README.md is the Companion-facing
-      // README already historically vendored at README.md. Avoid a collision
-      // with the internal contracts/quartzo/README.md.
-      if (rel && rel !== 'README.md') vendorPath = rel;
+
+  if (process.env.LOCAL_UPSTREAM_DIR) {
+    const upstreamDir = process.env.LOCAL_UPSTREAM_DIR;
+    const allFiles = walkDir(upstreamDir);
+    for (const file of allFiles) {
+      const relPath = path.relative(upstreamDir, file).replace(/\\/g, '/');
+      let vendorPath = null;
+      if (relPath.startsWith(DOC_ROOT)) {
+        const rel = relPath.slice(DOC_ROOT.length);
+        if (rel && !rel.includes('/')) vendorPath = rel;
+      } else if (relPath.startsWith(CONTRACT_ROOT)) {
+        const rel = relPath.slice(CONTRACT_ROOT.length);
+        if (rel && rel !== 'README.md') vendorPath = rel;
+      }
+      if (!vendorPath) continue;
+      if (entries.has(vendorPath)) throw new Error(`Upstream contract mapping collision for ${vendorPath}`);
+      entries.set(vendorPath, { sourcePath: relPath, blobSha: 'local', absolutePath: file });
     }
-    if (!vendorPath) continue;
-    if (entries.has(vendorPath)) {
-      throw new Error(`Upstream contract mapping collision for ${vendorPath}`);
+  } else {
+    const commitData = await getJson(`https://api.github.com/repos/${repository}/git/commits/${commit}`);
+    const tree = await getJson(`https://api.github.com/repos/${repository}/git/trees/${commitData.tree.sha}?recursive=1`);
+    if (tree.truncated) throw new Error('Upstream tree response is truncated; refusing incomplete contract verification.');
+
+    for (const item of tree.tree || []) {
+      if (item.type !== 'blob' || !item.path || !item.sha) continue;
+      let vendorPath = null;
+      if (item.path.startsWith(DOC_ROOT)) {
+        const rel = item.path.slice(DOC_ROOT.length);
+        if (rel && !rel.includes('/')) vendorPath = rel;
+      } else if (item.path.startsWith(CONTRACT_ROOT)) {
+        const rel = item.path.slice(CONTRACT_ROOT.length);
+        if (rel && rel !== 'README.md') vendorPath = rel;
+      }
+      if (!vendorPath) continue;
+      if (entries.has(vendorPath)) {
+        throw new Error(`Upstream contract mapping collision for ${vendorPath}`);
+      }
+      entries.set(vendorPath, { sourcePath: item.path, blobSha: item.sha });
     }
-    entries.set(vendorPath, { sourcePath: item.path, blobSha: item.sha });
   }
+  
   if (!entries.has('contract_manifest.json') || !entries.has('QUARTZO_SYNC_PROTOCOL_V1.md')) {
     throw new Error('Required upstream contract files are missing.');
   }
@@ -102,7 +120,9 @@ async function sync(commit) {
   const manifest = {};
   const sources = {};
   for (const [vendorPath, source] of [...entries.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-    const bytes = await getBlob(repository, source.blobSha);
+    const bytes = process.env.LOCAL_UPSTREAM_DIR
+      ? fs.readFileSync(source.absolutePath)
+      : await getBlob(repository, source.blobSha);
     const target = path.join(CONTRACTS_DIR, ...vendorPath.split('/'));
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, bytes);
@@ -110,12 +130,12 @@ async function sync(commit) {
     sources[vendorPath] = source.sourcePath;
   }
 
-  const versions = JSON.parse(fs.readFileSync(path.join(CONTRACTS_DIR, 'contract_manifest.json'), 'utf8'));
+  const manifestVersions = JSON.parse(fs.readFileSync(path.join(CONTRACTS_DIR, 'contract_manifest.json'), 'utf8').replace(/^\uFEFF/, ''));
   const lock = {
     repository,
     sourceCommit: commit,
     syncTimestamp: new Date().toISOString(),
-    contractVersions: versions,
+    contractVersions: manifestVersions,
     sources,
     manifest
   };
@@ -148,7 +168,9 @@ async function verify() {
     if (!source || lock.sources[vendorPath] !== source.sourcePath) {
       throw new Error(`Source path mismatch for ${vendorPath}`);
     }
-    const upstreamBytes = await getBlob(lock.repository, source.blobSha);
+    const upstreamBytes = process.env.LOCAL_UPSTREAM_DIR
+      ? fs.readFileSync(source.absolutePath)
+      : await getBlob(lock.repository, source.blobSha);
     const upstreamHash = sha256(upstreamBytes);
     if (lock.manifest[vendorPath] !== upstreamHash) {
       throw new Error(`Lock hash does not match upstream bytes for ${vendorPath}`);
@@ -158,7 +180,7 @@ async function verify() {
     }
   }
 
-  const manifestVersions = JSON.parse(fs.readFileSync(path.join(CONTRACTS_DIR, 'contract_manifest.json'), 'utf8'));
+  const manifestVersions = JSON.parse(fs.readFileSync(path.join(CONTRACTS_DIR, 'contract_manifest.json'), 'utf8').replace(/^\uFEFF/, ''));
   if (JSON.stringify(manifestVersions) !== JSON.stringify(lock.contractVersions)) {
     throw new Error('Contract versions in lock differ from upstream contract_manifest.json.');
   }
