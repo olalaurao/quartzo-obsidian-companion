@@ -243,6 +243,12 @@ The original Companion `AGENT_BOOTSTRAP.md`, repository onboarding README and re
 | `docs/BETA_RELEASE_RUNBOOK.md` | 125 | 5. Enable **Quartzo Companion** in Community plugins. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
 | `docs/BETA_RELEASE_RUNBOOK.md` | 127 | ## OAuth beta caveat | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
 
+## Static discovery evaluation results — 2026-10-08
+
+The three Companion developer scenarios were traced directly against the PR source tree: Drive pairing → existing `DriveSyncCoordinator` and vendored `UPSTREAM.lock.json`; Organization → existing `ObjectOrganizationRepository` and merge planner; Release → canonical runbook, exact-SHA preflight and release workflows. All three passed **static source/marker checks**. The five Quartzo-side probes also passed their static checks. A Vitest gate now guards these three Companion paths.
+
+This is **not** evidence of eight new, independent agent sessions or of before/after agent efficiency. Those real executions remain explicitly open; no claim of an observed model result is made by this ledger.
+
 ## Eight clean-agent before/after scenarios
 
 Testing must happen in fresh sessions, without giving either run the prior chat. Record actual files loaded, decisions, references to owners/contracts, safety and gate commands.
