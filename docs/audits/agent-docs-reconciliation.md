@@ -129,6 +129,120 @@ These original architecture bullets have been preserved and grouped into named o
 | C-ARCH-56 | agents.md:102 | - **Preconditions** → `src/core/object-organization/preconditions.ts`. Validates revision, hash, destination before Apply. | agents.md (themed owner sections) | No new owner introduced |
 | C-ARCH-57 | agents.md:103 | - **UI** → consumers only. `src/ui/organization/` and `src/ui/shell/view.ts` call canonical owners; they do not mutate direct | agents.md (themed owner sections) | No new owner introduced |
 
+
+## Bootstrap, onboarding and release-document traceability
+
+The original Companion `AGENT_BOOTSTRAP.md`, repository onboarding README and release runbook obligations are also registered here. A baseline line is source evidence, not authority to change existing release/protocol semantics.
+
+| Baseline source | Line | Original instruction / statement excerpt | Destination | Evidence status |
+|---|---:|---|---|---|
+| `AGENT_BOOTSTRAP.md` | 6 | 1. Ler este arquivo (`AGENT_BOOTSTRAP.md`) primeiro. | AGENT_BOOTSTRAP.md / AGENTS.override.md pointer | Preserved/documentation review; external behavior not proven |
+| `AGENT_BOOTSTRAP.md` | 7 | 2. Ler a especificação e contratos aplicáveis vendorados em `contracts/`. | AGENT_BOOTSTRAP.md / AGENTS.override.md pointer | Preserved/documentation review; external behavior not proven |
+| `AGENT_BOOTSTRAP.md` | 8 | 3. Ler o arquivo `guidelines.md` local. | AGENT_BOOTSTRAP.md / AGENTS.override.md pointer | Preserved/documentation review; external behavior not proven |
+| `AGENT_BOOTSTRAP.md` | 9 | 4. Ler o arquivo `agents.md` para arquitetura do projeto. | AGENT_BOOTSTRAP.md / AGENTS.override.md pointer | Preserved/documentation review; external behavior not proven |
+| `AGENT_BOOTSTRAP.md` | 10 | 5. NÃO criar "owners" paralelos. | AGENT_BOOTSTRAP.md / AGENTS.override.md pointer | Preserved/documentation review; external behavior not proven |
+| `AGENT_BOOTSTRAP.md` | 11 | 6. Rodar os testes e gates definidos antes de concluir qualquer implementação. | AGENT_BOOTSTRAP.md / AGENTS.override.md pointer | Preserved/documentation review; external behavior not proven |
+| `README.md` | 5 | ## Visão geral | README.md | Preserved/documentation review; external behavior not proven |
+| `README.md` | 7 | - **Desktop only**: Windows, macOS e Linux. | README.md | Preserved/documentation review; external behavior not proven |
+| `README.md` | 8 | - **Mesmo vault canônico**: objetos continuam em Markdown + YAML, sem banco de dados canônico paralelo. | README.md | Preserved/documentation review; external behavior not proven |
+| `README.md` | 9 | - **Google Drive Sync**: pareia explicitamente com um vault Quartzo remoto existente e usa reconciliação three-way. | README.md | Preserved/documentation review; external behavior not proven |
+| `README.md` | 10 | - **Sync manual por padrão**: `Manual` não faz sync em startup, foco, polling ou mudanças locais; `Sync now` e full reconciliation continuam disponíveis. `Automatic` | README.md | Preserved/documentation review; external behavior not proven |
+| `README.md` | 11 | - **Offline-first**: o trabalho local não depende de conexão contínua; a reconciliação ocorre quando o Drive está disponível. | README.md | Preserved/documentation review; external behavior not proven |
+| `README.md` | 12 | - **Uma shell Quartzo**: Home, Planner, Journal, Browse e Activity, com Search, Add, Sync e Settings como ações. | README.md | Preserved/documentation review; external behavior not proven |
+| `README.md` | 14 | ## Object Identification | README.md | Preserved/documentation review; external behavior not proven |
+| `README.md` | 20 | ## Limitações do V1 | README.md | Preserved/documentation review; external behavior not proven |
+| `README.md` | 22 | - Reminders são best effort e só podem ser entregues enquanto o Obsidian estiver aberto. | README.md | Preserved/documentation review; external behavior not proven |
+| `README.md` | 23 | - `custom_script`, execução automática de Systems e daemons externos não são suportados. | README.md | Preserved/documentation review; external behavior not proven |
+| `README.md` | 24 | - `daily_note` permanece bruto/read-only no Companion até existir contrato de parser/serializer próprio. | README.md | Preserved/documentation review; external behavior not proven |
+| `README.md` | 25 | - Google Calendar, quando habilitado, é uma projeção read-only; o Companion não cria, edita nem apaga eventos no V1. | README.md | Preserved/documentation review; external behavior not proven |
+| `README.md` | 26 | - Tipos sem mutation contract completo devem abrir em modo seguro/Markdown em vez de ganhar um editor simplificado que possa perder dados. | README.md | Preserved/documentation review; external behavior not proven |
+| `README.md` | 28 | ## Instalação via BRAT | README.md | Preserved/documentation review; external behavior not proven |
+| `README.md` | 32 | 1. Instale e habilite o plugin BRAT no Obsidian. | README.md | Preserved/documentation review; external behavior not proven |
+| `README.md` | 33 | 2. No BRAT, escolha **Add Beta plugin**. | README.md | Preserved/documentation review; external behavior not proven |
+| `README.md` | 34 | 3. Informe `olalaurao/quartzo-obsidian-companion`. | README.md | Preserved/documentation review; external behavior not proven |
+| `README.md` | 35 | 4. Instale a release estável mais recente. | README.md | Preserved/documentation review; external behavior not proven |
+| `README.md` | 36 | 5. Habilite **Quartzo Companion** em Community plugins. | README.md | Preserved/documentation review; external behavior not proven |
+| `README.md` | 40 | ## Desenvolvimento e testes | README.md | Preserved/documentation review; external behavior not proven |
+| `README.md` | 61 | ## Releases | README.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 7 | ## Release invariants | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 9 | - Desktop only. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 10 | - OAuth uses a Google **Desktop app** client with loopback `127.0.0.1` and PKCE. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 11 | - The release build embeds the Google Desktop OAuth **Client ID** and matching **Client Secret/client credential** for the same Desktop app client. Google requires b | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 12 | - User refresh tokens remain in Obsidian `SecretStorage`. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 13 | - Release tags must point to commits contained in `main`. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 14 | - `package.json`, `manifest.json`, `versions.json`, and the Git tag must describe the same release version. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 15 | - A release tag is publishable only after **Release Preflight** succeeds for that exact `main` commit SHA. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 16 | - The release workflow publishes only artifacts rebuilt and validated by GitHub Actions. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 17 | - A tag push created with a workflow's `GITHUB_TOKEN` does not recursively start the tag-triggered Release workflow. If automation creates the tag with `GITHUB_TOKEN | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 18 | - Do not move/rewrite a tag that already produced a published GitHub Release. A failed/unpublished version should be superseded by the next clean version instead of  | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 20 | ## Google Cloud setup | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 22 | 1. Create or select the Google Cloud project used for Quartzo Companion. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 23 | 2. Enable: | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 24 | - Google Drive API | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 25 | - Google Calendar API | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 26 | 3. In **Google Auth Platform**, configure the app branding and audience. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 27 | 4. For beta testing, add the intended Google accounts as test users while the app remains in Testing. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 28 | 5. In **Data Access**, configure exactly the scopes requested by the Companion: | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 29 | - `https://www.googleapis.com/auth/drive` | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 30 | - `https://www.googleapis.com/auth/calendar.readonly` | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 31 | 6. In **Clients**, create a client with application type **Desktop app**. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 32 | 7. Copy the generated **Client ID** ending in `.apps.googleusercontent.com` and its generated **Client Secret**. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 33 | - Do not commit either value to the repository source tree. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 34 | - Store both only as GitHub Actions repository secrets for release builds. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 35 | - The desktop loopback flow uses Client ID + Client Secret + PKCE; per-user refresh tokens remain the runtime security boundary and stay in Obsidian `SecretStorage`. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 36 | - Do not create a Web application client for the desktop loopback flow. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 38 | ## GitHub repository setup | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 42 | - `QUARTZO_GOOGLE_DESKTOP_CLIENT_ID` — the Desktop OAuth Client ID from Google Cloud. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 43 | - `QUARTZO_GOOGLE_DESKTOP_CLIENT_SECRET` — the Client Secret/client credential from the same Desktop OAuth Client. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 49 | ## Prepare release metadata | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 59 | - `package.json` | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 60 | - `manifest.json` | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 61 | - `versions.json` | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 62 | - `package-lock.json` when present | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 68 | - `package.json.version === manifest.json.version` | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 69 | - `versions.json[package.json.version] === manifest.json.minAppVersion` | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 73 | ## Production preflight | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 77 | 1. Record the exact `main` commit SHA that contains the release metadata. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 78 | 2. Wait for the normal CI on that commit to finish successfully. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 79 | 3. Open GitHub Actions. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 80 | 4. Run **Release Preflight** manually on `main`. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 81 | 5. Confirm the successful preflight run reports the same exact `head_sha` as the intended release commit. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 82 | 6. The workflow must pass: | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 83 | - OAuth Client ID presence/shape | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 84 | - OAuth Client Secret presence and artifact injection for the matching Desktop client | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 85 | - canonical contract verification | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 86 | - typecheck/lint/tests | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 87 | - sync tests | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 88 | - architecture gates | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 89 | - production build | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 90 | - release validation | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 91 | - clean artifact smoke | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 92 | 7. Download the generated `quartzo-companion-<sha>` Actions artifact if a manual install test is desired. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 96 | ## Publish release | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 100 | 1. Confirm the intended version is still the one in `package.json`, `manifest.json`, and `versions.json`. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 101 | 2. Confirm `main` has not moved since the successful Release Preflight. If it moved, run Release Preflight again on the new intended release commit. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 102 | 3. Create the tag with the exact version string, without a leading `v`, pointing to the preflighted commit. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 103 | 4. Publish through the single canonical **Release** workflow: | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 104 | - a normal human/PAT tag push may trigger it directly; or | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 105 | - if a GitHub Action created/pushed the tag with its `GITHUB_TOKEN`, explicitly dispatch **Release** with `release_tag=<exact version>` because GitHub suppresses rec | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 106 | 5. In either trigger mode, the **Release** workflow verifies that: | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 107 | - the named tag exists and resolves to the checked-out commit; | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 108 | - the tag commit is contained in `main`; | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 109 | - a successful Release Preflight exists for that exact commit SHA; | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 110 | - release metadata and tag version agree. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 111 | 6. The workflow then rebuilds from the tagged commit and publishes a GitHub release containing: | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 112 | - `main.js` | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 113 | - `manifest.json` | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 114 | - `styles.css` | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 115 | - `SHA256SUMS.txt` | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 119 | ## Install with BRAT | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 121 | 1. Install and enable BRAT in Obsidian Desktop. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 122 | 2. Choose **Add Beta plugin**. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 123 | 3. Enter `olalaurao/quartzo-obsidian-companion`. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 124 | 4. Let BRAT install the latest validated release. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 125 | 5. Enable **Quartzo Companion** in Community plugins. | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+| `docs/BETA_RELEASE_RUNBOOK.md` | 127 | ## OAuth beta caveat | docs/BETA_RELEASE_RUNBOOK.md | Preserved/documentation review; external behavior not proven |
+
 ## Eight clean-agent before/after scenarios
 
 Testing must happen in fresh sessions, without giving either run the prior chat. Record actual files loaded, decisions, references to owners/contracts, safety and gate commands.
