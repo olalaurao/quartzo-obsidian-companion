@@ -1,4 +1,10 @@
-# Agents - Companion Architecture
+# Companion Architecture & Agent Contract
+
+Authority: current user request → vendorized upstream contracts and applicable local spec → local product [guidelines](guidelines.md) → this local architecture/owner map → existing code. Begin with [bootstrap](AGENT_BOOTSTRAP.md). Owners here are the existing implementations, not new abstractions.
+
+
+
+## Architecture Layers
 
 A arquitetura do Companion é dividida nestas camadas:
 
@@ -10,13 +16,22 @@ A arquitetura do Companion é dividida nestas camadas:
 - **ui**: Shell do plugin, Home, Planner, Journal, Search, Configurações. Usar Vanilla DOM via Obsidian API, sem react/vue/svelte (a não ser que documentado ganho real).
 - **local-state**: Abstração do estado de sincronização e token cache, armazenado localmente (`data.json` para pequeno, file-backed cache para sync queue).
 
+
+## Persistence and Sources of Truth
+
 - **Companion local-first sync model:** quando o vault selecionado já está dentro do Google Drive Desktop ou outra pasta sincronizada pelo sistema de arquivos, o Companion deve operar local-first e não exigir pairing do Google Drive. O sync/pairing Drive do Companion continua suportado como fallback explícito e opcional para um vault que não esteja sincronizado pelo Drive Desktop. UI e settings devem deixar claro que `Use without sync` é o caminho normal nesse cenário, e que `Manual` não dispara reconciliação automática.
+
+
+## Security and OAuth
 
 - **OAuth loopback:** O listener desktop deve validar `state` somente em respostas que sejam callbacks OAuth reais. Requests auxiliares do navegador (por exemplo `/favicon.ico`) devem ser ignorados/retornar 404 sem consumir, rejeitar ou encerrar o fluxo de autenticação ativo.
 
 - **OAuth Desktop credentials:** Drive e Calendar devem usar o mesmo `GoogleOAuthDesktop` canônico. O token exchange e o refresh devem enviar `client_id` + a client credential do mesmo Google Desktop OAuth client, mantendo PKCE S256. Release/preflight devem falhar se qualquer uma das duas credenciais de build estiver ausente. Não criar fluxo OAuth paralelo para Calendar/Drive nem commitar valores reais no repositório.
 
 - **Obsidian SecretStorage IDs:** todos os IDs usados em `app.secretStorage` devem vir do owner canônico `src/platform/secret-ids.ts` e obedecer `^[a-z0-9-]{1,64}$` (somente minúsculas, números e hífens; máximo 64 caracteres). Não usar `_`, `/`, espaços ou IDs ad hoc em integrações.
+
+
+## Drive and Sync Owners
 
 - **Large-vault pairing:** initial pairing must stay linear in the number of vault files. A recursive Drive inventory carries the canonical vault-relative path so pairing/full inventory do not issue parent-metadata requests per file. Pairing may refresh the remote inventory once before mutation, but must never re-run `listAllFiles()` once per local-only or remote-only item. Remote-only classification must not download/hash file bodies until a pull is actually requested. When legacy shared files lack `properties.Quartzo_hash`, the required raw-byte SHA-256 fallback must use bounded concurrency (currently max 8), report live comparison progress, and reuse a proven scan hash at acceptance when remote file ID + modifiedTime are unchanged. Pairing UI must show phase/progress while scanning. If pairing is blocked by ambiguous remote identity, the UI must expose every ambiguous relative path and the distinct Drive candidate IDs/metadata needed for explicit user resolution; a count-only notice is insufficient. Candidate resolution must compare canonical SHA-256 bytes (using bounded concurrency for legacy candidates without `Quartzo_hash`) and report each candidate's relationship to the local file when one exists. Modified time alone must never be used to select an ambiguous candidate.
 
@@ -50,6 +65,9 @@ A arquitetura do Companion é dividida nestas camadas:
 
 - **Startup sync-state hydration:** `DriveSyncCoordinator` remains the sole owner of the file-backed device-local sync state. Plugin startup must call the coordinator's local-only hydration path before registering/exposing the Sync UI, including when sync mode is `Manual`. Hydration may restore baselines, remote IDs, pending intents, last-success timestamp and persisted conflict projections, but must not call Drive or invoke reconciliation. Do not duplicate sync-state parsing in `main.ts` or UI. Corrupt/incompatible state must be surfaced through coordinator error state while preserving fail-closed behavior.
 
+
+## Execution and Planning Owners
+
 - **Occurrence actions e shared occurrence state:** `src/core/occurrence_actions/OccurrenceActionService` é o único coordenador de `Done/Already did/Skip/Clear/Snooze/Dismiss` no Companion. O codec puro de `sessions/shared_occurrence_state_v1.md` fica em `core/occurrence_actions`; `SharedOccurrenceStateRepository` é o único adapter de Vault para esse shard e usa `Vault.process()` em updates. `OccurrenceActionPolicy` projeta capabilities/labels; UI não reimplementa regras nem escreve response state. Quando o upstream exige side effect no objeto-fonte, `OccurrenceDomainMutationRepository` aplica somente adapters portados/provados e também usa `Vault.process()`; o coordinator salva o shared response e faz rollback se a mutação de domínio falhar. `Routine` continua fail-closed para **Done/Already did** direto quando sua conclusão pertence ao owner de execution; para `System`, a policy é ainda mais estrita: ocorrência agendada oferece **Run + Skip**, com `canReportDone=false`; conclusão positiva nunca nasce de `OccurrenceResponseState.completedAt` e só é projetada a partir de Finish evidence exata em `execution_history`. O user-triggered Run usa o owner de manual execution descrito abaixo, porque execution evidence e occurrence outcome são contratos distintos. O ID escrito no shard deve seguir o mesmo `OccurrenceIdentity.forDailyScheduleItem(item.id, day)` do app; IDs lógicos/legados podem ser lidos para compatibilidade, mas novas ações escrevem o ID canônico datado.
 
 - **Canonical System/Routine manual execution:** `src/core/manual-execution/*` owns the pure cross-client capability, reference resolution, effective linked-step projection, identities and System/Routine evidence transformations, executable against the vendored `system_routine_execution/vectors.json`. `src/vault/manual-execution.ts` is the sole Vault persistence adapter: source evidence writes use `Vault.process()`; System summary Tasks use the canonical Task creation folder/signature and deterministic ID, with collision validation. A scheduled System Run persists `occurrence_id` and `scheduled_for` only as a pair; a truly manual Run persists neither. `occurrence_id` is stable logical identity even when a single occurrence is rescheduled to another day, while `scheduled_for` is mutable temporal context. Never regenerate/validate one from the other's current date. Retry identity remains `systemId + startedAt`, but the exact optional occurrence pair is invariant for that Run and divergence fails closed. `DailyScheduleEngine` may mark a System occurrence positively complete only when a finished System execution has the exact occurrence ID; same-day manual runs, legacy object completion flags and generic occurrence `completedAt` are not substitutes. The composition root may delegate linked Habit/Task completion through `OccurrenceActionService` and Tracker logging through the existing Quick Add/Tracker capture owner, but must complete the whole-run preflight before opening execution or causing any side effect. Routine plain progress is occurrence-scoped; linked steps are observations of their canonical owners and are materialized into history only through the manual-execution owner. Pomodoro delegates to the canonical Focus runtime when initialized and resolves completion only from checklist-linked completed session evidence. UI surfaces only project Run capability/start callbacks; they never serialize `execution_history` or `routine_executions`, and generic Universal Detail mutation support for System/Routine remains `limited`. Background auto-run remains unsupported.
@@ -57,6 +75,9 @@ A arquitetura do Companion é dividida nestas camadas:
 - **Canonical Focus/Pomodoro runtime:** `src/core/focus-runtime/*` owns the pure executable contract for controller capability, timestamp projection, phase transitions, state codec, checklist identity and completion evidence. It must not import Obsidian or own persistence. `FocusRuntimeRepository` in `src/vault/focus-runtime.ts` is the sole Vault adapter for `sessions/current.md` and the canonical daily-note `pomodoro_sessions` evidence write; current-state mutation uses `Vault.process()`, preserves unknown frontmatter, and finalization revalidates the session/controller before clearing the runtime. `QuartzoCompanionPlugin` is the composition/lifecycle owner: it persists one installation-local `focusControllerId` in plugin `data.json`, hydrates/reloads the shared runtime through the existing Vault event registration, runs due-phase processing only when this client owns the session, and exposes read-only snapshots/callbacks to UI. Foreign or legacy active sessions remain read-only; no takeover or distributed lease is implemented in V1. `renderFocusRuntime()` is the reusable presentation owner used by the Quartzo shell and inline manual-execution surface; it only projects controller snapshots/callbacks and must not become an independent Modal/overlay runtime. System/Routine Pomodoro steps invoke this same owner using `checklist:<parent>:<step>`; effective completion is derived from daily session evidence, never transient timer state. Quartzo daily notes written as `type: daily` must be normalized by the existing object parser to read-only `daily_note` with date-derived identity when no explicit id exists, so evidence stays inside the existing `VaultIndex` rather than a parallel scan/cache.
 
 - **Canonical occurrence Reschedule:** `src/core/occurrence_reschedule/*` owns the pure cross-client planning mutation plan and codec. `SharedPlanningStateRepository` is the sole Vault adapter for `sessions/shared_planning_state_v1.md` and updates it with `Vault.process()` while preserving unrelated planning/override fields. Reschedule remains separate from `OccurrenceActionService`/`OccurrenceResponseState`: Task one-off may route through `SafeObjectMutationRepository`, while recurring Task instances, Time Blocks and Goal deadlines use a `single` `OccurrenceOverride`. Home/Planner only call the shared callback and never serialize planning state themselves. Series/`thisAndFuture` are fail-closed in Companion V1 until separately contracted.
+
+
+## UI and Query Owners
 
 - **Canonical Home/Day Dial projection:** `DailyScheduleEngine` continua sendo o único owner no Companion para decidir o que pertence a uma data. `src/ui/home/home-projection.ts` só deriva buckets/progresso de um `NormalizedSchedule`; `src/ui/day-dial/projection.ts` só converte esses mesmos itens em geometria 24h e resolve metadados de apresentação. O renderer do Dial não pode chamar Scheduler, parser, Google Calendar adapter ou reconstruir ocorrências. O shell apenas monta o snapshot e delega para `renderHomeView`. A geometria do Dial deve preservar IDs dos itens, usar marker até 24 min / arc a partir de 25 min, manter all-day fora do ring e separar overlaps apenas visualmente. O resolver de cor deve seguir explicit object/event color → shared TypeSignature → theme fallback.
 
@@ -66,23 +87,41 @@ A arquitetura do Companion é dividida nestas camadas:
 
 - **Canonical object query owner:** `src/core/object-query/index.ts` is the single read-only query projection over the existing `VaultIndex`. Search, Browse, Resource relations, Tracker pickers and future Universal object pickers must call it rather than iterating/filtering the index independently. `VaultIndexEngine.searchObjects()` is compatibility-only and delegates to this owner. The query layer never stores a second index/cache and never mutates vault data.
 
+
+## Reminder and Calendar Integration
+
 - **Reminder delivery platform boundary:** `ObsidianReminderDeliveryGateway` must stay importable in isolated tests and therefore must not import the `obsidian` runtime solely to create `Notice`. The gateway owns desktop Notification API projection and receives an injected `showInObsidianNotice(message)` callback; `main.ts` composes that callback with `new Notice(message)`. Keep Obsidian-specific side effects at the composition boundary rather than reintroducing runtime-only imports into otherwise testable platform code.
 
 - **Reminder notification navigation:** `ObsidianReminderDeliveryGateway` projects delivery only; on desktop click it passes the exact `ReminderDeliveryOccurrence` back to the composition root. `QuartzoCompanionPlugin.openReminderOccurrence()` activates the existing Quartzo view and asks `QuartzoView.openObjectById(sourceId)` to open Universal Detail. Do not create a notification-specific detail screen, object cache or navigation state owner. Permission status comes from the same delivery gateway.
 
 - **Google Calendar external navigation:** Google Calendar remains a read-only external projection. The shell resolves a `NormalizedItem` with `origin === 'externalEvent'` back to the already-fetched `GoogleCalendarProjection`; if that event exposes `htmlLink`, the composition root opens it through the existing HTTPS-only `ElectronBrowserOpener`. Home, Day Dial, Planner and Journal reuse the same shell callbacks. Do not create Calendar-backed Markdown or a Calendar mutation/navigation service.
 
+
+## Vault Readiness and Shared Settings
+
 - **Obsidian vault readiness before canonical indexing:** the Companion must not build its initial `VaultIndexEngine`, start reminder evaluation, or restore paired startup sync from plugin `onload()` before Obsidian reports workspace/layout readiness. The composition root waits for `app.workspace.onLayoutReady`, then loads shared settings, builds the full initial vault index, registers incremental vault events, marks runtime ready, starts reminders, and only then restores paired sync. While that one-time bootstrap is pending, Quartzo UI must show a loading state rather than an empty-vault result. Missing `app/quartzo_shared_settings.md` is an observable compatibility condition: explicit canonical `type:` objects may still render, but Object Identification-dependent files must not be silently treated as if the vault were empty.
 
 - **Cross-client shared settings reindex:** `app/quartzo_shared_settings.md` is the Companion's canonical interpretation input for Object Identification and other shared client settings. Create, modify, delete or rename events touching that path must route through one owner that reloads `SharedSettingsRepository`, rebuilds the existing `VaultIndexEngine` with `parseObjectWithSharedSettings`, then refreshes the Quartzo view. Do not patch only visible rows or keep a second settings/index cache. The vendored upstream fixture `contracts/quartzo/shared_settings/v1.md` is executable compatibility evidence and must stay pinned byte-for-byte through the existing contract sync/lock path.
 
+
+## Object Identification and Organization
+
 - **Canonical Object Identification migration:** structural edits to `markerType` or `markerValue` must go through `src/core/object-identification-migration.ts` plus `src/vault/object-identification-migration.ts`, using the vendored upstream vectors in `contracts/quartzo/object_identification_migration/vectors.json`. Settings UI may request a preview, show Cancel/Save only/Migrate, and display progress/errors, but must not enumerate objects, rewrite Markdown, move/delete files or duplicate marker semantics. Migrate applies the vault changes first through Obsidian vault APIs, then writes `app/quartzo_shared_settings.md`, reloads shared settings and rebuilds the existing index; Save only writes settings and reindexes without mutating content objects.
 
+
+## Security and Release
+
 - **Production audit infrastructure resilience:** CI, Release Preflight and Release must share the same fail-closed production dependency audit owner (`npm run audit:prod`). Dependency installation stays reproducible with `npm ci --audit=false`, then the workflow pins the modern audit client (currently npm 11.19.1) before invoking the canonical audit script so retired legacy Quick Audit endpoints are not part of the security path and install-time audit does not duplicate the explicit gate. The canonical audit script must invoke npm compatibly on both POSIX and Windows runners; platform command-launch failures are non-retryable and must be logged explicitly. Transient audit transport/backend failures may be retried only with a small bounded retry budget inside that shared script; confirmed high/critical vulnerabilities, malformed/non-retryable audit results, or infrastructure failure after the retry budget must still fail the job. Do not weaken or skip the security gate just because the npm advisory endpoint is flaky.
+
+
+## Capture and Integrations
 
 - **Canonical Smart Link Capture:** `src/core/link-capture` owns pure URL destination suggestion, override precedence, common metadata merge and URL normalization. UI never persists `suggestedDestination` directly; `selectedDestination` wins. Resource metadata stays in `src/integrations/resource-metadata`, Recipe import stays in the Recipe importer, Social metadata stays in the Social adapter, and all persistence routes through `src/core/object-creation.ts`. Generic page/Recipe imports must use `secureRemoteFetch`; UI and feature services may not bypass that security boundary.
 
 - **Resource media types remain Resource-owned:** `Tool`, `Sewing Pattern` and future user-defined values are `Resource.media_type` strings, not ObjectTypes, TypeSignatures, stores or dedicated duplicate/metadata owners. `src/core/resource-capture/policy.ts` owns media type normalization, suggestions and contextual status labels. Quick Add and Save Link must build suggestions from built-ins plus existing vault Resources through `object-query`, while preserving custom media type text and persisting relationships only through the existing `links` field.
+
+
+## Object Organization Owners
 
 ## Object Organization V1 — Owner Map (§130)
 
@@ -106,3 +145,7 @@ Established by the Object Organization & Obsidian-native Organization V1 spec. T
 
 - Object retirement (single, bulk, or Merge loser) is owned by `ObjectOrganizationRepository` using the pure tombstone helpers in `src/core/object-organization/retire.ts`; presentation code never performs raw file deletion.
 - Paired Drive anti-resurrection safety is owned by the existing `DriveSyncCoordinator`: preflight proves baseline/identity before local retirement, and queued rename processing revalidates the remote again before preserving the same `remoteFileId` at `_deleted/**`. Remote divergence becomes conflict, never silent pull-back or overwrite.
+
+## Documentation Lifecycle
+
+Shared contract changes start in Quartzo upstream, update vendorized contracts and UPSTREAM.lock.json; changes to local product rules update guidelines/local specs; architecture owner changes update this file. Machine-checkable invariants must have tests and release gates. Historical docs/v1 plans do not prove implementation.
