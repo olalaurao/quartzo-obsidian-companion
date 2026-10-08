@@ -1,0 +1,4 @@
+# Codex root instruction discovery without a root AGENTS.md/agents.md case collision.
+# Applied by Codex only when the project is trusted. Root bootstrap stays
+# the sole entrypoint; this file supplies no independent instructions.
+project_doc_fallback_filenames = ["AGENT_BOOTSTRAP.md"]
