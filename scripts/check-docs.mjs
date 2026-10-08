@@ -65,7 +65,10 @@ if (fs.existsSync(specDir)) {
 
 const linkDocs = [
   'AGENT_BOOTSTRAP.md', '.github/copilot-instructions.md', 'README.md',
-  'docs/README.md', 'docs/specs/drive-sync-operational.md',
+  'docs/README.md',
+  ...fs.readdirSync(path.join(root, 'docs/specs'))
+    .filter(name => name.endsWith('.md'))
+    .map(name => 'docs/specs/' + name),
 ];
 for (const name of linkDocs) {
   if (!exists(name)) continue;
