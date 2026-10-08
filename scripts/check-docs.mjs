@@ -9,7 +9,7 @@ const fails = message => issues.push(message);
 const exists = name => fs.existsSync(path.join(root, name));
 const text = name => exists(name) ? fs.readFileSync(path.join(root, name), 'utf8') : '';
 const mandatory = [
-  'AGENT_BOOTSTRAP.md', 'guidelines.md', 'agents.md', 'docs/README.md',
+  'AGENT_BOOTSTRAP.md', 'AGENTS.override.md', 'guidelines.md', 'agents.md', 'docs/README.md',
   '.github/copilot-instructions.md', 'README.md',
   'contracts/UPSTREAM.lock.json', 'docs/audits/agent-docs-reconciliation.md',
   'docs/specs/drive-sync-operational.md', 'docs/specs/object-organization.md',
@@ -20,6 +20,8 @@ const map = text('docs/README.md');
 const bootstrap = text('AGENT_BOOTSTRAP.md');
 const guidelines = text('guidelines.md');
 const agents = text('agents.md');
+if (!text('AGENTS.override.md').includes('AGENT_BOOTSTRAP.md'))
+  fails('Codex automatic root pointer must discover canonical bootstrap.');
 if (!bootstrap.includes('Read this file first')) fails('Bootstrap must require first read.');
 for (const name of ['guidelines.md', 'agents.md', 'contracts/']) {
   if (!bootstrap.includes(name)) fails('Bootstrap missing instruction: ' + name);
