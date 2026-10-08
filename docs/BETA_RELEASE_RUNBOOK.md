@@ -80,6 +80,7 @@ After the release changes are merged to `main`:
 4. Run **Release Preflight** manually on `main`.
 5. Confirm the successful preflight run reports the same exact `head_sha` as the intended release commit.
 6. The workflow must pass:
+   - documentation integrity (`npm run docs:check`)
    - OAuth Client ID presence/shape
    - OAuth Client Secret presence and artifact injection for the matching Desktop client
    - canonical contract verification

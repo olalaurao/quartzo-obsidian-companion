@@ -15,8 +15,9 @@ The source of shared contracts is the Quartzo upstream; [contracts/UPSTREAM.lock
 
 ## Document directory
 
+- [docs/specs/drive-sync-operational.md](specs/drive-sync-operational.md): operational Drive pairing/reconciliation safety rules.
 - [docs/specs/object-organization.md](specs/object-organization.md): local object-organization specification; inspect status and its upstream dependencies before editing.
-- `docs/specs/`: current operational/feature specs as their headers permit. Proposed Drive sync operational extraction is not yet available.
+- `docs/specs/`: current operational/feature specs as their headers permit. [Drive sync operational spec](specs/drive-sync-operational.md) is active for Companion-local Drive operations; upstream pinned contracts remain authoritative.
 - `docs/v1/`: V1 capability matrices and execution evidence; do not assume every past plan is an active contract.
 - [docs/BETA_RELEASE_RUNBOOK.md](BETA_RELEASE_RUNBOOK.md): release procedure.
 - [README.md](../README.md): onboarding, local-first usage and installation.
