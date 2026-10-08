@@ -81,7 +81,7 @@ for (const name of linkDocs) {
   }
 }
 
-// Protect case-insensitive checkout, especially root agents.md / AGENTS.md.
+// Use exact tracked Git paths, not fs.existsSync('AGENTS.md'): on Windows/macOS the filesystem aliases agents.md, causing false positives.
 try {
   const all = execFileSync('git', ['ls-files'], { cwd: root, encoding: 'utf8' })
     .split('\n').filter(Boolean);
@@ -92,7 +92,7 @@ try {
       fails('Case-only collision: ' + known.get(key) + ' <> ' + filename);
     known.set(key, filename);
   }
-  if (known.has('agents.md') && known.has('AGENTS.md'.toLowerCase()) && exists('AGENTS.md'))
+  if (all.includes('agents.md') && all.includes('AGENTS.md'))
     fails('Root AGENTS.md competes with root agents.md.');
   if (all.some(f => /(^|\/)LATEST_.*_RULES\.md$/.test(f)))
     fails('Unexpected competing rule authority document.');
