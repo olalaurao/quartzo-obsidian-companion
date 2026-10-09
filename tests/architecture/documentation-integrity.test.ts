@@ -42,3 +42,45 @@ describe('three Companion agent discovery route probes', () => {
       .toContain('Require successful Release Preflight');
   });
 });
+
+
+describe('current Companion guideline owner trails', () => {
+  it('maps every current Companion guideline group to concrete owners', () => {
+    const owners: Record<string, string[]> = {
+      'Foundations and interoperability': [
+        'src/vault/index-engine.ts',
+        'contracts/UPSTREAM.lock.json',
+      ],
+      'Sync modes and transport': [
+        'src/sync/coordinator/index.ts',
+        'src/sync/coordinator/file-policy.ts',
+      ],
+      'Daily Schedule, occurrence, Focus and interfaces': [
+        'src/core/daily_schedule/engine.ts',
+        'src/core/occurrence_actions/service.ts',
+        'src/core/focus-runtime/runtime.ts',
+      ],
+      'Journal, Link Capture and Resources': [
+        'src/ui/journal/journal-projection.ts',
+        'src/core/link-capture/policy.ts',
+        'src/core/resource-capture/policy.ts',
+      ],
+      'Object Identification and Organization': [
+        'src/core/object-identification-migration.ts',
+        'src/vault/object-organization.ts',
+      ],
+    };
+
+    const source = fs.readFileSync('guidelines.md', 'utf8');
+    const headings = new Set(
+      [...source.matchAll(/^## (.+)$/gm)].map(match => match[1].trim()),
+    );
+    expect(new Set(Object.keys(owners))).toEqual(headings);
+    for (const [heading, paths] of Object.entries(owners)) {
+      expect(paths.length, heading).toBeGreaterThan(0);
+      for (const ownerPath of paths) {
+        expect(fs.existsSync(ownerPath), `${heading} -> ${ownerPath}`).toBe(true);
+      }
+    }
+  });
+});
