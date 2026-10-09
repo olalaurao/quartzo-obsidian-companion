@@ -48,7 +48,7 @@ describe('current Companion guideline owner trails', () => {
   it('maps every current Companion guideline group to concrete owners', () => {
     const owners: Record<string, string[]> = {
       'Foundations and interoperability': [
-        'src/vault/index-engine.ts',
+        'src/vault/index/engine.ts',
         'contracts/UPSTREAM.lock.json',
       ],
       'Sync modes and transport': [
