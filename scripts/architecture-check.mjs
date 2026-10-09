@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import YAML from 'yaml';
+import { spawnSync } from 'node:child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1844,6 +1845,13 @@ function checkC4ReleaseDocsAndCapabilityMatrix() {
   return true;
 }
 
+function checkDocumentationIntegrity() {
+  const result = spawnSync(process.execPath, [path.join(rootDir, 'scripts/check-docs.mjs')], {cwd: rootDir, encoding: 'utf8'});
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  return result.status === 0;
+}
+
 function main() {
   console.log('Running architecture/completeness checks...\n');
   let allPassed = true;
@@ -1851,6 +1859,7 @@ function main() {
   for (const check of criticalPaths) {
     if (!checkFile(check.path, check.forbiddenPatterns, check.description)) allPassed = false;
   }
+  if (!checkDocumentationIntegrity()) allPassed = false;
   if (!checkNoSyncStateInRoot()) allPassed = false;
   if (!checkSingleFilePolicy()) allPassed = false;
   if (!checkTestSyncIncludesRuntime()) allPassed = false;
