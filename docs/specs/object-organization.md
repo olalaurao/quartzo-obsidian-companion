@@ -1,6 +1,14 @@
 # SPEC — Quartzo Object Organization & Obsidian-native Organization V1
 
-**Status:** implementation specification  
+Status: **IMPLEMENTATION SPEC — status of runtime delivery requires independent verification**  
+Last reconciled date: 2026-10-08 (document authority header only)  
+Last reconciled main SHA: `507f2ccfe2f991ea775e1f1aca5ca05e6f4c5218`  
+Canonical implementation owners: `ObjectOrganizationRepository`, `ObjectIdentificationMigrationRepository`, `SharedSettingsRepository`, `VaultIndexEngine`, `DriveSyncCoordinator`  
+Depends on: vendored Quartzo object-organization contracts, `contracts/UPSTREAM.lock.json`, `guidelines.md`, `agents.md`  
+Supersedes: prior Object Organization execution plans when independently validated  
+Authority boundary: Companion-specific Object Organization interaction and mutation; upstream remains the source of shared semantics
+
+**Original status:** implementation specification  
 **Repositories affected:** `olalaurao/aplicativo` + `olalaurao/quartzo-obsidian-companion`  
 **Primary domains:** Object Identification, object mutation, merge, references, shared settings, vault sync, Obsidian UX  
 **Goal:** permitir organizar, corrigir, mover, relacionar, reclassificar e mesclar objetos diretamente pelo Obsidian Companion, mantendo Quartzo e Companion semanticamente idênticos e sem criar nova fonte de verdade ou novo mecanismo paralelo de sync.

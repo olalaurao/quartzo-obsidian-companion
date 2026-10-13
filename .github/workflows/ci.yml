@@ -24,6 +24,7 @@ jobs:
       run: npm run contracts:verify
       env:
         GITHUB_TOKEN: ${{ secrets.QUARTZO_UPSTREAM_TOKEN }}
+    - run: npm run docs:check
     - run: npm run typecheck
     - run: npm run lint
     - run: npm test
@@ -48,6 +49,7 @@ jobs:
     - name: Pin modern npm audit client
       run: npm install --global npm@11.19.1
     - run: npm run audit:prod
+    - run: npm run docs:check
     - run: npm run typecheck
     - run: npm run test:sync
     - run: npm run build
@@ -71,6 +73,7 @@ jobs:
       run: npm run contracts:verify
       env:
         GITHUB_TOKEN: ${{ secrets.QUARTZO_UPSTREAM_TOKEN }}
+    - run: npm run docs:check
     - run: npm run typecheck
     - run: npm run lint
     - run: npm test

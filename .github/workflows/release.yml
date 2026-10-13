@@ -112,6 +112,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.QUARTZO_UPSTREAM_TOKEN }}
       
+      - name: Documentation integrity
+        run: npm run docs:check
+
       - name: Type check
         run: npm run typecheck
       

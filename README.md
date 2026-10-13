@@ -1,15 +1,23 @@
 # Quartzo Obsidian Companion V1
 
-O Quartzo Companion é um plugin para Obsidian Desktop que atua como segundo cliente oficial do Quartzo, compartilhando o mesmo vault canônico via Google Drive.
+O Quartzo Companion é um plugin para Obsidian Desktop que atua como segundo cliente oficial do Quartzo, compartilhando o mesmo vault canônico Markdown/YAML. Funciona local-first sem pairing obrigatório quando o vault já está numa pasta sincronizada pelo sistema de arquivos.
 
 ## Visão geral
 
 - **Desktop only**: Windows, macOS e Linux.
 - **Mesmo vault canônico**: objetos continuam em Markdown + YAML, sem banco de dados canônico paralelo.
-- **Google Drive Sync**: pareia explicitamente com um vault Quartzo remoto existente e usa reconciliação three-way.
+- **Vault com Google Drive Desktop ou outra pasta sincronizada**: trabalha diretamente nos arquivos locais, sem exigir pairing via API; o provedor do filesystem transporta as mudanças.
+- **Vault local sem transporte por filesystem**: pairing e reconciliação three-way do Drive são uma opção explícita.
 - **Sync manual por padrão**: `Manual` não faz sync em startup, foco, polling ou mudanças locais; `Sync now` e full reconciliation continuam disponíveis. `Automatic` é opt-in.
 - **Offline-first**: o trabalho local não depende de conexão contínua; a reconciliação ocorre quando o Drive está disponível.
 - **Uma shell Quartzo**: Home, Planner, Journal, Browse e Activity, com Search, Add, Sync e Settings como ações.
+
+## Comportamento offline e modos de sync
+
+- **Manual**: nunca faz reconciliação por startup/focus/polling/evento; `Sync now` e resolução de conflitos são explícitos. O estado local é hidratado ao iniciar.
+- **Automatic**: usa gatilhos do mesmo `DriveSyncCoordinator`, sem scheduler paralelo.
+- **Offline**: operações locais disponíveis conforme contratos; mudanças remotas aguardam conexão. Não declarar sucesso de transporte offline.
+- **Sem pairing**: Home, Browse, edição e indexação locais não exigem conexão Google se o filesystem já sincroniza o vault.
 
 ## Object Identification
 
@@ -37,6 +45,10 @@ O repositório é público; não é necessário PAT do GitHub para instalar o be
 
 A distribuição deve usar uma release validada pelo CI contendo `main.js`, `manifest.json`, `styles.css` e `SHA256SUMS.txt`. Não use um `main.js` local não validado como release.
 
+## Documentação para agentes
+
+Comece por [`AGENT_BOOTSTRAP.md`](AGENT_BOOTSTRAP.md), consulte o [`docs/README.md`](docs/README.md), os contratos vendorados e só as seções aplicáveis de [`guidelines.md`](guidelines.md) e [`agents.md`](agents.md). Os detalhes de sync estão em [`docs/specs/drive-sync-operational.md`](docs/specs/drive-sync-operational.md). Planos históricos não prevalecem sobre contratos atuais.
+
 ## Desenvolvimento e testes
 
 O repositório mantém uma cópia pinada dos contratos/fixtures canônicos do upstream `olalaurao/aplicativo`. O `contracts/UPSTREAM.lock.json` registra o commit upstream e os hashes esperados.
@@ -45,6 +57,7 @@ Mudanças cross-client em tipos de vault, aliases persistidos, campos, regras de
 
 ```bash
 npm ci
+npm run docs:check
 npm run contracts:verify
 npm run typecheck
 npm run lint
