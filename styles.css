@@ -418,6 +418,15 @@ button.qz-chip { cursor: pointer; }
   justify-content: flex-end;
 }
 
+.quartzo-schedule-row > .quartzo-occurrence-action-report {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.quartzo-schedule-row > .quartzo-occurrence-action-report:empty {
+  display: none;
+}
+
 .quartzo-occurrence-actions > button,
 .quartzo-modal-actions > button {
   max-width: 100%;

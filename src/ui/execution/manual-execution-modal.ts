@@ -4,6 +4,7 @@ import type {
   ManualExecutionStepState,
 } from '../../core/manual-execution';
 import type { IndexedObject } from '../../vault/index/types';
+import { actionReportCopyText, renderActionReport, type ActionReport } from '../action-report';
 import { renderFocusRuntime, type FocusRuntimeUiController } from '../focus/view';
 
 export interface ManualExecutionModalFinishResult {
@@ -31,6 +32,7 @@ export class ManualExecutionModal extends Modal {
   private plainCompletions: Record<string, boolean>;
   private linkedStates: Record<string, ManualExecutionStepState>;
   private focusStepId: string | null = null;
+  private actionReport: ActionReport | null = null;
 
   constructor(
     app: App,
@@ -53,7 +55,17 @@ export class ManualExecutionModal extends Modal {
       renderFocusRuntime(contentEl, this.options.focusController, {
         backLabel: 'Back to execution',
         onBack: async () => {
-          this.linkedStates = { ...await this.options.refreshLinkedStates() };
+          try {
+            this.linkedStates = { ...await this.options.refreshLinkedStates() };
+            this.actionReport = null;
+          } catch (error) {
+            this.actionReport = this.blockedReport(
+              'manual_execution.refresh_blocked',
+              'Refresh blocked',
+              error,
+            );
+            new Notice(`Execution blocked: ${error instanceof Error ? error.message : String(error)}`);
+          }
           this.focusStepId = null;
           this.render();
         },
@@ -72,6 +84,16 @@ export class ManualExecutionModal extends Modal {
       : 'System run · plain checklist progress stays local until Finish.';
     contentEl.appendChild(context);
 
+    if (this.actionReport) {
+      renderActionReport(contentEl, this.actionReport, {
+        maxMessages: 5,
+        onDismiss: () => {
+          this.actionReport = null;
+          this.render();
+        },
+      });
+    }
+
     const list = document.createElement('div');
     list.className = 'quartzo-manual-execution-steps';
 
@@ -88,11 +110,21 @@ export class ManualExecutionModal extends Modal {
         checkbox.disabled = this.busy;
         checkbox.setAttribute('aria-label', step.title);
         checkbox.addEventListener('change', () => {
+          const previous = this.plainCompletions[step.id] === true;
           const completed = checkbox.checked;
           this.plainCompletions[step.id] = completed;
-          void this.runBusy(async () => {
-            await this.options.onPlainChange(step, completed);
-          }, false);
+          void this.runBusy(
+            async () => {
+              await this.options.onPlainChange(step, completed);
+            },
+            {
+              kind: 'manual_execution.plain_step_blocked',
+              title: 'Step update blocked',
+              onError: () => {
+                this.plainCompletions[step.id] = previous;
+              },
+            },
+          );
         });
         main.appendChild(checkbox);
       } else {
@@ -126,14 +158,20 @@ export class ManualExecutionModal extends Modal {
               ? 'Focus'
               : 'Complete';
           action.addEventListener('click', () => {
-            void this.runBusy(async () => {
-              await this.options.onLinkedAction(step);
-              if (step.kind === 'pomodoro') {
-                this.focusStepId = step.id;
-                return;
-              }
-              this.linkedStates = { ...await this.options.refreshLinkedStates() };
-            });
+            void this.runBusy(
+              async () => {
+                await this.options.onLinkedAction(step);
+                if (step.kind === 'pomodoro') {
+                  this.focusStepId = step.id;
+                  return;
+                }
+                this.linkedStates = { ...await this.options.refreshLinkedStates() };
+              },
+              {
+                kind: 'manual_execution.linked_step_blocked',
+                title: 'Linked step blocked',
+              },
+            );
           });
           row.appendChild(action);
         }
@@ -156,11 +194,21 @@ export class ManualExecutionModal extends Modal {
     finish.textContent = this.options.source.type === 'routine' ? 'Complete Routine' : 'Finish';
     finish.disabled = this.busy;
     finish.addEventListener('click', () => {
-      void this.runBusy(async () => {
-        const result = await this.options.finish(this.plainCompletions);
-        new Notice(result.message);
-        if (result.completed) this.close();
-      });
+      void this.runBusy(
+        async () => {
+          const result = await this.options.finish(this.plainCompletions);
+          new Notice(result.message);
+          if (result.completed) {
+            this.close();
+            return;
+          }
+          this.actionReport = this.finishReport(result);
+        },
+        {
+          kind: 'manual_execution.finish_blocked',
+          title: 'Finish blocked',
+        },
+      );
     });
 
     const refresh = document.createElement('button');
@@ -168,27 +216,72 @@ export class ManualExecutionModal extends Modal {
     refresh.textContent = 'Refresh linked steps';
     refresh.disabled = this.busy;
     refresh.addEventListener('click', () => {
-      void this.runBusy(async () => {
-        this.linkedStates = { ...await this.options.refreshLinkedStates() };
-      });
+      void this.runBusy(
+        async () => {
+          this.linkedStates = { ...await this.options.refreshLinkedStates() };
+        },
+        {
+          kind: 'manual_execution.refresh_blocked',
+          title: 'Refresh blocked',
+        },
+      );
     });
 
     actions.append(cancel, refresh, finish);
     contentEl.appendChild(actions);
   }
 
-  private async runBusy(operation: () => Promise<void>, rerender = true): Promise<void> {
+  private async runBusy(
+    operation: () => Promise<void>,
+    reportContext: {
+      kind: string;
+      title: string;
+      onError?: () => void;
+    },
+  ): Promise<void> {
     if (this.busy) return;
     this.busy = true;
+    this.actionReport = null;
     this.render();
     try {
       await operation();
     } catch (error) {
+      reportContext.onError?.();
+      this.actionReport = this.blockedReport(reportContext.kind, reportContext.title, error);
       new Notice(`Execution blocked: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       this.busy = false;
-      if (rerender) this.render();
-      else this.render();
+      this.render();
     }
+  }
+
+  private blockedReport(kind: string, title: string, error: unknown): ActionReport {
+    const message = error instanceof Error ? error.message : String(error);
+    const report: ActionReport = {
+      kind,
+      title,
+      summary: message,
+      status: 'error',
+      attempted: 1,
+      applied: 0,
+      failed: 1,
+      messages: [message],
+    };
+    return { ...report, copyText: actionReportCopyText(report) };
+  }
+
+  private finishReport(result: ManualExecutionModalFinishResult): ActionReport {
+    const report: ActionReport = {
+      kind: 'manual_execution.finish_result',
+      title: 'Execution needs attention',
+      summary: result.message,
+      status: 'warning',
+      attempted: 1,
+      applied: 0,
+      skipped: 1,
+      failed: 0,
+      messages: [result.message],
+    };
+    return { ...report, copyText: actionReportCopyText(report) };
   }
 }

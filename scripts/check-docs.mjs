@@ -8,6 +8,8 @@ const issues = [];
 const fails = message => issues.push(message);
 const exists = name => fs.existsSync(path.join(root, name));
 const text = name => exists(name) ? fs.readFileSync(path.join(root, name), 'utf8') : '';
+const countStableRuleHeading = (content, id) =>
+  [...content.matchAll(new RegExp(`^\\*\\*${id} \\u2014 `, 'gm'))].length;
 const mandatory = [
   'AGENT_BOOTSTRAP.md', 'AGENTS.override.md', 'guidelines.md', 'agents.md', 'docs/README.md',
   '.github/copilot-instructions.md', 'README.md',
@@ -38,8 +40,8 @@ if (!guidelines.includes('upstream') || !guidelines.includes('C-GUID-'))
 const sync = text('docs/specs/drive-sync-operational.md');
 for (let n = 1; n <= 50; n++) {
   const id = 'C-GUID-' + String(n).padStart(2, '0');
-  const inGuidelines = guidelines.split(id).length - 1;
-  const inSync = sync.split(id).length - 1;
+  const inGuidelines = countStableRuleHeading(guidelines, id);
+  const inSync = countStableRuleHeading(sync, id);
   // The sync overview mentions a *range*, not individual IDs; count references separately.
   if (n >= 9 && n <= 23) {
     if (inSync !== 1) fails(id + ': expected exactly one operational rule, found ' + inSync);

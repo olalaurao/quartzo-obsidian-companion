@@ -4,8 +4,9 @@ import type {
   CanonicalOccurrenceAction,
   CanonicalOccurrenceActionResult,
 } from '../../core/occurrence_actions';
-import { renderOccurrenceActionControls } from '../occurrence/action-controls';
 import type { ManualExecutionRunCapability } from '../../core/manual-execution';
+import type { ActionReport } from '../action-report';
+import { renderOccurrenceActionControls } from '../occurrence/action-controls';
 
 export interface ScheduleListOptions {
   app: App;
@@ -18,6 +19,7 @@ export interface ScheduleListOptions {
   performOccurrenceReschedule?(item: NormalizedItem, start: Date, end: Date): Promise<void>;
   manualExecutionCapability?(item: NormalizedItem): ManualExecutionRunCapability;
   startManualExecution?(item: NormalizedItem): Promise<void>;
+  onOccurrenceActionReport?(item: NormalizedItem, report: ActionReport | null): void;
   canOpenItem?(item: NormalizedItem): boolean;
   onOpenItem?(item: NormalizedItem): void;
 }
@@ -67,6 +69,7 @@ export function renderScheduleList(
       startManualExecution: options.startManualExecution
         ? () => options.startManualExecution!(item)
         : undefined,
+      onActionReport: report => options.onOccurrenceActionReport?.(item, report),
     });
     list.appendChild(row);
   }

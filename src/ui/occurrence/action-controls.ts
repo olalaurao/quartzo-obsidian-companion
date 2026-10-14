@@ -8,6 +8,7 @@ import {
 } from '../../core/occurrence_actions';
 import type { NormalizedItem } from '../../core/daily_schedule/types';
 import type { ManualExecutionRunCapability } from '../../core/manual-execution';
+import { actionReportCopyText, renderActionReport, type ActionReport } from '../action-report';
 import { promptAlreadyDid, promptReschedule, promptSnoozeMinutes } from './action-input-modal';
 
 export interface OccurrenceActionControlsOptions {
@@ -20,6 +21,7 @@ export interface OccurrenceActionControlsOptions {
   reschedule?(start: Date, end: Date): Promise<void>;
   manualExecutionCapability?: ManualExecutionRunCapability;
   startManualExecution?(): Promise<void>;
+  onActionReport?(report: ActionReport | null): void;
 }
 
 export function renderOccurrenceActionControls(
@@ -40,17 +42,59 @@ export function renderOccurrenceActionControls(
 
   const actionRow = document.createElement('span');
   actionRow.className = 'quartzo-occurrence-actions';
+  const reportHost = document.createElement('div');
+  reportHost.className = 'quartzo-occurrence-action-report';
+
+  const setActionReport = (report: ActionReport | null): void => {
+    reportHost.empty();
+    options.onActionReport?.(report);
+    if (!report) return;
+    renderActionReport(reportHost, report, {
+      maxMessages: 4,
+      onDismiss: () => setActionReport(null),
+    });
+  };
+
+  const blockedReport = (kind: string, title: string, error: unknown): ActionReport => {
+    const message = error instanceof Error ? error.message : String(error);
+    const report: ActionReport = {
+      kind,
+      title,
+      summary: message,
+      status: 'error',
+      attempted: 1,
+      applied: 0,
+      failed: 1,
+      messages: [message],
+    };
+    return { ...report, copyText: actionReportCopyText(report) };
+  };
+
+  const disableButtons = (): HTMLButtonElement[] => {
+    const buttons = Array.from(actionRow.querySelectorAll('button'));
+    for (const button of buttons) button.disabled = true;
+    return buttons;
+  };
+
+  const enableButtons = (buttons: HTMLButtonElement[]): void => {
+    for (const button of buttons) button.disabled = false;
+  };
 
   const runAction = async (
     action: CanonicalOccurrenceAction,
     actionOptions: { completedAt?: Date; snoozeMinutes?: number } = {},
   ): Promise<void> => {
-    const buttons = Array.from(actionRow.querySelectorAll('button'));
-    for (const button of buttons) button.disabled = true;
+    setActionReport(null);
+    const buttons = disableButtons();
     try {
       await options.perform(action, actionOptions);
     } catch (error) {
-      for (const button of buttons) button.disabled = false;
+      enableButtons(buttons);
+      setActionReport(blockedReport(
+        'occurrence.action_blocked',
+        'Occurrence action blocked',
+        error,
+      ));
       new Notice(`Occurrence action blocked: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
@@ -113,12 +157,17 @@ export function renderOccurrenceActionControls(
   ) {
     addAction(capabilities.startLabel ?? 'Run', () => {
       void (async () => {
-        const buttons = Array.from(actionRow.querySelectorAll('button'));
-        for (const button of buttons) button.disabled = true;
+        setActionReport(null);
+        const buttons = disableButtons();
         try {
           await options.startManualExecution!();
         } catch (error) {
-          for (const button of buttons) button.disabled = false;
+          enableButtons(buttons);
+          setActionReport(blockedReport(
+            'occurrence.execution_blocked',
+            'Execution blocked',
+            error,
+          ));
           new Notice(`Execution blocked: ${error instanceof Error ? error.message : String(error)}`);
         }
       })();
@@ -147,12 +196,17 @@ export function renderOccurrenceActionControls(
         const next = await promptReschedule(options.app, initialStart, initialEnd);
         if (!next) return;
 
-        const buttons = Array.from(actionRow.querySelectorAll('button'));
-        for (const button of buttons) button.disabled = true;
+        setActionReport(null);
+        const buttons = disableButtons();
         try {
           await reschedule(next.start, next.end);
         } catch (error) {
-          for (const button of buttons) button.disabled = false;
+          enableButtons(buttons);
+          setActionReport(blockedReport(
+            'occurrence.reschedule_blocked',
+            'Reschedule blocked',
+            error,
+          ));
           new Notice(`Reschedule blocked: ${error instanceof Error ? error.message : String(error)}`);
         }
       })();
@@ -161,5 +215,6 @@ export function renderOccurrenceActionControls(
 
   if (actionRow.childElementCount === 0) return null;
   container.appendChild(actionRow);
+  container.appendChild(reportHost);
   return actionRow;
 }
