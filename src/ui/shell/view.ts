@@ -4,6 +4,7 @@ import type { NormalizedItem, NormalizedSchedule } from '../../core/daily_schedu
 import type { GoogleCalendarProjection } from '../../integrations/google/calendar';
 import { addLocalDays, localIsoDate, parseLocalIsoDate, shiftLocalMonth } from '../../core/local-date';
 import { chooseNewestConflictResolution, type SyncPendingDiagnostic, type SyncProgress, type SyncStatusSnapshot } from '../../sync/coordinator';
+import type { SyncResult } from '../../sync/coordinator/types';
 import {
   queryVaultObjects,
   type ObjectQueryArchiveFilter,
@@ -13,6 +14,7 @@ import {
 import { renderObjectDetail } from '../detail/object-detail';
 import { renderObjectEditor } from '../detail/object-editor';
 import { renderHomeView } from '../home/view';
+import { projectHomeConfidence, type HomeConfidenceAction } from '../home/home-projection';
 import { renderPlannerSurface, type PlannerDayLens } from '../planner/view';
 import { monthGridDates, weekDates } from '../planner/calendar-projection';
 import { renderScheduleList as renderDailyScheduleList } from '../daily/schedule-list';
@@ -41,7 +43,9 @@ import {
   projectOrganizationIssues,
   type IssueCategory,
 } from '../../core/object-organization/issues-projection';
+import { planBatchAnalysis, type BatchOperationReport } from '../../core/object-organization/batch-workbench';
 import { renderFocusRuntime } from '../focus/view';
+import { actionReportCopyText, renderActionReport, type ActionReport } from '../action-report';
 
 export const QUARTZO_VIEW_TYPE = 'quartzo-view';
 export type QuartzoSection = 'home' | 'planner' | 'journal' | 'browse' | 'activity' | 'objects' | 'issues';
@@ -162,6 +166,59 @@ function scheduleObjects(index: VaultIndex | null): Array<Record<string, unknown
   }));
 }
 
+function batchOperationReportToActionReport(kind: string, title: string, report: BatchOperationReport): ActionReport {
+  const status: ActionReport['status'] = report.failed > 0
+    ? 'error'
+    : report.skipped > 0
+      ? 'warning'
+      : 'success';
+  const nextAction = status === 'success'
+    ? 'Review the updated objects from Browse or run Sync when ready.'
+    : 'Review the diagnostics, fix blockers, then re-run the operation from Organization Workbench.';
+  const actionReport: ActionReport = {
+    kind,
+    title,
+    status,
+    summary: `${report.applied}/${report.attempted} applied. ${report.skipped} skipped, ${report.failed} failed. ${nextAction}`,
+    attempted: report.attempted,
+    applied: report.applied,
+    skipped: report.skipped,
+    failed: report.failed,
+    messages: report.messages,
+  };
+  return { ...actionReport, copyText: actionReportCopyText(actionReport) };
+}
+
+function syncResultToActionReport(operation: 'incremental' | 'full', result: SyncResult): ActionReport {
+  const title = operation === 'full' ? 'Full reconciliation complete' : 'Sync complete';
+  const status: ActionReport['status'] = result.errors.length > 0
+    ? 'error'
+    : result.conflicts > 0
+      ? 'warning'
+      : 'success';
+  const nextAction = result.errors.length > 0
+    ? 'Copy diagnostics and retry after resolving the reported blocker.'
+    : result.conflicts > 0
+      ? 'Open Conflicts or Review Drive duplicates before running sync again.'
+      : 'No follow-up needed unless you want to review Activity History.';
+  const messages = [
+    ...result.errors,
+    result.conflicts > 0 ? `${result.conflicts} conflict(s) need review.` : null,
+  ].filter((message): message is string => message != null);
+  const report: ActionReport = {
+    kind: operation === 'full' ? 'sync.full_reconciliation' : 'sync.manual',
+    title,
+    status,
+    summary: `${result.synced} synced, ${result.conflicts} conflicts, ${result.errors.length} errors. ${nextAction}`,
+    attempted: result.synced + result.conflicts + result.errors.length,
+    applied: result.synced,
+    skipped: result.conflicts,
+    failed: result.errors.length,
+    messages,
+  };
+  return { ...report, copyText: actionReportCopyText(report) };
+}
+
 export class QuartzoView extends ItemView {
   private section: QuartzoSection = 'home';
   public action: QuartzoAction | null = null;
@@ -184,6 +241,8 @@ export class QuartzoView extends ItemView {
   private issueActionableFilter: 'All' | 'Actionable' | 'Informational' = 'All';
   private issueIgnoredFoldersExpanded = false;
   private readonly issueSelectedPaths = new Set<string>();
+  private issueWorkbenchReport: ActionReport | null = null;
+  private syncActionReport: ActionReport | null = null;
 
   constructor(leaf: WorkspaceLeaf, private readonly context: ViewContext) {
     super(leaf);
@@ -807,6 +866,109 @@ export class QuartzoView extends ItemView {
       void this.context.app.workspace.openLinkText(path, '', true);
     };
 
+    const openBatchCreate = (): void => {
+      const { ObjectBatchCreateModal } = require('../organization/batch-create-modal');
+      new ObjectBatchCreateModal(this.context, {
+        onApplied: async (report: BatchOperationReport) => {
+          this.issueWorkbenchReport = batchOperationReportToActionReport('organization.batch_create', 'Batch create complete', report);
+          this.issueSelectedPaths.clear();
+          await this.render();
+        },
+      }).open();
+    };
+
+    const openBatchMerge = (): void => {
+      const { ObjectBatchMergeModal } = require('../organization/batch-merge-modal');
+      new ObjectBatchMergeModal(this.context, {
+        selectedPaths: Array.from(this.issueSelectedPaths),
+        ignoredFolderPaths,
+        onApplied: async (report: BatchOperationReport) => {
+          this.issueWorkbenchReport = batchOperationReportToActionReport('organization.batch_merge', 'Batch merge complete', report);
+          this.issueSelectedPaths.clear();
+          await this.render();
+        },
+      }).open();
+    };
+
+    const selectedPathsForPlan = Array.from(this.issueSelectedPaths);
+    const workbenchPlan = planBatchAnalysis({
+      issues,
+      index,
+      selectedPaths: selectedPathsForPlan,
+      ignoredFolderPaths,
+    });
+
+    const workbench = wrapper.createEl('section', { cls: 'quartzo-preview-box quartzo-issues-workbench' });
+    const workbenchHeader = workbench.createEl('div', { cls: 'qz-section-header' });
+    workbenchHeader.createEl('span', { cls: 'qz-section-header-icon', text: '▦' });
+    workbenchHeader.createEl('span', { cls: 'qz-section-header-title', text: 'Organization Workbench' });
+    workbench.createEl('p', {
+      text: `${workbenchPlan.selectedPathCount > 0 ? `${workbenchPlan.selectedPathCount} selected paths` : 'All current issues'} · ${workbenchPlan.issueCount} issues · ${workbenchPlan.actionableIssueCount} actionable · ${workbenchPlan.duplicateGroups.length} duplicate groups`,
+      cls: 'qz-text-muted',
+    });
+    if (workbenchPlan.categories.length > 0) {
+      const categoryLine = workbench.createEl('p', { cls: 'qz-text-muted' });
+      categoryLine.textContent = workbenchPlan.categories
+        .map(item => `${labelForType(item.category)} ${item.count}`)
+        .join(' · ');
+    }
+    if (workbenchPlan.warnings.length > 0) {
+      const warningList = workbench.createEl('ul');
+      for (const warning of workbenchPlan.warnings) warningList.createEl('li', { text: warning });
+    }
+
+    const workbenchActions = workbench.createEl('div', { cls: 'quartzo-inline-row' });
+    const analyze = workbenchActions.createEl('button', { text: 'Analyze selection', cls: 'qz-btn qz-btn-secondary qz-btn-sm' });
+    analyze.addEventListener('click', () => {
+      const report: ActionReport = {
+        kind: 'organization.batch_analysis',
+        title: 'Workbench analysis ready',
+        status: workbenchPlan.warnings.length > 0 ? 'warning' : 'info',
+        summary: `${workbenchPlan.issueCount} issue(s), ${workbenchPlan.actionableIssueCount} actionable, ${workbenchPlan.duplicateGroups.length} duplicate group(s). Review blockers before applying changes.`,
+        attempted: workbenchPlan.issueCount,
+        applied: 0,
+        skipped: workbenchPlan.issueCount,
+        failed: 0,
+        messages: [
+          `${workbenchPlan.issueCount} issue(s), ${workbenchPlan.actionableIssueCount} actionable, ${workbenchPlan.duplicateGroups.length} duplicate group(s).`,
+          ...workbenchPlan.categories.map(item => `${labelForType(item.category)}: ${item.count}`),
+          ...workbenchPlan.warnings,
+        ],
+      };
+      this.issueWorkbenchReport = { ...report, copyText: actionReportCopyText(report) };
+      void this.render();
+    });
+
+    const mergeGroups = workbenchActions.createEl('button', {
+      text: `Merge duplicate groups (${workbenchPlan.duplicateGroups.length})`,
+      cls: 'qz-btn qz-btn-secondary qz-btn-sm',
+    });
+    mergeGroups.disabled = !workbenchPlan.availableActions.mergeDuplicates;
+    mergeGroups.addEventListener('click', openBatchMerge);
+
+    const batchCreate = workbenchActions.createEl('button', {
+      text: 'Batch create…',
+      cls: 'qz-btn qz-btn-primary qz-btn-sm',
+    });
+    batchCreate.addEventListener('click', openBatchCreate);
+
+    const workbenchDelete = workbenchActions.createEl('button', {
+      text: `Delete selected (${this.issueSelectedPaths.size})…`,
+      cls: 'qz-btn qz-btn-sm mod-warning',
+    });
+    workbenchDelete.disabled = this.issueSelectedPaths.size === 0;
+    workbenchDelete.addEventListener('click', () => openBulkDelete(Array.from(this.issueSelectedPaths)));
+
+    if (this.issueWorkbenchReport) {
+      renderActionReport(workbench, this.issueWorkbenchReport, {
+        maxMessages: 12,
+        onDismiss: () => {
+          this.issueWorkbenchReport = null;
+          void this.render();
+        },
+      });
+    }
+
     const toolbar = wrapper.createEl('div', { cls: 'quartzo-issues-toolbar' });
 
     const catSelect = toolbar.createEl('select', { cls: 'qz-input' });
@@ -960,7 +1122,7 @@ export class QuartzoView extends ItemView {
       selectMatching.disabled = matchingSelectablePaths.length === 0;
       selectMatching.addEventListener('click', () => {
         for (const path of matchingSelectablePaths) this.issueSelectedPaths.add(path);
-        renderFilteredIssues();
+        void this.render();
       });
 
       const clearSelection = selectionBar.createEl('button', {
@@ -970,7 +1132,7 @@ export class QuartzoView extends ItemView {
       clearSelection.disabled = this.issueSelectedPaths.size === 0;
       clearSelection.addEventListener('click', () => {
         this.issueSelectedPaths.clear();
-        renderFilteredIssues();
+        void this.render();
       });
 
       const selectedPaths = Array.from(this.issueSelectedPaths).sort((left, right) => left.localeCompare(right));
@@ -1067,7 +1229,7 @@ export class QuartzoView extends ItemView {
           checkbox.addEventListener('change', () => {
             if (checkbox.checked) this.issueSelectedPaths.add(issue.subjectPath);
             else this.issueSelectedPaths.delete(issue.subjectPath);
-            renderFilteredIssues();
+            void this.render();
           });
         } else {
           selectTd.createEl('span', { text: '—', cls: 'qz-text-muted' });
@@ -1322,16 +1484,44 @@ export class QuartzoView extends ItemView {
     const googleEvents = await this.context.plugin.listGoogleCalendarEvents(selectedDate, 1);
     if (!this.isCurrentRender(container, generation)) return;
     const now = new Date();
+    const todayDate = isoDate(now);
     const schedule = this.buildSchedule(selectedDate, googleEvents);
     const sharedSettings = await this.sharedSettingsRepository.load();
     if (!this.isCurrentRender(container, generation)) return;
+    const index = this.getIndex();
+    const overdue = selectedDate === todayDate ? this.buildOverdue(now) : [];
+    const allMarkdownPaths = new Set(
+      this.context.app.vault.getFiles()
+        .filter(file => file.name.endsWith('.md'))
+        .map(file => file.path),
+    );
+    const ignoredFolderPaths = normalizeIssueIgnoredFolders(this.context.plugin.settings.issueIgnoredFolders);
+    const issues = index
+      ? projectOrganizationIssues({
+          index,
+          settings: sharedSettings,
+          allMarkdownPaths,
+          ignoredFolderPaths,
+        })
+      : [];
+    const syncSnapshot = this.context.plugin.driveSyncCoordinator
+      ? await this.context.plugin.driveSyncCoordinator.getSyncStatusSnapshot()
+      : null;
+    if (!this.isCurrentRender(container, generation)) return;
+    const confidence = projectHomeConfidence({
+      selectedDate,
+      todayDate,
+      sync: syncSnapshot,
+      issues,
+      overdue,
+    });
 
     renderHomeView(container, {
       app: this.context.app,
       selectedDate,
       schedule,
-      overdue: selectedDate === isoDate(now) ? this.buildOverdue(now) : [],
-      index: this.getIndex(),
+      overdue,
+      index,
       googleEvents,
       sharedSettings,
       now,
@@ -1349,7 +1539,23 @@ export class QuartzoView extends ItemView {
       startManualExecution: item =>
         this.context.plugin.startManualExecution(item),
       onQuickAdd: type => new QuickAddModal(this.context, type).open(),
+      confidence,
+      onConfidenceAction: action => { void this.handleHomeConfidenceAction(action); },
     });
+  }
+
+  private async handleHomeConfidenceAction(action: HomeConfidenceAction): Promise<void> {
+    if (action === 'open_conflicts') {
+      await this.handleAction('conflicts');
+      return;
+    }
+    if (action === 'open_sync') {
+      await this.handleAction('sync');
+      return;
+    }
+    if (action === 'open_issues') {
+      await this.setSection('issues');
+    }
   }
 
   private async renderPlanner(container: HTMLElement, generation: number): Promise<void> {
@@ -2049,6 +2255,16 @@ export class QuartzoView extends ItemView {
       summary.appendChild(copyDiagnostics);
     }
 
+    if (this.syncActionReport && !conflictsOnly) {
+      renderActionReport(summary, this.syncActionReport, {
+        maxMessages: 10,
+        onDismiss: () => {
+          this.syncActionReport = null;
+          void this.render();
+        },
+      });
+    }
+
     let syncProgressLine: HTMLParagraphElement | null = null;
     const ensureSyncProgressLine = (): HTMLParagraphElement => {
       if (!syncProgressLine) {
@@ -2246,6 +2462,7 @@ export class QuartzoView extends ItemView {
             ? await coordinator.triggerFullReconciliation(onProgress)
             : await coordinator.triggerManualSync(onProgress);
           if (!this.isCurrentRender(container, generation)) return;
+          this.syncActionReport = syncResultToActionReport(operation, result);
           if (result.errors.length > 0) {
             new Notice(result.errors[result.errors.length - 1]);
           } else if (operation === 'full') {
@@ -2253,6 +2470,21 @@ export class QuartzoView extends ItemView {
           } else {
             new Notice(`Sync complete: ${result.synced} synced, ${result.conflicts} conflicts`);
           }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const report: ActionReport = {
+            kind: operation === 'full' ? 'sync.full_reconciliation' : 'sync.manual',
+            title: operation === 'full' ? 'Full reconciliation failed' : 'Sync failed',
+            status: 'error',
+            summary: 'The sync coordinator stopped before returning a result. Copy diagnostics, then retry after resolving the blocker.',
+            attempted: 1,
+            applied: 0,
+            skipped: 0,
+            failed: 1,
+            messages: [message],
+          };
+          this.syncActionReport = { ...report, copyText: actionReportCopyText(report) };
+          new Notice(message);
         } finally {
           this.stopSyncProgressTicker();
           if (this.isCurrentRender(container, generation)) {

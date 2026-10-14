@@ -1,6 +1,7 @@
 import { TFile, Vault, normalizePath } from 'obsidian';
 import type { OrganizePlan, OrganizeActionPlan } from '../core/object-organization/organize';
 import type { MergePlan } from '../core/object-organization/merge';
+import type { BatchCreatePlan, BatchOperationReport } from '../core/object-organization/batch-workbench';
 import type { ActivityEvent } from '../core/activity-history';
 import { ObjectParser } from '../core/objects';
 import {
@@ -241,6 +242,46 @@ export class ObjectOrganizationRepository {
     }
   }
 
+  async applyBatchCreate(plan: BatchCreatePlan): Promise<BatchOperationReport> {
+    if (plan.blockers.length > 0) {
+      throw new Error('Cannot apply batch create with unresolved blockers.');
+    }
+
+    let applied = 0;
+    const messages: string[] = [];
+
+    for (const action of plan.actions) {
+      try {
+        await this.ensureFolder(action.path);
+        if (this.vault.getAbstractFileByPath(action.path)) {
+          throw new Error(`Target already exists: ${action.path}`);
+        }
+        await this.vault.create(action.path, action.content);
+        await this.appendCreatedActivity(action.content, action.path);
+        applied++;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        messages.push(`${action.path}: ${message}`);
+        return {
+          attempted: plan.actions.length,
+          applied,
+          skipped: plan.actions.length - applied - 1,
+          failed: 1,
+          failedPath: action.path,
+          messages,
+        };
+      }
+    }
+
+    return {
+      attempted: plan.actions.length,
+      applied,
+      skipped: 0,
+      failed: 0,
+      messages,
+    };
+  }
+
   private async appendMovedActivity(action: OrganizeActionPlan, operationId: string): Promise<void> {
     const snapshot = objectSnapshot(action.newMarkdown, action.destinationPath);
     const activity: ActivityEvent = {
@@ -280,6 +321,22 @@ export class ObjectOrganizationRepository {
       originKind: 'companion',
       titleSnapshot: snapshot.title,
       ...(input.operationId ? { operationId: input.operationId } : {}),
+    };
+    await this.activityWriter.append(activity);
+  }
+
+  private async appendCreatedActivity(markdown: string, path: string): Promise<void> {
+    const snapshot = objectSnapshot(markdown, path);
+    const activity: ActivityEvent = {
+      eventId: `object_created:${snapshot.id}`,
+      occurredAt: new Date().toISOString(),
+      eventType: 'object_created',
+      sourceId: snapshot.id,
+      sourceType: snapshot.type,
+      sourcePath: normalizePath(path),
+      originClient: 'obsidian_companion',
+      originKind: 'companion',
+      titleSnapshot: snapshot.title,
     };
     await this.activityWriter.append(activity);
   }

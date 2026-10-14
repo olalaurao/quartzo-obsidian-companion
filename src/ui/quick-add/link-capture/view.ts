@@ -24,6 +24,7 @@ import type { SharedSettingsRepository } from '../../../vault/shared-settings';
 import type { IndexedObject, VaultIndex } from '../../../vault/index/types';
 import { queryVaultObjects } from '../../../core/object-query';
 import type { ViewContext } from '../../types';
+import { actionReportCopyText, renderActionReport, type ActionReport } from '../../action-report';
 
 export interface LinkCaptureRendererOptions {
   settingsRepository: SharedSettingsRepository;
@@ -49,6 +50,7 @@ export function renderLinkCaptureQuickAdd(
   let recipeDraft: RecipeImportDraft | null = null;
   let socialDraft: SocialMetadataDraft | null = null;
   let resourceMetadata: Awaited<ReturnType<ResourceMetadataService['fetch']>> | null = null;
+  let actionReport: ActionReport | null = null;
   const dirty = new Set<string>();
 
   const render = (): void => {
@@ -62,6 +64,18 @@ export function renderLinkCaptureQuickAdd(
     back.textContent = 'Quick Add';
     back.addEventListener('click', options.back);
     container.appendChild(back);
+
+    const actionReportHost = container.createEl('div');
+    const setActionReport = (report: ActionReport | null): void => {
+      actionReport = report;
+      actionReportHost.empty();
+      if (!report) return;
+      renderActionReport(actionReportHost, report, {
+        maxMessages: 6,
+        onDismiss: () => setActionReport(null),
+      });
+    };
+    setActionReport(actionReport);
 
     const urlInput = document.createElement('input');
     urlInput.type = 'url';
@@ -119,10 +133,23 @@ export function renderLinkCaptureQuickAdd(
             ? `Detected as ${labelForDestination(suggested.destination)}`
             : 'Could not determine the type confidently. You can still save this link manually.';
       } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
         suggested = suggestLinkFromUrl(url);
         selected ??= suggested;
         status.textContent = 'Automatic metadata was not available. You can still save this link manually.';
-        new Notice(error instanceof Error ? error.message : String(error));
+        const report: ActionReport = {
+          kind: 'quick_add.link_metadata',
+          title: 'Metadata unavailable',
+          status: 'warning',
+          summary: 'Automatic metadata failed, but you can still save the link manually.',
+          attempted: 1,
+          applied: 0,
+          skipped: 1,
+          failed: 0,
+          messages: [message],
+        };
+        actionReport = { ...report, copyText: actionReportCopyText(report) };
+        new Notice(message);
       } finally {
         analyze.disabled = false;
         analyze.textContent = 'Analyze';
@@ -213,16 +240,34 @@ export function renderLinkCaptureQuickAdd(
     save.className = 'mod-cta';
     save.textContent = `Save as ${labelForDestination(selected.destination)}`;
     save.addEventListener('click', async () => {
-      await saveSelected({
-        context,
-        options,
-        selected: selected!,
-        common: { ...common, title: titleInput.value, description: descriptionInput.value, imageUrl: imageInput.value },
-        recipeDraft,
-        socialDraft,
-        resourceMetadata,
-        resourceMediaType: resourceTypeInput?.value ?? selected?.resourceMediaType ?? 'General',
-      });
+      try {
+        await saveSelected({
+          context,
+          options,
+          selected: selected!,
+          common: { ...common, title: titleInput.value, description: descriptionInput.value, imageUrl: imageInput.value },
+          recipeDraft,
+          socialDraft,
+          resourceMetadata,
+          resourceMediaType: resourceTypeInput?.value ?? selected?.resourceMediaType ?? 'General',
+          setActionReport,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const report: ActionReport = {
+          kind: 'quick_add.link_blocked',
+          title: 'Save link blocked',
+          status: 'error',
+          summary: 'The link was not saved. Review the blocker, adjust the fields, then try again.',
+          attempted: 1,
+          applied: 0,
+          skipped: 0,
+          failed: 1,
+          messages: [message],
+        };
+        setActionReport({ ...report, copyText: actionReportCopyText(report) });
+        new Notice(`Save link blocked: ${message}`);
+      }
     });
     result.appendChild(save);
   };
@@ -239,12 +284,13 @@ async function saveSelected(args: {
   socialDraft: SocialMetadataDraft | null;
   resourceMetadata: Awaited<ReturnType<ResourceMetadataService['fetch']>> | null;
   resourceMediaType: string;
+  setActionReport(report: ActionReport | null): void;
 }): Promise<void> {
   const { context, options, selected, common } = args;
   const title = (common.title ?? fallbackTitle(common.sourceUrl, selected.destination)).trim();
   const duplicate = duplicateIdsFor(args);
   if (duplicate.length > 0) {
-    renderDuplicateNotice(context, options, duplicate, selected.destination);
+    renderDuplicateNotice(options, duplicate, selected.destination, args.setActionReport);
     return;
   }
   const settings = await options.settingsRepository.load();
@@ -285,8 +331,24 @@ async function saveSelected(args: {
   }, id);
   const created = await options.createDocument(type, documentData);
   await options.onCreated?.(created);
+  const report: ActionReport = {
+    kind: 'quick_add.link_create',
+    title: `${labelForDestination(selected.destination)} created`,
+    status: 'success',
+    summary: `Created ${created.path}. Open it now or keep saving links.`,
+    attempted: 1,
+    applied: 1,
+    skipped: 0,
+    failed: 0,
+    messages: [`id: ${created.id}`, `path: ${created.path}`],
+    nextAction: {
+      label: 'Open created',
+      variant: 'primary',
+      onClick: () => { void openCreatedPath(context, options, created.path); },
+    },
+  };
+  args.setActionReport({ ...report, copyText: actionReportCopyText(report) });
   new Notice(`${labelForDestination(selected.destination)} created`);
-  options.close();
 }
 
 function duplicateIdsFor(args: {
@@ -337,14 +399,49 @@ function duplicateIdsFor(args: {
 }
 
 function renderDuplicateNotice(
-  context: ViewContext,
   options: LinkCaptureRendererOptions,
   duplicateIds: string[],
   destination: LinkCaptureDestination,
+  setActionReport: (report: ActionReport) => void,
 ): void {
-  const first = duplicateIds.map(id => options.getIndex()?.objects.get(id)).find((item): item is IndexedObject => item != null);
+  const duplicates = duplicateIds
+    .map(id => options.getIndex()?.objects.get(id))
+    .filter((item): item is IndexedObject => item != null);
+  const first = duplicates[0];
+  const report: ActionReport = {
+    kind: 'quick_add.link_duplicate',
+    title: 'Already saved',
+    status: 'warning',
+    summary: destination === 'resource'
+      ? 'This Resource appears to already exist. Open the existing object or change the fields if this is distinct.'
+      : `This ${labelForDestination(destination)} appears to already exist.`,
+    attempted: 1,
+    applied: 0,
+    skipped: 1,
+    failed: 0,
+    messages: duplicates.map(object => `${String(object.frontmatter.title ?? object.id)} · ${object.path}`),
+    nextAction: first
+      ? {
+          label: 'Open existing',
+          variant: 'primary',
+          onClick: () => { void options.openIndexedObject(first); },
+        }
+      : undefined,
+  };
+  setActionReport({ ...report, copyText: actionReportCopyText(report) });
   new Notice(destination === 'resource' ? 'Already saved. Open existing or create manually from Resource if needed.' : 'Already saved.');
-  if (first) void options.openIndexedObject(first);
+}
+
+async function openCreatedPath(
+  context: ViewContext,
+  options: LinkCaptureRendererOptions,
+  path: string,
+): Promise<void> {
+  const file = context.app.vault.getAbstractFileByPath(path);
+  if (file instanceof TFile) {
+    await context.app.workspace.getLeaf(false).openFile(file);
+    options.close();
+  }
 }
 
 function bodyFor(args: { selected: LinkCaptureSuggestion; common: LinkCaptureMetadata; recipeDraft: RecipeImportDraft | null }): string {

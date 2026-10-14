@@ -37,6 +37,7 @@ export class ObjectOrganizationModal extends Modal {
   private propertyOperations: PropertyOperation[] = [];
   private currentPlan: OrganizePlan | null = null;
   private isApplying = false;
+  private preflightProgress: { phase: 'checking_files'; completed: number; total: number } | null = null;
 
   // Preview state. These IDs stay stable for the lifetime of this modal so an
   // unidentified Markdown file never receives a new identity on every rerender.
@@ -71,6 +72,7 @@ export class ObjectOrganizationModal extends Modal {
       if (object) this.targetType = object.type;
     }
 
+    this.render();
     await this.refreshPlan(true);
     this.render();
   }
@@ -80,16 +82,29 @@ export class ObjectOrganizationModal extends Modal {
   }
 
   private async loadExactMarkdown(paths: readonly string[], forceReload: boolean): Promise<void> {
-    for (const rawPath of paths) {
+    this.preflightProgress = { phase: 'checking_files', completed: 0, total: paths.length };
+    this.render();
+    for (let position = 0; position < paths.length; position += 1) {
+      const rawPath = paths[position]!;
       const path = normalizePath(rawPath);
-      if (!forceReload && this.sourceMarkdownByPath.has(path)) continue;
-      const file = this.context.app.vault.getAbstractFileByPath(path);
-      if (!(file instanceof TFile)) {
-        this.sourceMarkdownByPath.delete(path);
-        continue;
+      try {
+        if (!forceReload && this.sourceMarkdownByPath.has(path)) continue;
+        const file = this.context.app.vault.getAbstractFileByPath(path);
+        if (!(file instanceof TFile)) {
+          this.sourceMarkdownByPath.delete(path);
+          continue;
+        }
+        this.sourceMarkdownByPath.set(path, await this.context.app.vault.read(file));
+      } finally {
+        const completed = position + 1;
+        if (completed === paths.length || completed % 25 === 0) {
+          this.preflightProgress = { phase: 'checking_files', completed, total: paths.length };
+          this.render();
+          await new Promise<void>(resolve => window.setTimeout(resolve, 0));
+        }
       }
-      this.sourceMarkdownByPath.set(path, await this.context.app.vault.read(file));
     }
+    this.preflightProgress = null;
   }
 
   private async refreshPlan(forceReload = false): Promise<void> {
@@ -229,7 +244,19 @@ export class ObjectOrganizationModal extends Modal {
     contentEl.empty();
 
     if (!this.currentPlan) {
-      contentEl.createEl('p', { text: 'Loading...' });
+      const progress = this.preflightProgress;
+      if (progress) {
+        const status = contentEl.createEl('div', { cls: 'qz-empty-state' });
+        status.setAttribute('role', 'status');
+        status.setAttribute('aria-live', 'polite');
+        status.createEl('p', { text: `Checking files ${progress.completed}/${progress.total}…` });
+        const progressBar = status.createEl('progress');
+        progressBar.max = Math.max(1, progress.total);
+        progressBar.value = progress.completed;
+        progressBar.setAttribute('aria-label', 'Organization preflight');
+      } else {
+        contentEl.createEl('p', { text: 'Loading...' });
+      }
       return;
     }
 

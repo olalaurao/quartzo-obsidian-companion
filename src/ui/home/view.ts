@@ -11,7 +11,13 @@ import type { GoogleCalendarProjection } from '../../integrations/google/calenda
 import type { VaultIndex } from '../../vault/index/types';
 import { renderDayDial } from '../day-dial/view';
 import { renderScheduleList, type ScheduleListOptions } from '../daily/schedule-list';
-import { projectHomeSchedule, type HomeProgress } from './home-projection';
+import {
+  projectHomeSchedule,
+  type HomeConfidenceAction,
+  type HomeConfidenceSignal,
+  type HomeConfidenceSnapshot,
+  type HomeProgress,
+} from './home-projection';
 import type { ManualExecutionRunCapability } from '../../core/manual-execution';
 import { HOME_QUICK_ACTIONS, type HomeQuickAddType } from './quick-actions';
 
@@ -38,6 +44,8 @@ export interface HomeViewOptions {
   iconFactory?: (name: string) => SVGSVGElement | null;
   onOpenOverdue?(projection: OverdueObjectProjection): void;
   onQuickAdd(type: HomeQuickAddType): void;
+  confidence?: HomeConfidenceSnapshot;
+  onConfidenceAction?(action: HomeConfidenceAction): void;
 }
 
 function sectionHeading(container: HTMLElement, text: string): HTMLElement {
@@ -81,6 +89,75 @@ function renderProgressCard(container: HTMLElement, label: string, progress: Hom
   container.appendChild(card);
 }
 
+function labelForConfidenceSignal(signal: HomeConfidenceSignal): string {
+  if (signal.action === 'open_conflicts') return 'Review conflicts';
+  if (signal.action === 'open_sync') return 'Open Sync';
+  if (signal.action === 'open_issues') return 'Open Issues';
+  return 'View Overdue';
+}
+
+function renderHomeConfidencePanel(
+  container: HTMLElement,
+  confidence: HomeConfidenceSnapshot,
+  onAction: (action: HomeConfidenceAction) => void,
+): void {
+  const panel = document.createElement('section');
+  panel.className = `quartzo-home-confidence is-${confidence.status}`;
+  panel.setAttribute('role', confidence.status === 'blocked' ? 'alert' : 'status');
+  panel.setAttribute('aria-live', 'polite');
+
+  const header = document.createElement('div');
+  header.className = 'quartzo-home-confidence-header';
+  const badge = document.createElement('span');
+  badge.className = `qz-badge ${
+    confidence.status === 'blocked'
+      ? 'qz-badge-error'
+      : confidence.status === 'attention'
+        ? 'qz-badge-warning'
+        : 'qz-badge-success'
+  }`;
+  badge.textContent = confidence.status === 'blocked'
+    ? 'Blocked'
+    : confidence.status === 'attention'
+      ? 'Needs attention'
+      : 'Clear';
+  header.appendChild(badge);
+  const title = document.createElement('strong');
+  title.textContent = confidence.title;
+  header.appendChild(title);
+  panel.appendChild(header);
+
+  const summary = document.createElement('p');
+  summary.textContent = confidence.summary;
+  panel.appendChild(summary);
+
+  if (confidence.signals.length > 0) {
+    const list = document.createElement('div');
+    list.className = 'quartzo-home-confidence-signals';
+    for (const signal of confidence.signals) {
+      const row = document.createElement('div');
+      row.className = `quartzo-home-confidence-signal is-${signal.status}`;
+      const text = document.createElement('div');
+      const signalTitle = document.createElement('strong');
+      signalTitle.textContent = signal.title;
+      text.appendChild(signalTitle);
+      const signalSummary = document.createElement('small');
+      signalSummary.textContent = signal.summary;
+      text.appendChild(signalSummary);
+      row.appendChild(text);
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'qz-btn qz-btn-secondary qz-btn-sm';
+      button.textContent = labelForConfidenceSignal(signal);
+      button.addEventListener('click', () => onAction(signal.action));
+      row.appendChild(button);
+      list.appendChild(row);
+    }
+    panel.appendChild(list);
+  }
+  container.appendChild(panel);
+}
+
 function formatHomeDate(value: string): string {
   const date = parseLocalIsoDate(value);
   return new Intl.DateTimeFormat(undefined, {
@@ -116,6 +193,18 @@ export function renderHomeView(container: HTMLElement, options: HomeViewOptions)
     onOpenItem: options.onOpenItem,
   };
 
+  if (options.confidence) {
+    renderHomeConfidencePanel(container, options.confidence, action => {
+      if (action === 'open_overdue') {
+        const target = container.querySelector<HTMLElement>('.quartzo-home-overdue-section');
+        target?.scrollIntoView({ block: 'start' });
+        target?.focus();
+        return;
+      }
+      options.onConfidenceAction?.(action);
+    });
+  }
+
   renderDayDial(container, {
     selectedDate: options.selectedDate,
     schedule: options.schedule,
@@ -150,7 +239,8 @@ export function renderHomeView(container: HTMLElement, options: HomeViewOptions)
   container.appendChild(progress);
 
   const overdue = document.createElement('section');
-  overdue.className = 'quartzo-home-section';
+  overdue.className = 'quartzo-home-section quartzo-home-overdue-section';
+  overdue.tabIndex = -1;
   sectionHeading(overdue, 'Overdue');
   if (projection.overdue.length === 0) {
     const empty = document.createElement('p');

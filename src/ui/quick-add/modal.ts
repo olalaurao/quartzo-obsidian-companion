@@ -23,6 +23,7 @@ import type { IndexedObject, VaultIndex } from '../../vault/index/types';
 import { renderTrackerRecordQuickAdd, type TrackerRecordFormController } from './record-form';
 import { renderLinkCaptureQuickAdd } from './link-capture/view';
 import type { ViewContext } from '../types';
+import { actionReportCopyText, renderActionReport, type ActionReport } from '../action-report';
 
 function isoDate(date: Date): string {
   return localIsoDate(date);
@@ -45,6 +46,7 @@ export class QuickAddModal extends Modal {
   private settingsRepository: SharedSettingsRepository;
   private objectCreationRepository: ObjectCreationRepository;
   private readonly resourceMetadataService = new ResourceMetadataService();
+  private actionReport: ActionReport | null = null;
 
   constructor(
     private readonly context: ViewContext,
@@ -71,6 +73,18 @@ export class QuickAddModal extends Modal {
     const title = document.createElement('h2');
     title.textContent = 'Quick Add';
     contentEl.appendChild(title);
+
+    const reportHost = contentEl.createEl('div');
+    const showActionReport = (report: ActionReport | null): void => {
+      this.actionReport = report;
+      reportHost.empty();
+      if (!report) return;
+      renderActionReport(reportHost, report, {
+        maxMessages: 6,
+        onDismiss: () => showActionReport(null),
+      });
+    };
+    showActionReport(this.actionReport);
 
     const saveLink = document.createElement('button');
     saveLink.type = 'button';
@@ -100,6 +114,7 @@ export class QuickAddModal extends Modal {
     }
     typeSelect.addEventListener('change', () => {
       this.type = typeSelect.value as QuickAddType;
+      this.actionReport = null;
       this.render();
     });
     contentEl.appendChild(typeSelect);
@@ -309,7 +324,7 @@ export class QuickAddModal extends Modal {
           };
           const duplicateIds = findResourceDuplicates(candidate, this.resourceIdentities()).map(item => item.id);
           if (duplicateIds.length > 0) {
-            this.renderResourceDuplicateWarning(contentEl, duplicateIds, () => { void performCreate(true); });
+            this.renderResourceDuplicateWarning(reportHost, duplicateIds, () => { void performCreate(true); });
             return;
           }
         }
@@ -326,10 +341,39 @@ export class QuickAddModal extends Modal {
         }, id);
         const created = await this.objectCreationRepository.create(this.type, documentData);
         await this.options.onCreated?.(created);
+        const report: ActionReport = {
+          kind: 'quick_add.create',
+          title: `${labelForType(this.type)} created`,
+          status: 'success',
+          summary: `Created ${created.path}. Open it now or keep adding items.`,
+          attempted: 1,
+          applied: 1,
+          skipped: 0,
+          failed: 0,
+          messages: [`id: ${created.id}`, `path: ${created.path}`],
+          nextAction: {
+            label: 'Open created',
+            variant: 'primary',
+            onClick: () => { void this.openCreatedPath(created.path); },
+          },
+        };
+        showActionReport({ ...report, copyText: actionReportCopyText(report) });
         new Notice(`${labelForType(this.type)} created`);
-        this.close();
       } catch (error) {
-        new Notice(`Quick Add blocked: ${error instanceof Error ? error.message : String(error)}`);
+        const message = error instanceof Error ? error.message : String(error);
+        const report: ActionReport = {
+          kind: 'quick_add.blocked',
+          title: 'Quick Add blocked',
+          status: 'error',
+          summary: 'The object was not created. Review the blocker, adjust the fields, then try again.',
+          attempted: 1,
+          applied: 0,
+          skipped: 0,
+          failed: 1,
+          messages: [message],
+        };
+        showActionReport({ ...report, copyText: actionReportCopyText(report) });
+        new Notice(`Quick Add blocked: ${message}`);
       }
     };
     create.addEventListener('click', () => { void performCreate(false); });
@@ -420,36 +464,46 @@ export class QuickAddModal extends Modal {
     duplicateIds: string[],
     onCreateAnyway: () => void,
   ): void {
-    container.querySelector('.quartzo-resource-duplicate-warning')?.remove();
-    const warning = document.createElement('section');
-    warning.className = 'quartzo-resource-duplicate-warning';
+    container.empty();
     const duplicates = duplicateIds
       .map(id => this.getIndex()?.objects.get(id))
       .filter((object): object is IndexedObject => object != null);
+    const report: ActionReport = {
+      kind: 'quick_add.duplicate',
+      title: 'Possible duplicate',
+      status: 'warning',
+      summary: duplicates.length === 1
+        ? `${String(duplicates[0].frontmatter.title ?? duplicates[0].id)} may already exist.`
+        : `${duplicates.length} possible duplicates found. Open an existing object or create anyway if this is distinct.`,
+      attempted: 1,
+      applied: 0,
+      skipped: 1,
+      failed: 0,
+      messages: duplicates.map(object => `${String(object.frontmatter.title ?? object.id)} · ${object.path}`),
+      nextAction: duplicates[0]
+        ? {
+            label: 'Open existing',
+            variant: 'primary',
+            onClick: () => { void this.openIndexedObject(duplicates[0]); },
+          }
+        : undefined,
+    };
+    this.actionReport = { ...report, copyText: actionReportCopyText(report) };
+    renderActionReport(container, this.actionReport, {
+      maxMessages: 6,
+      actions: [
+        { label: 'Create anyway', onClick: onCreateAnyway, variant: 'secondary' },
+        { label: 'Cancel', onClick: () => { this.actionReport = null; container.empty(); }, variant: 'ghost' },
+      ],
+    });
+  }
 
-    const message = document.createElement('p');
-    message.textContent = duplicates.length === 1
-      ? `Possible duplicate: ${String(duplicates[0].frontmatter.title ?? duplicates[0].id)}`
-      : `Possible duplicates found (${duplicates.length}).`;
-    warning.appendChild(message);
-
-    if (duplicates[0]) {
-      const openExisting = document.createElement('button');
-      openExisting.textContent = 'Open existing';
-      openExisting.addEventListener('click', () => { void this.openIndexedObject(duplicates[0]); });
-      warning.appendChild(openExisting);
+  private async openCreatedPath(path: string): Promise<void> {
+    const file = this.context.app.vault.getAbstractFileByPath(path);
+    if (file instanceof TFile) {
+      await this.context.app.workspace.getLeaf(false).openFile(file);
+      this.close();
     }
-
-    const createAnyway = document.createElement('button');
-    createAnyway.textContent = 'Create anyway';
-    createAnyway.addEventListener('click', onCreateAnyway);
-    warning.appendChild(createAnyway);
-
-    const cancel = document.createElement('button');
-    cancel.textContent = 'Cancel';
-    cancel.addEventListener('click', () => warning.remove());
-    warning.appendChild(cancel);
-    container.appendChild(warning);
   }
 
   private async openIndexedObject(object: IndexedObject): Promise<void> {

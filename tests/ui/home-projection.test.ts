@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { projectHomeSchedule } from '../../src/ui/home/home-projection';
+import { projectHomeConfidence, projectHomeSchedule } from '../../src/ui/home/home-projection';
 import type { NormalizedItem, NormalizedSchedule } from '../../src/core/daily_schedule/types';
+import type { OrganizationIssue } from '../../src/core/object-organization/issues-projection';
 
 function item(value: Pick<NormalizedItem, 'id' | 'sourceId' | 'date' | 'isTimed'> & Partial<NormalizedItem>): NormalizedItem {
   return {
@@ -109,5 +110,144 @@ describe('projectHomeSchedule', () => {
     const result = projectHomeSchedule(schedule, '2026-09-17', new Date(2026, 8, 17, 10, 30), overdue);
     expect(result.today.map(entry => entry.id)).not.toContain('deadline');
     expect(result.overdue.map(entry => entry.object.id)).toEqual(['deadline']);
+  });
+});
+
+function issue(value: Partial<OrganizationIssue> = {}): OrganizationIssue {
+  return {
+    id: 'issue-1',
+    category: 'unidentified',
+    subjectPath: 'inbox/file.md',
+    title: 'Unidentified File',
+    why: 'Missing identification.',
+    actionable: true,
+    ...value,
+  };
+}
+
+describe('projectHomeConfidence', () => {
+  it('treats sync errors and conflicts as blocking confidence signals', () => {
+    const error = projectHomeConfidence({
+      selectedDate: '2026-09-17',
+      todayDate: '2026-09-17',
+      sync: {
+        status: 'error',
+        pendingLocalChanges: 0,
+        conflictCount: 0,
+        lastError: 'Drive request timed out.',
+      },
+      issues: [],
+      overdue: [],
+    });
+    expect(error.status).toBe('blocked');
+    expect(error.signals[0]).toMatchObject({ kind: 'sync', action: 'open_sync' });
+
+    const conflict = projectHomeConfidence({
+      selectedDate: '2026-09-17',
+      todayDate: '2026-09-17',
+      sync: {
+        status: 'conflict',
+        pendingLocalChanges: 0,
+        conflictCount: 2,
+        lastError: null,
+      },
+      issues: [],
+      overdue: [],
+    });
+    expect(conflict.status).toBe('blocked');
+    expect(conflict.signals[0]).toMatchObject({ kind: 'sync', action: 'open_conflicts', count: 2 });
+  });
+
+  it('turns pending sync changes into an attention signal', () => {
+    const result = projectHomeConfidence({
+      selectedDate: '2026-09-17',
+      todayDate: '2026-09-17',
+      sync: {
+        status: 'local_changes',
+        pendingLocalChanges: 3,
+        conflictCount: 0,
+        lastError: null,
+      },
+      issues: [],
+      overdue: [],
+    });
+    expect(result.status).toBe('attention');
+    expect(result.signals).toContainEqual(expect.objectContaining({
+      kind: 'sync',
+      action: 'open_sync',
+      count: 3,
+    }));
+  });
+
+  it('counts only actionable Organization Issues and links them to Issues', () => {
+    const result = projectHomeConfidence({
+      selectedDate: '2026-09-17',
+      todayDate: '2026-09-17',
+      sync: null,
+      issues: [issue(), issue({ id: 'info', actionable: false })],
+      overdue: [],
+    });
+    expect(result.status).toBe('attention');
+    expect(result.signals).toContainEqual(expect.objectContaining({
+      kind: 'organization_issues',
+      action: 'open_issues',
+      count: 1,
+    }));
+  });
+
+  it('shows overdue confidence only for Today', () => {
+    const overdue = [{
+      object: { id: 'deadline', type: 'task', path: 'tasks/deadline.md', frontmatter: { id: 'deadline', type: 'task', title: 'Deadline' }, body: '' },
+      decision: {
+        candidate: {
+          sourceId: 'deadline',
+          sourceType: 'task',
+          deadline: '2026-09-16',
+          deadlineMode: 'calendarDay' as const,
+          completed: false,
+          archived: false,
+        },
+        daysLate: 1,
+        severity: 'light' as const,
+      },
+    }];
+    const today = projectHomeConfidence({
+      selectedDate: '2026-09-17',
+      todayDate: '2026-09-17',
+      sync: null,
+      issues: [],
+      overdue,
+    });
+    expect(today.signals).toContainEqual(expect.objectContaining({ kind: 'overdue', action: 'open_overdue' }));
+
+    const otherDate = projectHomeConfidence({
+      selectedDate: '2026-09-16',
+      todayDate: '2026-09-17',
+      sync: null,
+      issues: [],
+      overdue,
+    });
+    expect(otherDate.status).toBe('clear');
+    expect(otherDate.signals).toEqual([]);
+  });
+
+  it('returns a positive all-clear panel when all confidence inputs are clear', () => {
+    const result = projectHomeConfidence({
+      selectedDate: '2026-09-17',
+      todayDate: '2026-09-17',
+      sync: {
+        status: 'synced',
+        pendingLocalChanges: 0,
+        conflictCount: 0,
+        lastError: null,
+      },
+      issues: [],
+      overdue: [],
+    });
+    expect(result).toMatchObject({
+      status: 'clear',
+      title: 'All clear',
+      signals: [],
+    });
   });
 });
