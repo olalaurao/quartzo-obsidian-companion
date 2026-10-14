@@ -75,7 +75,8 @@ import { FileNotificationDeliveryRegistry } from './local-state/notification-del
 import { ObsidianReminderDeliveryGateway } from './platform/notifications';
 import { ElectronBrowserOpener } from './platform/browser-opener';
 import { createCanonicalObjectId } from './platform/object-id';
-import { GOOGLE_REFRESH_TOKEN_SECRET_ID } from './platform/secret-ids';
+import { GOOGLE_CLIENT_SECRET_SECRET_ID, GOOGLE_REFRESH_TOKEN_SECRET_ID } from './platform/secret-ids';
+import { resolveGoogleOAuthClientSecret } from './platform/google-oauth-credentials';
 import { normalizeVaultPath } from './sync/coordinator/path-utils';
 import { VaultSyncFilePolicy } from './sync/coordinator/file-policy';
 import { SHARED_SETTINGS_PATH, SharedSettingsRepository, parseObjectWithSharedSettings, type MarkerType, type QuartzoSharedSettings, type TypeSignature } from './vault/shared-settings';
@@ -301,12 +302,46 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
         if (this.driveSyncCoordinator && this.settings.isPaired) {
           try {
             const result = await this.driveSyncCoordinator.triggerManualSync();
-            new Notice(`Sync complete: ${result.synced} files synced, ${result.conflicts} conflicts`);
+            new Notice(result.cancelled
+              ? 'Sync cancelled safely. Completed work was checkpointed.'
+              : `Sync complete: ${result.synced} files synced, ${result.conflicts} conflicts`);
           } catch (error) {
             new Notice(`Sync failed: ${error}`);
           }
         }
       }
+    });
+    this.addCommand({
+      id: 'quartzo-pause-sync',
+      name: 'Quartzo: Pause sync at the next safe checkpoint',
+      callback: () => {
+        if (!this.driveSyncCoordinator?.getSyncProgress() && !this.driveSyncCoordinator?.isPairingApplyInProgress()) {
+          new Notice('No sync or pairing operation is running.');
+          return;
+        }
+        this.driveSyncCoordinator.pauseSync();
+        new Notice('Pause requested. The current file or Drive request will finish first.');
+      },
+    });
+    this.addCommand({
+      id: 'quartzo-resume-sync',
+      name: 'Quartzo: Resume sync',
+      callback: () => {
+        this.driveSyncCoordinator?.resumeSync();
+        new Notice('Sync resumed.');
+      },
+    });
+    this.addCommand({
+      id: 'quartzo-cancel-sync',
+      name: 'Quartzo: Cancel sync at the next safe checkpoint',
+      callback: () => {
+        if (!this.driveSyncCoordinator?.getSyncProgress() && !this.driveSyncCoordinator?.isPairingApplyInProgress()) {
+          new Notice('No sync or pairing operation is running.');
+          return;
+        }
+        this.driveSyncCoordinator.cancelSync();
+        new Notice('Cancellation requested. The current file or Drive request will finish first.');
+      },
     });
 
     this.sharedSettingsRepository = new SharedSettingsRepository(this.app.vault);
@@ -710,7 +745,8 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
   private async getResolvedOAuthConfig(): Promise<OAuthConfig | null> {
     const clientId = this.getResolvedClientId();
     if (!clientId || clientId === 'PLACEHOLDER_CLIENT_ID') return null;
-    return { ...OAUTH_CONFIG, clientId };
+    const storedSecret = await this.getSecretStorage().get(GOOGLE_CLIENT_SECRET_SECRET_ID);
+    return { ...OAUTH_CONFIG, clientId, clientSecret: resolveGoogleOAuthClientSecret(BUILD_CLIENT_SECRET, storedSecret) };
   }
 
   private getSecretStorage() {
@@ -2077,9 +2113,10 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
 
     const onchange = this.app.vault.on('create', (file: TAbstractFile) => {
       if (file instanceof TFile && VaultSyncFilePolicy.shouldSyncFile(file.path) && this.settings.isPaired && this.driveSyncCoordinator) {
-        this.app.vault.readBinary(file).then(bytes => {
+        this.app.vault.readBinary(file).then(async bytes => {
           if (this.unloaded || !this.driveSyncCoordinator) return;
           if (this.driveSyncCoordinator?.consumeExpectedWatcherEvent(file.path, new Uint8Array(bytes))) return;
+          await this.driveSyncCoordinator.queueCreate(file.path);
           if (this.settings.syncMode === 'automatic') this.driveSyncCoordinator?.triggerFocusSync().catch(() => {});
         }).catch(() => {});
       }
@@ -2879,10 +2916,31 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     const cancelButton = document.createElement('button');
     cancelButton.textContent = 'Cancel';
     cancelButton.addEventListener('click', () => {
-      this.closePairingWorkflowSurface(modal);
-      new Notice('Pairing cancelled.');
+      if (this.driveSyncCoordinator?.isPairingApplyInProgress()) {
+        this.driveSyncCoordinator.cancelSync();
+        cancelButton.disabled = true;
+        cancelButton.textContent = 'Cancelling…';
+      } else {
+        this.closePairingWorkflowSurface(modal);
+        new Notice('Pairing cancelled.');
+      }
     });
     actions.appendChild(cancelButton);
+
+    const pauseButton = document.createElement('button');
+    pauseButton.textContent = 'Pause';
+    pauseButton.disabled = true;
+    pauseButton.addEventListener('click', () => {
+      const progress = this.driveSyncCoordinator?.getPairingApplyProgress();
+      if (progress?.paused) {
+        this.driveSyncCoordinator?.resumeSync();
+        pauseButton.textContent = 'Pause';
+      } else {
+        this.driveSyncCoordinator?.pauseSync();
+        pauseButton.textContent = 'Resume';
+      }
+    });
+    actions.appendChild(pauseButton);
 
     const confirmButton = document.createElement('button');
     confirmButton.textContent = 'Accept & Pair';
@@ -2893,7 +2951,9 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     confirmButton.addEventListener('click', async () => {
       if (!this.driveSyncCoordinator) return;
 
-      cancelButton.disabled = true;
+      cancelButton.disabled = false;
+      pauseButton.disabled = false;
+      cancelButton.textContent = 'Cancel pairing';
       confirmButton.disabled = true;
       confirmButton.textContent = 'Pairing…';
       question.textContent = 'Pairing is in progress.';
@@ -2902,26 +2962,39 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
 
       const renderApplyProgress = (progress: PairingApplyProgress) => {
         const suffix = progress.currentPath ? ` · ${progress.currentPath}` : '';
+        const elapsed = progress.startedAt != null
+          ? Math.max(0, Math.floor((Date.now() - progress.startedAt) / 1000))
+          : 0;
+        const elapsedText = elapsed >= 60 ? `${Math.floor(elapsed / 60)}m ${elapsed % 60}s` : `${elapsed}s`;
+        const amount = progress.total > 0
+          ? ` ${progress.completed}/${progress.total} (${Math.min(100, Math.round(progress.completed / progress.total * 100))}%)`
+          : '';
         if (progress.phase === 'revalidating_remote') {
-          progressText.textContent = 'Revalidating Google Drive vault…';
+          progressText.textContent = `Revalidating Google Drive vault${amount}${suffix}`;
         } else if (progress.phase === 'baselining') {
-          progressText.textContent = progress.total > 0
-            ? `Establishing baselines ${progress.completed}/${progress.total}${suffix}`
-            : 'Establishing baselines…';
+          progressText.textContent = `Establishing baselines${amount}${suffix}`;
         } else if (progress.phase === 'adopting_local') {
-          progressText.textContent = progress.total > 0
-            ? `Uploading local-only files ${progress.completed}/${progress.total}${suffix}`
-            : 'No local-only files to upload.';
+          progressText.textContent = `Uploading local-only files${amount}${suffix}`;
         } else if (progress.phase === 'pulling_remote') {
-          progressText.textContent = progress.total > 0
-            ? `Downloading remote-only files ${progress.completed}/${progress.total}${suffix}`
-            : 'No remote-only files to download.';
+          progressText.textContent = `Downloading remote-only files${amount}${suffix}`;
         } else {
-          progressText.textContent = progress.completed >= progress.total
-            ? 'Finalizing pairing…'
-            : 'Saving pairing state…';
+          progressText.textContent = progress.completed >= progress.total ? 'Finalizing pairing…' : 'Saving pairing state…';
         }
+        const operationStatus = progress.cancelRequested
+          ? ' · cancellation requested; finishing current operation'
+          : progress.paused
+            ? ' · paused at safe checkpoint'
+            : progress.pauseRequested
+              ? ' · pause requested; finishing current operation'
+              : '';
+        progressText.textContent += ` · elapsed ${elapsedText}${operationStatus}`;
+        if (progress.paused || progress.pauseRequested) pauseButton.textContent = 'Resume';
       };
+
+      const progressTicker = window.setInterval(() => {
+        const current = this.driveSyncCoordinator?.getPairingApplyProgress();
+        if (current) renderApplyProgress(current);
+      }, 1000);
 
       try {
         const pairingResult = await this.driveSyncCoordinator.applyPairingDecisions(
@@ -2929,6 +3002,17 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
           { autoAdopt: true, autoPull: true },
           renderApplyProgress
         );
+        if (pairingResult.cancelled) {
+          this.renderPairingWorkflowError(
+            modal,
+            modalContent,
+            'Pairing cancelled safely',
+            'Completed operations were checkpointed. No new pairing was activated.',
+            'Run Pair again to rescan and continue from the current vault state.'
+          );
+          await this.refreshQuartzoView();
+          return;
+        }
         if (pairingResult.errors.length > 0) {
           const message = pairingResult.errors.join('; ');
           this.renderPairingWorkflowError(
@@ -2962,6 +3046,8 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
         );
         await this.refreshQuartzoView();
         new Notice('Pairing stopped. Error details are open in the pairing window.');
+      } finally {
+        window.clearInterval(progressTicker);
       }
     });
   }
@@ -3659,6 +3745,27 @@ class QuartzoSettingTab extends PluginSettingTab {
             this.plugin.settings.oauthClientId = value.trim() || 'PLACEHOLDER_CLIENT_ID';
             await this.plugin.saveSettings();
           }));
+    }
+
+    if (!BUILD_CLIENT_SECRET) {
+      const secretSetting = new Setting(containerEl)
+        .setName('Google OAuth Client Secret')
+        .setDesc('Stored in Obsidian SecretStorage on this device, not in plugin settings. Leave blank and save to clear it.');
+      let secretInput: HTMLInputElement | undefined;
+      secretSetting.addText(text => {
+        text.setPlaceholder('Enter client secret');
+        text.inputEl.type = 'password';
+        text.inputEl.autocomplete = 'new-password';
+        secretInput = text.inputEl;
+      });
+      secretSetting.addButton(button => button
+        .setButtonText('Save secret')
+        .onClick(() => {
+          const secret = secretInput?.value.trim() ?? '';
+          this.plugin.app.secretStorage.setSecret(GOOGLE_CLIENT_SECRET_SECRET_ID, secret);
+          if (secretInput) secretInput.value = '';
+          new Notice(secret ? 'Google OAuth client secret saved securely.' : 'Google OAuth client secret cleared.');
+        }));
     }
 
     new Setting(containerEl)

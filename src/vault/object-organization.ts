@@ -1,6 +1,7 @@
 import { TFile, Vault, normalizePath } from 'obsidian';
 import type { OrganizePlan, OrganizeActionPlan } from '../core/object-organization/organize';
 import type { MergePlan } from '../core/object-organization/merge';
+import { mergeReferenceKeys, rewriteMergeWikiLinks } from '../core/object-organization/reference-rewrite';
 import type { BatchCreatePlan, BatchOperationReport } from '../core/object-organization/batch-workbench';
 import type { ActivityEvent } from '../core/activity-history';
 import { ObjectParser } from '../core/objects';
@@ -38,6 +39,7 @@ export interface CanonicalRetirementResult extends ObjectOrganizationResult {
 interface RetireFileInput {
   path: string;
   id: string;
+  destinationPath?: string;
   expectedMarkdown: string;
   tombstoneMarkdown: string;
 }
@@ -210,35 +212,135 @@ export class ObjectOrganizationRepository {
       throw new Error('Object Identification revision conflict. Refresh preview before merging.');
     }
 
-    const survivorFile = this.vault.getAbstractFileByPath(plan.action.survivorPath);
+    const survivorPath = normalizePath(plan.action.survivorPath);
+    const survivorFile = this.vault.getAbstractFileByPath(survivorPath);
     if (!(survivorFile instanceof TFile)) {
       throw new Error(`Survivor file missing: ${plan.action.survivorPath}`);
     }
+    const originalSurvivor = await this.vault.read(survivorFile);
+    if (originalSurvivor !== plan.action.expectedSurvivorMarkdown &&
+        originalSurvivor !== plan.action.newSurvivorMarkdown) {
+      throw new Error(`Survivor file changed since preview: ${plan.action.survivorPath}`);
+    }
 
-    if (plan.action.newSurvivorMarkdown !== plan.action.expectedSurvivorMarkdown) {
-      await this.vault.process(survivorFile, current => {
-        if (current !== plan.action.expectedSurvivorMarkdown) {
-          if (current === plan.action.newSurvivorMarkdown) return current;
-          throw new Error(`Survivor file changed since preview: ${plan.action.survivorPath}`);
-        }
-        return plan.action.newSurvivorMarkdown;
+    const loserPaths = new Set(plan.action.losersToRetire.map(loser => normalizePath(loser.path)));
+    const referenceKeys = new Set<string>();
+    for (const loser of plan.action.losersToRetire) {
+      for (const key of mergeReferenceKeys({
+        id: loser.id,
+        path: normalizePath(loser.path),
+        markdown: loser.expectedMarkdown,
+      })) {
+        referenceKeys.add(key);
+      }
+    }
+
+    const snapshots = new Map<string, string>([[survivorPath, originalSurvivor]]);
+    const updates = new Map<string, { expected: string; next: string }>();
+    const survivorWithReferences = rewriteMergeWikiLinks(
+      plan.action.newSurvivorMarkdown,
+      referenceKeys,
+      survivorPath,
+    );
+    if (survivorWithReferences !== originalSurvivor) {
+      updates.set(survivorPath, {
+        expected: originalSurvivor,
+        next: survivorWithReferences,
       });
     }
 
+    for (const file of this.vault.getMarkdownFiles()) {
+      const path = normalizePath(file.path);
+      if (loserPaths.has(path) || path === survivorPath) continue;
+      const markdown = await this.vault.read(file);
+      const rewritten = rewriteMergeWikiLinks(markdown, referenceKeys, survivorPath);
+      if (rewritten === markdown) continue;
+      snapshots.set(path, markdown);
+      updates.set(path, { expected: markdown, next: rewritten });
+    }
+
     for (const loser of plan.action.losersToRetire) {
-      const tombstonePath = await this.retireFile({
-        path: loser.path,
-        id: loser.id,
-        expectedMarkdown: loser.expectedMarkdown,
-        tombstoneMarkdown: loser.newMarkdown,
-      });
-      await this.appendRetiredActivity({
-        id: loser.id,
-        sourcePath: loser.path,
-        tombstonePath,
-        expectedMarkdown: loser.expectedMarkdown,
-        operationId: plan.operationId,
-      });
+      snapshots.set(normalizePath(loser.path), loser.expectedMarkdown);
+      const source = this.vault.getAbstractFileByPath(normalizePath(loser.path));
+      if (!(source instanceof TFile) || await this.vault.read(source) !== loser.expectedMarkdown) {
+        throw new Error(`Loser file changed since preview: ${loser.path}`);
+      }
+    }
+
+    const attemptedRetirements: typeof plan.action.losersToRetire = [];
+    try {
+      for (const [path, update] of updates) {
+        if (update.expected === update.next) continue;
+        const file = this.vault.getAbstractFileByPath(path);
+        if (!(file instanceof TFile)) throw new Error(`Reference file disappeared: ${path}`);
+        await this.vault.process(file, current => {
+          if (current !== update.expected) {
+            if (current === update.next) return current;
+            throw new Error(`Reference file changed during merge: ${path}`);
+          }
+          return update.next;
+        });
+      }
+
+      for (const loser of plan.action.losersToRetire) {
+        attemptedRetirements.push(loser);
+        const tombstonePath = await this.retireFile({
+          path: loser.path,
+          id: loser.id,
+          destinationPath: loser.tombstonePath,
+          expectedMarkdown: loser.expectedMarkdown,
+          tombstoneMarkdown: loser.newMarkdown,
+        });
+        await this.appendRetiredActivity({
+          id: loser.id,
+          sourcePath: loser.path,
+          tombstonePath,
+          expectedMarkdown: loser.expectedMarkdown,
+          operationId: plan.operationId,
+        });
+      }
+    } catch (error) {
+      for (const loser of attemptedRetirements.slice().reverse()) {
+        await this.restoreMergeLoser(
+          loser.path,
+          loser.id,
+          loser.tombstonePath,
+          loser.expectedMarkdown,
+          loser.newMarkdown,
+        );
+      }
+      for (const [path, markdown] of snapshots) {
+        if (loserPaths.has(path)) continue;
+        const file = this.vault.getAbstractFileByPath(path);
+        if (file instanceof TFile) {
+          await this.vault.process(file, () => markdown);
+        }
+      }
+      throw error;
+    }
+  }
+
+  private async restoreMergeLoser(
+    path: string,
+    id: string,
+    destinationPath: string,
+    original: string,
+    tombstoneMarkdown: string,
+  ): Promise<void> {
+    const sourcePath = normalizePath(path);
+    let source = this.vault.getAbstractFileByPath(sourcePath);
+    const retiredPath = normalizePath(destinationPath || canonicalRetirementPath(id));
+    let retired = this.vault.getAbstractFileByPath(retiredPath);
+    if (!(source instanceof TFile) && retired instanceof TFile) {
+      await this.vault.rename(retired, sourcePath);
+      source = this.vault.getAbstractFileByPath(sourcePath);
+      retired = null;
+    }
+    if (source instanceof TFile) {
+      const current = await this.vault.read(source);
+      if (current === tombstoneMarkdown || current !== original) {
+        await this.vault.process(source, () => original);
+      }
     }
   }
 
@@ -343,7 +445,7 @@ export class ObjectOrganizationRepository {
 
   private async retireFile(input: RetireFileInput): Promise<string> {
     const sourcePath = normalizePath(input.path);
-    const destinationPath = normalizePath(canonicalRetirementPath(input.id));
+    const destinationPath = normalizePath(input.destinationPath ?? canonicalRetirementPath(input.id));
     const source = this.vault.getAbstractFileByPath(sourcePath);
 
     if (!(source instanceof TFile)) {

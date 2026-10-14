@@ -1,4 +1,5 @@
 export const GOOGLE_REFRESH_TOKEN_SECRET_ID = 'quartzo-companion-refresh-token';
+export const GOOGLE_CLIENT_SECRET_SECRET_ID = 'quartzo-companion-client-secret';
 
 const OBSIDIAN_SECRET_ID_PATTERN = /^[a-z0-9-]{1,64}$/;
 
@@ -9,6 +10,6 @@ export function assertValidObsidianSecretId(id: string): string {
   return id;
 }
 
-for (const id of [GOOGLE_REFRESH_TOKEN_SECRET_ID]) {
+for (const id of [GOOGLE_REFRESH_TOKEN_SECRET_ID, GOOGLE_CLIENT_SECRET_SECRET_ID]) {
   assertValidObsidianSecretId(id);
 }

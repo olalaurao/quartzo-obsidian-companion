@@ -55,9 +55,11 @@ class FakeDriveAdapter implements DriveAdapter {
     return { files: this.buildMetadataList(), nextPageToken: null };
   }
 
-  async listAllFiles(_folderId: string) {
+  async listAllFiles(_folderId: string, onProgress?: (completed: number) => void | Promise<void>) {
     this.listFilesCalls++;
-    return this.buildMetadataList();
+    const files = this.buildMetadataList();
+    for (let index = 0; index < files.length; index++) await onProgress?.(index + 1);
+    return files;
   }
 
   async listQuartzoVaultCandidates() { return []; }
@@ -126,8 +128,11 @@ class FakeDriveAdapter implements DriveAdapter {
     for (const [name, f] of this._files.entries()) {
       if (f.id === fileId) {
         this._files.delete(name);
-        this._files.set(newName, { ...f });
-        return this.makeMetadata(fileId, newName, f.quartzoHash, f.modifiedTime);
+        const folder = _newParentId?.startsWith('folder:')
+          ? _newParentId.slice('folder:'.length) : '';
+        const destination = folder ? folder + '/' + newName : newName;
+        this._files.set(destination, { ...f });
+        return this.makeMetadata(fileId, destination, f.quartzoHash, f.modifiedTime);
       }
     }
     throw new Error(`Not found: ${fileId}`);
@@ -141,7 +146,8 @@ class FakeDriveAdapter implements DriveAdapter {
   }
 
   async ensureParentFolder(rootFolderId: string, filePath: string) {
-    return rootFolderId;
+    const folder = filePath.split('/').slice(0, -1).join('/');
+    return folder ? 'folder:' + folder : rootFolderId;
   }
 
   addRemoteFile(name: string, content: Uint8Array) {
@@ -213,6 +219,108 @@ describe('Runtime Sync Tests', () => {
     const sf = state.files.get('local.md');
     expect(sf?.baseHash).toBeNull();
     expect(sf?.remoteExists).toBe(false);
+  });
+
+  it('preserves an edit made while remote bytes are downloading', async () => {
+    const file = path.join(tmpDir, 'racing.md');
+    fs.writeFileSync(file, 'base');
+    const remote = adapter.addRemoteFile('racing.md', Buffer.from('base'));
+    await coordinator.reconcile();
+    adapter.addRemoteFileWithId('racing.md', remote.id, Buffer.from('remote'));
+    const download = adapter.downloadFile.bind(adapter);
+    adapter.downloadFile = async id => {
+      const bytes = await download(id);
+      fs.writeFileSync(file, 'new local edit');
+      return bytes;
+    };
+    const result = await coordinator.reconcile();
+    expect(result.errors.join(' ')).toContain('Local content changed');
+    expect(fs.readFileSync(file, 'utf8')).toBe('new local edit');
+    expect(coordinator.getSyncState().files.get('racing.md')?.baseHash)
+      .toBe(crypto.createHash('sha256').update('base').digest('hex'));
+  });
+
+  it('proven new creation survives restart and publishes automatically', async () => {
+    await coordinator.reconcile();
+    fs.writeFileSync(path.join(tmpDir, 'new.md'), 'new');
+    await coordinator.queueCreate('new.md');
+    coordinator = new DriveSyncCoordinator(adapter, tmpDir, path.join(tmpDir, '.quartzo-sync-state.json'));
+    const result = await coordinator.reconcile();
+    expect(result.errors).toEqual([]);
+    expect(Buffer.from(adapter.files.get('new.md')!.content).toString()).toBe('new');
+    expect((await coordinator.getSyncStatusSnapshot()).pendingLocalChanges).toBe(0);
+  });
+
+  it('a rescan alone cannot authorize an unknown local file', async () => {
+    await coordinator.reconcile();
+    fs.writeFileSync(path.join(tmpDir, 'unproven.md'), 'unproven');
+    await coordinator.reconcile();
+    expect(adapter.uploadCalls).toBe(0);
+    expect(coordinator.getSyncState().files.get('unproven.md')?.baseHash).toBeNull();
+  });
+
+  it('replays remote edits made after a full inventory starts', async () => {
+    fs.writeFileSync(path.join(tmpDir, 'scan.md'), 'base');
+    const remote = adapter.addRemoteFile('scan.md', Buffer.from('base'));
+    await coordinator.reconcile();
+    const events: string[] = [];
+    const token = adapter.getStartPageToken.bind(adapter);
+    adapter.getStartPageToken = async () => {
+      events.push('token');
+      return token();
+    };
+    const list = adapter.listAllFiles.bind(adapter);
+    adapter.listAllFiles = async folder => {
+      events.push('inventory');
+      const snapshot = await list(folder);
+      adapter.addRemoteFileWithId('scan.md', remote.id, Buffer.from('during inventory'));
+      return snapshot;
+    };
+    const result = await coordinator.triggerFullReconciliation();
+    expect(result.errors).toEqual([]);
+    expect(events.slice(0, 2)).toEqual(['token', 'inventory']);
+    expect(fs.readFileSync(path.join(tmpDir, 'scan.md'), 'utf8')).toBe('during inventory');
+  });
+
+  it('stale remote hash metadata cannot authorize overwriting new bytes', async () => {
+    const file = path.join(tmpDir, 'external.md');
+    fs.writeFileSync(file, 'base');
+    adapter.addRemoteFile('external.md', Buffer.from('base'));
+    await coordinator.reconcile();
+    adapter.files.get('external.md')!.content = Buffer.from('external edit');
+    fs.writeFileSync(file, 'local edit');
+    const result = await coordinator.reconcile();
+    expect(result.errors.join(' ')).toContain('Remote content changed');
+    expect(adapter.updateCalls).toBe(0);
+    expect(Buffer.from(adapter.files.get('external.md')!.content).toString()).toBe('external edit');
+    expect(fs.readFileSync(file, 'utf8')).toBe('local edit');
+  });
+
+  it('queued deletion preserves a concurrently edited remote file', async () => {
+    const file = path.join(tmpDir, 'deleted-race.md');
+    fs.writeFileSync(file, 'base');
+    adapter.addRemoteFile('deleted-race.md', Buffer.from('base'));
+    await coordinator.reconcile();
+    fs.unlinkSync(file);
+    coordinator.queueDelete('deleted-race.md');
+    adapter.files.get('deleted-race.md')!.content = Buffer.from('external edit');
+    const result = await coordinator.reconcile();
+    expect(result.errors.join(' ')).toContain('Remote content changed before deletion');
+    expect(Buffer.from(adapter.files.get('deleted-race.md')!.content).toString()).toBe('external edit');
+    expect(coordinator.getConflicts()).toHaveLength(1);
+  });
+
+  it('queued deletion preserves the remote ID in a reversible tombstone', async () => {
+    const file = path.join(tmpDir, 'delete-safe.md');
+    fs.writeFileSync(file, 'base');
+    const remote = adapter.addRemoteFile('delete-safe.md', Buffer.from('base'));
+    await coordinator.reconcile();
+    fs.unlinkSync(file);
+    coordinator.queueDelete('delete-safe.md');
+    const result = await coordinator.reconcile();
+    expect(result.errors).toEqual([]);
+    expect(adapter.files.has('delete-safe.md')).toBe(false);
+    expect(adapter.files.get('_deleted/delete-safe.md')?.id).toBe(remote.id);
   });
 
   it('2: explicit adoption creates remote and baseline', async () => {
@@ -494,7 +602,7 @@ describe('Runtime Sync Tests', () => {
     expect(summary.localOnly).toHaveLength(1);
     expect(summary.remoteOnly).toHaveLength(1);
 
-    const progress: Array<{ phase: string; completed: number; total: number; currentPath?: string }> = [];
+    const progress: Array<{ phase: string; completed: number; total: number; currentPath?: string; startedAt?: number; lastActivityAt?: number; paused?: boolean }> = [];
     const result = await coordinator.applyPairingDecisions(
       summary,
       { autoAdopt: true, autoPull: true },
@@ -503,25 +611,25 @@ describe('Runtime Sync Tests', () => {
 
     expect(result.errors).toEqual([]);
     expect(progress.some(update => update.phase === 'revalidating_remote')).toBe(true);
-    expect(progress).toContainEqual({
+    expect(progress).toContainEqual(expect.objectContaining({
       phase: 'baselining',
       completed: 1,
       total: 1,
       currentPath: 'same-progress.md',
-    });
-    expect(progress).toContainEqual({
+    }));
+    expect(progress).toContainEqual(expect.objectContaining({
       phase: 'adopting_local',
       completed: 1,
       total: 1,
       currentPath: 'local-progress.md',
-    });
-    expect(progress).toContainEqual({
+    }));
+    expect(progress).toContainEqual(expect.objectContaining({
       phase: 'pulling_remote',
       completed: 1,
       total: 1,
       currentPath: 'remote-progress.md',
-    });
-    expect(progress[progress.length - 1]).toEqual({
+    }));
+    expect(progress[progress.length - 1]).toMatchObject({
       phase: 'finalizing',
       completed: 1,
       total: 1,
@@ -1782,11 +1890,11 @@ describe('Runtime Sync Tests', () => {
     const listAfterInitial = adapter.listFilesCalls;
 
     await coordinator.reconcile();
-    expect(adapter.listChangesCalls).toBe(1);
+    expect(adapter.listChangesCalls).toBe(2);
     const changesBeforeFull = adapter.listChangesCalls;
 
     await coordinator.triggerFullReconciliation();
-    expect(adapter.listChangesCalls).toBe(changesBeforeFull);
+    expect(adapter.listChangesCalls).toBe(changesBeforeFull + 1);
     expect(adapter.listFilesCalls).toBeGreaterThan(listAfterInitial);
   });
 
@@ -1824,6 +1932,74 @@ describe('Runtime Sync Tests', () => {
       total: 1,
     });
     expect(coordinator.getSyncProgress()).toBeNull();
+  });
+
+  it('43a: local inventory reports scanned files with a stable elapsed-time origin', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+    for (let i = 0; i < 40; i++) fs.writeFileSync(path.join(tmpDir, `progress-${i}.md`), `file-${i}`);
+
+    const progress: Array<{ phase: string; completed: number; total: number; startedAt: number }> = [];
+    const result = await coordinator.triggerFullReconciliation(update => {
+      progress.push({ phase: update.phase, completed: update.completed, total: update.total, startedAt: update.startedAt });
+    });
+
+    expect(result.errors).toEqual([]);
+    const localScan = progress.filter(update => update.phase === 'local_inventory' && update.completed > 0);
+    expect(localScan.length).toBeGreaterThan(0);
+    expect(localScan.at(-1)?.completed).toBeGreaterThanOrEqual(40);
+    expect(localScan.some(update => update.total === 0)).toBe(true);
+    expect(new Set(progress.map(update => update.startedAt)).size).toBe(1);
+  });
+
+  it('43b: cancelling during a Drive inventory waits for the request, checkpoints, and keeps full reconciliation required', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+    let entered!: () => void;
+    let release!: () => void;
+    const requestEntered = new Promise<void>(resolve => { entered = resolve; });
+    const requestGate = new Promise<void>(resolve => { release = resolve; });
+    adapter.listAllFiles = async (_folderId, onProgress) => {
+      await onProgress?.(1);
+      entered();
+      await requestGate;
+      return [];
+    };
+
+    const running = coordinator.triggerFullReconciliation();
+    await requestEntered;
+    coordinator.cancelSync();
+    release();
+    const result = await running;
+
+    expect(result.cancelled).toBe(true);
+    expect(result.errors).toEqual([]);
+    expect(coordinator.getSyncState().forceFullReconciliation).toBe(true);
+    expect(coordinator.getSyncProgress()).toBeNull();
+  });
+
+  it('43c: pausing blocks at a safe boundary and resumes without losing the operation', async () => {
+    await coordinator.setDriveFolderId('root-folder-id');
+    let reached!: () => void;
+    const atBoundary = new Promise<void>(resolve => { reached = resolve; });
+    let resume!: () => void;
+    const release = new Promise<void>(resolve => { resume = resolve; });
+    adapter.listAllFiles = async (_folderId, onProgress) => {
+      await onProgress?.(1);
+      reached();
+      await release;
+      return [];
+    };
+
+    const running = coordinator.triggerFullReconciliation();
+    await atBoundary;
+    coordinator.pauseSync();
+    resume();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(coordinator.getSyncProgress()?.paused).toBe(true);
+    coordinator.resumeSync();
+    const result = await running;
+
+    expect(result.errors).toEqual([]);
+    expect(result.cancelled).toBeFalsy();
   });
 
   it('44: Drive timeout classification becomes a typed finite failure instead of an endless pending request', async () => {

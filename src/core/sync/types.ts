@@ -6,6 +6,7 @@ export interface SyncVector {
   localExists?: boolean;
   remoteExists?: boolean;
   duplicateRemoteIdentity?: boolean;
+  authorizedLocalCreation?: boolean;
   postWriteExpectedHash?: string;
   path?: string;
   contentEncoding?: string;

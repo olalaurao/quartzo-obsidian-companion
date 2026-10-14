@@ -1,4 +1,7 @@
 [
+  {"id":"proven_post_pairing_creation","baseHash":null,"localHash":"h1","remoteHash":null,"localExists":true,"remoteExists":false,"authorizedLocalCreation":true,"expected":"push"},
+  {"id":"proven_creation_remote_collision","baseHash":null,"localHash":"h1","remoteHash":"h2","localExists":true,"remoteExists":true,"authorizedLocalCreation":true,"expected":"conflict"},
+  {"id":"deleted_binary_scope","path":"_deleted/_attachments/photo.jpg","expected":"include_deleted"},
   {"id":"identical","baseHash":"h1","localHash":"h1","remoteHash":"h1","localExists":true,"remoteExists":true,"expected":"advance_baseline"},
   {"id":"local_only_change","baseHash":"h1","localHash":"h2","remoteHash":"h1","localExists":true,"remoteExists":true,"expected":"push"},
   {"id":"remote_only_change","baseHash":"h1","localHash":"h1","remoteHash":"h2","localExists":true,"remoteExists":true,"expected":"pull"},

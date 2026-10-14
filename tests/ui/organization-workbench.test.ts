@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 const shellSource = readFileSync(resolve(process.cwd(), 'src/ui/shell/view.ts'), 'utf8');
 const batchCreateSource = readFileSync(resolve(process.cwd(), 'src/ui/organization/batch-create-modal.ts'), 'utf8');
 const batchMergeSource = readFileSync(resolve(process.cwd(), 'src/ui/organization/batch-merge-modal.ts'), 'utf8');
+const mergeSource = readFileSync(resolve(process.cwd(), 'src/ui/organization/merge-modal.ts'), 'utf8');
 const repositorySource = readFileSync(resolve(process.cwd(), 'src/vault/object-organization.ts'), 'utf8');
 
 describe('Organization Workbench UI contract', () => {
@@ -31,5 +32,20 @@ describe('Organization Workbench UI contract', () => {
     expect(batchMergeSource).toContain('applyMerge(group.plan)');
     expect(batchMergeSource).toContain("bodyResolution: 'combine'");
     expect(batchMergeSource).not.toContain('.vault.delete(');
+    expect(batchMergeSource).toContain('createAliases = true');
+    expect(batchMergeSource).toContain('aliasesToAdd: this.createAliases ? aliases : []');
+    expect(batchMergeSource).toContain('Create aliases from previous names');
+    expect(batchMergeSource).toContain('index.files.values()');
+  });
+
+  it('offers editable aliases in individual merges and repairs references before retirement', () => {
+    expect(mergeSource).toContain('createAliases = true');
+    expect(mergeSource).toContain('aliasesToAdd: this.createAliases ? this.parseAliases(this.aliasesText) : []');
+    expect(mergeSource).toContain('dd.addOption(obj.path');
+    const rewrite = repositorySource.indexOf('rewriteMergeWikiLinks(');
+    const retire = repositorySource.indexOf('await this.retireFile({', rewrite);
+    expect(rewrite).toBeGreaterThanOrEqual(0);
+    expect(retire).toBeGreaterThan(rewrite);
+    expect(repositorySource).toContain('restoreMergeLoser(');
   });
 });

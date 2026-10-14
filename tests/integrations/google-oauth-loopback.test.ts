@@ -7,6 +7,7 @@ import {
   type TokenResponse,
 } from '../../src/integrations/google/auth/loopback';
 import {
+  GOOGLE_CLIENT_SECRET_SECRET_ID,
   GOOGLE_REFRESH_TOKEN_SECRET_ID,
 } from '../../src/platform/secret-ids';
 
@@ -68,7 +69,7 @@ const config: OAuthConfig = {
 
 describe('Google OAuth desktop loopback', () => {
   it('uses Obsidian-compatible SecretStorage IDs', () => {
-    for (const id of [GOOGLE_REFRESH_TOKEN_SECRET_ID]) {
+    for (const id of [GOOGLE_REFRESH_TOKEN_SECRET_ID, GOOGLE_CLIENT_SECRET_SECRET_ID]) {
       expect(id).toMatch(/^[a-z0-9-]{1,64}$/);
     }
   });
