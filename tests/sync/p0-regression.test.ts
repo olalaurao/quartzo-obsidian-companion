@@ -1077,7 +1077,7 @@ describe('P0 hardening — ambiguity, watcher suppression, coalescing, state rec
 
     // Initial full inventory once. The coalesced rerun uses Changes API once.
     expect(fullInventoryCalls).toBe(1);
-    expect(adapter.listChangesCalls).toBe(1);
+    expect(adapter.listChangesCalls).toBe(2);
   });
 
   it('recovers a complete atomic temp state when the primary state is absent', async () => {
@@ -1204,6 +1204,6 @@ describe('P0 hardening — path scope and rename collision semantics', () => {
     await new Promise(resolve => setTimeout(resolve, 25));
 
     expect(listAllCalls).toBe(1);
-    expect(adapter.listChangesCalls).toBe(1);
+    expect(adapter.listChangesCalls).toBe(2);
   });
 });

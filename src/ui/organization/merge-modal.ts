@@ -1,6 +1,6 @@
 import { Modal, Notice, Setting, TFile } from 'obsidian';
 import type { ViewContext } from '../types';
-import { planMerge, type MergePlan, type PropertyResolution, type PropertyResolutionStrategy } from '../../core/object-organization/merge';
+import { planMerge, suggestMergeAliases, type MergePlan, type PropertyResolution, type PropertyResolutionStrategy } from '../../core/object-organization/merge';
 import { ObjectOrganizationRepository } from '../../vault/object-organization';
 import { SharedSettingsRepository, type QuartzoSharedSettings } from '../../vault/shared-settings';
 import { ObjectParser } from '../../core/objects';
@@ -27,11 +27,13 @@ export class ObjectMergeModal extends Modal {
   
   // UI State
   private targetType: string = '';
-  private survivorId: string = '';
+  private survivorPath: string = '';
   private propertyResolutions: PropertyResolution[] = [];
   private bodyResolution: 'keep_survivor' | 'combine' = 'combine';
   private currentPlan: MergePlan | null = null;
   private isApplying = false;
+  private createAliases = true;
+  private aliasesText = '';
 
   constructor(
     private readonly context: ViewContext,
@@ -79,8 +81,9 @@ export class ObjectMergeModal extends Modal {
     }
 
     // Default heuristics
-    this.survivorId = this.loadedObjects[0].id;
+    this.survivorPath = this.loadedObjects[0].path;
     this.targetType = String(this.loadedObjects[0].frontmatter.type || '');
+    this.aliasesText = suggestMergeAliases(this.loadedObjects).join('\n');
     this.buildDefaultPropertyResolutions();
 
     await this.refreshPlan();
@@ -95,7 +98,7 @@ export class ObjectMergeModal extends Modal {
     const allKeys = new Set<string>();
     this.loadedObjects.forEach(obj => {
       Object.keys(obj.frontmatter).forEach(k => {
-        if (!['id', 'type'].includes(k)) allKeys.add(k);
+        if (!['id', 'type', 'aliases'].includes(k)) allKeys.add(k);
       });
     });
 
@@ -115,17 +118,18 @@ export class ObjectMergeModal extends Modal {
   private async refreshPlan(): Promise<void> {
     if (!this.sharedSettings) return;
 
-    const survivor = this.loadedObjects.find(o => o.id === this.survivorId);
+    const survivor = this.loadedObjects.find(o => o.path === this.survivorPath);
     if (!survivor) return;
-    const losers = this.loadedObjects.filter(o => o.id !== this.survivorId);
+    const losers = this.loadedObjects.filter(o => o.path !== this.survivorPath);
 
     this.currentPlan = planMerge({
-      survivorId: this.survivorId,
+      survivorId: survivor.id,
       survivorMarkdown: survivor.markdown,
       survivorPath: survivor.path,
       targetType: this.targetType,
       losers,
       propertyResolutions: this.propertyResolutions,
+      aliasesToAdd: this.createAliases ? this.parseAliases(this.aliasesText) : [],
       bodyResolution: this.bodyResolution,
       settingsRevision: Number(this.sharedSettings.objectIdentification.revision) || 0,
       settings: this.sharedSettings,
@@ -151,11 +155,11 @@ export class ObjectMergeModal extends Modal {
       .setDesc('Which object preserves its path and primary identity?')
       .addDropdown(dd => {
         this.loadedObjects.forEach(obj => {
-          dd.addOption(obj.id, `${obj.frontmatter.title || obj.id} (${obj.path})`);
+          dd.addOption(obj.path, `${obj.frontmatter.title || obj.id} (${obj.path})`);
         });
-        dd.setValue(this.survivorId);
+        dd.setValue(this.survivorPath);
         dd.onChange(async val => {
-          this.survivorId = val;
+          this.survivorPath = val;
           await this.refreshPlan();
           this.render();
         });
@@ -209,6 +213,29 @@ export class ObjectMergeModal extends Modal {
        });
     }
 
+    new Setting(contentEl)
+      .setName('Create aliases from previous names')
+      .setDesc('Keep old titles, file names and aliases resolving to the merged file.')
+      .addToggle(toggle => toggle
+        .setValue(this.createAliases)
+        .onChange(async value => {
+          this.createAliases = value;
+          await this.refreshPlan();
+          this.render();
+        }));
+    if (this.createAliases) {
+      new Setting(contentEl)
+        .setName('Aliases')
+        .setDesc('One alias per line. Existing survivor aliases are always kept.')
+        .addTextArea(text => text
+          .setPlaceholder('Previous title or file name')
+          .setValue(this.aliasesText)
+          .onChange(value => {
+            this.aliasesText = value;
+            void this.refreshPlan();
+          }));
+    }
+
     // 3. Body Reconciliation
     contentEl.createEl('h3', { text: '3. Body Content' });
     new Setting(contentEl)
@@ -256,5 +283,9 @@ export class ObjectMergeModal extends Modal {
          this.render();
        }
     });
+  }
+
+  private parseAliases(value: string): string[] {
+    return Array.from(new Set(value.split(/[\n,]/).map(alias => alias.trim()).filter(Boolean)));
   }
 }

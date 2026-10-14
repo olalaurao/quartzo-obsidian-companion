@@ -1,6 +1,6 @@
 # Quartzo Sync Protocol V1
 
-Status: canonical contract. Version: 1.0.0.
+Status: canonical contract. Version: 1.1.0.
 
 ## Identity
 
@@ -120,6 +120,24 @@ It must not overwrite an existing remote path, bypass same-path conflict
 detection, or change ordinary automatic/manual sync into implicit adoption.
 
 ## Rename And Move
+
+### Post-pairing creation provenance
+
+A client may publish a local-only, unknown-base file automatically only when
+it persisted an explicit creation observed after pairing, bound to the same
+local vault and Drive folder identity. A directory rescan, timestamp or missing
+baseline alone is not creation evidence. Legacy/unproven files still require
+adoption. Provenance never permits overwriting a divergent remote candidate.
+Clear provenance only after confirmed publication or explicit cancellation;
+retain it after a lost response so an identical remote can establish baseline.
+
+### Interrupted operations
+
+Queue revisions are immutable. Acknowledgement removes only revisions included
+in the submitted snapshot. Record an attempted publication before networking;
+create/delete cancellation is local-only only if no publication was attempted.
+All destructive reconciliation revalidates current bytes, and advances baseline
+to the bytes actually committed, never an earlier inventory hash.
 
 A rename or move is represented by the new normalized relative path and the
 known remote file ID. Clients must not infer a rename from timestamps alone.

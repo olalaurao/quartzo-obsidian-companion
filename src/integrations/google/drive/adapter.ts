@@ -270,16 +270,22 @@ export class GoogleDriveAdapter implements DriveAdapter {
     });
   }
 
-  async listAllFiles(folderId: string): Promise<DriveFileMetadata[]> {
+  async listAllFiles(folderId: string, onProgress?: (completed: number) => void | Promise<void>): Promise<DriveFileMetadata[]> {
     const allFiles: DriveFileMetadata[] = [];
-    await this.listAllFilesRecursive(folderId, allFiles, '');
+    let visited = 0;
+    const report = onProgress ? async () => {
+      await onProgress(++visited);
+      if (visited % 32 === 0) await new Promise<void>(resolve => setTimeout(resolve, 0));
+    } : undefined;
+    await this.listAllFilesRecursive(folderId, allFiles, '', report);
     return allFiles;
   }
 
   private async listAllFilesRecursive(
     folderId: string,
     allFiles: DriveFileMetadata[],
-    relativePrefix: string
+    relativePrefix: string,
+    onProgress?: (completed: number) => void | Promise<void>
   ): Promise<void> {
     let pageToken: string | undefined;
     do {
@@ -303,12 +309,13 @@ export class GoogleDriveAdapter implements DriveAdapter {
       }));
 
       for (const file of files) {
+        await onProgress?.(0);
         const relativePath = normalizeVaultPath(
           relativePrefix ? `${relativePrefix}/${file.name}` : file.name
         );
         if (file.trashed === true) continue;
         if (file.mimeType === 'application/vnd.google-apps.folder') {
-          await this.listAllFilesRecursive(file.id, allFiles, relativePath);
+          await this.listAllFilesRecursive(file.id, allFiles, relativePath, onProgress);
         } else {
           allFiles.push({ ...file, relativePath });
         }

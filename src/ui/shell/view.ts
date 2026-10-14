@@ -5,6 +5,7 @@ import type { GoogleCalendarProjection } from '../../integrations/google/calenda
 import { addLocalDays, localIsoDate, parseLocalIsoDate, shiftLocalMonth } from '../../core/local-date';
 import { chooseNewestConflictResolution, type SyncPendingDiagnostic, type SyncProgress, type SyncStatusSnapshot } from '../../sync/coordinator';
 import type { SyncResult } from '../../sync/coordinator/types';
+import { formatSyncProgress } from '../../sync/progress';
 import {
   queryVaultObjects,
   type ObjectQueryArchiveFilter,
@@ -87,31 +88,6 @@ function activityTimeLabel(value: string): string {
   return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
 }
 
-function formatSyncProgress(progress: SyncProgress | null): string {
-  if (!progress) return 'Sync is active. Waiting for the coordinator to report its current phase…';
-
-  const phaseLabels: Record<SyncProgress['phase'], string> = {
-    local_inventory: 'Scanning local vault',
-    remote_inventory: 'Listing Google Drive vault',
-    resolving_paths: 'Resolving Drive paths',
-    hashing_remote: 'Hashing remote files',
-    processing_changes: 'Processing Drive changes',
-    processing_local_changes: 'Processing local changes',
-    reconciling: 'Reconciling files',
-    finalizing: 'Finalizing sync',
-  };
-  const now = Date.now();
-  const elapsed = formatDurationSeconds((now - progress.startedAt) / 1000);
-  const lastActivity = formatDurationSeconds((now - progress.lastActivityAt) / 1000);
-  const amount = progress.total > 0
-    ? ` · ${progress.completed}/${progress.total} (${Math.min(100, Math.round((progress.completed / progress.total) * 100))}%)`
-    : progress.completed > 0
-      ? ` · ${progress.completed} processed`
-      : '';
-  const current = progress.currentPath ? ` · ${progress.currentPath}` : '';
-  return `${phaseLabels[progress.phase]}${amount}${current} · elapsed ${elapsed} · last progress update ${lastActivity} ago`;
-}
-
 function formatPendingDiagnostic(diagnostic: SyncPendingDiagnostic): string {
   const reasonLabels: Record<SyncPendingDiagnostic['reason'], string> = {
     local_create: 'local create',
@@ -190,14 +166,20 @@ function batchOperationReportToActionReport(kind: string, title: string, report:
 }
 
 function syncResultToActionReport(operation: 'incremental' | 'full', result: SyncResult): ActionReport {
-  const title = operation === 'full' ? 'Full reconciliation complete' : 'Sync complete';
-  const status: ActionReport['status'] = result.errors.length > 0
+  const title = result.cancelled
+    ? operation === 'full' ? 'Full reconciliation cancelled' : 'Sync cancelled'
+    : operation === 'full' ? 'Full reconciliation complete' : 'Sync complete';
+  const status: ActionReport['status'] = result.cancelled
+    ? 'warning'
+    : result.errors.length > 0
     ? 'error'
     : result.conflicts > 0
       ? 'warning'
       : 'success';
   const nextAction = result.errors.length > 0
     ? 'Copy diagnostics and retry after resolving the reported blocker.'
+    : result.cancelled
+      ? 'Completed operations were checkpointed. Run sync again to continue.'
     : result.conflicts > 0
       ? 'Open Conflicts or Review Drive duplicates before running sync again.'
       : 'No follow-up needed unless you want to review Activity History.';
@@ -2303,6 +2285,36 @@ export class QuartzoView extends ItemView {
         await this.render();
       });
       container.appendChild(connect);
+      if (snapshot?.status === 'syncing' && coordinator) {
+        const operationControls = document.createElement('div');
+        operationControls.className = 'quartzo-sync-actions';
+        operationControls.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-block:12px;';
+        const pause = document.createElement('button');
+        pause.className = 'qz-btn qz-btn-secondary';
+        pause.textContent = 'Pause sync';
+        pause.title = 'Pause after the current file/API operation reaches a safe checkpoint.';
+        pause.addEventListener('click', () => {
+          const progress = coordinator.getSyncProgress();
+          if (progress?.paused || progress?.pauseRequested) {
+            coordinator.resumeSync();
+            pause.textContent = 'Pause sync';
+          } else {
+            coordinator.pauseSync();
+            pause.textContent = 'Resume sync';
+          }
+        });
+        const cancel = document.createElement('button');
+        cancel.className = 'qz-btn qz-btn-secondary';
+        cancel.textContent = 'Cancel sync';
+        cancel.title = 'Finish the current file/API operation, save a checkpoint, then stop.';
+        cancel.addEventListener('click', () => {
+          coordinator.cancelSync();
+          cancel.disabled = true;
+          cancel.textContent = 'Cancelling…';
+        });
+        operationControls.append(pause, cancel);
+        container.appendChild(operationControls);
+      }
       return;
     }
 
@@ -2427,7 +2439,8 @@ export class QuartzoView extends ItemView {
       actions.className = 'quartzo-sync-actions';
       actions.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-block:12px;';
 
-      const isSyncing = offline || snapshot?.status === 'syncing';
+      const operationActive = snapshot?.status === 'syncing';
+      const isSyncing = offline || operationActive;
 
       const sync = document.createElement('button');
       sync.className = 'qz-btn qz-btn-primary';
@@ -2446,6 +2459,9 @@ export class QuartzoView extends ItemView {
       ): Promise<void> => {
         sync.disabled = true;
         full.disabled = true;
+        pauseSync.disabled = false;
+        cancelSync.disabled = false;
+        pauseSync.textContent = 'Pause';
         const progressLine = ensureSyncProgressLine();
         progressLine.textContent = operation === 'full'
           ? 'Starting full reconciliation…'
@@ -2463,7 +2479,9 @@ export class QuartzoView extends ItemView {
             : await coordinator.triggerManualSync(onProgress);
           if (!this.isCurrentRender(container, generation)) return;
           this.syncActionReport = syncResultToActionReport(operation, result);
-          if (result.errors.length > 0) {
+          if (result.cancelled) {
+            new Notice('Sync cancelled safely. Completed work was checkpointed; run sync again to continue.');
+          } else if (result.errors.length > 0) {
             new Notice(result.errors[result.errors.length - 1]);
           } else if (operation === 'full') {
             new Notice(`Full reconciliation complete: ${result.synced} synced, ${result.conflicts} conflicts`);
@@ -2487,14 +2505,45 @@ export class QuartzoView extends ItemView {
           new Notice(message);
         } finally {
           this.stopSyncProgressTicker();
+          pauseSync.disabled = true;
+          cancelSync.disabled = true;
           if (this.isCurrentRender(container, generation)) {
             await this.render();
           }
         }
       };
 
+      const pauseSync = document.createElement('button');
+      pauseSync.className = 'qz-btn qz-btn-secondary';
+      pauseSync.textContent = 'Pause';
+      pauseSync.disabled = !operationActive;
+      pauseSync.title = 'Pause after the current file/API operation reaches a safe checkpoint.';
+      pauseSync.addEventListener('click', () => {
+        const progress = coordinator.getSyncProgress();
+        if (progress?.paused || progress?.pauseRequested) {
+          coordinator.resumeSync();
+          pauseSync.textContent = 'Pause';
+        } else {
+          coordinator.pauseSync();
+          pauseSync.textContent = 'Resume';
+        }
+      });
+
+      const cancelSync = document.createElement('button');
+      cancelSync.className = 'qz-btn qz-btn-secondary';
+      cancelSync.textContent = 'Cancel sync';
+      cancelSync.disabled = !operationActive;
+      cancelSync.title = 'Finish the current file/API operation, save a checkpoint, then stop.';
+      cancelSync.addEventListener('click', () => {
+        coordinator.cancelSync();
+        cancelSync.disabled = true;
+        cancelSync.textContent = 'Cancelling…';
+      });
+
       sync.addEventListener('click', () => { void runWithVisibleProgress('incremental'); });
       actions.appendChild(sync);
+      actions.appendChild(pauseSync);
+      actions.appendChild(cancelSync);
 
       full.addEventListener('click', () => { void runWithVisibleProgress('full'); });
       actions.appendChild(full);

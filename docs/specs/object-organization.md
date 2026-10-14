@@ -1884,6 +1884,10 @@ O código atual já lida com:
 - links;
 - several legacy fields.
 
+Todos os arquivos Markdown do vault entram no preflight de WikiLinks, inclusive documentos que não são objetos Quartzo. Ao redirecionar um WikiLink, usar o caminho relativo persistido do survivor e preservar heading/block anchor e display alias. Atualizar referências antes de arquivar qualquer loser; uma falha de escrita restaura os arquivos já alterados e mantém as fontes disponíveis.
+
+Cada fluxo de merge oferece `Create aliases from previous names`, marcada por padrão. A lista editável sugere títulos, nomes de arquivo e aliases existentes de todos os participantes; quando o título final mudar, o título anterior do survivor também é sugerido. Desmarcar a opção mantém os aliases que já pertenciam ao survivor e não adiciona sugestões dos outros nomes.
+
 Não duplicar a lista no Companion. 
 
 Transformar os casos language-neutral em contract vectors.
@@ -1921,6 +1925,8 @@ vault.delete(loser)
 ```
 
 como substituto simplificado se isso bypassar lifecycle/sync semantics.
+
+Arquivos físicos distintos com o mesmo ID podem ser consolidados: o survivor mantém o ID e as cópias absorvidas viram tombstones em caminhos `_deleted/` estáveis e únicos por caminho de origem, para evitar colisões entre cópias do mesmo objeto.
 
 ---
 

@@ -19,6 +19,7 @@ export interface SyncState {
   version: string;
   pendingRenames?: PendingRename[];
   pendingDeletes?: string[];
+  forceFullReconciliation?: boolean;
 }
 
 export const CURRENT_STATE_VERSION = '1.1.0';
@@ -27,6 +28,7 @@ export interface SyncResult {
   synced: number;
   conflicts: number;
   errors: string[];
+  cancelled?: boolean;
 }
 
 export interface DriveFileMetadata {
@@ -59,7 +61,7 @@ export class TemporaryDriveQuotaError extends Error {
 export interface DriveAdapter {
   getFolderId(): Promise<string | null>;
   setFolderId(folderId: string): Promise<void>;
-  listAllFiles(folderId: string): Promise<DriveFileMetadata[]>;
+  listAllFiles(folderId: string, onProgress?: (completed: number) => void | Promise<void>): Promise<DriveFileMetadata[]>;
   listFiles(folderId: string, pageToken?: string): Promise<{ files: DriveFileMetadata[]; nextPageToken: string | null }>;
   listQuartzoVaultCandidates(): Promise<Array<{ id: string; name: string }>>;
   getStartPageToken(): Promise<string>;

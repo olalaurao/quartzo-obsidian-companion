@@ -13,7 +13,11 @@ import {
 } from './preconditions';
 import type { QuartzoSharedSettings } from '../shared-settings';
 import { ObjectParser } from '../objects';
-import { buildCanonicalRetirementTombstone } from './retire';
+import {
+  buildCanonicalRetirementTombstone,
+  canonicalRetirementPath,
+  duplicateRetirementPath,
+} from './retire';
 
 export type PropertyResolutionStrategy =
   | 'use_survivor'
@@ -38,6 +42,8 @@ export interface MergePlanInput {
     markdown: string;
   }>;
   propertyResolutions: PropertyResolution[];
+  /** Additional, user-reviewed aliases to add to the survivor. */
+  aliasesToAdd?: string[];
   bodyResolution: 'keep_survivor' | 'combine' | 'custom';
   customBody?: string;
   settingsRevision: number;
@@ -51,6 +57,7 @@ export interface MergeActionPlan {
   losersToRetire: Array<{
     id: string;
     path: string;
+    tombstonePath: string;
     expectedMarkdown: string;
     newMarkdown: string;
   }>;
@@ -78,6 +85,7 @@ export function planMerge(input: MergePlanInput): MergePlan {
     targetType,
     losers,
     propertyResolutions,
+    aliasesToAdd = [],
     bodyResolution,
     customBody,
     settingsRevision,
@@ -87,7 +95,7 @@ export function planMerge(input: MergePlanInput): MergePlan {
   const operationId = generateOperationId('merge', {
     survivorId,
     targetType,
-    losers: losers.map(l => l.id).sort(),
+    losers: losers.map(l => ({ id: l.id, path: l.path })).sort((a, b) => a.path.localeCompare(b.path)),
   });
 
   const blockers: OperationPreconditionFailure[] = [];
@@ -99,10 +107,10 @@ export function planMerge(input: MergePlanInput): MergePlan {
   const migrationCheck = checkNoConcurrentMigration(targetType, settings);
   if (migrationCheck) blockers.push(migrationCheck);
 
-  if (losers.some(l => l.id === survivorId)) {
+  if (losers.some(l => l.id === survivorId && l.path === survivorPath)) {
     blockers.push({
       kind: 'survivor_missing',
-      message: 'Survivor ID cannot also be in the losers list.',
+      message: 'Survivor file cannot also be in the losers list.',
       subject: survivorId,
     });
   }
@@ -151,12 +159,34 @@ export function planMerge(input: MergePlanInput): MergePlan {
 
   nextFrontmatter.type = targetType;
 
+  const aliases = new Map<string, string>();
+  const finalTitle = typeof nextFrontmatter.title === 'string'
+    ? nextFrontmatter.title.trim()
+    : '';
+  const addAlias = (value: unknown): void => {
+    if (typeof value !== 'string') return;
+    const alias = value.trim();
+    if (!alias || (finalTitle && alias.toLocaleLowerCase() === finalTitle.toLocaleLowerCase())) return;
+    const key = alias.toLocaleLowerCase();
+    if (!aliases.has(key)) aliases.set(key, alias);
+  };
+  const existingAliases = nextFrontmatter.aliases;
+  if (Array.isArray(existingAliases)) existingAliases.forEach(addAlias);
+  else if (typeof existingAliases === 'string') addAlias(existingAliases);
+  aliasesToAdd.forEach(addAlias);
+  if (aliases.size > 0 || existingAliases !== undefined) {
+    nextFrontmatter.aliases = Array.from(aliases.values());
+  }
+
   const newSurvivorMarkdown = ObjectParser.serializeMarkdown(nextFrontmatter, nextBody);
 
   const deletedAt = new Date().toISOString();
   const losersToRetire = losers.map(loser => ({
     id: loser.id,
     path: loser.path,
+    tombstonePath: loser.id === survivorId
+      ? duplicateRetirementPath(loser.id, loser.path)
+      : canonicalRetirementPath(loser.id),
     expectedMarkdown: loser.markdown,
     newMarkdown: buildCanonicalRetirementTombstone({
       id: loser.id,
@@ -178,4 +208,33 @@ export function planMerge(input: MergePlanInput): MergePlan {
     blockers,
     warnings,
   };
+}
+
+/** Suggest old, human-readable names that can keep resolving to the survivor. */
+export function suggestMergeAliases(
+  objects: Array<{ path: string; markdown: string }>,
+  finalTitle?: string,
+): string[] {
+  const aliases = new Map<string, string>();
+  const add = (value: unknown): void => {
+    if (typeof value !== 'string') return;
+    const alias = value.trim();
+    if (!alias || (finalTitle && alias.localeCompare(finalTitle.trim(), undefined, { sensitivity: 'accent' }) === 0)) {
+      return;
+    }
+    const key = alias.toLocaleLowerCase();
+    if (!aliases.has(key)) aliases.set(key, alias);
+  };
+
+  for (const object of objects) {
+    const parsed = ObjectParser.parseMarkdown(object.markdown);
+    add(parsed.frontmatter.title);
+    const pathWithoutExtension = object.path.replace(/\.md$/i, '').replace(/\\/g, '/');
+    add(pathWithoutExtension.slice(pathWithoutExtension.lastIndexOf('/') + 1));
+    const storedAliases = parsed.frontmatter.aliases;
+    if (Array.isArray(storedAliases)) storedAliases.forEach(add);
+    else add(storedAliases);
+  }
+
+  return Array.from(aliases.values());
 }

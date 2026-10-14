@@ -52,6 +52,7 @@ export class SyncEngine {
         return { action: 'pull' };
       }
       if (localHash && remoteHash === null) {
+        if (!remoteExists && vector.authorizedLocalCreation) return { action: 'push' };
         return { action: 'adoption_required', adoptionRequired: true };
       }
       if (localHash === remoteHash) {

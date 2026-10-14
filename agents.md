@@ -26,7 +26,7 @@ A arquitetura do Companion é dividida nestas camadas:
 
 - **OAuth loopback:** O listener desktop deve validar `state` somente em respostas que sejam callbacks OAuth reais. Requests auxiliares do navegador (por exemplo `/favicon.ico`) devem ser ignorados/retornar 404 sem consumir, rejeitar ou encerrar o fluxo de autenticação ativo.
 
-- **OAuth Desktop credentials:** Drive e Calendar devem usar o mesmo `GoogleOAuthDesktop` canônico. O token exchange e o refresh devem enviar `client_id` + a client credential do mesmo Google Desktop OAuth client, mantendo PKCE S256. Release/preflight devem falhar se qualquer uma das duas credenciais de build estiver ausente. Não criar fluxo OAuth paralelo para Calendar/Drive nem commitar valores reais no repositório.
+- **OAuth Desktop credentials:** Drive e Calendar devem usar o mesmo `GoogleOAuthDesktop` canônico. O token exchange e o refresh devem enviar `client_id` + a client credential do mesmo Google Desktop OAuth client, mantendo PKCE S256. Release/preflight devem falhar se qualquer uma das duas credenciais de build estiver ausente. Builds locais podem obter o client secret de `app.secretStorage` pela ID canônica `GOOGLE_CLIENT_SECRET_SECRET_ID`; a credencial embutida tem precedência. Nunca persistir o valor em `data.json`, logs ou repositório. Não criar fluxo OAuth paralelo para Calendar/Drive.
 
 - **Obsidian SecretStorage IDs:** todos os IDs usados em `app.secretStorage` devem vir do owner canônico `src/platform/secret-ids.ts` e obedecer `^[a-z0-9-]{1,64}$` (somente minúsculas, números e hífens; máximo 64 caracteres). Não usar `_`, `/`, espaços ou IDs ad hoc em integrações.
 

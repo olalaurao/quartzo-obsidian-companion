@@ -4,6 +4,7 @@ import {
   planMerge,
   type MergePlan,
   type PropertyResolution,
+  suggestMergeAliases,
 } from '../../core/object-organization/merge';
 import {
   type BatchOperationReport,
@@ -28,6 +29,7 @@ interface BatchMergeGroupPlan {
   survivorPath: string;
   plan: MergePlan | null;
   blockers: string[];
+  aliases: string[];
 }
 
 export class ObjectBatchMergeModal extends Modal {
@@ -37,6 +39,8 @@ export class ObjectBatchMergeModal extends Modal {
   private progress: BatchProgress | null = null;
   private report: BatchOperationReport | null = null;
   private isApplying = false;
+  private createAliases = true;
+  private readonly aliasesByObjectId = new Map<string, string[]>();
 
   constructor(
     private readonly context: ViewContext,
@@ -66,6 +70,7 @@ export class ObjectBatchMergeModal extends Modal {
         survivorPath: '',
         plan: null,
         blockers: ['Shared settings not found.'],
+        aliases: [],
       }];
       return;
     }
@@ -100,9 +105,11 @@ export class ObjectBatchMergeModal extends Modal {
       const survivor = loaded.find(item => item.path === survivorPath) ?? loaded[0];
       if (!survivor || loaded.length < 2) {
         blockers.push(`${group.objectId}: fewer than two readable objects remain.`);
-        this.groupPlans.push({ ...group, plan: null, blockers });
+        this.groupPlans.push({ ...group, plan: null, blockers, aliases: [] });
       } else {
         const losers = loaded.filter(item => item.path !== survivor.path);
+        const aliases = this.aliasesByObjectId.get(group.objectId) ?? suggestMergeAliases(loaded);
+        this.aliasesByObjectId.set(group.objectId, aliases);
         const plan = planMerge({
           survivorId: survivor.id,
           survivorMarkdown: survivor.markdown,
@@ -110,6 +117,7 @@ export class ObjectBatchMergeModal extends Modal {
           targetType: String(survivor.frontmatter.type || ''),
           losers,
           propertyResolutions: defaultPropertyResolutions(loaded),
+          aliasesToAdd: this.createAliases ? aliases : [],
           bodyResolution: 'combine',
           settingsRevision: Number(settings.objectIdentification.revision) || 0,
           settings,
@@ -119,6 +127,7 @@ export class ObjectBatchMergeModal extends Modal {
           survivorPath: survivor.path,
           plan,
           blockers: [...blockers, ...plan.blockers.map(blocker => blocker.message)],
+          aliases,
         });
       }
 
@@ -138,12 +147,18 @@ export class ObjectBatchMergeModal extends Modal {
     const selected = new Set((this.options.selectedPaths ?? []).map(normalizePath));
     const ignored = this.options.ignoredFolderPaths ?? [];
     const byId = new Map<string, string[]>();
-    for (const object of index.objects.values()) {
-      const path = normalizePath(object.path);
+    for (const file of index.files.values()) {
+      const path = normalizePath(file.path);
+      if (!/\.md$/i.test(path) || path.startsWith('_deleted/')) continue;
       if (isOrganizationIssuePathExcluded(path, ignored)) continue;
-      const paths = byId.get(object.id) ?? [];
+      const parsed = ObjectParser.parseMarkdown(file.content);
+      const objectId = typeof parsed.frontmatter.id === 'string'
+        ? parsed.frontmatter.id.trim()
+        : '';
+      if (!objectId || !index.objects.has(objectId)) continue;
+      const paths = byId.get(objectId) ?? [];
       paths.push(path);
-      byId.set(object.id, paths);
+      byId.set(objectId, paths);
     }
     return Array.from(byId.entries())
       .filter(([, paths]) => paths.length > 1)
@@ -180,6 +195,19 @@ export class ObjectBatchMergeModal extends Modal {
     });
 
     const list = contentEl.createEl('div', { cls: 'quartzo-preview-box' });
+    const aliasOptions = contentEl.createEl('div', { cls: 'quartzo-merge-alias-options' });
+    const aliasToggle = aliasOptions.createEl('input', { type: 'checkbox' });
+    aliasToggle.checked = this.createAliases;
+    aliasToggle.addEventListener('change', async () => {
+      this.createAliases = aliasToggle.checked;
+      await this.refreshPlans();
+      this.render();
+    });
+    aliasOptions.createEl('label', { text: 'Create aliases from previous names' });
+    aliasOptions.createEl('p', {
+      text: 'Suggested aliases include each old title, file name and existing alias. Existing survivor aliases are kept.',
+      cls: 'qz-text-muted',
+    });
     if (this.groupPlans.length === 0) {
       list.createEl('p', { text: 'No duplicate object IDs found for the current scope.' });
     }
@@ -190,6 +218,17 @@ export class ObjectBatchMergeModal extends Modal {
         text: `Survivor: ${group.survivorPath || 'n/a'} · ${group.paths.length} files`,
         cls: 'qz-text-muted',
       });
+      if (this.createAliases && group.plan) {
+        const aliasEditor = row.createEl('textarea', { cls: 'quartzo-input' });
+        aliasEditor.rows = 2;
+        aliasEditor.value = group.aliases.join('\n');
+        aliasEditor.setAttribute('aria-label', `Aliases for ${group.survivorPath}`);
+        aliasEditor.addEventListener('input', () => {
+          const aliases = this.parseAliases(aliasEditor.value);
+          this.aliasesByObjectId.set(group.objectId, aliases);
+          group.aliases = aliases;
+        });
+      }
       if (group.blockers.length > 0) {
         const blockers = row.createEl('ul');
         for (const blocker of group.blockers) blockers.createEl('li', { text: blocker });
@@ -319,13 +358,17 @@ export class ObjectBatchMergeModal extends Modal {
     }
     engine.setIndex(VaultIndexEngine.updateIndex(currentIndex, changes));
   }
+
+  private parseAliases(value: string): string[] {
+    return Array.from(new Set(value.split(/[\n,]/).map(alias => alias.trim()).filter(Boolean)));
+  }
 }
 
 function defaultPropertyResolutions(objects: Array<{ frontmatter: Record<string, unknown> }>): PropertyResolution[] {
   const keys = new Set<string>();
   for (const object of objects) {
     for (const key of Object.keys(object.frontmatter)) {
-      if (!['id', 'type'].includes(key)) keys.add(key);
+      if (!['id', 'type', 'aliases'].includes(key)) keys.add(key);
     }
   }
   return Array.from(keys).map(field => ({

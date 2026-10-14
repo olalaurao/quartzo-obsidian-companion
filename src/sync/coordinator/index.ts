@@ -121,6 +121,22 @@ export interface SyncProgress {
   currentPath?: string;
   startedAt: number;
   lastActivityAt: number;
+  paused: boolean;
+  pauseRequested?: boolean;
+  cancelRequested?: boolean;
+}
+
+class SyncOperationCancelledError extends Error {
+  constructor() {
+    super('Sync cancelled at a safe checkpoint.');
+    this.name = 'SyncOperationCancelledError';
+  }
+}
+
+interface SyncOperationControl {
+  paused: boolean;
+  cancelRequested: boolean;
+  resumeWaiters: Array<() => void>;
 }
 
 export function chooseNewestConflictResolution(artifact: ConflictArtifact): 'keep_local' | 'keep_drive' | null {
@@ -167,6 +183,11 @@ export interface PairingApplyProgress {
   completed: number;
   total: number;
   currentPath?: string;
+  startedAt?: number;
+  lastActivityAt?: number;
+  paused?: boolean;
+  pauseRequested?: boolean;
+  cancelRequested?: boolean;
 }
 
 export interface PairingSummary {
@@ -216,12 +237,14 @@ export class DriveSyncCoordinator implements ConflictRegistry {
   private conflicts: Map<string, ConflictArtifact> = new Map();
   private pendingRenames: PendingRename[] = [];
   private pendingDeletes: Set<string> = new Set();
+  private pendingCreates: Set<string> = new Set();
   private lastError: string | null = null;
   private remoteHashCache = new Map<string, { modifiedTime: string | null; hash: string }>();
   private syncProgress: SyncProgress | null = null;
   private pairingApplyInProgress = false;
   private pairingApplyProgress: PairingApplyProgress | null = null;
   private pairingLastError: string | null = null;
+  private operationControl: SyncOperationControl | null = null;
 
   constructor(driveAdapter: DriveAdapter, vaultPath: string, stateStorePath?: string) {
     this.driveAdapter = driveAdapter;
@@ -266,6 +289,47 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
   getSyncProgress(): SyncProgress | null {
     return this.syncProgress ? { ...this.syncProgress } : null;
+  }
+
+  pauseSync(): void {
+    if (!this.operationControl || this.operationControl.cancelRequested) return;
+    this.operationControl.paused = true;
+    if (this.syncProgress) this.syncProgress = { ...this.syncProgress, pauseRequested: true };
+    if (this.pairingApplyProgress) this.pairingApplyProgress = { ...this.pairingApplyProgress, pauseRequested: true };
+  }
+
+  resumeSync(): void {
+    const control = this.operationControl;
+    if (!control) return;
+    control.paused = false;
+    if (this.syncProgress) this.syncProgress = { ...this.syncProgress, paused: false, pauseRequested: false, lastActivityAt: Date.now() };
+    if (this.pairingApplyProgress) this.pairingApplyProgress = { ...this.pairingApplyProgress, paused: false, pauseRequested: false, lastActivityAt: Date.now() };
+    for (const resolve of control.resumeWaiters.splice(0)) resolve();
+  }
+
+  cancelSync(): void {
+    const control = this.operationControl;
+    if (!control) return;
+    control.cancelRequested = true;
+    control.paused = false;
+    if (this.syncProgress) this.syncProgress = { ...this.syncProgress, paused: false, pauseRequested: false, cancelRequested: true };
+    if (this.pairingApplyProgress) this.pairingApplyProgress = { ...this.pairingApplyProgress, paused: false, pauseRequested: false, cancelRequested: true };
+    for (const resolve of control.resumeWaiters.splice(0)) resolve();
+  }
+
+  private async checkpointSync(): Promise<void> {
+    const control = this.operationControl;
+    if (!control) return;
+    if (control.cancelRequested) throw new SyncOperationCancelledError();
+    if (!control.paused) return;
+
+    if (this.syncProgress) this.syncProgress = { ...this.syncProgress, paused: true, pauseRequested: false };
+    if (this.pairingApplyProgress) this.pairingApplyProgress = { ...this.pairingApplyProgress, paused: true, pauseRequested: false };
+    await this.saveSyncState();
+    await new Promise<void>(resolve => control.resumeWaiters.push(resolve));
+    if (control.cancelRequested) throw new SyncOperationCancelledError();
+    if (this.syncProgress) this.syncProgress = { ...this.syncProgress, paused: false, pauseRequested: false, lastActivityAt: Date.now() };
+    if (this.pairingApplyProgress) this.pairingApplyProgress = { ...this.pairingApplyProgress, paused: false, pauseRequested: false, lastActivityAt: Date.now() };
   }
 
   /**
@@ -399,6 +463,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       total: 0,
       startedAt: now,
       lastActivityAt: now,
+      paused: false,
     };
     onProgress?.({ ...this.syncProgress });
   }
@@ -416,6 +481,9 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       total: progress.total,
       startedAt: current?.startedAt ?? now,
       lastActivityAt: now,
+      paused: current?.paused ?? false,
+      pauseRequested: current?.pauseRequested ?? false,
+      cancelRequested: current?.cancelRequested ?? false,
       ...(progress.currentPath ? { currentPath: progress.currentPath } : {}),
     };
     this.syncProgress = next;
@@ -423,11 +491,20 @@ export class DriveSyncCoordinator implements ConflictRegistry {
   }
 
   private reportPairingApplyProgress(
-    progress: PairingApplyProgress,
+    progress: Omit<PairingApplyProgress, 'startedAt' | 'lastActivityAt' | 'paused'>,
     onProgress?: (progress: PairingApplyProgress) => void
   ): void {
-    this.pairingApplyProgress = { ...progress };
-    onProgress?.(progress);
+    const now = Date.now();
+    const next: PairingApplyProgress = {
+      ...progress,
+      startedAt: this.pairingApplyProgress?.startedAt ?? now,
+      lastActivityAt: now,
+      paused: this.operationControl?.paused ?? false,
+      pauseRequested: this.pairingApplyProgress?.pauseRequested ?? false,
+      cancelRequested: this.operationControl?.cancelRequested ?? false,
+    };
+    this.pairingApplyProgress = next;
+    onProgress?.({ ...next });
   }
 
   async resolveConflict(originalPath: string, resolution: ConflictResolution): Promise<void> {
@@ -690,6 +767,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     }
 
     this.syncMutex = true;
+    this.operationControl = { paused: false, cancelRequested: false, resumeWaiters: [] };
     this.currentTransactionId = `sync-${Date.now()}-${++this.transactionCounter}`;
     this.quarantinedPaths.clear();
     this.beginSyncProgress(forceFull ? 'full' : 'incremental', onProgress);
@@ -700,22 +778,35 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       this.rehydrateConflicts();
       this.ancestryCache.clear();
       this.parentNameCache.clear();
+      if (forceFull) {
+        this.syncState.forceFullReconciliation = true;
+        await this.saveSyncState();
+      }
 
       const driveFolderId = await this.driveAdapter.getFolderId();
       if (!driveFolderId) {
         throw new Error('Drive folder not configured');
       }
 
+      if (this.syncState.driveFolderId && this.syncState.driveFolderId !== driveFolderId) {
+        throw new Error('Selected Drive vault differs from persisted sync identity. Pair the vault explicitly.');
+      }
       this.syncState.driveFolderId = driveFolderId;
 
-      const localInventory = await this.buildLocalInventory();
+      let localYieldCounter = 0;
+      const localInventory = await this.buildLocalInventory(async (completed, currentPath) => {
+        await this.checkpointSync();
+        this.reportSyncProgress({ phase: 'local_inventory', completed, total: 0, currentPath }, onProgress);
+        if (++localYieldCounter % 32 === 0) await new Promise(resolve => setTimeout(resolve, 0));
+      });
       this.reportSyncProgress({
         phase: 'local_inventory',
         completed: localInventory.size,
         total: localInventory.size,
       }, onProgress);
 
-      if (!forceFull && this.syncState.driveChangeToken) {
+      const requiresFullReconciliation = forceFull || this.syncState.forceFullReconciliation === true || !this.syncState.driveChangeToken;
+      if (!requiresFullReconciliation) {
         this.reportSyncProgress({ phase: 'processing_changes', completed: 0, total: 0 }, onProgress);
         await this.processChanges(localInventory, result, onProgress);
 
@@ -733,9 +824,11 @@ export class DriveSyncCoordinator implements ConflictRegistry {
           total: freshLocalInventory.size,
         }, onProgress);
       } else {
-        await this.fullInventory(localInventory, result, onProgress);
         const startToken = await this.driveAdapter.getStartPageToken();
+        await this.fullInventory(localInventory, result, onProgress);
         this.syncState.driveChangeToken = startToken;
+        await this.processChanges(await this.buildLocalInventory(), result, onProgress);
+        this.syncState.forceFullReconciliation = false;
       }
 
       this.reportSyncProgress({ phase: 'finalizing', completed: 0, total: 1 }, onProgress);
@@ -749,14 +842,27 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       this.backoffMs = 1000;
       this.reportSyncProgress({ phase: 'finalizing', completed: 1, total: 1 }, onProgress);
     } catch (error) {
+      if (error instanceof SyncOperationCancelledError) {
+        result.cancelled = true;
+        this.syncRerunRequested = false;
+        this.syncRerunForceFull = false;
+        try {
+          await this.saveSyncState();
+        } catch (saveError) {
+          result.errors.push(`Sync was cancelled, but its checkpoint could not be saved: ${saveError}`);
+          this.lastError = result.errors[result.errors.length - 1];
+        }
+      } else {
       const message = `Sync failed: ${error}`;
       result.errors.push(message);
       this.lastError = message;
       this.backoffMs = Math.min(this.backoffMs * 2, this.maxBackoffMs);
+      }
     } finally {
       this.syncMutex = false;
       this.currentTransactionId = null;
       this.syncProgress = null;
+      this.operationControl = null;
       if (this.syncRerunRequested) {
         this.syncRerunRequested = false;
         const rerunForceFull = this.syncRerunForceFull;
@@ -779,14 +885,19 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     }
 
     this.syncMutex = true;
+    this.operationControl = { paused: false, cancelRequested: false, resumeWaiters: [] };
     this.currentTransactionId = `sync-settings-${Date.now()}-${++this.transactionCounter}`;
     const result: SyncResult = { synced: 0, conflicts: 0, errors: [] };
     const settingsPath = 'app/quartzo_shared_settings.md';
+    this.beginSyncProgress('incremental');
 
     try {
       await this.loadSyncState();
+      await this.checkpointSync();
+      this.reportSyncProgress({ phase: 'local_inventory', completed: 0, total: 1, currentPath: settingsPath });
       
       const driveFolderId = await this.driveAdapter.getFolderId();
+      await this.checkpointSync();
       if (!driveFolderId) {
         throw new Error('Drive folder not configured');
       }
@@ -797,17 +908,20 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       let localHash: string | null = null;
       let localContent: Uint8Array | null = null;
       if (localExists) {
-        localContent = new Uint8Array(fs.readFileSync(localFilePath));
+        localContent = new Uint8Array(await fs.promises.readFile(localFilePath));
         localHash = this.calculateHash(localContent);
       }
+      this.reportSyncProgress({ phase: 'local_inventory', completed: 1, total: 1, currentPath: settingsPath });
 
       // 2. Discover remote state
+      this.reportSyncProgress({ phase: 'remote_inventory', completed: 0, total: 0, currentPath: settingsPath });
       let syncFile = this.syncState.files.get(settingsPath);
       let remoteFile: DriveFileMetadata | undefined;
       
       if (syncFile && syncFile.remoteFileId) {
         try {
           remoteFile = await this.driveAdapter.getFileMetadata(syncFile.remoteFileId);
+          await this.checkpointSync();
         } catch (e: unknown) {
           if (e instanceof Error && e.message.includes('404')) {
             remoteFile = undefined;
@@ -821,13 +935,17 @@ export class DriveSyncCoordinator implements ConflictRegistry {
         let currentFolderId = driveFolderId;
         let found = true;
         for (let i = 0; i < parts.length - 1 && found; i++) {
+          await this.checkpointSync();
           const { files } = await this.driveAdapter.listFiles(currentFolderId);
+          await this.checkpointSync();
           const folder = files.find(f => f.name === parts[i] && f.mimeType === 'application/vnd.google-apps.folder');
           if (!folder) { found = false; break; }
           currentFolderId = folder.id;
         }
         if (found) {
+          await this.checkpointSync();
           const { files } = await this.driveAdapter.listFiles(currentFolderId);
+          await this.checkpointSync();
           const match = files.find(f => f.name === parts[parts.length - 1]);
           if (match) remoteFile = match;
         }
@@ -839,6 +957,8 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       }
 
       const remoteHash = remoteFile ? await this.resolveRemoteHashCached(remoteFile) : null;
+      await this.checkpointSync();
+      this.reportSyncProgress({ phase: 'processing_local_changes', completed: 0, total: 1, currentPath: settingsPath });
 
       // 3. Three-way reconciliation
       const vector = {
@@ -883,12 +1003,25 @@ export class DriveSyncCoordinator implements ConflictRegistry {
           break;
       }
       
+      await this.checkpointSync();
       await this.saveSyncState();
+      this.reportSyncProgress({ phase: 'finalizing', completed: 1, total: 1, currentPath: settingsPath });
     } catch (error) {
-      result.errors.push(`Targeted settings sync failed: ${error}`);
+      if (error instanceof SyncOperationCancelledError) {
+        result.cancelled = true;
+        try {
+          await this.saveSyncState();
+        } catch (saveError) {
+          result.errors.push(`Targeted settings sync was cancelled, but its checkpoint could not be saved: ${saveError}`);
+        }
+      } else {
+        result.errors.push(`Targeted settings sync failed: ${error}`);
+      }
     } finally {
       this.syncMutex = false;
       this.currentTransactionId = null;
+      this.syncProgress = null;
+      this.operationControl = null;
     }
     
     return result;
@@ -902,7 +1035,12 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     const driveFolderId = this.syncState.driveFolderId || '';
 
     this.reportSyncProgress({ phase: 'remote_inventory', completed: 0, total: 0 }, onProgress);
-    const remoteFiles = await this.driveAdapter.listAllFiles(driveFolderId);
+    const remoteFiles = await this.driveAdapter.listAllFiles(driveFolderId, async completed => {
+      await this.checkpointSync();
+      this.reportSyncProgress({ phase: 'remote_inventory', completed, total: 0 }, onProgress);
+      if (completed % 32 === 0) await new Promise(resolve => setTimeout(resolve, 0));
+    });
+    await this.checkpointSync();
     this.reportSyncProgress({
       phase: 'remote_inventory',
       completed: remoteFiles.length,
@@ -919,6 +1057,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       total: remoteFiles.length,
     }, onProgress);
     for (const file of remoteFiles) {
+      await this.checkpointSync();
       const remotePath = await this.resolveRemotePath(file, driveFolderId);
       resolvedPaths++;
       this.reportSyncProgress({
@@ -963,6 +1102,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     const hashWorkerCount = Math.min(REMOTE_HASH_CONCURRENCY, hashJobs.length);
     const hashWorkers = Array.from({ length: hashWorkerCount }, async () => {
       while (true) {
+        await this.checkpointSync();
         const index = nextHashIndex++;
         if (index >= hashJobs.length) return;
         const [remotePath, remoteFile] = hashJobs[index];
@@ -993,6 +1133,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     }, onProgress);
 
     for (const [localPath, localFile] of localEntries) {
+      await this.checkpointSync();
       const normalizedLocal = normalizeVaultPath(localPath);
       if (this.quarantinedPaths.has(normalizedLocal)) continue;
 
@@ -1014,6 +1155,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
         baseHash,
         localHash,
         remoteHash,
+        authorizedLocalCreation: this.pendingCreates.has(normalizedLocal),
         localExists: true,
         remoteExists: remoteFile !== undefined,
         expected: ''
@@ -1064,6 +1206,8 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     }
 
     for (const [remotePath, remoteFile] of remoteOnlyEntries) {
+      await this.checkpointSync();
+      if (this.pendingDeletes.has(remotePath)) continue;
       const vector = {
         id: remotePath,
         baseHash: null,
@@ -1121,6 +1265,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       const pageQueuedIds = new Set(response.changes.map(c => c.fileId));
 
       for (const change of response.changes) {
+        await this.checkpointSync();
         processedChanges++;
         this.reportSyncProgress({
           phase: 'processing_changes',
@@ -1156,6 +1301,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
           // tracked child is fetched at most once across all folder changes in
           // this page, reducing O(tracked × folder_changes) → O(tracked) per page.
           for (const tracked of this.syncState.files.values()) {
+            await this.checkpointSync();
             if (!tracked.remoteFileId || pageQueuedIds.has(tracked.remoteFileId)) continue;
             try {
               const metadata = await this.driveAdapter.getFileMetadata(tracked.remoteFileId);
@@ -1172,13 +1318,14 @@ export class DriveSyncCoordinator implements ConflictRegistry {
         const remotePath = await this.resolveRemotePath(change.file, driveFolderId);
         if (!remotePath) continue;
         const normalizedRemote = normalizeVaultPath(remotePath);
+        if (this.conflicts.has(normalizedRemote)) continue;
         if (!VaultSyncFilePolicy.shouldSyncRemoteFile(normalizedRemote, change.file.mimeType)) {
           const trackedFile = this.findSyncFileByRemoteId(change.file.id);
           if (trackedFile) {
             this.syncState.files.delete(trackedFile.path);
             const localHash = localInventory.get(trackedFile.path)?.hash || null;
             if (localHash && localHash === trackedFile.baseHash) {
-              await this.deleteLocalFile(trackedFile.path);
+              await this.deleteLocalFile(trackedFile.path, localHash);
               result.synced++;
             } else if (localHash) {
               result.conflicts++;
@@ -1197,7 +1344,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
             this.syncState.files.delete(trackedFile.path);
             const localHash = localInventory.get(trackedFile.path)?.hash || null;
             if (localHash && localHash === trackedFile.baseHash) {
-              await this.deleteLocalFile(trackedFile.path);
+              await this.deleteLocalFile(trackedFile.path, localHash);
               result.synced++;
             } else if (localHash) {
               result.conflicts++;
@@ -1397,6 +1544,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     const remainingRenames: PendingRename[] = [];
     let renameRemoteInventory: DriveFileMetadata[] | null = null;
     for (const rename of this.pendingRenames) {
+      await this.checkpointSync();
       reportLocalProgress(rename.newPath);
       const oldSyncFile = this.syncState.files.get(rename.oldPath);
       if (!oldSyncFile || !oldSyncFile.remoteFileId) {
@@ -1459,6 +1607,8 @@ export class DriveSyncCoordinator implements ConflictRegistry {
           oldSyncFile.path = rename.newPath;
           this.syncState.files.delete(rename.oldPath);
           this.syncState.files.set(rename.newPath, oldSyncFile);
+          this.pendingRenames = this.pendingRenames.filter(pending => pending !== rename);
+          await this.saveSyncState();
           
           if (newLocalFile.hash === oldSyncFile.localHash) {
             processedPaths.add(rename.newPath);
@@ -1479,6 +1629,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     this.pendingRenames = remainingRenames;
 
     for (const deletedPath of this.pendingDeletes) {
+      await this.checkpointSync();
       reportLocalProgress(deletedPath);
       if (this.conflicts.has(deletedPath)) {
         processedPaths.add(deletedPath);
@@ -1502,6 +1653,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     this.pendingDeletes.clear();
 
     for (const [syncedPath, syncFile] of this.syncState.files) {
+      await this.checkpointSync();
       reportLocalProgress(syncedPath);
       if (processedPaths.has(syncedPath) || this.conflicts.has(syncedPath)) {
         processedPaths.add(syncedPath);
@@ -1523,6 +1675,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     }
 
     for (const [localPath, localFile] of localInventory) {
+      await this.checkpointSync();
       const normalizedLocal = normalizeVaultPath(localPath);
       reportLocalProgress(normalizedLocal);
       if (!VaultSyncFilePolicy.shouldSyncFile(normalizedLocal)) continue;
@@ -1535,9 +1688,13 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
       if (!syncFile) {
         const newSyncFile = this.createSyncFile(normalizedLocal, localFile);
-        newSyncFile.baseHash = localFile.hash;
         newSyncFile.localHash = localFile.hash;
         this.syncState.files.set(normalizedLocal, newSyncFile);
+        if (!this.pendingCreates.has(normalizedLocal)) {
+          this.recordAdoptionPending(normalizedLocal, newSyncFile);
+          processedPaths.add(normalizedLocal);
+          continue;
+        }
         await this.pushFile(normalizedLocal, localFile, newSyncFile);
         result.synced++;
         processedPaths.add(normalizedLocal);
@@ -1545,6 +1702,12 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       }
 
       if (!syncFile.remoteFileId) {
+        if (this.pendingCreates.has(normalizedLocal)) {
+          await this.pushFile(normalizedLocal, localFile, syncFile);
+          result.synced++;
+          processedPaths.add(normalizedLocal);
+          continue;
+        }
         if (localFile.hash !== syncFile.localHash) {
           syncFile.localHash = localFile.hash;
           this.syncState.files.set(normalizedLocal, syncFile);
@@ -1739,6 +1902,18 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     let metadata: DriveFileMetadata;
 
     if (syncFile.remoteFileId) {
+      const remote = await this.driveAdapter.getFileMetadata(syncFile.remoteFileId);
+      const remotePath = await this.resolveRemotePath(remote, folderId);
+      if (remote.trashed || remotePath !== filePath) {
+        throw new Error('Remote identity changed before upload: ' + filePath);
+      }
+      const remoteBytes = await this.driveAdapter.downloadFile(syncFile.remoteFileId);
+      const remoteHash = this.calculateHash(remoteBytes);
+      if (remoteHash !== quartzoHash &&
+          (syncFile.baseHash === null || remoteHash !== syncFile.baseHash)) {
+        await this.handleConflict(filePath, localFile, remote, syncFile);
+        throw new Error('Remote content changed before upload: ' + filePath);
+      }
       metadata = await this.driveAdapter.updateFile(syncFile.remoteFileId, content, quartzoHash);
     } else {
       metadata = await this.driveAdapter.uploadFile({ folderId, name: filePath, content, quartzoHash });
@@ -1746,19 +1921,30 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
     syncFile.remoteHash = quartzoHash;
     syncFile.remoteFileId = metadata.id;
-    syncFile.baseHash = localFile.hash;
-    syncFile.localHash = localFile.hash;
-    syncFile.localExists = true;
+    syncFile.baseHash = quartzoHash;
+    syncFile.localHash = quartzoHash;
+    syncFile.localExists = fs.existsSync(localFilePath);
     syncFile.remoteExists = true;
-    syncFile.localModifiedAt = fs.statSync(localFilePath).mtime.toISOString();
+    syncFile.localModifiedAt = syncFile.localExists ? fs.statSync(localFilePath).mtime.toISOString() : null;
     syncFile.remoteModifiedAt = metadata.modifiedTime || null;
 
+    this.pendingCreates.delete(filePath);
     this.syncState.files.set(filePath, syncFile);
+    await this.saveSyncState();
   }
 
   private async pullFile(filePath: string, remoteFile: DriveFileMetadata, syncFile: SyncFile): Promise<void> {
-    const content = await this.driveAdapter.downloadFile(remoteFile.id);
     const localFilePath = pathModule.join(this.vaultPath, filePath);
+    const beforeHash = fs.existsSync(localFilePath)
+      ? this.calculateHash(fs.readFileSync(localFilePath)) : null;
+    const content = await this.driveAdapter.downloadFile(remoteFile.id);
+    const currentHash = fs.existsSync(localFilePath)
+      ? this.calculateHash(fs.readFileSync(localFilePath)) : null;
+    if (currentHash !== beforeHash ||
+        (beforeHash !== null && syncFile.baseHash !== null &&
+         beforeHash !== syncFile.baseHash && beforeHash !== this.calculateHash(content))) {
+      throw new Error('Local content changed before pull: ' + filePath);
+    }
 
     const localDir = pathModule.dirname(localFilePath);
     if (!fs.existsSync(localDir)) {
@@ -1766,10 +1952,16 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     }
 
     this.registerExpectedWatcherWrite(filePath, content);
-    fs.writeFileSync(localFilePath, Buffer.from(content));
+    const tempPath = localFilePath + '.' + crypto.randomUUID() + '.tmp';
+    try {
+      fs.writeFileSync(tempPath, Buffer.from(content), { flag: 'wx' });
+      fs.renameSync(tempPath, localFilePath);
+    } finally {
+      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    }
 
     const localHash = crypto.createHash('sha256').update(content).digest('hex');
-    const remoteSha256 = remoteFile.quartzoHash || localHash;
+    const remoteSha256 = localHash;
 
     syncFile.localHash = localHash;
     syncFile.remoteHash = remoteSha256;
@@ -1782,15 +1974,21 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     syncFile.remoteModifiedAt = remoteFile.modifiedTime || null;
 
     this.syncState.files.set(filePath, syncFile);
+    await this.saveSyncState();
   }
 
-  private async deleteLocalFile(filePath: string): Promise<void> {
+  private async deleteLocalFile(filePath: string, expectedHash = this.syncState.files.get(filePath)?.baseHash): Promise<void> {
     const localFilePath = pathModule.join(this.vaultPath, filePath);
     if (fs.existsSync(localFilePath)) {
+      const current = fs.readFileSync(localFilePath);
+      if (!expectedHash || this.calculateHash(current) !== expectedHash) {
+        throw new Error('Local content changed before deletion: ' + filePath);
+      }
       this.registerExpectedWatcherWrite(filePath, null);
       fs.unlinkSync(localFilePath);
     }
     this.syncState.files.delete(filePath);
+    await this.saveSyncState();
   }
 
   private async deleteRemoteFile(filePath: string, syncFile: SyncFile): Promise<void> {
@@ -1798,10 +1996,26 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       const deletedPath = `_deleted/${filePath}`;
       const content = await this.driveAdapter.downloadFile(syncFile.remoteFileId);
       const folderId = this.syncState.driveFolderId || '';
-      await this.driveAdapter.uploadFile({ folderId, name: deletedPath, content, quartzoHash: syncFile.remoteHash || '' });
-      await this.driveAdapter.deleteFile(syncFile.remoteFileId);
+      const remote = await this.driveAdapter.getFileMetadata(syncFile.remoteFileId);
+      const remotePath = await this.resolveRemotePath(remote, folderId);
+      if (remote.trashed || (remotePath !== filePath && remotePath !== deletedPath)) {
+        throw new Error('Remote identity changed before deletion: ' + filePath);
+      }
+      if (!syncFile.baseHash || this.calculateHash(content) !== syncFile.baseHash) {
+        await this.handleConflict(filePath, { hash: '', exists: false }, remote, syncFile);
+        throw new Error('Remote content changed before deletion: ' + filePath);
+      }
+      if (fs.existsSync(pathModule.join(this.vaultPath, filePath))) {
+        throw new Error('Local file reappeared before deletion: ' + filePath);
+      }
+      if (remotePath !== deletedPath) {
+        const parent = await this.driveAdapter.ensureParentFolder(folderId, deletedPath);
+        await this.driveAdapter.renameFile(syncFile.remoteFileId, deletedPath.split('/').pop()!, parent);
+      }
     }
     this.syncState.files.delete(filePath);
+    this.pendingDeletes.delete(filePath);
+    await this.saveSyncState();
   }
 
   private async handleConflict(
@@ -1833,7 +2047,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     const remoteModifiedAt = remoteFile?.modifiedTime || null;
 
     const localSha256 = crypto.createHash('sha256').update(localContent).digest('hex');
-    const remoteSha256 = remoteFile?.quartzoHash || crypto.createHash('sha256').update(remoteContent).digest('hex');
+    const remoteSha256 = crypto.createHash('sha256').update(remoteContent).digest('hex');
 
     const conflictBase = `_conflicts/${filePath}`;
 
@@ -2368,6 +2582,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     }
 
     this.pairingApplyInProgress = true;
+    this.operationControl = { paused: false, cancelRequested: false, resumeWaiters: [] };
     this.pairingApplyProgress = null;
     this.pairingLastError = null;
     try {
@@ -2404,6 +2619,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
         onProgress
       );
     for (const item of summary.identical) {
+        await this.checkpointSync();
         this.reportPairingApplyProgress({
           phase: 'baselining',
           completed: baselineCompleted,
@@ -2466,6 +2682,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
         onProgress
       );
       for (const item of summary.divergent) {
+        await this.checkpointSync();
         const resolution = decisions.divergentResolutions.get(item.path);
         if (!resolution) continue;
         const normalized = normalizeVaultPath(item.path);
@@ -2538,6 +2755,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
           onProgress
         );
       for (const item of summary.localOnly) {
+        await this.checkpointSync();
           this.reportPairingApplyProgress({
             phase: 'adopting_local',
             completed: adoptCompleted,
@@ -2612,6 +2830,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
           onProgress
         );
       for (const item of summary.remoteOnly) {
+        await this.checkpointSync();
           this.reportPairingApplyProgress({
             phase: 'pulling_remote',
             completed: pullCompleted,
@@ -2678,11 +2897,23 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       this.pairingLastError = result.errors.length > 0 ? result.errors.join('; ') : null;
       return result;
     } catch (error) {
-      this.pairingLastError = error instanceof Error ? error.message : String(error);
-      throw error;
+      if (error instanceof SyncOperationCancelledError) {
+        result.cancelled = true;
+        try {
+          await this.saveSyncState();
+        } catch (saveError) {
+          result.errors.push(`Pairing was cancelled, but its checkpoint could not be saved: ${saveError}`);
+        }
+        this.pairingLastError = result.errors.length > 0 ? result.errors.join('; ') : 'Pairing cancelled safely. Completed work was checkpointed.';
+      } else {
+        this.pairingLastError = error instanceof Error ? error.message : String(error);
+        throw error;
+      }
+      return result;
     } finally {
       this.pairingApplyInProgress = false;
       this.pairingApplyProgress = null;
+      this.operationControl = null;
     }
   }
 
@@ -2760,10 +2991,13 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     await this.saveSyncState();
   }
 
-  private async buildLocalInventory(): Promise<Map<string, { hash: string; exists: boolean }>> {
+  private async buildLocalInventory(
+    onProgress?: (completed: number, currentPath: string) => void | Promise<void>
+  ): Promise<Map<string, { hash: string; exists: boolean }>> {
     const inventory = new Map<string, { hash: string; exists: boolean }>();
+    let completed = 0;
 
-    const scanDirectory = (dirPath: string, relativePath: string = '') => {
+    const scanDirectory = async (dirPath: string, relativePath: string = ''): Promise<void> => {
       if (!fs.existsSync(dirPath)) return;
 
       const entries = fs.readdirSync(dirPath, { withFileTypes: true });
@@ -2776,23 +3010,30 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
         if (entry.isDirectory()) {
           if (VaultSyncFilePolicy.shouldSyncDirectory(relativeFilePath)) {
-            scanDirectory(fullPath, relativeFilePath);
+            await scanDirectory(fullPath, relativeFilePath);
           }
         } else if (entry.isFile()) {
           if (VaultSyncFilePolicy.shouldSyncFile(relativeFilePath)) {
+            let scanned = false;
             try {
-              const content = fs.readFileSync(fullPath);
+              const content = await fs.promises.readFile(fullPath);
               const hash = this.calculateHash(new Uint8Array(content));
               inventory.set(relativeFilePath, { hash, exists: true });
+              completed++;
+              scanned = true;
             } catch (error) {
               console.error(`Failed to read file ${relativeFilePath}:`, error);
+            }
+            if (scanned) {
+              await onProgress?.(completed, relativeFilePath);
+              if (completed % 32 === 0) await new Promise(resolve => setTimeout(resolve, 0));
             }
           }
         }
       }
     };
 
-    scanDirectory(this.vaultPath);
+    await scanDirectory(this.vaultPath);
     return inventory;
   }
 
@@ -2842,20 +3083,24 @@ export class DriveSyncCoordinator implements ConflictRegistry {
           lastSyncTime: data.lastSyncTime || 0,
           driveChangeToken: data.driveChangeToken || null,
           driveFolderId: data.driveFolderId || null,
+          forceFullReconciliation: data.forceFullReconciliation === true,
           version: data.version || CURRENT_STATE_VERSION
         };
         this.pendingRenames = data.pendingRenames || [];
         this.pendingDeletes = new Set(data.pendingDeletes || []);
+        this.pendingCreates = new Set(data.pendingCreates || []);
       } else {
         this.syncState = {
           files: new Map(),
           lastSyncTime: 0,
           driveChangeToken: null,
           driveFolderId: null,
+          forceFullReconciliation: false,
           version: CURRENT_STATE_VERSION
         };
         this.pendingRenames = [];
         this.pendingDeletes = new Set();
+        this.pendingCreates = new Set();
       }
     } catch (error) {
       throw new Error(`Failed to load sync state: ${error}. Sync aborted to prevent data loss.`);
@@ -2871,9 +3116,11 @@ export class DriveSyncCoordinator implements ConflictRegistry {
         lastSyncTime: this.syncState.lastSyncTime,
         driveChangeToken: this.syncState.driveChangeToken,
         driveFolderId: this.syncState.driveFolderId,
+        forceFullReconciliation: this.syncState.forceFullReconciliation === true,
         version: this.syncState.version,
         pendingRenames: this.pendingRenames,
-        pendingDeletes: Array.from(this.pendingDeletes)
+        pendingDeletes: Array.from(this.pendingDeletes),
+        pendingCreates: Array.from(this.pendingCreates),
       };
 
       const content = JSON.stringify(data, null, 2);
@@ -2928,6 +3175,14 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
   async triggerFocusSync(): Promise<SyncResult> {
     return this.reconcile();
+  }
+
+  async queueCreate(filePath: string): Promise<void> {
+    const normalized = normalizeVaultPath(filePath);
+    if (!this.syncState.driveFolderId || !this.syncState.lastSyncTime ||
+        this.syncState.files.has(normalized) || !VaultSyncFilePolicy.shouldSyncFile(normalized)) return;
+    this.pendingCreates.add(normalized);
+    await this.saveSyncState();
   }
 
   queueRename(oldPath: string, newPath: string): void {

@@ -8,7 +8,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { tmpdir } from 'os';
-import { GOOGLE_REFRESH_TOKEN_SECRET_ID } from '../../src/platform/secret-ids';
+import { GOOGLE_CLIENT_SECRET_SECRET_ID, GOOGLE_REFRESH_TOKEN_SECRET_ID } from '../../src/platform/secret-ids';
 
 class MockDriveAdapter implements DriveAdapter {
   async assertInsideSelectedVault(remoteFileId: string): Promise<void> { return Promise.resolve(); }
@@ -21,6 +21,7 @@ class MockDriveAdapter implements DriveAdapter {
 
   public files = new Map<string, { id: string; content: Uint8Array; quartzoHash: string; parents: string[] }>();
   private folderId = 'mock-folder-id';
+  private parentPaths = new Map<string, string>();
   public listChangesCalls = 0;
   public uploadCalls = 0;
   public deleteCalls = 0;
@@ -106,12 +107,15 @@ class MockDriveAdapter implements DriveAdapter {
     }
   }
 
-  async renameFile(fileId: string, newName: string, _newParentId?: string) {
+  async renameFile(fileId: string, newName: string, newParentId?: string) {
     for (const [name, data] of this.files.entries()) {
       if (data.id === fileId) {
         this.files.delete(name);
-        this.files.set(newName, { ...data });
-        return { id: data.id, name: newName, mimeType: 'application/octet-stream', modifiedTime: new Date().toISOString(), quartzoHash: data.quartzoHash || null, parents: data.parents || [this.folderId] };
+        const folder = newParentId ? this.parentPaths.get(newParentId) || '' : '';
+        const destination = folder ? folder + '/' + newName : newName;
+        const parents = newParentId ? [newParentId] : data.parents || [this.folderId];
+        this.files.set(destination, { ...data, parents });
+        return { id: data.id, name: destination, relativePath: destination, mimeType: 'application/octet-stream', modifiedTime: new Date().toISOString(), quartzoHash: data.quartzoHash || null, parents };
       }
     }
     throw new Error(`File not found: ${fileId}`);
@@ -126,7 +130,11 @@ class MockDriveAdapter implements DriveAdapter {
   }
 
   async ensureParentFolder(rootFolderId: string, filePath: string) {
-    return rootFolderId;
+    const folder = filePath.split('/').slice(0, -1).join('/');
+    if (!folder) return rootFolderId;
+    const id = 'folder:' + folder;
+    this.parentPaths.set(id, folder);
+    return id;
   }
 
   addFile(name: string, content: Uint8Array) {
@@ -550,7 +558,7 @@ describe('Sync Regression Tests', () => {
     it('propagates local deletion via _deleted/ tombstone', async () => {
       const content = Buffer.from('will be deleted locally');
       fs.writeFileSync(path.join(tmpDir, 'delete-me.md'), content);
-      adapter.addFile('delete-me.md', content);
+      const remoteId = adapter.addFile('delete-me.md', content);
       await coordinator.reconcile();
 
       fs.unlinkSync(path.join(tmpDir, 'delete-me.md'));
@@ -560,7 +568,10 @@ describe('Sync Regression Tests', () => {
 
       const hasTombstone = Array.from(adapter.files.keys()).some(k => k.startsWith('_deleted/'));
       expect(hasTombstone).toBe(true);
-      expect(adapter.deleteCalls).toBe(1);
+      expect(adapter.files.get('_deleted/delete-me.md')?.id).toBe(remoteId);
+      expect(adapter.deleteCalls).toBe(0);
+      expect(Array.from(adapter.files.values()).some(file => file.id ===
+        Array.from(adapter.files.entries()).find(([name]) => name.startsWith('_deleted/'))?.[1].id)).toBe(true);
     });
   });
 
@@ -985,12 +996,12 @@ describe('Sync Regression Tests', () => {
       await coordinator.reconcile();
 
       fs.unlinkSync(path.join(tmpDir, 'protected.md'));
-      const origUploadFile = adapter.uploadFile.bind(adapter);
-      adapter.uploadFile = async () => { throw new Error('upload-fail'); };
+      const origRenameFile = adapter.renameFile.bind(adapter);
+      adapter.renameFile = async () => { throw new Error('rename-fail'); };
       try {
         await coordinator.reconcile();
       } catch { /* expected */ }
-      adapter.uploadFile = origUploadFile;
+      adapter.renameFile = origRenameFile;
 
       const state = coordinator.getSyncState();
       const sf = state.files.get('protected.md');
@@ -999,10 +1010,10 @@ describe('Sync Regression Tests', () => {
       expect(adapter.deleteCalls).toBe(0);
     });
 
-    it('successful tombstone + delete removes original', async () => {
+    it('successful tombstone preserves original remote ID under _deleted', async () => {
       const content = Buffer.from('delete me');
       fs.writeFileSync(path.join(tmpDir, 'del-ok.md'), content);
-      adapter.addFile('del-ok.md', content);
+      const remoteId = adapter.addFile('del-ok.md', content);
       await coordinator.reconcile();
 
       fs.unlinkSync(path.join(tmpDir, 'del-ok.md'));
@@ -1010,6 +1021,8 @@ describe('Sync Regression Tests', () => {
       expect(result.synced).toBeGreaterThanOrEqual(1);
       const hasTombstone = Array.from(adapter.files.keys()).some(k => k.startsWith('_deleted/'));
       expect(hasTombstone).toBe(true);
+      expect(adapter.files.get('_deleted/del-ok.md')?.id).toBe(remoteId);
+      expect(adapter.deleteCalls).toBe(0);
     });
   });
 
@@ -1208,7 +1221,8 @@ describe('Sync Regression Tests', () => {
   describe('Reviewer additional: SecretStorage namespace', () => {
     it('canonical SecretStorage IDs are plugin-specific and Obsidian-compatible', () => {
       expect(GOOGLE_REFRESH_TOKEN_SECRET_ID).toBe('quartzo-companion-refresh-token');
-      for (const id of [GOOGLE_REFRESH_TOKEN_SECRET_ID]) {
+      expect(GOOGLE_CLIENT_SECRET_SECRET_ID).toBe('quartzo-companion-client-secret');
+      for (const id of [GOOGLE_REFRESH_TOKEN_SECRET_ID, GOOGLE_CLIENT_SECRET_SECRET_ID]) {
         expect(id).toMatch(/^[a-z0-9-]{1,64}$/);
       }
     });
@@ -1216,6 +1230,7 @@ describe('Sync Regression Tests', () => {
     it('runtime OAuth paths use the canonical SecretStorage ID owner', () => {
       const loopbackSrc = fs.readFileSync(path.join(__dirname, '../../src/integrations/google/auth/loopback.ts'), 'utf-8');
       const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/main.ts'), 'utf-8');
+      expect(mainSrc).toContain('GOOGLE_CLIENT_SECRET_SECRET_ID');
       expect(loopbackSrc).toContain('GOOGLE_REFRESH_TOKEN_SECRET_ID');
       expect(mainSrc).toContain('GOOGLE_REFRESH_TOKEN_SECRET_ID');
       expect(mainSrc).not.toContain('GOOGLE_OAUTH_CLIENT_SECRET_ID');

@@ -367,7 +367,10 @@ function checkObsidianSecretStorageIds() {
   const main = fs.readFileSync(mainPath, 'utf8');
   const loopback = fs.readFileSync(loopbackPath, 'utf8');
   const ids = Array.from(idsSource.matchAll(/export const [A-Z0-9_]+_SECRET_ID = '([^']+)'/g), match => match[1]);
-  if (ids.length !== 1 || ids.some(id => !/^[a-z0-9-]{1,64}$/.test(id))) {
+  const expectedIds = ['quartzo-companion-client-secret', 'quartzo-companion-refresh-token'];
+  if (ids.length !== expectedIds.length ||
+      ids.some(id => !/^[a-z0-9-]{1,64}$/.test(id)) ||
+      expectedIds.some(id => !ids.includes(id))) {
     console.error(`FAIL: Obsidian SecretStorage IDs must match ^[a-z0-9-]{1,64}$; found: ${ids.join(', ') || '(none)'}`);
     return false;
   }
@@ -379,8 +382,9 @@ function checkObsidianSecretStorageIds() {
     console.error('FAIL: Runtime OAuth paths bypass the canonical SecretStorage ID owner');
     return false;
   }
-  if (idsSource.includes('GOOGLE_OAUTH_CLIENT_SECRET_ID') || main.includes('GOOGLE_OAUTH_CLIENT_SECRET_ID')) {
-    console.error('FAIL: Desktop OAuth client secret must not be stored in Obsidian SecretStorage');
+  if (idsSource.includes('GOOGLE_OAUTH_CLIENT_SECRET_ID') || main.includes('GOOGLE_OAUTH_CLIENT_SECRET_ID') ||
+      !main.includes('GOOGLE_CLIENT_SECRET_SECRET_ID')) {
+    console.error('FAIL: Desktop OAuth client secret must use its canonical SecretStorage ID');
     return false;
   }
   console.log('PASS: Obsidian SecretStorage IDs are canonical and API-compatible');
@@ -621,9 +625,10 @@ function checkDriveTimeoutsAndSyncProgress() {
     return false;
   }
 
-  if (!view.includes('formatSyncProgress(') ||
+  const syncProgressUi = fs.readFileSync(path.join(rootDir, 'src/sync/progress.ts'), 'utf8');
+  if (!syncProgressUi.includes('formatSyncProgress(') ||
       !view.includes('startSyncProgressTicker(') ||
-      !view.includes('last progress update') ||
+      !syncProgressUi.includes('last progress update') ||
       !view.includes('triggerFullReconciliation(onProgress)') ||
       !view.includes('triggerManualSync(onProgress)')) {
     console.error('FAIL: Sync Center does not project coordinator-owned phase/progress/heartbeat state');
