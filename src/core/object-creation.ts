@@ -69,6 +69,9 @@ export interface QuickAddInput {
   recipe?: RecipeQuickAddInput;
   socialPost?: SocialPostQuickAddInput;
   record?: TrackerRecordQuickAddInput;
+  tags?: string[];
+  categories?: string[];
+  links?: string[];
 }
 
 export function buildQuickAddDocument(
@@ -95,6 +98,9 @@ export function buildQuickAddDocument(
     ? `${recordTrackerTitle} ${record?.date ?? ''}`.trim()
     : trimmedTitle || (type === 'entry' ? 'Journal Entry' : 'Untitled');
   const frontmatter: Record<string, unknown> = { id, type: canonicalObjectType, title };
+  if (input.tags?.length) frontmatter.tags = [...input.tags];
+  if (input.categories?.length) frontmatter.categories = [...input.categories];
+  if (input.links?.length) frontmatter.links = [...input.links];
   let socialBodyOverride: string | undefined;
 
   if (type === 'recipe') {

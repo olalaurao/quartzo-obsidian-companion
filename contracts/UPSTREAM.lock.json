@@ -1,7 +1,7 @@
 {
   "repository": "olalaurao/aplicativo",
-  "sourceCommit": "db6e7bc23ce017a47718124b081da5727c96871c",
-  "syncTimestamp": "2026-10-15T00:34:59.830Z",
+  "sourceCommit": "08b0f18cf62fb626ecd35a212df226e540810de6",
+  "syncTimestamp": "2026-10-15T02:37:49.484Z",
   "contractVersions": {
     "vaultInteropVersion": "1.0.0",
     "syncProtocolVersion": "1.2.0",
@@ -84,7 +84,7 @@
     "QUARTZO_SYNC_PROTOCOL_V1.md": "e2172a779645949af77be443f569a34e04da7ea4e90db1c27e8dd04f4376c273",
     "QUARTZO_VAULT_INTEROP_CONTRACT_V1.md": "c76fe9959b666f5bb0e111b067a5eff7170479187d915e702f8ebe4ee52f9c58",
     "README.md": "db53ed3508f809256c1e3c491196aef7b0a7b208f29c7cdce83454fd0d4f56f4",
-    "resource_capture/vectors.json": "c5e50758529dc98617392654fa058a54cb786569a8c7f4eb94a01fffcf5e03cf",
+    "resource_capture/vectors.json": "7eb5b96f0021208e402433d7e7229f33594df84a580a73e6b843876efa4d255a",
     "scheduler/vectors.json": "82c7326f9ee8c3bf7c2398b9c7ff41aabb8c8fd535768faf614164cfa2ea9b01",
     "shared_settings/v1.md": "807e8eb49dcba8e7d9637c5084f454f6788994630833545059647b75e6cfc3f6",
     "sync/file_policy.json": "9f3cb3c7a5a3142bdb168c6ee4291a583d55341dcc38998e71cc12d46c1c259a",

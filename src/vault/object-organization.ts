@@ -359,8 +359,14 @@ export class ObjectOrganizationRepository {
           throw new Error(`Target already exists: ${action.path}`);
         }
         await this.vault.create(action.path, action.content);
-        await this.appendCreatedActivity(action.content, action.path);
         applied++;
+        // The Markdown commit is durable even if its derived activity fails.
+        // Report that warning without offering to recreate an existing object.
+        try {
+          await this.appendCreatedActivity(action.content, action.path);
+        } catch (error) {
+          messages.push(`${action.path}: created; activity update failed: ${String(error)}`);
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         messages.push(`${action.path}: ${message}`);

@@ -1,4 +1,4 @@
-import { buildQuickAddDocument, type QuickAddInput, type QuickAddType } from '../object-creation';
+import { buildQuickAddDocument, type QuickAddInput, type QuickAddType, type ResourceQuickAddInput } from '../object-creation';
 import { ObjectParser } from '../objects';
 import {
   applyTypeSignature,
@@ -73,6 +73,8 @@ export interface BatchCreateDraft {
   sourceUrl?: string;
   platform?: string;
   mediaType?: string;
+  categories?: string[];
+  resource?: Partial<ResourceQuickAddInput>;
 }
 
 export interface BatchCreateActionPlan {
@@ -105,7 +107,7 @@ export interface BatchCreatePlanInput {
   createId?: (draft: BatchCreateDraft, index: number) => string;
 }
 
-const SUPPORTED_BATCH_CREATE_TYPES = new Set<BatchCreatableType>([
+export const BATCH_CREATE_TYPES: readonly BatchCreatableType[] = [
   'task',
   'entry',
   'note',
@@ -115,7 +117,8 @@ const SUPPORTED_BATCH_CREATE_TYPES = new Set<BatchCreatableType>([
   'social_post',
   'area',
   'project',
-]);
+];
+const SUPPORTED_BATCH_CREATE_TYPES = new Set(BATCH_CREATE_TYPES);
 
 export function planBatchAnalysis(input: BatchAnalysisInput): BatchAnalysisPlan {
   const selected = new Set((input.selectedPaths ?? []).map(normalizePath).filter(Boolean));
@@ -155,6 +158,11 @@ export function planBatchAnalysis(input: BatchAnalysisInput): BatchAnalysisPlan 
       ? ['No paths are selected. Workbench actions will use all visible Organization Issues where applicable.']
       : [],
   };
+}
+
+export function batchDraftsFromNames(names: string, shared: Omit<BatchCreateDraft, 'title'>): BatchCreateDraft[] {
+  return names.split(/\r?\n/).map(title => title.trim()).filter(Boolean)
+    .map(title => ({ ...shared, title }));
 }
 
 export function parseBatchCreateInput(text: string): BatchCreateDraft[] {
@@ -290,6 +298,7 @@ function buildBatchCreateDocument(
   const input: QuickAddInput = {
     title: draft.title,
     body: draft.body ?? '',
+    tags: draft.tags, categories: draft.categories, links: draft.links,
   };
   if (draft.tags?.length) input.resource = undefined;
 
@@ -302,11 +311,12 @@ function buildBatchCreateDocument(
   }
   if (type === 'resource') {
     input.resource = {
-      mediaType: draft.mediaType ?? 'General',
+      ...draft.resource,
+      mediaType: draft.mediaType ?? draft.resource?.mediaType ?? 'General',
       sourceUrl: draft.sourceUrl,
       tags: draft.tags,
       links: draft.links,
-      categories: [],
+      categories: draft.categories,
     };
   }
   if (type === 'recipe') {
@@ -354,6 +364,7 @@ function buildOrganizerDocument(
     title,
   };
   if (type === 'project') frontmatter.rotation_groups = [];
+  if (draft.categories?.length) frontmatter.categories = draft.categories;
   if (draft.tags?.length) frontmatter.tags = draft.tags;
   if (draft.links?.length) frontmatter.links = draft.links;
 

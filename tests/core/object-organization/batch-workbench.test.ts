@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   parseBatchCreateInput,
+  batchDraftsFromNames,
   planBatchAnalysis,
   planBatchCreate,
 } from '../../../src/core/object-organization/batch-workbench';
@@ -52,6 +53,25 @@ function issue(category: OrganizationIssue['category'], path: string): Organizat
 }
 
 describe('batch workbench planning', () => {
+  it('creates named movies with shared canonical properties and distinct IDs', () => {
+    const drafts = batchDraftsFromNames('Arrival\r\n\nInterstellar', {
+      type: 'resource', mediaType: 'Movie', tags: ['weekend'], categories: ['Cinema'],
+      links: ['[[Watchlist]]'], resource: { status: 'toConsume', priority: 'high', author: 'Director' },
+    });
+    const plan = planBatchCreate({ settings: settings(), drafts, existingPaths: new Set(), createId: (_, i) => `movie-${i}` });
+    expect(plan.blockers).toEqual([]);
+    expect(plan.actions.map(action => ObjectParser.parse(action.content).object)).toMatchObject([
+      { id: 'movie-0', title: 'Arrival', type: 'resource', media_type: 'Movie', status: 'toConsume', priority: 'high', author: 'Director', categories: ['Cinema'], tags: ['weekend'], links: ['[[Watchlist]]'] },
+      { id: 'movie-1', title: 'Interstellar', type: 'resource', media_type: 'Movie', status: 'toConsume' },
+    ]);
+  });
+  it('keeps common properties for notes and blocks duplicate names before writing', () => {
+    const drafts = batchDraftsFromNames('Same\nSame', { type: 'note', tags: ['tag'], categories: ['category'], links: ['[[link]]'], body: 'shared body' });
+    const plan = planBatchCreate({ settings: settings(), drafts, existingPaths: new Set(), createId: (_, i) => `note-${i}` });
+    expect(plan.blockers.join(' ')).toContain('duplicated');
+    expect(ObjectParser.parse(plan.actions[0]!.content).object).toMatchObject({ tags: ['tag'], categories: ['category'], links: ['[[link]]'], body: 'shared body' });
+  });
+
   it('summarizes issues and duplicate groups without creating a second index', () => {
     const index = emptyIndex();
     index.objects.set('one', {

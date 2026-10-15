@@ -130,6 +130,12 @@ export function resourceStatusLabel(status: ResourceStatus, mediaType: string): 
     if (status === 'completed') return 'Made';
     return 'Dropped';
   }
+  if (['movie', 'show', 'video', 'video essay'].includes(normalized)) {
+    if (status === 'toConsume') return 'Not watched';
+    if (status === 'inProgress') return 'Watching';
+    if (status === 'completed') return 'Watched';
+    return 'Dropped';
+  }
   if (normalized === 'tool') {
     if (status === 'toConsume') return 'Want to try';
     if (status === 'inProgress') return 'Using';

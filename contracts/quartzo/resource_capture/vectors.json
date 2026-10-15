@@ -72,5 +72,16 @@
       "completed":"Used",
       "dropped":"Dropped"
     }
+  },
+  {
+    "id": "movie_status_labels_are_presentation_only",
+    "kind": "status_labels",
+    "mediaType": "Movie",
+    "expected": {
+      "toConsume": "Not watched",
+      "inProgress": "Watching",
+      "completed": "Watched",
+      "dropped": "Dropped"
+    }
   }
 ]
