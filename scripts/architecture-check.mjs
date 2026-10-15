@@ -367,7 +367,7 @@ function checkObsidianSecretStorageIds() {
   const main = fs.readFileSync(mainPath, 'utf8');
   const loopback = fs.readFileSync(loopbackPath, 'utf8');
   const ids = Array.from(idsSource.matchAll(/export const [A-Z0-9_]+_SECRET_ID = '([^']+)'/g), match => match[1]);
-  const expectedIds = ['quartzo-companion-client-secret', 'quartzo-companion-refresh-token'];
+  const expectedIds = ['quartzo-companion-client-secret', 'quartzo-companion-refresh-token', 'quartzo-companion-drive-refresh-token', 'quartzo-companion-calendar-refresh-token'];
   if (ids.length !== expectedIds.length ||
       ids.some(id => !/^[a-z0-9-]{1,64}$/.test(id)) ||
       expectedIds.some(id => !ids.includes(id))) {
@@ -492,9 +492,9 @@ function checkPairingDuplicateCleanupIsReversible() {
     return false;
   }
   if (!adapter.includes('async trashFile(') ||
-      !adapter.includes('requestBody: { trashed: true }') ||
-      !adapter.includes("fields: 'id, trashed'") ||
-      !adapter.includes('response.data.trashed !== true')) {
+      !adapter.includes('requestBody: { labels: { trashed: true } }') ||
+      !adapter.includes("fields: 'id,labels(trashed)'") ||
+      !adapter.includes('response.data.labels?.trashed !== true')) {
     console.error('FAIL: Google Drive adapter does not verify reversible trash postcondition for pairing cleanup');
     return false;
   }

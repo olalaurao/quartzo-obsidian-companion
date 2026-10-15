@@ -1,3 +1,4 @@
+import { readGoogleAccountIdentity } from './integrations/google/auth/identity';
 import { App, Modal, Plugin, PluginSettingTab, Setting, Notice, TFile, TAbstractFile, FileSystemAdapter } from 'obsidian';
 import { VaultIndexEngine } from './vault/index';
 import type { IndexedObject, VaultFile } from './vault/index/types';
@@ -50,7 +51,7 @@ import {
 import { GoogleDriveAdapter } from './integrations/google/drive';
 import { GoogleCalendarAdapter, GoogleCalendarAuthorizationError, type GoogleCalendarProjection } from './integrations/google/calendar';
 import { GoogleOAuthDesktop, type OAuthConfig } from './integrations/google/auth/loopback';
-import { GOOGLE_COMPANION_SCOPES } from './integrations/google/auth/scopes';
+import { GOOGLE_COMPANION_SCOPES, googleConnectionScopes } from './integrations/google/auth/scopes';
 import { QuartzoView, QUARTZO_VIEW_TYPE, type QuartzoSection, type QuartzoAction } from './ui';
 import { buildPairingDiagnosticsText } from './ui/sync/pairing-diagnostics';
 import { ViewContext } from './ui/types';
@@ -75,7 +76,7 @@ import { FileNotificationDeliveryRegistry } from './local-state/notification-del
 import { ObsidianReminderDeliveryGateway } from './platform/notifications';
 import { ElectronBrowserOpener } from './platform/browser-opener';
 import { createCanonicalObjectId } from './platform/object-id';
-import { GOOGLE_CLIENT_SECRET_SECRET_ID, GOOGLE_REFRESH_TOKEN_SECRET_ID } from './platform/secret-ids';
+import { GOOGLE_CLIENT_SECRET_SECRET_ID, GOOGLE_REFRESH_TOKEN_SECRET_ID, GOOGLE_DRIVE_REFRESH_TOKEN_SECRET_ID, GOOGLE_CALENDAR_REFRESH_TOKEN_SECRET_ID } from './platform/secret-ids';
 import { resolveGoogleOAuthClientSecret } from './platform/google-oauth-credentials';
 import { normalizeVaultPath } from './sync/coordinator/path-utils';
 import { VaultSyncFilePolicy } from './sync/coordinator/file-policy';
@@ -114,6 +115,11 @@ interface ManualExecutionRunContext {
 }
 
 interface QuartzoCompanionSettings {
+  driveAccountId: string;
+  driveAccountEmail: string;
+  calendarAccountId: string;
+  calendarAccountEmail: string;
+  googleConnectionsMigrated: boolean;
   googleDriveFolderId: string | null;
   googleDriveFolderName: string | null;
   syncMode: SyncMode;
@@ -131,6 +137,8 @@ interface QuartzoCompanionSettings {
 }
 
 const DEFAULT_SETTINGS: QuartzoCompanionSettings = {
+  driveAccountId: '', driveAccountEmail: '', calendarAccountId: '', calendarAccountEmail: '',
+  googleConnectionsMigrated: false,
   googleDriveFolderId: null,
   googleDriveFolderName: null,
   syncMode: 'manual',
@@ -183,6 +191,12 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
   driveAdapter: GoogleDriveAdapter | null = null;
   googleCalendarAdapter: GoogleCalendarAdapter | null = null;
   oauthClient: GoogleOAuthDesktop | null = null;
+  calendarOAuthClient: GoogleOAuthDesktop | null = null;
+  googleConnectionError: string | null = null;
+  private calendarRefreshInFlight: Promise<string | null> | null = null;
+  private calendarGeneration = 0;
+  private googleConnectionBusy = false;
+  private googleAuthCandidate: GoogleOAuthDesktop | null = null;
   reminderService: ReminderService | null = null;
   reminderDeliveryGateway: ObsidianReminderDeliveryGateway | null = null;
   occurrenceActionService: OccurrenceActionService | null = null;
@@ -742,11 +756,11 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     return BUILD_CLIENT_ID || this.settings.oauthClientId || '';
   }
 
-  private async getResolvedOAuthConfig(): Promise<OAuthConfig | null> {
+  private async getResolvedOAuthConfig(purpose: 'drive' | 'calendar' = 'drive'): Promise<OAuthConfig | null> {
     const clientId = this.getResolvedClientId();
     if (!clientId || clientId === 'PLACEHOLDER_CLIENT_ID') return null;
     const storedSecret = await this.getSecretStorage().get(GOOGLE_CLIENT_SECRET_SECRET_ID);
-    return { ...OAUTH_CONFIG, clientId, clientSecret: resolveGoogleOAuthClientSecret(BUILD_CLIENT_SECRET, storedSecret) };
+    return { ...OAUTH_CONFIG, scopes: googleConnectionScopes(purpose), clientId, clientSecret: resolveGoogleOAuthClientSecret(BUILD_CLIENT_SECRET, storedSecret) };
   }
 
   private getSecretStorage() {
@@ -760,11 +774,8 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
 
   private configureGoogleAccessToken(token: string): void {
     this.driveAdapter?.setAccessToken(token);
-    this.googleCalendarAdapter?.setAccessToken(token);
     const refresh = () => this.refreshGoogleAccessToken();
     this.driveAdapter?.setTokenRefreshCallback(refresh);
-    this.googleCalendarAdapter?.setTokenRefreshCallback(refresh);
-    this.calendarCache.clear();
   }
 
   private async refreshGoogleAccessToken(): Promise<string | null> {
@@ -786,10 +797,11 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
 
   async listGoogleCalendarEvents(startDate: string, days: number): Promise<GoogleCalendarProjection[]> {
     if (this.unloaded) return [];
-    if (!this.googleCalendarAdapter || this.authState === 'disconnected' || this.authState === 'authentication_required') {
+    if (!this.googleCalendarAdapter || !this.calendarOAuthClient) {
       this.calendarStatus = 'disconnected';
       return [];
     }
+    const generation = this.calendarGeneration;
     const safeDays = Math.max(1, Math.min(62, Math.trunc(days)));
     const start = parseLocalIsoDate(startDate);
     const end = addLocalDays(start, safeDays);
@@ -800,6 +812,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     try {
       const events = await this.googleCalendarAdapter.listVisibleEvents(start, end);
       if (this.unloaded) return [];
+      if (generation !== this.calendarGeneration) return [];
       this.calendarCache.set(key, { expiresAt: Date.now() + 60_000, events });
       this.calendarStatus = 'ready';
       return events;
@@ -823,29 +836,87 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     await this.browserOpener.open(event.htmlLink);
   }
 
+  private configureCalendarToken(token: string): void {
+    this.googleCalendarAdapter?.setAccessToken(token);
+    this.googleCalendarAdapter?.setTokenRefreshCallback(() => this.refreshCalendarToken());
+    this.calendarGeneration++;
+    this.calendarCache.clear();
+  }
+
+  private async refreshCalendarToken(): Promise<string | null> {
+    if (!this.calendarOAuthClient) return null;
+    const generation = this.calendarGeneration;
+    return this.calendarRefreshInFlight ??= (async () => {
+      try {
+        const token = await this.calendarOAuthClient!.refreshAccessToken();
+        if (this.unloaded || generation !== this.calendarGeneration) return null;
+        this.configureCalendarToken(token.access_token);
+        return token.access_token;
+      } catch { this.calendarStatus = 'authorization_required'; return null; }
+      finally { this.calendarRefreshInFlight = null; }
+    })();
+  }
+
+  private async migrateGoogleConnections(): Promise<void> {
+    if (this.settings.googleConnectionsMigrated) return;
+    const storage = this.getSecretStorage();
+    const legacy = await storage.get(GOOGLE_REFRESH_TOKEN_SECRET_ID);
+    if (legacy) {
+      for (const key of [GOOGLE_DRIVE_REFRESH_TOKEN_SECRET_ID, GOOGLE_CALENDAR_REFRESH_TOKEN_SECRET_ID]) {
+        if (!await storage.get(key)) await storage.set(key, legacy);
+      }
+    }
+    this.settings.googleConnectionsMigrated = true;
+    await this.saveSettings();
+  }
+
+  private async restoreCalendarConnection(): Promise<void> {
+    const config = await this.getResolvedOAuthConfig('calendar');
+    if (!config || !await this.getSecretStorage().get(GOOGLE_CALENDAR_REFRESH_TOKEN_SECRET_ID)) return;
+    this.calendarOAuthClient = new GoogleOAuthDesktop(config, this.getSecretStorage(), this.browserOpener, GOOGLE_CALENDAR_REFRESH_TOKEN_SECRET_ID);
+    if (await this.refreshCalendarToken()) this.calendarStatus = 'ready';
+  }
+
   async reauthorizeGoogleCalendar(): Promise<void> {
-    const config = await this.getResolvedOAuthConfig();
-    if (!config) {
-      new Notice('Google OAuth Client ID is missing. Update Quartzo Companion or configure the Client ID in Settings.');
-      return;
-    }
-    const previousAuthState = this.authState;
-    this.authState = 'authenticating';
-    const secretStorage = this.getSecretStorage();
-    this.oauthClient = new GoogleOAuthDesktop(config, secretStorage, this.browserOpener);
+    if (this.googleConnectionBusy) return;
+    const config = await this.getResolvedOAuthConfig('calendar');
+    if (!config) { this.googleConnectionError = 'Google OAuth Client ID is missing.'; return; }
+    this.googleConnectionBusy = true;
+    const storage = this.getSecretStorage();
+    const staged = new Map<string, string>();
+    const candidate = new GoogleOAuthDesktop(config, {
+      get: key => storage.get(key), set: async (key, value) => { staged.set(key, value); }, delete: async () => {},
+    }, this.browserOpener, GOOGLE_CALENDAR_REFRESH_TOKEN_SECRET_ID);
+    this.googleAuthCandidate = candidate;
     try {
-      const tokenResponse = await this.oauthClient.startAuthLoopback(true);
+      const token = await candidate.startAuthLoopback(true);
+      const identity = await readGoogleAccountIdentity(token.access_token);
       if (this.unloaded) return;
-      this.configureGoogleAccessToken(tokenResponse.access_token);
+      const refresh = staged.get(GOOGLE_CALENDAR_REFRESH_TOKEN_SECRET_ID);
+      if (!refresh && identity.id !== this.settings.calendarAccountId) throw new Error('Google did not provide a refresh token. Retry authorization.');
+      if (refresh) await storage.set(GOOGLE_CALENDAR_REFRESH_TOKEN_SECRET_ID, refresh);
+      this.settings.calendarAccountId = identity.id;
+      this.settings.calendarAccountEmail = identity.email;
+      this.calendarOAuthClient = new GoogleOAuthDesktop(config, storage, this.browserOpener, GOOGLE_CALENDAR_REFRESH_TOKEN_SECRET_ID);
+      this.configureCalendarToken(token.access_token);
       this.calendarStatus = 'ready';
-      this.authState = this.settings.isPaired ? 'paired' : 'authenticated_unpaired';
-      new Notice('Google Calendar read-only access authorized.');
-    } catch (error) {
-      if (this.unloaded) return;
-      this.authState = previousAuthState;
-      this.calendarStatus = 'authorization_required';
-      new Notice(`Google Calendar authorization failed: ${error}`);
-    }
+      this.googleConnectionError = null;
+      await this.saveSettings();
+    } catch (error) { this.googleConnectionError = `Calendar connection failed: ${String(error)}`; }
+    finally { this.googleAuthCandidate = null; this.googleConnectionBusy = false; }
+  }
+
+  async disconnectCalendar(): Promise<void> {
+    await this.calendarOAuthClient?.disconnect();
+    await this.getSecretStorage().delete(GOOGLE_CALENDAR_REFRESH_TOKEN_SECRET_ID);
+    this.calendarOAuthClient = null;
+    this.googleCalendarAdapter?.setAccessToken(null);
+    this.calendarGeneration++;
+    this.calendarCache.clear();
+    this.calendarStatus = 'disconnected';
+    this.settings.calendarAccountId = '';
+    this.settings.calendarAccountEmail = '';
+    await this.saveSettings();
   }
   private async openReminderOccurrence(occurrence: ReminderDeliveryOccurrence): Promise<void> {
     await this.activateQuartzo('home');
@@ -1904,6 +1975,8 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     await this.reminderService?.start();
     await this.refreshQuartzoView();
 
+    await this.migrateGoogleConnections();
+    await this.restoreCalendarConnection();
     if (this.settings.isPaired) {
       await this.restoreSessionAndStartSync();
       await this.refreshQuartzoView();
@@ -2216,10 +2289,8 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     if (!this.driveAdapter) return;
 
     const secretStorage = this.getSecretStorage();
-    const refreshToken = await secretStorage.get(GOOGLE_REFRESH_TOKEN_SECRET_ID);
+    const refreshToken = await secretStorage.get(GOOGLE_DRIVE_REFRESH_TOKEN_SECRET_ID);
     if (!refreshToken) {
-      this.settings.isPaired = false;
-      await this.saveSettings();
       this.authState = 'authentication_required';
       new Notice('Session expired. Please reconnect Google Drive.');
       return;
@@ -2228,10 +2299,17 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     try {
       const config = await this.getResolvedOAuthConfig();
       if (!config) throw new Error('Google OAuth Client ID is missing');
-      this.oauthClient = new GoogleOAuthDesktop(config, secretStorage, this.browserOpener);
+      this.oauthClient = new GoogleOAuthDesktop(config, secretStorage, this.browserOpener, GOOGLE_DRIVE_REFRESH_TOKEN_SECRET_ID);
       const tokenResponse = await this.oauthClient.refreshAccessToken();
       if (this.unloaded) return;
       this.configureGoogleAccessToken(tokenResponse.access_token);
+      if (!this.settings.driveAccountId) {
+        const identity = await readGoogleAccountIdentity(tokenResponse.access_token);
+        this.settings.driveAccountId = identity.id;
+        this.settings.driveAccountEmail = identity.email;
+        await this.saveSettings();
+      }
+      await this.driveSyncCoordinator?.setAccountIdentity(this.settings.driveAccountId);
       this.authState = this.settings.isPaired ? 'paired' : 'authenticated_unpaired';
 
       if (this.driveAdapter && this.settings.googleDriveFolderId) {
@@ -2247,86 +2325,61 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
       this.startAutoSync();
     } catch {
       if (this.unloaded) return;
-      this.settings.isPaired = false;
       this.authState = 'authentication_required';
       await this.saveSettings();
       new Notice('Session expired. Please reconnect Google Drive.');
     }
   }
 
-  async startPairingFlow() {
+  async startPairingFlow(): Promise<void> { await this.authenticateDrive(); }
+  async reconnectGoogle(): Promise<void> { await this.authenticateDrive(); }
+
+  private async authenticateDrive(): Promise<void> {
+    if (this.googleConnectionBusy) return;
     const config = await this.getResolvedOAuthConfig();
-    if (!config) {
-      this.authState = 'disconnected';
-      new Notice('Google OAuth Client ID is missing. Update Quartzo Companion or configure the Client ID in Settings.');
-      return;
-    }
-
-    this.authState = 'authenticating';
-    const secretStorage = this.getSecretStorage();
-    this.oauthClient = new GoogleOAuthDesktop(config, secretStorage, this.browserOpener);
-
+    if (!config) { this.googleConnectionError = 'Google OAuth Client ID is missing.'; return; }
+    this.googleConnectionBusy = true;
+    const previousState = this.authState;
+    this.stopAutoSync();
+    await this.driveSyncCoordinator?.suspendAndWait();
+    const storage = this.getSecretStorage();
+    const staged = new Map<string, string>();
+    const candidate = new GoogleOAuthDesktop(config, {
+      get: key => storage.get(key), set: async (key, value) => { staged.set(key, value); }, delete: async () => {},
+    }, this.browserOpener, GOOGLE_DRIVE_REFRESH_TOKEN_SECRET_ID);
     try {
-      const storedRefresh = await secretStorage.get(GOOGLE_REFRESH_TOKEN_SECRET_ID);
+      this.googleAuthCandidate = candidate;
+      this.authState = 'authenticating';
+      const token = await candidate.startAuthLoopback(true);
+      const identity = await readGoogleAccountIdentity(token.access_token);
       if (this.unloaded) return;
-      const forceConsent = !storedRefresh;
-      const tokenResponse = await this.oauthClient.startAuthLoopback(forceConsent);
-      if (this.unloaded) return;
-      this.configureGoogleAccessToken(tokenResponse.access_token);
-
-      if (!tokenResponse.refresh_token) {
-        const storedRefresh = await secretStorage.get(GOOGLE_REFRESH_TOKEN_SECRET_ID);
-        if (!storedRefresh) {
-          new Notice('No refresh token received. Please re-authorize with full access.');
-          await this.oauthClient.disconnect();
-          this.driveAdapter?.setAccessToken('');
-          this.authState = 'disconnected';
-          return;
-        }
+      const refresh = staged.get(GOOGLE_DRIVE_REFRESH_TOKEN_SECRET_ID);
+      if (!refresh && identity.id !== this.settings.driveAccountId) throw new Error('Google did not provide a refresh token. Retry authorization.');
+      const changed = !!this.settings.driveAccountId && this.settings.driveAccountId !== identity.id;
+      if (changed) {
+        this.settings.googleDriveFolderId = null;
+        this.settings.googleDriveFolderName = null;
+        this.settings.isPaired = false;
       }
-
-      this.authState = 'authenticated_unpaired';
-      new Notice('Google Drive authenticated. Select your vault folder.');
-    } catch (error) {
-      if (this.unloaded) return;
-      this.authState = 'disconnected';
-      new Notice(`Authentication failed: ${error}`);
+      if (refresh) await storage.set(GOOGLE_DRIVE_REFRESH_TOKEN_SECRET_ID, refresh);
+      this.settings.driveAccountId = identity.id;
+      this.settings.driveAccountEmail = identity.email;
+      this.oauthClient = new GoogleOAuthDesktop(config, storage, this.browserOpener, GOOGLE_DRIVE_REFRESH_TOKEN_SECRET_ID);
+      this.configureGoogleAccessToken(token.access_token);
+      await this.driveSyncCoordinator?.setAccountIdentity(identity.id);
+      if (this.settings.googleDriveFolderId) await this.driveSyncCoordinator?.setDriveFolderId(this.settings.googleDriveFolderId);
+      this.authState = this.settings.isPaired ? 'paired' : 'authenticated_unpaired';
+      this.googleConnectionError = null;
+      await this.saveSettings();
+    } catch (error) { this.authState = previousState; this.googleConnectionError = `Drive connection failed: ${String(error)}`; }
+    finally {
+      this.googleAuthCandidate = null;
+      this.driveSyncCoordinator?.resumeTriggers();
+      this.googleConnectionBusy = false;
+      this.startAutoSync();
     }
   }
 
-  async reconnectGoogle(): Promise<void> {
-    const config = await this.getResolvedOAuthConfig();
-    if (!config) {
-      new Notice('Google OAuth Client ID is missing. Update Quartzo Companion or configure the Client ID in Settings.');
-      return;
-    }
-
-    const wasPaired = Boolean(this.settings.googleDriveFolderId);
-    this.authState = 'authenticating';
-    const secretStorage = this.getSecretStorage();
-    this.oauthClient = new GoogleOAuthDesktop(config, secretStorage, this.browserOpener);
-    try {
-      const tokenResponse = await this.oauthClient.startAuthLoopback(true);
-      if (this.unloaded) return;
-      this.configureGoogleAccessToken(tokenResponse.access_token);
-      if (wasPaired && this.settings.googleDriveFolderId) {
-        await this.driveAdapter?.setFolderId(this.settings.googleDriveFolderId);
-        await this.driveSyncCoordinator?.setDriveFolderId(this.settings.googleDriveFolderId);
-        this.settings.isPaired = true;
-        await this.saveSettings();
-        this.authState = 'paired';
-        this.startAutoSync();
-        new Notice('Google Drive reconnected.');
-      } else {
-        this.authState = 'authenticated_unpaired';
-        new Notice('Google Drive authenticated. Select your Quartzo vault.');
-      }
-    } catch (error) {
-      if (this.unloaded) return;
-      this.authState = wasPaired ? 'authentication_required' : 'disconnected';
-      new Notice(`Google Drive reconnect failed: ${error}`);
-    }
-  }
   private createPairingWorkflowSurface(): { modal: HTMLDivElement; modalContent: HTMLDivElement } {
     if (this.pairingWorkflowModal?.isConnected) {
       this.pairingWorkflowModal.remove();
@@ -2483,7 +2536,9 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
             new Notice(pairingResult.errors.join('; '));
             return;
           }
-          this.settings.isPaired = true;
+          if (!this.settings.isPaired) this.settings.syncMode = 'automatic';
+          if (!this.settings.isPaired) this.settings.syncMode = 'automatic';
+      this.settings.isPaired = true;
           this.settings.firstRunCompleted = true;
           this.authState = 'paired';
           await this.saveSettings();
@@ -3027,7 +3082,8 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
           return;
         }
 
-        this.settings.isPaired = true;
+        if (!this.settings.isPaired) this.settings.syncMode = 'automatic';
+      this.settings.isPaired = true;
         this.settings.firstRunCompleted = true;
         this.authState = 'paired';
         await this.saveSettings();
@@ -3151,6 +3207,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
         new Notice(`Pairing incomplete: ${pairingResult.errors.join('; ')}`);
         return;
       }
+      if (!this.settings.isPaired) this.settings.syncMode = 'automatic';
       this.settings.isPaired = true;
       this.settings.firstRunCompleted = true;
       this.authState = 'paired';
@@ -3166,35 +3223,46 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     }
   }
 
-  async disconnectDrive() {
-    if (this.oauthClient) {
-      await this.oauthClient.disconnect();
+  async createDriveVault(): Promise<void> {
+    if (!this.driveAdapter || this.authState !== 'authenticated_unpaired') return;
+    if (this.app.vault.getFiles().some(file => file.path !== 'app/quartzo_shared_settings.md' && VaultSyncFilePolicy.shouldSyncFile(file.path))) {
+      this.googleConnectionError = 'Create and open an empty local Obsidian vault before creating a new empty Drive vault.';
+      return;
     }
+    const folder = await this.driveAdapter.createVaultFolder(`QuartzoVault-${new Date().toISOString().replace(/[:.]/g, '-')}`);
+    await this.confirmPairing(folder.id, folder.name, false, false);
+  }
+
+  async disconnectDrive() {
     this.stopAutoSync();
-    this.googleCalendarAdapter?.setAccessToken(null);
-    this.calendarCache.clear();
-    this.calendarStatus = 'disconnected';
+    await this.driveSyncCoordinator?.suspendAndWait();
+    if (this.oauthClient) await this.oauthClient.disconnect();
+    await this.getSecretStorage().delete(GOOGLE_DRIVE_REFRESH_TOKEN_SECRET_ID);
+    this.driveAdapter?.setAccessToken('');
+    this.oauthClient = null;
+    this.settings.driveAccountId = '';
+    this.settings.driveAccountEmail = '';
     this.settings.isPaired = false;
     this.authState = 'disconnected';
     this.settings.googleDriveFolderId = null;
     this.settings.googleDriveFolderName = null;
     await this.saveSettings();
+    this.driveSyncCoordinator?.resumeTriggers();
     new Notice('Google Drive disconnected.');
   }
 
   async useWithoutSync(): Promise<void> {
-    if (this.oauthClient) await this.oauthClient.disconnect();
     this.stopAutoSync();
+    await this.driveSyncCoordinator?.suspendAndWait();
+    if (this.oauthClient) await this.oauthClient.disconnect();
     this.driveAdapter?.setAccessToken('');
-    this.googleCalendarAdapter?.setAccessToken(null);
-    this.calendarCache.clear();
-    this.calendarStatus = 'disconnected';
     this.authState = 'disconnected';
     this.settings.googleDriveFolderId = null;
     this.settings.googleDriveFolderName = null;
     this.settings.isPaired = false;
     this.settings.firstRunCompleted = true;
     await this.saveSettings();
+    this.driveSyncCoordinator?.resumeTriggers();
     new Notice('Quartzo Companion will stay local on this device until you connect Google Drive.');
   }
 
@@ -3270,7 +3338,9 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     this.unloaded = true;
     this.stopAutoSync();
     this.reminderService?.stop();
+    this.googleAuthCandidate?.abort();
     this.oauthClient?.abort();
+    this.calendarOAuthClient?.abort();
     for (const ref of this.eventRefs) {
       this.app.vault.offref(ref);
     }
@@ -3299,6 +3369,11 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     const focusControllerId = existingFocusControllerId || createCanonicalObjectId();
 
     this.settings = {
+      driveAccountId: typeof stored.driveAccountId === 'string' ? stored.driveAccountId : '',
+      driveAccountEmail: typeof stored.driveAccountEmail === 'string' ? stored.driveAccountEmail : '',
+      calendarAccountId: typeof stored.calendarAccountId === 'string' ? stored.calendarAccountId : '',
+      calendarAccountEmail: typeof stored.calendarAccountEmail === 'string' ? stored.calendarAccountEmail : '',
+      googleConnectionsMigrated: stored.googleConnectionsMigrated === true,
       googleDriveFolderId: typeof stored.googleDriveFolderId === 'string' ? stored.googleDriveFolderId : null,
       googleDriveFolderName: typeof stored.googleDriveFolderName === 'string' ? stored.googleDriveFolderName : null,
       syncMode,
@@ -3803,6 +3878,16 @@ class QuartzoSettingTab extends PluginSettingTab {
           this.display();
         }));
 
+    new Setting(containerEl).setName('Google Drive account')
+      .setDesc(this.plugin.settings.driveAccountEmail || 'Not connected');
+    new Setting(containerEl).setName('Google Calendar account')
+      .setDesc(`${this.plugin.settings.calendarAccountEmail || 'Not connected'} · ${this.plugin.calendarStatus}`)
+      .addButton(button => button.setButtonText('Connect / change').onClick(async () => { await this.plugin.reauthorizeGoogleCalendar(); this.display(); }))
+      .addButton(button => button.setButtonText('Disconnect').onClick(async () => { await this.plugin.disconnectCalendar(); this.display(); }));
+    if (this.plugin.googleConnectionError) new Setting(containerEl).setName('Connection error').setDesc(this.plugin.googleConnectionError);
+    if (this.plugin.authState === 'authenticated_unpaired') new Setting(containerEl).setName('Create new empty vault')
+      .setDesc('Create a separate Drive folder, then review the pairing snapshot.')
+      .addButton(button => button.setButtonText('Create').onClick(async () => { await this.plugin.createDriveVault(); this.display(); }));
     this.addHeading(containerEl, 'Sync');
 
     new Setting(containerEl)

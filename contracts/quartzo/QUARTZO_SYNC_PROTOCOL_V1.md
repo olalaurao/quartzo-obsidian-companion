@@ -1,6 +1,6 @@
 # Quartzo Sync Protocol V1
 
-Status: canonical contract. Version: 1.1.0.
+Status: canonical contract. Version: 1.2.0.
 
 ## Identity
 
@@ -15,8 +15,7 @@ Sync every canonical vault file unless explicitly excluded.
 
 Included:
 
-- `*.md`
-- `*.base`
+- All regular vault content files as raw bytes, including `.md`, `.base`, `.canvas`, PDFs, images and files without extensions, regardless of folder
 - `_attachments/**`
 - `_capture_ingress/**` as external capture transport bytes before app canonicalization
 - `_deleted/**` as soft-delete state when reconciliation requires it
@@ -156,3 +155,7 @@ must not mass re-upload UTF-8 Markdown whose raw-byte hash is unchanged.
 Before a potentially destructive migration, the existing backup service creates
 the recovery artifact. Backup and conflict folders are never re-ingested as
 live canonical vault content.
+
+## Account and target isolation (1.2)
+
+Drive and Calendar connections are independent. Storage, Finance and optional AI use the Drive identity. Credentials never enter content sync. Device-local baselines, pending writes and conflicts belong to the tuple of storage account ID, remote folder ID and local vault identity. Changing that tuple suspends triggers and waits for active I/O, then activates a separate retained partition. Finance pending rows belong to its account and dataset independently of the vault. A failed or skipped I/O operation cannot certify a clean sync. Upload acknowledgment records only the sent snapshot; later local edits stay dirty. Remote mutations must require the version verified by reconciliation, with precondition failure preserving pending bytes.

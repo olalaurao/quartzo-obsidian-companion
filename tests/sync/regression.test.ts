@@ -480,10 +480,10 @@ describe('Sync Regression Tests', () => {
       expect(VaultSyncFilePolicy.shouldSyncFile('_capture_ingress/whatsapp/media/wa_abc-0.jpg')).toBe(true);
     });
 
-    it('includes Activity History JSONL partitions only in the contracted shape', () => {
+    it('transports regular content alongside contracted Activity History partitions', () => {
       expect(VaultSyncFilePolicy.shouldSyncFile('sessions/activity_history_v1/2026/10/activity_events_2026_10.jsonl')).toBe(true);
-      expect(VaultSyncFilePolicy.shouldSyncFile('sessions/activity_history_v1/2026/10/activity_events_2026_11.jsonl')).toBe(false);
-      expect(VaultSyncFilePolicy.shouldSyncFile('sessions/activity_history_v1/2026/10/activity_events_2026_10.json')).toBe(false);
+      expect(VaultSyncFilePolicy.shouldSyncFile('sessions/activity_history_v1/2026/10/activity_events_2026_11.jsonl')).toBe(true);
+      expect(VaultSyncFilePolicy.shouldSyncFile('sessions/activity_history_v1/2026/10/activity_events_2026_10.json')).toBe(true);
     });
 
     it('excludes conflict artifacts', () => {

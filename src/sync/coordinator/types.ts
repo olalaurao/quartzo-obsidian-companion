@@ -59,6 +59,7 @@ export class TemporaryDriveQuotaError extends Error {
 }
 
 export interface DriveAdapter {
+  verifyConditionalMutationSupport?(): Promise<void>;
   getFolderId(): Promise<string | null>;
   setFolderId(folderId: string): Promise<void>;
   listAllFiles(folderId: string, onProgress?: (completed: number) => void | Promise<void>): Promise<DriveFileMetadata[]>;

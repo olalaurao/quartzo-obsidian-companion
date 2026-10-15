@@ -3,7 +3,7 @@ import * as https from 'https';
 import * as url from 'url';
 import { randomBytes, createHash, timingSafeEqual } from 'crypto';
 import type { OAuthConfig, TokenResponse } from '../../../core/oauth/types';
-import { GOOGLE_REFRESH_TOKEN_SECRET_ID } from '../../../platform/secret-ids';
+import { GOOGLE_REFRESH_TOKEN_SECRET_ID, assertValidObsidianSecretId } from '../../../platform/secret-ids';
 
 export type { OAuthConfig, TokenResponse } from '../../../core/oauth/types';
 
@@ -27,9 +27,11 @@ export class GoogleOAuthDesktop {
   constructor(
     config: OAuthConfig,
     secretStorage: { get: (key: string) => Promise<string | null>; set: (key: string, value: string) => Promise<void>; delete: (key: string) => Promise<void> },
-    browserOpener?: BrowserOpener
+    browserOpener?: BrowserOpener,
+    private readonly refreshTokenSecretId = GOOGLE_REFRESH_TOKEN_SECRET_ID
   ) {
     this.config = config;
+    assertValidObsidianSecretId(refreshTokenSecretId);
     this.secretStorage = secretStorage;
     this.browserOpener = browserOpener ?? {
       open: async () => {
@@ -60,8 +62,9 @@ export class GoogleOAuthDesktop {
     authUrl.searchParams.set('code_challenge', challenge);
     authUrl.searchParams.set('code_challenge_method', 'S256');
     authUrl.searchParams.set('access_type', 'offline');
+    authUrl.searchParams.set('prompt', forceConsent ? 'select_account consent' : 'select_account');
     if (forceConsent) {
-      authUrl.searchParams.set('prompt', 'consent');
+      authUrl.searchParams.set('prompt', 'select_account consent');
     }
     return authUrl.toString();
   }
@@ -123,7 +126,7 @@ export class GoogleOAuthDesktop {
             this.refreshToken = tokenResponse.refresh_token || null;
             this.expiresAt = Date.now() + (tokenResponse.expires_in * 1000);
             if (this.refreshToken) {
-              await this.secretStorage.set(GOOGLE_REFRESH_TOKEN_SECRET_ID, this.refreshToken);
+              await this.secretStorage.set(this.refreshTokenSecretId, this.refreshToken);
             }
             finish(() => resolve(tokenResponse));
           } catch (err) {
@@ -170,7 +173,7 @@ export class GoogleOAuthDesktop {
   }
 
   async refreshAccessToken(): Promise<TokenResponse> {
-    const storedRefreshToken = await this.secretStorage.get(GOOGLE_REFRESH_TOKEN_SECRET_ID);
+    const storedRefreshToken = await this.secretStorage.get(this.refreshTokenSecretId);
     if (!storedRefreshToken) throw new Error('No refresh token available');
     const params = new URLSearchParams();
     params.append('refresh_token', storedRefreshToken);
@@ -182,7 +185,7 @@ export class GoogleOAuthDesktop {
     this.expiresAt = Date.now() + (tokenResponse.expires_in * 1000);
     if (tokenResponse.refresh_token) {
       this.refreshToken = tokenResponse.refresh_token;
-      await this.secretStorage.set(GOOGLE_REFRESH_TOKEN_SECRET_ID, this.refreshToken);
+      await this.secretStorage.set(this.refreshTokenSecretId, this.refreshToken);
     }
     return tokenResponse;
   }
@@ -216,23 +219,11 @@ export class GoogleOAuthDesktop {
   }
 
   async disconnect(): Promise<void> {
-    const tokenToRevoke = this.accessToken || await this.secretStorage.get(GOOGLE_REFRESH_TOKEN_SECRET_ID);
     this.cleanup();
-    await this.secretStorage.delete(GOOGLE_REFRESH_TOKEN_SECRET_ID);
+    await this.secretStorage.delete(this.refreshTokenSecretId);
     this.accessToken = null;
     this.refreshToken = null;
     this.expiresAt = 0;
-
-    if (tokenToRevoke) {
-      try {
-        const revokeUrl = `https://oauth2.googleapis.com/revoke?token=${tokenToRevoke}`;
-        await new Promise<void>((resolve) => {
-          const req = https.request(revokeUrl, { method: 'POST' }, () => { resolve(); });
-          req.on('error', () => { resolve(); });
-          req.end();
-        });
-      } catch { /* best effort revoke */ }
-    }
   }
 
   getAccessToken(): string | null {

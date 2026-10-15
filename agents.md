@@ -26,7 +26,7 @@ A arquitetura do Companion é dividida nestas camadas:
 
 - **OAuth loopback:** O listener desktop deve validar `state` somente em respostas que sejam callbacks OAuth reais. Requests auxiliares do navegador (por exemplo `/favicon.ico`) devem ser ignorados/retornar 404 sem consumir, rejeitar ou encerrar o fluxo de autenticação ativo.
 
-- **OAuth Desktop credentials:** Drive e Calendar devem usar o mesmo `GoogleOAuthDesktop` canônico. O token exchange e o refresh devem enviar `client_id` + a client credential do mesmo Google Desktop OAuth client, mantendo PKCE S256. Release/preflight devem falhar se qualquer uma das duas credenciais de build estiver ausente. Builds locais podem obter o client secret de `app.secretStorage` pela ID canônica `GOOGLE_CLIENT_SECRET_SECRET_ID`; a credencial embutida tem precedência. Nunca persistir o valor em `data.json`, logs ou repositório. Não criar fluxo OAuth paralelo para Calendar/Drive.
+- **OAuth Desktop credentials:** Drive e Calendar devem usar a mesma implementação canônica `GoogleOAuthDesktop`, com instâncias, SecretStorage IDs, scopes e estados independentes por finalidade. O token exchange e o refresh devem enviar `client_id` + a client credential do mesmo Google Desktop OAuth client, mantendo PKCE S256. Release/preflight devem falhar se qualquer uma das duas credenciais de build estiver ausente. Builds locais podem obter o client secret de `app.secretStorage` pela ID canônica `GOOGLE_CLIENT_SECRET_SECRET_ID`; a credencial embutida tem precedência. Nunca persistir o valor em `data.json`, logs ou repositório. Não duplicar a implementação do fluxo OAuth; conectar, renovar e desconectar cada finalidade independentemente.
 
 - **Obsidian SecretStorage IDs:** todos os IDs usados em `app.secretStorage` devem vir do owner canônico `src/platform/secret-ids.ts` e obedecer `^[a-z0-9-]{1,64}$` (somente minúsculas, números e hífens; máximo 64 caracteres). Não usar `_`, `/`, espaços ou IDs ad hoc em integrações.
 
@@ -155,3 +155,7 @@ Established by the Object Organization & Obsidian-native Organization V1 spec. T
 ## Documentation Lifecycle
 
 Shared contract changes start in Quartzo upstream, update vendorized contracts and UPSTREAM.lock.json; changes to local product rules update guidelines/local specs; architecture owner changes update this file. Machine-checkable invariants must have tests and release gates. Historical docs/v1 plans do not prove implementation.
+
+## Account and target isolation
+
+Protocol 1.2 transports regular vault content regardless of file extension. Independent Drive and Calendar sessions reuse the canonical loopback implementation. Calendar restores even without Drive pairing. Changing storage account suspends sync, retains old partitions and requires explicit folder selection. State partitions bind account, folder ID and absolute local vault root; credentials and sync state remain device-local. Conditional content/move/trash writes require the ETag verified during reconciliation. The adapter proves stale If-Match rejection and reversible diagnostic-probe cleanup before content sync.
