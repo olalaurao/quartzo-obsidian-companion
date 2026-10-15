@@ -80,3 +80,7 @@ O build de release exige `QUARTZO_GOOGLE_DESKTOP_CLIENT_ID` e `QUARTZO_GOOGLE_DE
 O escopo completo de suporte V1 está em [`docs/v1/COMPANION_V1_CAPABILITY_MATRIX.md`](docs/v1/COMPANION_V1_CAPABILITY_MATRIX.md).
 
 Antes de criar uma tag, execute manualmente o workflow **Release Preflight** em `main`. O passo a passo completo de Google Cloud, preflight, publicação e BRAT está em [`docs/BETA_RELEASE_RUNBOOK.md`](docs/BETA_RELEASE_RUNBOOK.md).
+
+## Create several objects with shared properties
+
+Open **Quick Add → Batch create objects** (also available from Organization Workbench). Choose the object type, set optional shared properties, and enter one name per line. For movies select Resource, Media type Movie, Consumption status Not watched. Preview the batch, then create it. The modal keeps the result visible and the properties selected so you can enter more names. After a partial failure, preview and retry only the remaining names or discard them. Advanced table import remains available.

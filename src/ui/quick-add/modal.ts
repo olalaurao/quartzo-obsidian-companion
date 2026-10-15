@@ -1,4 +1,5 @@
 import { Modal, Notice, TFile, normalizePath } from 'obsidian';
+import { ObjectBatchCreateModal } from '../organization/batch-create-modal';
 import { buildQuickAddDocument, type QuickAddType } from '../../core/object-creation';
 import { ObjectParser } from '../../core/objects';
 import type { TrackerDefinition } from '../../core/objects/types';
@@ -102,6 +103,11 @@ export class QuickAddModal extends Modal {
       });
     });
     contentEl.appendChild(saveLink);
+    const batch = contentEl.createEl('button', { text: 'Batch create objects' });
+    batch.addEventListener('click', () => {
+      new ObjectBatchCreateModal(this.context).open();
+      this.close();
+    });
 
     const typeSelect = document.createElement('select');
     typeSelect.setAttribute('aria-label', 'Quick Add type');

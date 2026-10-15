@@ -47,6 +47,11 @@ describe('three Companion agent discovery route probes', () => {
 describe('current Companion guideline owner trails', () => {
   it('maps every current Companion guideline group to concrete owners', () => {
     const owners: Record<string, string[]> = {
+      'Batch object creation': [
+        'src/core/object-organization/batch-workbench.ts',
+        'src/ui/organization/batch-create-modal.ts',
+        'src/vault/object-organization.ts',
+      ],
       'Foundations and interoperability': [
         'src/vault/index/engine.ts',
         'contracts/UPSTREAM.lock.json',

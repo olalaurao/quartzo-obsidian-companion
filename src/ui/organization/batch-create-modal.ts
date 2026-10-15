@@ -2,6 +2,9 @@ import { Modal, Notice, Setting, TFile, normalizePath } from 'obsidian';
 import type { ViewContext } from '../types';
 import {
   parseBatchCreateInput,
+  batchDraftsFromNames,
+  BATCH_CREATE_TYPES,
+  type BatchCreatableType,
   planBatchCreate,
   type BatchCreateDraft,
   type BatchCreatePlan,
@@ -12,6 +15,9 @@ import { ObjectOrganizationRepository } from '../../vault/object-organization';
 import { SharedSettingsRepository, parseObjectWithSharedSettings } from '../../vault/shared-settings';
 import { VaultIndexEngine } from '../../vault/index';
 import type { IndexChange, IndexedObject } from '../../vault/index/types';
+import { resourceMediaTypeSuggestions, resourceStatusLabel, type ResourceStatus } from '../../core/resource-capture/policy';
+import { renderActionReport } from '../action-report';
+import { queryVaultObjects } from '../../core/object-query';
 
 export interface ObjectBatchCreateModalOptions {
   onApplied?: (report: BatchOperationReport) => void | Promise<void>;
@@ -21,6 +27,10 @@ export class ObjectBatchCreateModal extends Modal {
   private readonly settingsRepository: SharedSettingsRepository;
   private readonly organizationRepository: ObjectOrganizationRepository;
   private rawInput = '';
+  private tableMode = false;
+  private shared: Omit<BatchCreateDraft, 'title'> = { type: 'resource', mediaType: 'Movie' };
+  private retryDrafts: BatchCreateDraft[] | null = null;
+  private previewError: string | null = null;
   private currentPlan: BatchCreatePlan | null = null;
   private currentDrafts: BatchCreateDraft[] = [];
   private report: BatchOperationReport | null = null;
@@ -46,7 +56,7 @@ export class ObjectBatchCreateModal extends Modal {
 
   private async refreshPlan(): Promise<void> {
     const settings = await this.settingsRepository.load();
-    this.currentDrafts = parseBatchCreateInput(this.rawInput);
+    this.currentDrafts = this.retryDrafts ?? (this.tableMode ? parseBatchCreateInput(this.rawInput) : batchDraftsFromNames(this.rawInput, this.shared));
     this.currentPlan = planBatchCreate({
       settings,
       drafts: this.currentDrafts,
@@ -55,8 +65,8 @@ export class ObjectBatchCreateModal extends Modal {
     });
   }
 
-  private idForDraft(draft: BatchCreateDraft, index: number): string {
-    const key = `${index}:${draft.type}:${draft.title}:${draft.folder ?? ''}`;
+  private idForDraft(draft: BatchCreateDraft, _index: number): string {
+    const key = `${draft.type}:${draft.title}:${draft.folder ?? ''}`;
     let id = this.generatedIds.get(key);
     if (!id) {
       id = createCanonicalObjectId();
@@ -70,9 +80,14 @@ export class ObjectBatchCreateModal extends Modal {
     contentEl.empty();
     contentEl.createEl('h2', { text: 'Batch Create Objects' });
     contentEl.createEl('p', {
-      text: 'Paste rows as type | title | folder | body | tags | links, or include a header row with those columns plus optional url, platform, and media_type.',
+      text: 'Choose shared properties once, then enter one name per line. Preview before creating. You can keep adding more names with the same properties.',
       cls: 'qz-text-muted',
     });
+
+    new Setting(contentEl).setName('Advanced table import').addToggle(toggle => toggle.setValue(this.tableMode).setDisabled(this.isApplying || this.retryDrafts !== null).onChange(value => {
+      this.tableMode = value; this.rawInput = ''; this.invalidatePlan(); this.render();
+    }));
+    if (!this.tableMode) this.renderSharedProperties(contentEl);
 
     const input = contentEl.createEl('textarea', {
       cls: 'quartzo-input quartzo-batch-create-input',
@@ -82,10 +97,11 @@ export class ObjectBatchCreateModal extends Modal {
       },
     });
     input.value = this.rawInput;
+    input.disabled = this.isApplying || this.retryDrafts !== null;
+    input.placeholder = this.tableMode ? 'type | title | folder | body | tags | links' : 'Arrival\nInterstellar\nThe Matrix';
     input.addEventListener('input', () => {
       this.rawInput = input.value;
-      this.currentPlan = null;
-      this.report = null;
+      this.invalidatePlan();
     });
 
     const actions = contentEl.createEl('div', { cls: 'modal-button-container quartzo-modal-actions-row' });
@@ -97,25 +113,70 @@ export class ObjectBatchCreateModal extends Modal {
       try {
         await this.refreshPlan();
       } catch (error) {
-        new Notice(`Batch create preview failed: ${error instanceof Error ? error.message : String(error)}`, 10000);
+        this.previewError = `Batch create preview failed: ${error instanceof Error ? error.message : String(error)}`;
       } finally {
         this.render();
       }
     });
 
+    if (this.retryDrafts) {
+      const discard = actions.createEl('button', { text: 'Discard remaining names' });
+      discard.disabled = this.isApplying;
+      discard.addEventListener('click', () => { this.retryDrafts = null; this.rawInput = ''; this.invalidatePlan(); this.render(); });
+    }
     const plan = this.currentPlan;
     if (plan) this.renderPlan(contentEl, plan);
     if (this.report) this.renderReport(contentEl, this.report);
+    if (this.previewError) contentEl.createEl('p', { text: this.previewError, cls: 'quartzo-warning-state' });
 
     const footer = contentEl.createEl('div', { cls: 'modal-button-container quartzo-modal-actions-row' });
     const cancel = footer.createEl('button', { text: 'Cancel' });
     cancel.addEventListener('click', () => this.close());
+    cancel.disabled = this.isApplying;
     const create = footer.createEl('button', {
       text: this.isApplying ? 'Creating…' : `Create ${plan?.actions.length ?? 0} object(s)`,
       cls: 'mod-cta',
     });
     create.disabled = this.isApplying || !plan || plan.actions.length === 0 || plan.blockers.length > 0;
     create.addEventListener('click', () => { void this.apply(); });
+  }
+
+  private invalidatePlan(): void {
+    this.currentPlan = null; this.report = null; this.previewError = null;
+  }
+
+  private renderSharedProperties(container: HTMLElement): void {
+    new Setting(container).setName('Object type').addDropdown(dropdown => {
+      for (const type of BATCH_CREATE_TYPES) dropdown.addOption(type, type.replace(/_/g, ' '));
+      dropdown.setValue(this.shared.type).setDisabled(this.isApplying || this.retryDrafts !== null).onChange(value => {
+        this.shared = { type: value as BatchCreatableType }; this.invalidatePlan(); this.render();
+      });
+    });
+    const text = (label: string, value: string, change: (value: string) => void): void => {
+      new Setting(container).setName(label).addText(field => field.setValue(value).setDisabled(this.isApplying || this.retryDrafts !== null).onChange(value => { change(value); this.invalidatePlan(); }));
+    };
+    const list = (key: 'tags' | 'categories' | 'links', label: string): void => text(label, this.shared[key]?.join('; ') ?? '', value => { this.shared[key] = value.split(';').map(item => item.trim()).filter(Boolean); });
+    if (this.shared.type === 'resource') {
+      new Setting(container).setName('Media type (custom values allowed)').addText(field => {
+        field.setValue(this.shared.mediaType ?? 'General').setDisabled(this.isApplying || this.retryDrafts !== null).onChange(value => { this.shared.mediaType = value; this.invalidatePlan(); });
+        field.inputEl.addEventListener('change', () => this.render());
+      });
+      const index = this.context.vaultIndexEngine?.getIndex() ?? this.context.plugin.vaultIndexEngine?.getIndex();
+      const resources = index ? queryVaultObjects(index, { types: ['resource'] }).map(object => object.frontmatter.media_type).filter((value): value is string => typeof value === 'string') : [];
+      container.createEl('small', { text: resourceMediaTypeSuggestions({ existing: resources }).join(', '), cls: 'qz-text-muted' });
+      new Setting(container).setName('Consumption status').addDropdown(dropdown => {
+        for (const status of ['toConsume', 'inProgress', 'completed', 'dropped'] as ResourceStatus[]) dropdown.addOption(status, resourceStatusLabel(status, this.shared.mediaType ?? 'General'));
+        dropdown.setValue(this.shared.resource?.status ?? 'toConsume').setDisabled(this.isApplying || this.retryDrafts !== null).onChange(value => { this.shared.resource = { ...this.shared.resource, status: value as ResourceStatus }; this.invalidatePlan(); });
+      });
+      new Setting(container).setName('Priority').addDropdown(dropdown => {
+        for (const priority of ['none', 'low', 'medium', 'high'] as const) dropdown.addOption(priority, priority);
+        dropdown.setValue(this.shared.resource?.priority ?? 'none').setDisabled(this.isApplying || this.retryDrafts !== null).onChange(value => { this.shared.resource = { ...this.shared.resource, priority: value as 'none' | 'low' | 'medium' | 'high' }; this.invalidatePlan(); });
+      });
+      text('Author / creator (optional)', this.shared.resource?.author ?? '', value => { this.shared.resource = { ...this.shared.resource, author: value }; });
+    }
+    list('tags', 'Tags (separated by ;)'); list('categories', 'Categories (separated by ;)'); list('links', 'Links (separated by ;)');
+    text('Shared body (optional)', this.shared.body ?? '', value => { this.shared.body = value; });
+    if (['resource', 'recipe', 'social_post'].includes(this.shared.type)) text('Source URL (optional; required for Social Post)', this.shared.sourceUrl ?? '', value => { this.shared.sourceUrl = value; });
   }
 
   private renderPlan(container: HTMLElement, plan: BatchCreatePlan): void {
@@ -143,14 +204,13 @@ export class ObjectBatchCreateModal extends Modal {
   }
 
   private renderReport(container: HTMLElement, report: BatchOperationReport): void {
-    const box = container.createEl('div', { cls: 'quartzo-preview-box' });
-    box.createEl('strong', {
-      text: `Batch create report: ${report.applied}/${report.attempted} applied, ${report.failed} failed, ${report.skipped} skipped`,
+    renderActionReport(container, {
+      kind: 'organization.batch_create', title: 'Batch create result',
+      summary: `${report.applied}/${report.attempted} created. ${report.failed > 0 ? 'Preview and retry the remaining names, or discard them.' : 'Enter more names to continue with the same properties.'}`,
+      status: report.failed > 0 ? 'error' : report.messages.length > 0 ? 'warning' : 'success',
+      ...report,
+      copyText: JSON.stringify(report, null, 2),
     });
-    if (report.messages.length > 0) {
-      const list = box.createEl('ul');
-      for (const message of report.messages) list.createEl('li', { text: message });
-    }
   }
 
   private async apply(): Promise<void> {
@@ -169,6 +229,11 @@ export class ObjectBatchCreateModal extends Modal {
 
       const report = await this.organizationRepository.applyBatchCreate(plan);
       this.report = report;
+      this.retryDrafts = report.failed > 0 ? this.currentDrafts.slice(report.applied) : null;
+      const rows = this.rawInput.split(/\r?\n/).map(row => row.trim()).filter(Boolean);
+      if (!this.tableMode) this.rawInput = rows.slice(report.applied).join('\n');
+      else if (report.failed === 0) this.rawInput = '';
+      this.currentPlan = null;
       await this.updateCanonicalIndex(plan, report.applied);
       await this.options.onApplied?.(report);
       if (report.failed > 0) {
@@ -178,7 +243,8 @@ export class ObjectBatchCreateModal extends Modal {
         return;
       }
       new Notice(`Created ${report.applied} object(s).`);
-      this.close();
+      this.isApplying = false;
+      this.render();
     } catch (error) {
       this.report = {
         attempted: this.currentPlan?.actions.length ?? 0,

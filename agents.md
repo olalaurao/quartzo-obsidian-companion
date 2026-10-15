@@ -159,3 +159,7 @@ Shared contract changes start in Quartzo upstream, update vendorized contracts a
 ## Account and target isolation
 
 Protocol 1.2 transports regular vault content regardless of file extension. Independent Drive and Calendar sessions reuse the canonical loopback implementation. Calendar restores even without Drive pairing. Changing storage account suspends sync, retains old partitions and requires explicit folder selection. State partitions bind account, folder ID and absolute local vault root; credentials and sync state remain device-local. Conditional content/move/trash writes require the ETag verified during reconciliation. The adapter proves stale If-Match rejection and reversible diagnostic-probe cleanup before content sync.
+
+## Batch creation ownership
+
+The existing `batch-workbench` planner owns names-to-drafts projection and uses `buildQuickAddDocument` or the existing organizer document builder. `ObjectBatchCreateModal` collects only transient shared draft properties. `ObjectOrganizationRepository.applyBatchCreate` remains the batch persistence owner and reports the committed prefix; activity emission failures after file creation are warnings, never permission to duplicate the file. No second object store, per-type writer or batch sync engine is introduced.

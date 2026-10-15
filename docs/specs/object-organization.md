@@ -3664,3 +3664,7 @@ END OF SPEC
 - The coordinator revalidates the remote hash again immediately before applying a queued rename. If Drive changed concurrently, it keeps the rename pending and creates an explicit conflict; it never pulls the old source path back over a pending retirement.
 - A safe remote rename preserves the existing `remoteFileId`, then normal local-dirty processing updates that same remote file with tombstone bytes. Manual mode persists the queued rename until `Sync now`; automatic mode may reconcile through the existing coordinator.
 - UI must show destructive confirmation, affected paths, sync-safety blockers, and partial-failure state. It must not create a second delete registry, database, sync engine, or source of truth.
+
+## Batch Create — shared properties and names
+
+Quick Add and Organization Workbench open the same Batch Create modal. Its default mode selects a type and shared properties once, then accepts one name per line. Resource keeps `media_type` extensible and persists `toConsume | inProgress | completed | dropped`; Movie's “Not watched” label maps to `toConsume`. Tags, categories, links and body survive for generic captures as well. Advanced table import remains available. The planner validates collisions and all rows before the first write. After partial failure, lock the pending draft properties, retain row identities, and retry only the uncommitted suffix. Show a persistent, copyable result and keep the modal open to create further names with the same properties.
