@@ -302,13 +302,7 @@ function buildBatchCreateDocument(
   };
   if (draft.tags?.length) input.resource = undefined;
 
-  if (type === 'entry') {
-    input.date = new Date().toISOString().slice(0, 10);
-  }
-  if (type === 'reminder') {
-    input.date = new Date().toISOString().slice(0, 10);
-    input.time = '09:00';
-  }
+  // Date/time defaults belong to buildQuickAddDocument's local-date owner.
   if (type === 'resource') {
     input.resource = {
       ...draft.resource,

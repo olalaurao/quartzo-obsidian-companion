@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   parseBatchCreateInput,
   batchDraftsFromNames,
@@ -53,6 +53,25 @@ function issue(category: OrganizationIssue['category'], path: string): Organizat
 }
 
 describe('batch workbench planning', () => {
+  it('uses canonical local capture dates when UTC is already the next day', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-15T02:30:00Z'));
+    vi.spyOn(Date.prototype, 'getFullYear').mockReturnValue(2026);
+    vi.spyOn(Date.prototype, 'getMonth').mockReturnValue(9);
+    vi.spyOn(Date.prototype, 'getDate').mockReturnValue(14);
+    try {
+      const plan = planBatchCreate({ settings: settings(), drafts: [
+        { type: 'entry', title: 'Journal' }, { type: 'reminder', title: 'Reminder' },
+      ], existingPaths: new Set(), createId: (_, i) => `local-${i}` });
+      expect(plan.blockers).toEqual([]);
+      expect(ObjectParser.parse(plan.actions[0]!.content).object).toMatchObject({ date: '2026-10-14' });
+      expect(ObjectParser.parse(plan.actions[1]!.content).object).toMatchObject({ date: '2026-10-14T09:00:00.000' });
+    } finally {
+      vi.restoreAllMocks();
+      vi.useRealTimers();
+    }
+  });
+
   it('creates named movies with shared canonical properties and distinct IDs', () => {
     const drafts = batchDraftsFromNames('Arrival\r\n\nInterstellar', {
       type: 'resource', mediaType: 'Movie', tags: ['weekend'], categories: ['Cinema'],
