@@ -65,7 +65,10 @@ describe('batch workbench planning', () => {
       ], existingPaths: new Set(), createId: (_, i) => `local-${i}` });
       expect(plan.blockers).toEqual([]);
       expect(ObjectParser.parse(plan.actions[0]!.content).object).toMatchObject({ date: '2026-10-14' });
-      expect(ObjectParser.parse(plan.actions[1]!.content).object).toMatchObject({ date: '2026-10-14T09:00:00.000' });
+      expect(ObjectParser.parse(plan.actions[1]!.content).object).toMatchObject({
+        date: '2026-10-14', time: '09:00',
+        reminders: [{ trigger_time: '2026-10-14T09:00:00.000' }],
+      });
     } finally {
       vi.restoreAllMocks();
       vi.useRealTimers();
