@@ -781,9 +781,11 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
   private async refreshGoogleAccessToken(): Promise<string | null> {
     if (!this.oauthClient) return null;
     if (this.googleAccessRefreshInFlight) return this.googleAccessRefreshInFlight;
+    const client = this.oauthClient;
     this.googleAccessRefreshInFlight = (async () => {
       try {
-        const refreshed = await this.oauthClient!.refreshAccessToken();
+        const refreshed = await client.refreshAccessToken();
+        if (this.unloaded || this.oauthClient !== client) return null;
         this.configureGoogleAccessToken(refreshed.access_token);
         return refreshed.access_token;
       } catch {
@@ -852,7 +854,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
         if (this.unloaded || generation !== this.calendarGeneration) return null;
         this.configureCalendarToken(token.access_token);
         return token.access_token;
-      } catch { this.calendarStatus = 'authorization_required'; return null; }
+      } catch { if (!this.unloaded && generation === this.calendarGeneration) this.calendarStatus = 'authorization_required'; return null; }
       finally { this.calendarRefreshInFlight = null; }
     })();
   }
