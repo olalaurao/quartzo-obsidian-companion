@@ -6,7 +6,7 @@ import {
   TemporaryDriveQuotaError,
   DriveRequestTimeoutError,
 } from '../../../sync/coordinator/types';
-import { drive_v3, drive } from '@googleapis/drive';
+import { drive_v3, drive_v2, drive } from '@googleapis/drive';
 import { OAuth2Client } from 'google-auth-library';
 import { normalizeVaultPath } from '../../../sync/coordinator/path-utils';
 import * as crypto from 'crypto';
@@ -48,6 +48,64 @@ export class GoogleDriveAdapter implements DriveAdapter {
   private drive: drive_v3.Drive | null = null;
   private tokenRefreshCallback: (() => Promise<string | null>) | null = null;
   private rateLimitUntil = 0;
+  private conditionalMutationVerified = false;
+  private readonly verifiedVersions = new Map<string, drive_v2.Schema$File>();
+  private getConditionalClient(): drive_v2.Drive {
+    if (!this.accessToken) throw new Error('No access token available');
+    const auth = new OAuth2Client(); auth.setCredentials({ access_token: this.accessToken });
+    return drive({ version: 'v2', auth });
+  }
+  async verifyConditionalMutationSupport(): Promise<void> {
+    if (this.conditionalMutationVerified) return;
+    if (!this.folderId) throw new Error('Select a vault before checking safe Drive writes');
+    const parentId = await this.ensureParentFolder(this.folderId, '_diagnostics/preconditions/probe.bin');
+    const created = await this.getDriveClient().files.create({
+      requestBody: { name: `conditional-probe-${crypto.randomUUID()}.bin`, parents: [parentId] },
+      media: { mimeType: 'application/octet-stream', body: Buffer.from('before') }, fields: 'id',
+    }, { timeout: DRIVE_MEDIA_REQUEST_TIMEOUT_MS });
+    const fileId = created.data.id;
+    if (!fileId) throw new Error('Drive safe-write probe did not return an identity');
+    try {
+      const before = await this.readVersion(fileId);
+      await this.getConditionalClient().files.update({ fileId, requestBody: { title: 'verified-precondition-probe.bin' }, fields: 'id' },
+        { headers: { 'If-Match': before.etag! }, timeout: DRIVE_REQUEST_TIMEOUT_MS });
+      let rejected = false;
+      try {
+        await this.getConditionalClient().files.update({ fileId, requestBody: { title: 'stale-precondition-must-not-write.bin' }, fields: 'id' },
+          { headers: { 'If-Match': before.etag! }, timeout: DRIVE_REQUEST_TIMEOUT_MS });
+      } catch (error) { if (this.errorStatus(error) !== 412) throw error; rejected = true; }
+      if (!rejected) throw new Error('Drive did not reject a stale If-Match precondition. Content sync is blocked.');
+      const current = await this.readVersion(fileId);
+      if (current.title !== 'verified-precondition-probe.bin') throw new Error('Drive changed the probe despite the stale precondition');
+      this.conditionalMutationVerified = true;
+    } finally {
+      const current = await this.readVersion(fileId);
+      const trashed = await this.getConditionalClient().files.update({ fileId, requestBody: { labels: { trashed: true } }, fields: 'labels(trashed)' },
+        { headers: { 'If-Match': current.etag! }, timeout: DRIVE_REQUEST_TIMEOUT_MS });
+      if (!trashed.data.labels?.trashed) { this.conditionalMutationVerified = false; throw new Error('Drive safe-write probe cleanup was not confirmed'); }
+    }
+  }
+
+  private async readVersion(fileId: string): Promise<drive_v2.Schema$File> {
+    const response = await this.withRetry(() => this.getConditionalClient().files.get({ fileId, supportsAllDrives: true,
+      fields: 'id,etag,title,mimeType,modifiedDate,md5Checksum,parents,properties,labels,capabilities' }, { timeout: DRIVE_REQUEST_TIMEOUT_MS }));
+    if (!response.data.etag) throw new Error('Drive did not provide a remote mutation precondition');
+    return response.data;
+  }
+  private requiredVersion(fileId: string): drive_v2.Schema$File {
+    const version = this.verifiedVersions.get(fileId);
+    if (!version?.etag) throw new Error('Remote version must be verified before mutation: ' + fileId);
+    this.verifiedVersions.delete(fileId);
+    return version;
+  }
+  private mapConditionalFile(value: drive_v2.Schema$File): DriveFileMetadata {
+    return { id: value.id || '', name: value.title || '', mimeType: value.mimeType || '',
+      modifiedTime: value.modifiedDate || '', md5Checksum: value.md5Checksum,
+      parents: (value.parents || []).map(parent => parent.id || ''),
+      quartzoHash: value.properties?.find(property => property.key === 'Quartzo_hash' && property.visibility === 'PUBLIC')?.value,
+      trashed: value.labels?.trashed, canTrash: value.capabilities?.canTrash };
+  }
+
 
   constructor(accessToken?: string) {
     this.accessToken = accessToken || null;
@@ -56,6 +114,8 @@ export class GoogleDriveAdapter implements DriveAdapter {
   setAccessToken(token: string): void {
     this.accessToken = token;
     this.drive = null;
+    this.verifiedVersions.clear();
+    this.conditionalMutationVerified = false;
   }
 
   setTokenRefreshCallback(callback: () => Promise<string | null>): void {
@@ -386,13 +446,13 @@ export class GoogleDriveAdapter implements DriveAdapter {
   }
 
     async resolveRemoteHash(metadata: DriveFileMetadata): Promise<string> {
-    if (metadata.quartzoHash) return metadata.quartzoHash;
     const bytes = await this.downloadFile(metadata.id);
     return this.calculateQuartzoHash(bytes);
   }
 
   async downloadFile(fileId: string): Promise<Uint8Array> {
-    return this.withRetry(async () => {
+    const before = await this.readVersion(fileId);
+    const bytes = await this.withRetry(async () => {
       const drive = this.getDriveClient();
       const response = await drive.files.get({
         fileId,
@@ -400,6 +460,10 @@ export class GoogleDriveAdapter implements DriveAdapter {
       }, { responseType: 'arraybuffer', timeout: DRIVE_MEDIA_REQUEST_TIMEOUT_MS });
       return new Uint8Array(response.data as ArrayBuffer);
     });
+    const after = await this.readVersion(fileId);
+    if (before.etag !== after.etag) throw new Error('Remote content changed during download: ' + fileId);
+    this.verifiedVersions.set(fileId, after);
+    return bytes;
   }
 
   async assertInsideSelectedVault(remoteFileId: string): Promise<void> {
@@ -587,6 +651,14 @@ export class GoogleDriveAdapter implements DriveAdapter {
     throw new Error(`Unable to create ${fullPath}`);
   }
 
+  async createVaultFolder(name: string): Promise<{ id: string; name: string }> {
+    const response = await this.getDriveClient().files.create({
+      requestBody: { name, mimeType: 'application/vnd.google-apps.folder', properties: { Quartzo_vault: 'true' } }, fields: 'id,name',
+    }, { timeout: DRIVE_REQUEST_TIMEOUT_MS });
+    if (!response.data.id) throw new Error('Drive did not return a vault folder ID');
+    return { id: response.data.id, name: response.data.name || name };
+  }
+
   async uploadFile(params: UploadFileParams): Promise<DriveFileMetadata> {
     const normalized = normalizeVaultPath(params.name);
     const pathParts = normalized.split('/');
@@ -597,52 +669,26 @@ export class GoogleDriveAdapter implements DriveAdapter {
 
   async updateFile(fileId: string, content: Uint8Array, quartzoHash: string): Promise<DriveFileMetadata> {
     await this.assertInsideSelectedVault(fileId);
-    return this.withRetry(async () => {
-      const driveClient = this.getDriveClient();
-      const response = await driveClient.files.update({
-        fileId,
-        requestBody: { properties: { Quartzo_hash: quartzoHash } },
-        media: { mimeType: 'application/octet-stream', body: Buffer.from(content) },
-        fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties'
-      }, { timeout: DRIVE_MEDIA_REQUEST_TIMEOUT_MS });
-      const data = response.data;
-      return {
-        id: data.id || fileId,
-        name: data.name || '',
-        mimeType: data.mimeType || '',
-        modifiedTime: data.modifiedTime || new Date().toISOString(),
-        md5Checksum: data.md5Checksum || undefined,
-        parents: data.parents || undefined,
-        quartzoHash
-      };
-    });
+    const version = this.requiredVersion(fileId);
+    const response = await this.withRetry(() => this.getConditionalClient().files.update({
+      fileId, supportsAllDrives: true,
+      requestBody: { properties: [...(version.properties || []).filter(property => property.key !== 'Quartzo_hash'),
+        { key: 'Quartzo_hash', value: quartzoHash, visibility: 'PUBLIC' }] },
+      media: { mimeType: 'application/octet-stream', body: Buffer.from(content) },
+      fields: 'id,title,mimeType,modifiedDate,md5Checksum,parents,properties,labels,capabilities',
+    }, { headers: { 'If-Match': version.etag! }, timeout: DRIVE_MEDIA_REQUEST_TIMEOUT_MS }));
+    this.verifiedVersions.delete(fileId);
+    return this.mapConditionalFile(response.data);
   }
 
   async trashFile(fileId: string): Promise<void> {
-    try {
-      await this.assertInsideSelectedVault(fileId);
-    } catch (error) {
-      if (this.errorStatus(error) === 404) return;
-      throw error;
-    }
-
-    try {
-      await this.withRetry(async () => {
-        const driveClient = this.getDriveClient();
-        const response = await driveClient.files.update({
-          fileId,
-          requestBody: { trashed: true },
-          supportsAllDrives: true,
-          fields: 'id, trashed',
-        }, { timeout: DRIVE_REQUEST_TIMEOUT_MS });
-        if (response.data.trashed !== true) {
-          throw new Error(`Drive did not confirm trashed=true for file ${fileId}`);
-        }
-      });
-    } catch (error) {
-      if (this.errorStatus(error) === 404) return;
-      throw error;
-    }
+    await this.assertInsideSelectedVault(fileId);
+    const version = this.requiredVersion(fileId);
+    const response = await this.withRetry(() => this.getConditionalClient().files.update({
+      fileId, requestBody: { labels: { trashed: true } }, supportsAllDrives: true, fields: 'id,labels(trashed)',
+    }, { headers: { 'If-Match': version.etag! }, timeout: DRIVE_REQUEST_TIMEOUT_MS }));
+    if (response.data.labels?.trashed !== true) throw new Error('Drive did not confirm trashed=true');
+    this.verifiedVersions.delete(fileId);
   }
 
   async deleteFile(fileId: string): Promise<void> {
@@ -667,6 +713,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
     await this.assertInsideSelectedVault(fileId);
     if (newParentId) await this.assertInsideSelectedVault(newParentId);
 
+    const verified = this.requiredVersion(fileId);
     return this.withRetry(async () => {
       const driveClient = this.getDriveClient();
       const currentResponse = await driveClient.files.get({
@@ -713,25 +760,14 @@ export class GoogleDriveAdapter implements DriveAdapter {
       }
 
       const movingParent = !!newParentId && !currentParents.includes(newParentId);
-      const response = await driveClient.files.update({
-        fileId,
-        requestBody: { name: newName },
+      const response = await this.getConditionalClient().files.update({
+        fileId, requestBody: { title: newName }, supportsAllDrives: true,
         addParents: movingParent ? newParentId : undefined,
         removeParents: movingParent && currentParents.length > 0 ? currentParents.join(',') : undefined,
-        fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties'
-      }, { timeout: DRIVE_REQUEST_TIMEOUT_MS });
-      const data = response.data;
-      return {
-        id: data.id || fileId,
-        name: data.name || newName,
-        mimeType: data.mimeType || '',
-        modifiedTime: data.modifiedTime || new Date().toISOString(),
-        md5Checksum: data.md5Checksum || undefined,
-        parents: data.parents || undefined,
-        quartzoHash: this.extractQuartzoHash(data),
-        trashed: data.trashed ?? false,
-        canTrash: data.capabilities?.canTrash ?? null
-      };
+        fields: 'id,title,mimeType,modifiedDate,md5Checksum,parents,properties,labels,capabilities',
+      }, { headers: { 'If-Match': verified.etag! }, timeout: DRIVE_REQUEST_TIMEOUT_MS });
+      return this.mapConditionalFile(response.data);
+
     });
   }
 
@@ -759,7 +795,8 @@ export class GoogleDriveAdapter implements DriveAdapter {
   }
 
   async getFileMetadata(fileId: string): Promise<DriveFileMetadata> {
-    return this.withRetry(async () => {
+    const before = await this.readVersion(fileId);
+    const metadata = await this.withRetry(async () => {
       const drive = this.getDriveClient();
       const response = await drive.files.get({
         fileId,
@@ -779,5 +816,9 @@ export class GoogleDriveAdapter implements DriveAdapter {
         canTrash: data.capabilities?.canTrash ?? null
       };
     });
+    const after = await this.readVersion(fileId);
+    if (before.etag !== after.etag) throw new Error('Remote metadata changed during verification: ' + fileId);
+    if (!this.verifiedVersions.has(fileId)) this.verifiedVersions.set(fileId, after);
+    return metadata;
   }
 }

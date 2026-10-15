@@ -1,10 +1,10 @@
 {
   "repository": "olalaurao/aplicativo",
-  "sourceCommit": "b5fda2e68e44deefea5c115b558a277b34768f60",
-  "syncTimestamp": "2026-10-14T20:31:17.513Z",
+  "sourceCommit": "db6e7bc23ce017a47718124b081da5727c96871c",
+  "syncTimestamp": "2026-10-15T00:34:59.830Z",
   "contractVersions": {
     "vaultInteropVersion": "1.0.0",
-    "syncProtocolVersion": "1.1.0",
+    "syncProtocolVersion": "1.2.0",
     "schedulerContractVersion": "1.0.0",
     "dailyScheduleContractVersion": "1.2.0",
     "sharedSettingsContractVersion": "1.0.0",
@@ -51,6 +51,7 @@
     "resource_capture/vectors.json": "contracts/quartzo/resource_capture/vectors.json",
     "scheduler/vectors.json": "contracts/quartzo/scheduler/vectors.json",
     "shared_settings/v1.md": "contracts/quartzo/shared_settings/v1.md",
+    "sync/file_policy.json": "contracts/quartzo/sync/file_policy.json",
     "sync/vectors.json": "contracts/quartzo/sync/vectors.json",
     "system_routine_execution/vectors.json": "contracts/quartzo/system_routine_execution/vectors.json"
   },
@@ -59,7 +60,7 @@
     "activity_history/README.md": "022ac6ebf5dc5ee30a8498f6ac68596477b9efeb5b05cefece510413d1d58474",
     "activity_history/vectors.json": "3cede3c909fe93454095d82166f24be86a0bceb8c79c150823e4ebad63d8c306",
     "adaptive_planning/vectors.json": "c38a429ebfa8e1736e44a4c68d3c5ad1549977cb416812e1cda6b95a045b28cd",
-    "contract_manifest.json": "d3107b90ca90607a234000950f0a0f031f6ebeb2002694a81f4d920950bf6dbc",
+    "contract_manifest.json": "91ebb7becfd7c65880d4d34ec4dfa8b75adc02b1f8bd96c73c3d4f4ce74d45e6",
     "daily_schedule/vectors.json": "6e2329093504cefa39351f568f59f5a87374056a483e290adbbdff066350538b",
     "embedded_journal_v2/vectors.json": "d60c8c3ce7d159d7f0e1b8643737146e937c5adfbf2d80a36451797fd87a3029",
     "external_capture_ingress/contract.json": "3ce4a1f6e4deccd6a76d95792707204562ae3f3295ddd78a6e4213d9dceb3074",
@@ -80,13 +81,14 @@
     "P0_COMPLIANCE_MATRIX.md": "af317bef3ad61aaa1b5880ed524f97344d6fa55811c3f3f1ae4aab2ed8b4d2c1",
     "QUARTZO_COMPANION_UI_SPEC_V1.md": "1500bd2ec7fc08b5e1c534f63df1e03611d4762bfb16274b4abed847fa3b37f4",
     "QUARTZO_OBSIDIAN_COMPANION_CONTRACT.md": "5fde250c499df0871b51cc5d4b1bbe56babbf7f2cefa85df0d6f6dcdf1495a54",
-    "QUARTZO_SYNC_PROTOCOL_V1.md": "8cf161cd39b682b02882bade1f15efd4111e053293d28b469c9af335cdc0fc32",
+    "QUARTZO_SYNC_PROTOCOL_V1.md": "e2172a779645949af77be443f569a34e04da7ea4e90db1c27e8dd04f4376c273",
     "QUARTZO_VAULT_INTEROP_CONTRACT_V1.md": "c76fe9959b666f5bb0e111b067a5eff7170479187d915e702f8ebe4ee52f9c58",
     "README.md": "db53ed3508f809256c1e3c491196aef7b0a7b208f29c7cdce83454fd0d4f56f4",
     "resource_capture/vectors.json": "c5e50758529dc98617392654fa058a54cb786569a8c7f4eb94a01fffcf5e03cf",
     "scheduler/vectors.json": "82c7326f9ee8c3bf7c2398b9c7ff41aabb8c8fd535768faf614164cfa2ea9b01",
     "shared_settings/v1.md": "807e8eb49dcba8e7d9637c5084f454f6788994630833545059647b75e6cfc3f6",
-    "sync/vectors.json": "9214800e17fd5e27f1b398dd597fb455e68d0fa70cb35dabd2305955014edb2b",
+    "sync/file_policy.json": "9f3cb3c7a5a3142bdb168c6ee4291a583d55341dcc38998e71cc12d46c1c259a",
+    "sync/vectors.json": "ebc51e5a319459b3b790d8d2c8de0fda258739783e1a3362a7804c7de3483ff4",
     "system_routine_execution/vectors.json": "20e053ef80258656a65fcdb3a927a29d237d58771452e91af2266df220a7e45f"
   }
 }

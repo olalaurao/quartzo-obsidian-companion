@@ -1,5 +1,7 @@
 export const GOOGLE_REFRESH_TOKEN_SECRET_ID = 'quartzo-companion-refresh-token';
 export const GOOGLE_CLIENT_SECRET_SECRET_ID = 'quartzo-companion-client-secret';
+export const GOOGLE_DRIVE_REFRESH_TOKEN_SECRET_ID = 'quartzo-companion-drive-refresh-token';
+export const GOOGLE_CALENDAR_REFRESH_TOKEN_SECRET_ID = 'quartzo-companion-calendar-refresh-token';
 
 const OBSIDIAN_SECRET_ID_PATTERN = /^[a-z0-9-]{1,64}$/;
 

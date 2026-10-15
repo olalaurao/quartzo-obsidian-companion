@@ -225,6 +225,25 @@ export class DriveSyncCoordinator implements ConflictRegistry {
   private driveAdapter: DriveAdapter;
   private vaultPath: string;
   private stateStorePath: string;
+  private readonly originalStateStorePath: string;
+  private storageAccountId = '';
+  private targetScope = '';
+  private triggersSuspended = false;
+
+  async suspendAndWait(): Promise<void> {
+    this.triggersSuspended = true;
+    while (this.syncMutex || this.pairingApplyInProgress) await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  resumeTriggers(): void { this.triggersSuspended = false; }
+
+  async setAccountIdentity(accountId: string): Promise<void> {
+    if (accountId === this.storageAccountId) return;
+    this.storageAccountId = accountId;
+    this.ancestryCache.clear(); this.parentNameCache.clear(); this.remoteHashCache.clear();
+  }
+
+  private conflictRoot(): string { return this.targetScope ? `_conflicts/${this.targetScope}` : '_conflicts'; }
+
   private syncMutex: boolean = false;
   private syncRerunRequested = false;
   private syncRerunForceFull = false;
@@ -239,7 +258,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
   private pendingDeletes: Set<string> = new Set();
   private pendingCreates: Set<string> = new Set();
   private lastError: string | null = null;
-  private remoteHashCache = new Map<string, { modifiedTime: string | null; hash: string }>();
+  private remoteHashCache = new Map<string, { modifiedTime: string | null; hash: string; md5Checksum?: string | null }>();
   private syncProgress: SyncProgress | null = null;
   private pairingApplyInProgress = false;
   private pairingApplyProgress: PairingApplyProgress | null = null;
@@ -250,6 +269,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     this.driveAdapter = driveAdapter;
     this.vaultPath = vaultPath;
     this.stateStorePath = stateStorePath || '';
+    this.originalStateStorePath = this.stateStorePath;
     this.syncState = {
       files: new Map(),
       lastSyncTime: 0,
@@ -508,6 +528,16 @@ export class DriveSyncCoordinator implements ConflictRegistry {
   }
 
   async resolveConflict(originalPath: string, resolution: ConflictResolution): Promise<void> {
+    if (this.triggersSuspended || this.syncMutex || this.pairingApplyInProgress) throw new Error('Wait for active sync before resolving a conflict');
+    this.syncMutex = true;
+    try { await this.driveAdapter.verifyConditionalMutationSupport?.(); await this.resolveConflictOwned(originalPath, resolution); }
+    finally {
+      this.syncMutex = false;
+      if (this.syncRerunRequested) { this.syncRerunRequested = false; const full = this.syncRerunForceFull; this.syncRerunForceFull = false; void this.reconcile(full); }
+    }
+  }
+
+  private async resolveConflictOwned(originalPath: string, resolution: ConflictResolution): Promise<void> {
     const normalized = normalizeVaultPath(originalPath);
     const artifact = this.conflicts.get(normalized);
     if (!artifact) return;
@@ -520,6 +550,14 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     }
 
     const effectiveRemoteFileId = artifact.remoteFileId || this.syncState.files.get(normalized)?.remoteFileId || null;
+    const localPath = pathModule.join(this.vaultPath, normalized);
+    const currentLocalHash = fs.existsSync(localPath) ? this.calculateHash(fs.readFileSync(localPath)) : null;
+    if (currentLocalHash !== (artifact.localExists ? artifact.localSha256 : null)) throw new Error('Local conflict changed; rescan before resolving');
+    if (effectiveRemoteFileId && artifact.remoteExists) {
+      const remoteBytes = await this.driveAdapter.downloadFile(effectiveRemoteFileId);
+      if (this.calculateHash(remoteBytes) !== artifact.remoteSha256) throw new Error('Remote conflict changed; rescan before resolving');
+    }
+
 
     if (effectiveResolution === 'keep_local') {
       if (!artifact.localExists) {
@@ -605,10 +643,10 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
   private removeConflictArtifacts(originalPath: string): void {
     const paths = [
-      pathModule.join(this.vaultPath, '_conflicts', `${originalPath}.local`),
-      pathModule.join(this.vaultPath, '_conflicts', `${originalPath}.remote`),
-      pathModule.join(this.vaultPath, '_conflicts', `${originalPath}.conflict.json`),
-      pathModule.join(this.vaultPath, '_conflicts', `${originalPath}.conflict`),
+      pathModule.join(this.vaultPath, this.conflictRoot(), `${originalPath}.local`),
+      pathModule.join(this.vaultPath, this.conflictRoot(), `${originalPath}.remote`),
+      pathModule.join(this.vaultPath, this.conflictRoot(), `${originalPath}.conflict.json`),
+      pathModule.join(this.vaultPath, this.conflictRoot(), `${originalPath}.conflict`),
     ];
     for (const p of paths) {
       if (fs.existsSync(p)) {
@@ -618,7 +656,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
   }
 
   private rehydrateConflicts(): void {
-    const conflictDir = pathModule.join(this.vaultPath, '_conflicts');
+    const conflictDir = pathModule.join(this.vaultPath, this.conflictRoot());
     if (!fs.existsSync(conflictDir)) return;
 
     const walkDir = (dir: string, relativeBase: string) => {
@@ -648,12 +686,12 @@ export class DriveSyncCoordinator implements ConflictRegistry {
             let remoteContent = new Uint8Array();
 
             if (meta.conflictType === 'binary') {
-              const localPath = pathModule.join(this.vaultPath, '_conflicts', `${originalPath}.local`);
-              const remotePath = pathModule.join(this.vaultPath, '_conflicts', `${originalPath}.remote`);
+              const localPath = pathModule.join(this.vaultPath, this.conflictRoot(), `${originalPath}.local`);
+              const remotePath = pathModule.join(this.vaultPath, this.conflictRoot(), `${originalPath}.remote`);
               localContent = fs.existsSync(localPath) ? new Uint8Array(fs.readFileSync(localPath)) : new Uint8Array();
               remoteContent = fs.existsSync(remotePath) ? new Uint8Array(fs.readFileSync(remotePath)) : new Uint8Array();
             } else {
-              const conflictFilePath = pathModule.join(this.vaultPath, '_conflicts', `${originalPath}.conflict`);
+              const conflictFilePath = pathModule.join(this.vaultPath, this.conflictRoot(), `${originalPath}.conflict`);
               if (fs.existsSync(conflictFilePath)) {
                 const rawBuf = fs.readFileSync(conflictFilePath);
                 const SEPARATOR = Buffer.from('\n\n---QUARTZO_CONFLICT_SEPARATOR---\n\n');
@@ -689,7 +727,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
           const originalPath = relativePath.slice(0, -'.conflict'.length);
           if (this.conflicts.has(originalPath)) continue;
           try {
-            const conflictJsonPath = pathModule.join(this.vaultPath, '_conflicts', `${originalPath}.conflict.json`);
+            const conflictJsonPath = pathModule.join(this.vaultPath, this.conflictRoot(), `${originalPath}.conflict.json`);
             let metaExists = false;
             let metaFileId: string | null = null;
             let metaLocalExists = true;
@@ -760,6 +798,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     forceFull = false,
     onProgress?: (progress: SyncProgress) => void
   ): Promise<SyncResult> {
+    if (this.triggersSuspended) return { synced: 0, conflicts: 0, errors: ['Sync target is changing'] };
     if (this.syncMutex) {
       this.syncRerunRequested = true;
       this.syncRerunForceFull = this.syncRerunForceFull || forceFull;
@@ -794,6 +833,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       this.syncState.driveFolderId = driveFolderId;
 
       let localYieldCounter = 0;
+      await this.driveAdapter.verifyConditionalMutationSupport?.();
       const localInventory = await this.buildLocalInventory(async (completed, currentPath) => {
         await this.checkpointSync();
         this.reportSyncProgress({ phase: 'local_inventory', completed, total: 0, currentPath }, onProgress);
@@ -1925,7 +1965,8 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     syncFile.localHash = quartzoHash;
     syncFile.localExists = fs.existsSync(localFilePath);
     syncFile.remoteExists = true;
-    syncFile.localModifiedAt = syncFile.localExists ? fs.statSync(localFilePath).mtime.toISOString() : null;
+    const currentBytesMatch = syncFile.localExists && this.calculateHash(fs.readFileSync(localFilePath)) === quartzoHash;
+    syncFile.localModifiedAt = currentBytesMatch ? fs.statSync(localFilePath).mtime.toISOString() : null;
     syncFile.remoteModifiedAt = metadata.modifiedTime || null;
 
     this.pendingCreates.delete(filePath);
@@ -2049,7 +2090,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     const localSha256 = crypto.createHash('sha256').update(localContent).digest('hex');
     const remoteSha256 = crypto.createHash('sha256').update(remoteContent).digest('hex');
 
-    const conflictBase = `_conflicts/${filePath}`;
+    const conflictBase = `${this.conflictRoot()}/${filePath}`;
 
     const conflictDirForFile = pathModule.dirname(pathModule.join(this.vaultPath, conflictBase));
     if (!fs.existsSync(conflictDirForFile)) {
@@ -2195,24 +2236,54 @@ export class DriveSyncCoordinator implements ConflictRegistry {
   }
 
   async setDriveFolderId(folderId: string): Promise<void> {
-    if (this.syncState.driveFolderId && this.syncState.driveFolderId !== folderId) {
-      this.remoteHashCache.clear();
+    if (this.syncMutex || this.pairingApplyInProgress) throw new Error('Wait for active sync before changing the vault');
+    const scope = this.storageAccountId
+      ? crypto.createHash('sha256').update(JSON.stringify([this.storageAccountId, folderId, pathModule.resolve(this.vaultPath)])).digest('hex') : '';
+    if (scope !== this.targetScope || this.syncState.driveFolderId !== folderId) {
+      this.remoteHashCache.clear(); this.ancestryCache.clear(); this.parentNameCache.clear();
+      this.targetScope = scope;
+      this.stateStorePath = scope && this.originalStateStorePath ? `${this.originalStateStorePath}.${scope}.json` : this.originalStateStorePath;
+      // Claim legacy state once, only when it names this exact remote folder.
+      if (scope && this.originalStateStorePath && !fs.existsSync(this.stateStorePath) && fs.existsSync(this.originalStateStorePath)) {
+        const bindingPath = `${this.originalStateStorePath}.target-binding`;
+        const legacy = JSON.parse(fs.readFileSync(this.originalStateStorePath, 'utf-8'));
+        const binding = fs.existsSync(bindingPath) ? fs.readFileSync(bindingPath, 'utf-8') : null;
+        if (legacy.driveFolderId === folderId && (!binding || binding === scope)) {
+          fs.writeFileSync(bindingPath, scope);
+          fs.copyFileSync(this.originalStateStorePath, this.stateStorePath);
+          const oldConflicts = pathModule.join(this.vaultPath, '_conflicts');
+          const newConflicts = pathModule.join(this.vaultPath, this.conflictRoot());
+          if (fs.existsSync(oldConflicts) && !fs.existsSync(newConflicts)) {
+            fs.mkdirSync(newConflicts, { recursive: true });
+            for (const entry of fs.readdirSync(oldConflicts, { withFileTypes: true })) {
+              if (/^[a-f0-9]{64}$/.test(entry.name)) continue;
+              fs.cpSync(pathModule.join(oldConflicts, entry.name), pathModule.join(newConflicts, entry.name), { recursive: true });
+            }
+          }
+        }
+      }
+      await this.loadSyncState();
+      if (this.syncState.driveFolderId && this.syncState.driveFolderId !== folderId) {
+        this.syncState.files.clear(); this.pendingCreates.clear(); this.pendingDeletes.clear(); this.pendingRenames = [];
+        this.syncState.driveChangeToken = null; this.syncState.lastSyncTime = 0;
+      }
+      this.conflicts.clear();
+      this.rehydrateConflicts();
     }
     await this.driveAdapter.setFolderId(folderId);
     this.syncState.driveFolderId = folderId;
+    await this.saveSyncState();
   }
 
   private async resolveRemoteHashCached(metadata: DriveFileMetadata): Promise<string> {
-    if (metadata.quartzoHash) return metadata.quartzoHash;
-
     const modifiedTime = metadata.modifiedTime || null;
     const cached = this.remoteHashCache.get(metadata.id);
-    if (cached && cached.modifiedTime === modifiedTime) {
+    if (cached && (metadata.md5Checksum ? cached.md5Checksum === metadata.md5Checksum : cached.modifiedTime === modifiedTime)) {
       return cached.hash;
     }
 
     const hash = await this.driveAdapter.resolveRemoteHash(metadata);
-    this.remoteHashCache.set(metadata.id, { modifiedTime, hash });
+    this.remoteHashCache.set(metadata.id, { modifiedTime, hash, md5Checksum: metadata.md5Checksum || null });
     return hash;
   }
 
@@ -2586,6 +2657,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     this.pairingApplyProgress = null;
     this.pairingLastError = null;
     try {
+      await this.driveAdapter.verifyConditionalMutationSupport?.();
       const driveFolderId = this.syncState.driveFolderId || '';
 
       const unresolvedDivergent = summary.divergent.filter(
@@ -3004,6 +3076,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
       for (const entry of entries) {
         const fullPath = pathModule.join(dirPath, entry.name);
+        if (this.originalStateStorePath && (fullPath === this.originalStateStorePath || fullPath.startsWith(this.originalStateStorePath + '.'))) continue;
         const relativeFilePath = relativePath
           ? normalizeVaultPath(`${relativePath}/${entry.name}`)
           : normalizeVaultPath(entry.name);
@@ -3073,6 +3146,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       if (fs.existsSync(this.stateStorePath)) {
         const content = fs.readFileSync(this.stateStorePath, 'utf-8');
         const data = JSON.parse(content);
+        if (data.targetScope && data.targetScope !== this.targetScope) throw new Error('Sync state belongs to another account or vault');
 
         if (data.version && data.version !== CURRENT_STATE_VERSION) {
           throw new Error(`Incompatible sync state version: ${data.version}. Expected: ${CURRENT_STATE_VERSION}`);
@@ -3086,6 +3160,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
           forceFullReconciliation: data.forceFullReconciliation === true,
           version: data.version || CURRENT_STATE_VERSION
         };
+        this.remoteHashCache = new Map(data.remoteHashCache || []);
         this.pendingRenames = data.pendingRenames || [];
         this.pendingDeletes = new Set(data.pendingDeletes || []);
         this.pendingCreates = new Set(data.pendingCreates || []);
@@ -3112,12 +3187,14 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
     try {
       const data = {
+        targetScope: this.targetScope,
         files: Array.from(this.syncState.files.entries()),
         lastSyncTime: this.syncState.lastSyncTime,
         driveChangeToken: this.syncState.driveChangeToken,
         driveFolderId: this.syncState.driveFolderId,
         forceFullReconciliation: this.syncState.forceFullReconciliation === true,
         version: this.syncState.version,
+        remoteHashCache: Array.from(this.remoteHashCache.entries()),
         pendingRenames: this.pendingRenames,
         pendingDeletes: Array.from(this.pendingDeletes),
         pendingCreates: Array.from(this.pendingCreates),

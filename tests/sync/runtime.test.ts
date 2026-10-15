@@ -209,6 +209,28 @@ describe('Runtime Sync Tests', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  it('isolates the same remote folder by storage account and restores old pending work', async () => {
+    await coordinator.setAccountIdentity('account-a');
+    await coordinator.setDriveFolderId('root-folder-id');
+    await coordinator.reconcile();
+    fs.writeFileSync(path.join(tmpDir, 'pending.md'), 'old pending');
+    await coordinator.queueCreate('pending.md');
+    await coordinator.suspendAndWait();
+    await coordinator.setAccountIdentity('account-b');
+    await coordinator.setDriveFolderId('root-folder-id');
+    coordinator.resumeTriggers();
+    expect(coordinator.getSyncState().files.size).toBe(0);
+    const result = await coordinator.reconcile();
+    expect(result.errors).toEqual([]);
+    expect(adapter.uploadCalls).toBe(0);
+    await coordinator.suspendAndWait();
+    await coordinator.setAccountIdentity('account-a');
+    await coordinator.setDriveFolderId('root-folder-id');
+    coordinator.resumeTriggers();
+    await coordinator.reconcile();
+    expect(Buffer.from(adapter.files.get('pending.md')!.content).toString()).toBe('old pending');
+  });
+
   it('1: unknown-base local-only does not upload', async () => {
     fs.writeFileSync(path.join(tmpDir, 'local.md'), 'content');
     const result = await coordinator.reconcile();
@@ -1533,8 +1555,8 @@ describe('Runtime Sync Tests', () => {
     expect(VaultSyncFilePolicy.shouldSyncFile('view.base')).toBe(true);
     expect(VaultSyncFilePolicy.shouldSyncFile('_attachments/photo.jpg')).toBe(true);
     expect(VaultSyncFilePolicy.shouldSyncFile('_deleted/foo.md')).toBe(true);
-    expect(VaultSyncFilePolicy.shouldSyncFile('Quartzo Finance (Data)')).toBe(false);
-    expect(VaultSyncFilePolicy.shouldSyncFile('documents/report.pdf')).toBe(false);
+    expect(VaultSyncFilePolicy.shouldSyncFile('Quartzo Finance (Data)')).toBe(true);
+    expect(VaultSyncFilePolicy.shouldSyncFile('documents/report.pdf')).toBe(true);
     expect(VaultSyncFilePolicy.shouldSyncRemoteFile('normal.md', 'application/vnd.google-apps.document')).toBe(false);
     expect(VaultSyncFilePolicy.shouldSyncRemoteFile('_attachments/photo.jpg', 'image/jpeg')).toBe(true);
   });

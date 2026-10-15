@@ -5,3 +5,7 @@ export const GOOGLE_COMPANION_SCOPES = [
   GOOGLE_DRIVE_SCOPE,
   GOOGLE_CALENDAR_READONLY_SCOPE,
 ] as const;
+
+export function googleConnectionScopes(purpose: 'drive' | 'calendar'): string[] {
+  return ['openid', 'email', purpose === 'drive' ? GOOGLE_DRIVE_SCOPE : GOOGLE_CALENDAR_READONLY_SCOPE];
+}

@@ -1,0 +1,89 @@
+{
+  "version": "1.2.0",
+  "cases": [
+    {
+      "path": "notes/test.md",
+      "include": true
+    },
+    {
+      "path": "boards/week.canvas",
+      "include": true
+    },
+    {
+      "path": "documents/manual.pdf",
+      "include": true
+    },
+    {
+      "path": "images/photo.jpg",
+      "include": true
+    },
+    {
+      "path": "LICENSE",
+      "include": true
+    },
+    {
+      "path": "unicode/日本語.txt",
+      "include": true
+    },
+    {
+      "path": "_deleted/images/photo.jpg",
+      "include": true
+    },
+    {
+      "path": "_attachments/image.local",
+      "include": false
+    },
+    {
+      "path": "_attachments/../outside.bin",
+      "include": false
+    },
+    {
+      "path": "project/.obsidian/app.json",
+      "include": false
+    },
+    {
+      "path": "project/.GIT/config",
+      "include": false
+    },
+    {
+      "path": "_cache/projection.json",
+      "include": false
+    },
+    {
+      "path": "_diagnostics/probe.bin",
+      "include": false
+    },
+    {
+      "path": "_conflicts/local.md",
+      "include": false
+    },
+    {
+      "path": "_backups/vault.zip",
+      "include": false
+    },
+    {
+      "path": "crash_reports/log.txt",
+      "include": false
+    },
+    {
+      "path": "node_modules/test.js",
+      "include": false
+    },
+    {
+      "path": "note.md.tmp",
+      "include": false
+    },
+    {
+      "path": "note.md~",
+      "include": false
+    },
+    {
+      "path": "Thumbs.db",
+      "include": false
+    },
+    {
+      "path": "future.conflict.json",
+      "include": false
+    }
+  ]
+}

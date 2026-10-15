@@ -1,5 +1,4 @@
 import { normalizeVaultPath } from './path-utils';
-import { isActivityHistoryPath } from '../../vault/activity-history';
 
 /**
  * Canonical excluded directory segments.
@@ -14,6 +13,7 @@ const EXCLUDED_DIRS = new Set([
   '_diagnostics',
   '_cache',
   'node_modules',
+  'crash_reports',
 ]);
 
 /**
@@ -28,43 +28,27 @@ const EXCLUDED_FILE_SUFFIXES = [
   '.remote',
 ];
 
-const CANONICAL_TEXT_EXTENSIONS = ['.md', '.base'];
-const CANONICAL_BINARY_ROOTS = new Set(['_attachments', '_capture_ingress', '_deleted']);
 const GOOGLE_WORKSPACE_MIME_PREFIX = 'application/vnd.google-apps.';
 
-/**
- * VaultSyncFilePolicy - Canonical source of truth for file sync eligibility.
- * Uses normalized vault-relative paths with '/' separators.
- *
- * The sync contract is an allow-list, not merely a deny-list:
- * - Markdown and Bases are canonical anywhere outside excluded directories.
- * - _attachments/**, _capture_ingress/**, and _deleted/** may contain arbitrary
- *   raw-byte files.
- * - Activity History JSONL partitions are canonical append-only text logs.
- * - unrelated Drive sidecars (for example Finance's Google Sheet) are not
- *   Obsidian-vault content and must never enter pairing/reconciliation.
- */
+/** Protocol 1.2: transport regular vault content as bytes, excluding device-local and temporary data. */
 export class VaultSyncFilePolicy {
   static shouldSyncFile(rawPath: string): boolean {
     const filePath = normalizeVaultPath(rawPath);
 
     for (const suffix of EXCLUDED_FILE_SUFFIXES) {
-      if (filePath.endsWith(suffix)) return false;
+      if (filePath.toLowerCase().endsWith(suffix.toLowerCase())) return false;
     }
 
+    if (!filePath || filePath.includes('\0')) return false;
     const segments = filePath.split('/');
     for (const seg of segments) {
-      if (EXCLUDED_DIRS.has(seg)) return false;
+      if (seg === '.' || seg === '..' || EXCLUDED_DIRS.has(seg.toLowerCase())) return false;
     }
-
-    const lowerPath = filePath.toLowerCase();
-    if (CANONICAL_TEXT_EXTENSIONS.some(extension => lowerPath.endsWith(extension))) {
-      return true;
-    }
-
-    if (isActivityHistoryPath(filePath)) return true;
-
-    return segments.length > 1 && CANONICAL_BINARY_ROOTS.has(segments[0]);
+    const name = segments[segments.length - 1].toLowerCase();
+    if (['.ds_store', 'thumbs.db', 'desktop.ini'].includes(name) ||
+        name.startsWith('.#') || name.endsWith('~') ||
+        ['.tmp', '.temp', '.swp'].some(suffix => name.endsWith(suffix))) return false;
+    return true;
   }
 
   static shouldSyncRemoteFile(rawPath: string, mimeType: string | null | undefined): boolean {
@@ -78,7 +62,7 @@ export class VaultSyncFilePolicy {
 
     const segments = dirPath.split('/');
     for (const seg of segments) {
-      if (EXCLUDED_DIRS.has(seg)) return false;
+      if (EXCLUDED_DIRS.has(seg.toLowerCase()) || seg === '..' || seg === '.') return false;
     }
 
     return true;
