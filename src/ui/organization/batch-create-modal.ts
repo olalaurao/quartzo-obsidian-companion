@@ -234,8 +234,12 @@ export class ObjectBatchCreateModal extends Modal {
       if (!this.tableMode) this.rawInput = rows.slice(report.applied).join('\n');
       else if (report.failed === 0) this.rawInput = '';
       this.currentPlan = null;
-      await this.updateCanonicalIndex(plan, report.applied);
-      await this.options.onApplied?.(report);
+      try {
+        await this.updateCanonicalIndex(plan, report.applied);
+        await this.options.onApplied?.(report);
+      } catch (error) {
+        report.messages.push(`Objects committed; view refresh failed: ${String(error)}. Reopen the view to reload.`);
+      }
       if (report.failed > 0) {
         new Notice(`Created ${report.applied}/${report.attempted}; stopped at ${report.failedPath}.`, 10000);
         this.isApplying = false;
