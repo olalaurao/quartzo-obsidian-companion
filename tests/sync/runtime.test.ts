@@ -458,7 +458,7 @@ describe('Runtime Sync Tests', () => {
     fs.writeFileSync(file, 'base');
     const remote = adapter.addRemoteFile('same-time.md', Buffer.from('base'));
     await coordinator.reconcile();
-    const modifiedTime = adapter.files.get('same-time.md')!.modifiedTime;
+    const modifiedTime = adapter.files.get('same-time.md')!.modifiedTime!;
     const resolutions = adapter.resolveRemoteHashCalls;
     adapter.addRemoteFileWithId('same-time.md', remote.id, Buffer.from('remote'));
     adapter.files.get('same-time.md')!.modifiedTime = modifiedTime;
