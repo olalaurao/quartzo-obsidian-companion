@@ -1247,6 +1247,19 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
     for (const [remotePath, remoteFile] of remoteOnlyEntries) {
       await this.checkpointSync();
+      if (this.conflicts.has(remotePath) || this.pendingRenames.some(rename => rename.oldPath === remotePath)) continue;
+      const tracked = this.syncState.files.get(remotePath);
+      if (tracked?.baseHash !== null && tracked?.baseHash !== undefined && tracked.remoteFileId === remoteFile.id) {
+        // Missing previously synchronized bytes are a local deletion, including
+        // deletion while Obsidian was closed. A rescan must not resurrect them.
+        // The deletion boundary freshly verifies remote bytes and the version
+        // before preserving that same remote identity under _deleted/.
+        this.pendingDeletes.add(remotePath);
+        await this.saveSyncState();
+        await this.deleteRemoteFile(remotePath, tracked);
+        result.synced++;
+        continue;
+      }
       if (this.pendingDeletes.has(remotePath)) continue;
       const vector = {
         id: remotePath,
@@ -1480,10 +1493,7 @@ export class DriveSyncCoordinator implements ConflictRegistry {
 
         if (!localFile) {
           const pendingRename = this.pendingRenames.find(rename => rename.oldPath === normalizedRemote);
-          if (this.pendingDeletes.has(normalizedRemote)) {
-            result.conflicts++;
-            await this.handleConflict(normalizedRemote, { hash: syncFile.localHash, exists: false }, change.file, syncFile);
-          } else if (pendingRename) {
+          if (pendingRename) {
             // A local canonical retirement/rename already owns this disappearance.
             // Never pull the old remote path back. If Drive changed, surface the
             // three-way conflict and keep the rename pending for explicit review.
@@ -1500,6 +1510,18 @@ export class DriveSyncCoordinator implements ConflictRegistry {
                 change.file,
                 syncFile,
               );
+            }
+          } else if (this.pendingDeletes.has(normalizedRemote) || syncFile.baseHash !== null) {
+            // Changes API can replay the original upload/metadata event. It is
+            // not evidence of a concurrent edit: compare bytes with baseline.
+            if (syncFile.baseHash !== null && remoteHash === syncFile.baseHash) {
+              this.pendingDeletes.add(normalizedRemote);
+              syncFile.remoteHash = remoteHash;
+              syncFile.remoteExists = true;
+              this.syncState.files.set(normalizedRemote, syncFile);
+            } else {
+              result.conflicts++;
+              await this.handleConflict(normalizedRemote, { hash: syncFile.localHash, exists: false }, change.file, syncFile);
             }
           } else {
             await this.pullFile(normalizedRemote, change.file, syncFile);
