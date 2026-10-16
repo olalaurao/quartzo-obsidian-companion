@@ -52,4 +52,15 @@ The adapter owns finite network request deadlines and quota-aware cooldown/retri
 
 ## Verification
 
+### Obsidian-native deletion
+
+A missing file with a synchronized baseline represents local deletion even after
+restart without a queued watcher event. Replayed Drive events and full scans must
+compare the current remote bytes with that baseline rather than resurrecting the
+file or unconditionally reporting conflict. Unchanged remote bytes are moved with
+their existing identity into `_deleted/` through the conditional mutation adapter;
+concurrent remote edits remain explicit conflicts with recoverable bytes. New,
+untracked remote files retain the normal pull behavior. Pending canonical renames
+continue to own disappearance at their old path.
+
 Run sync regression tests, contract verification, architecture gates, safe cleanup, hash/identity recovery, quota, timeout and restart tests. Shared protocol changes must originate upstream before vendoring.

@@ -723,6 +723,70 @@ describe('P0.3 — processLocalDirty handles deletion', () => {
     const state = coordinator.getSyncState();
     expect(state.files.has('del-me.md')).toBe(false);
   });
+
+  it.each(['', 'base content'])('replayed Drive event cannot turn deletion into conflict (%j)', async text => {
+    const name = 'deleted.base';
+    fs.writeFileSync(path.join(tmpDir, name), text);
+    const remote = adapter.addRemoteFile(name, Buffer.from(text));
+    await coordinator.reconcile();
+    const metadata = await adapter.getFileMetadata(remote.id);
+    adapter.pendingChanges = [{ fileId: remote.id, removed: false, file: metadata }];
+    fs.unlinkSync(path.join(tmpDir, name));
+    coordinator.queueDelete(name);
+
+    const result = await coordinator.reconcile();
+    expect(result.errors).toEqual([]);
+    expect(coordinator.getConflicts()).toEqual([]);
+    expect(fs.existsSync(path.join(tmpDir, name))).toBe(false);
+    expect(adapter.renameCalls).toContainEqual(expect.objectContaining({ fileId: remote.id }));
+    expect(coordinator.getSyncState().files.has(name)).toBe(false);
+    expect(adapter.uploadCalls).toBe(0);
+  });
+
+  it.each([true, false])('full rescan preserves offline deletion after restart (queued=%j)', async queued => {
+    const name = 'offline.md';
+    fs.writeFileSync(path.join(tmpDir, name), 'baseline');
+    const remote = adapter.addRemoteFile(name, Buffer.from('baseline'));
+    await coordinator.reconcile();
+    adapter.pendingChanges = [];
+    fs.unlinkSync(path.join(tmpDir, name));
+    if (queued) coordinator.queueDelete(name);
+    coordinator = new DriveSyncCoordinator(adapter, tmpDir, path.join(tmpDir, '.quartzo-sync-state.json'));
+
+    const result = await coordinator.triggerFullReconciliation();
+    expect(result.errors).toEqual([]);
+    expect(coordinator.getConflicts()).toEqual([]);
+    expect(fs.existsSync(path.join(tmpDir, name))).toBe(false);
+    expect(adapter.renameCalls).toContainEqual(expect.objectContaining({ fileId: remote.id }));
+    expect(coordinator.getSyncState().files.has(name)).toBe(false);
+  });
+
+  it('an offline deletion is not resurrected by an unchanged incremental event', async () => {
+    fs.writeFileSync(path.join(tmpDir, 'offline.md'), 'baseline');
+    const remote = adapter.addRemoteFile('offline.md', Buffer.from('baseline'));
+    await coordinator.reconcile();
+    adapter.pendingChanges = [{ fileId: remote.id, removed: false, file: await adapter.getFileMetadata(remote.id) }];
+    fs.unlinkSync(path.join(tmpDir, 'offline.md'));
+    const result = await coordinator.reconcile();
+    expect(result.errors).toEqual([]);
+    expect(coordinator.getConflicts()).toEqual([]);
+    expect(fs.existsSync(path.join(tmpDir, 'offline.md'))).toBe(false);
+    expect(adapter.renameCalls).toHaveLength(1);
+  });
+
+  it('a full rescan preserves a remote edit against an offline deletion', async () => {
+    fs.writeFileSync(path.join(tmpDir, 'race.md'), 'baseline');
+    const remote = adapter.addRemoteFile('race.md', Buffer.from('baseline'));
+    await coordinator.reconcile();
+    adapter.pendingChanges = [];
+    fs.unlinkSync(path.join(tmpDir, 'race.md'));
+    await adapter.updateFile(remote.id, Buffer.from('remote edit'), h('remote edit'));
+    await coordinator.triggerFullReconciliation();
+    expect(fs.existsSync(path.join(tmpDir, 'race.md'))).toBe(false);
+    expect(coordinator.getConflicts()).toHaveLength(1);
+    expect(Buffer.from(coordinator.getConflicts()[0].remoteContent).toString()).toBe('remote edit');
+    expect(adapter.renameCalls).toHaveLength(0);
+  });
 });
 
 describe('Nested conflict artifact paths', () => {
