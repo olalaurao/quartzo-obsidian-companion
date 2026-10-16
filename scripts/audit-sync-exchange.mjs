@@ -19,9 +19,9 @@ for (const [client, stage] of [['companion', 'seed'], ['quartzo', 'middle'], ['c
       'tests/sync/runtime.test.ts', '-t', 'audit: cross-client exchange', '--maxWorkers=1', '--minWorkers=1'], options);
   } else if (process.platform === 'win32') {
     result = spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c',
-      'flutter test --no-pub test/sync_stability_audit_test.dart --plain-name=cross-client'], options);
+      'flutter test --no-test-assets --no-pub test/sync_stability_audit_test.dart --plain-name=cross-client'], options);
   } else {
-    result = spawnSync('flutter', ['test', '--no-pub', 'test/sync_stability_audit_test.dart', '--plain-name=cross-client'], options);
+    result = spawnSync('flutter', ['test', '--no-test-assets', '--no-pub', 'test/sync_stability_audit_test.dart', '--plain-name=cross-client'], options);
   }
   writeFileSync(path.join(diagnostics, `sync-audit-exchange-${stage}.log`),
     `${result.stdout || ''}\n${result.stderr || ''}\n${result.error || ''}`);
