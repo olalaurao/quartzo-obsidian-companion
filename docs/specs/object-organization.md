@@ -32,6 +32,8 @@ O bootstrap atual do Quartzo já determina que operações complexas de metadata
 
 # 1. Resultado final esperado
 
+The Object Identification settings editor isolates transient drafts by marker type. Folder accepts an editable vault-relative path or an existing folder selected from Obsidian's loaded vault. Switching from Property clears the new Folder draft rather than reusing `type: ...`; switching back restores the previous mode's draft. Picker cancellation and late selections cannot replace a newer draft. Inline validation rejects empty, absolute and parent-traversing folder paths. Structural saves continue through the canonical migration preview and repository.
+
 O Companion deve aproveitar o fato de estar **dentro do Obsidian**.
 
 O usuário não deve precisar abrir uma tela específica de Object Identification toda vez que quiser organizar alguma coisa.

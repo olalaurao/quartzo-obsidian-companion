@@ -9,6 +9,7 @@ import { ActivityHistoryWriter } from './vault/activity-history';
 import type { SafeObjectMutation } from './core/object-mutation';
 import type { ActivityEvent, ActivityEventType } from './core/activity-history';
 import { ObjectParser } from './core/objects';
+import { ObjectIdentifierFields } from './ui/organization/identifier-fields';
 import type { ObjectIdentificationMatch } from './core/objects/types';
 import type { TrackerDefinition } from './core/objects/types';
 import { resolveCreationFolder } from './core/shared-settings';
@@ -80,7 +81,7 @@ import { GOOGLE_CLIENT_SECRET_SECRET_ID, GOOGLE_REFRESH_TOKEN_SECRET_ID, GOOGLE_
 import { resolveGoogleOAuthClientSecret } from './platform/google-oauth-credentials';
 import { normalizeVaultPath } from './sync/coordinator/path-utils';
 import { VaultSyncFilePolicy } from './sync/coordinator/file-policy';
-import { SHARED_SETTINGS_PATH, SharedSettingsRepository, parseObjectWithSharedSettings, type MarkerType, type QuartzoSharedSettings, type TypeSignature } from './vault/shared-settings';
+import { SHARED_SETTINGS_PATH, SharedSettingsRepository, parseObjectWithSharedSettings, type QuartzoSharedSettings, type TypeSignature } from './vault/shared-settings';
 import { ObjectIdentificationMigrationRepository } from './vault/object-identification-migration';
 import {
   objectIdentificationPlanSummary,
@@ -3460,8 +3461,7 @@ class QuartzoFirstRunModal extends Modal {
 }
 
 class ObjectIdentificationEditModal extends Modal {
-  private markerType: MarkerType;
-  private markerValue: string;
+  private identifierFields?: ObjectIdentifierFields;
   private iconName: string;
   private colorHex: string;
 
@@ -3473,8 +3473,6 @@ class ObjectIdentificationEditModal extends Modal {
     private readonly onSaved: () => void,
   ) {
     super(app);
-    this.markerType = signature.markerType;
-    this.markerValue = signature.markerValue;
     this.iconName = signature.iconName ?? '';
     this.colorHex = signature.colorHex ?? '';
   }
@@ -3485,25 +3483,7 @@ class ObjectIdentificationEditModal extends Modal {
     contentEl.createEl('h2', { text: `Edit ${labelForSettingsType(this.objectType)}` });
 
     contentEl.createEl('h3', { text: 'IDENTIFICATION', attr: { style: 'margin-top: 16px; margin-bottom: 8px;' } });
-    new Setting(contentEl)
-      .setName('Identifier type')
-      .addDropdown(dropdown => dropdown
-        .addOption('folder', 'Folder')
-        .addOption('tag', 'Tag')
-        .addOption('property', 'Property')
-        .setValue(this.markerType)
-        .onChange(value => {
-          this.markerType = value as MarkerType;
-        }));
-
-    new Setting(contentEl)
-      .setName('Identifier value')
-      .addText(text => text
-        .setPlaceholder(this.markerType === 'property' ? 'type: task' : this.markerType === 'tag' ? '#task' : 'tasks')
-        .setValue(this.markerValue)
-        .onChange(value => {
-          this.markerValue = value.trim();
-        }));
+    this.identifierFields = new ObjectIdentifierFields(this.app, contentEl, this.signature);
 
     contentEl.createEl('h3', { text: 'APPEARANCE', attr: { style: 'margin-top: 24px; margin-bottom: 8px;' } });
     new Setting(contentEl)
@@ -3536,20 +3516,20 @@ class ObjectIdentificationEditModal extends Modal {
         }));
   }
 
+  onClose(): void { this.identifierFields?.dispose(); }
+
   private async save(): Promise<void> {
-    const markerValue = this.markerValue.trim();
-    if (!markerValue) {
-      new Notice('Identifier value is required.');
-      return;
-    }
+    const fields = this.identifierFields;
+    if (!fields?.validate()) return;
+    const markerValue = fields.markerValue;
     const colorHex = this.colorHex.trim();
     if (colorHex && !/^#[0-9a-fA-F]{6}$/.test(colorHex)) {
-      new Notice('Color must use #RRGGBB.');
+      fields.showError('Color must use #RRGGBB.');
       return;
     }
     const next: TypeSignature = {
       ...this.signature,
-      markerType: this.markerType,
+      markerType: fields.markerType,
       markerValue,
       iconName: this.iconName.trim() || null,
       colorHex: colorHex || null,
@@ -3585,7 +3565,7 @@ class ObjectIdentificationEditModal extends Modal {
       this.close();
       this.onSaved();
     } catch (error) {
-      new Notice(error instanceof Error ? error.message : String(error), 10000);
+      fields.showError(error instanceof Error ? error.message : String(error));
     }
   }
 }
