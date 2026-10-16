@@ -115,7 +115,7 @@ class MockDriveAdapter implements DriveAdapter {
     for (const [name, f] of this._files.entries()) {
       if (f.id === fileId) return this.makeMetadata(f.id, name, f.quartzoHash);
     }
-    throw new Error(`Not found: ${fileId}`);
+    throw Object.assign(new Error(`Not found: ${fileId}`), { code: 404 });
   }
 
   async ensureParentFolder(rootFolderId: string, filePath: string) {
@@ -1106,15 +1106,16 @@ describe('P0 hardening — ambiguity, watcher suppression, coalescing, state rec
     expect(adapter.uploadCalls).toBe(0);
   });
 
-  it('watcher suppression consumes only the exact coordinator-written hash', async () => {
+  it('watcher suppression tolerates echoes until different bytes invalidate the proof', async () => {
     const remote = adapter.addRemoteFile('watch.md', Buffer.from('A'));
     adapter.pendingChanges.length = 0;
     await coordinator.setDriveFolderId('root-folder-id');
     await coordinator.reconcile();
 
     expect(fs.readFileSync(path.join(tmpDir, 'watch.md'), 'utf8')).toBe('A');
-    expect(coordinator.consumeExpectedWatcherEvent('watch.md', Buffer.from('B'))).toBe(false);
     expect(coordinator.consumeExpectedWatcherEvent('watch.md', Buffer.from('A'))).toBe(true);
+    expect(coordinator.consumeExpectedWatcherEvent('watch.md', Buffer.from('A'))).toBe(true);
+    expect(coordinator.consumeExpectedWatcherEvent('watch.md', Buffer.from('B'))).toBe(false);
     expect(coordinator.consumeExpectedWatcherEvent('watch.md', Buffer.from('A'))).toBe(false);
     expect(remote.id).toBeTruthy();
   });

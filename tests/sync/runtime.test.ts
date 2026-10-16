@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DriveSyncCoordinator, chooseNewestConflictResolution, type ConflictArtifact } from '../../src/sync/coordinator/index';
 import { VaultSyncFilePolicy } from '../../src/sync/coordinator/file-policy';
 import { normalizeVaultPath, isSameVaultPath } from '../../src/sync/coordinator/path-utils';
@@ -8,6 +8,10 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { tmpdir } from 'os';
+vi.mock('fs', async importOriginal => {
+  const actual = await importOriginal<typeof import('fs')>();
+  return { ...actual, readFileSync: vi.fn(actual.readFileSync) };
+});
 
 class FakeDriveAdapter implements DriveAdapter {
   async assertInsideSelectedVault(remoteFileId: string): Promise<void> { return Promise.resolve(); }
@@ -206,8 +210,214 @@ describe('Runtime Sync Tests', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
+
+  it('audit: warm inventories reuse proven bytes and detect same-size edits with restored mtime', async () => {
+    const file = path.join(tmpDir, 'stable.md');
+    fs.writeFileSync(file, 'base');
+    adapter.addRemoteFile('stable.md', Buffer.from('base'));
+    await coordinator.reconcile();
+    const read = vi.spyOn(fs.promises, 'readFile');
+    for (let pass = 0; pass < 20; pass++) {
+      if (pass === 10) {
+        coordinator = new DriveSyncCoordinator(adapter, tmpDir, path.join(tmpDir, '.quartzo-sync-state.json'));
+        await coordinator.hydratePersistedState();
+      }
+      expect(await coordinator.reconcile()).toMatchObject({ conflicts: 0, errors: [] });
+    }
+    // A restart drops reconstructible evidence and verifies the file once.
+    expect(read.mock.calls.filter(([name]) => name === file)).toHaveLength(1);
+    expect(adapter.updateCalls).toBe(0);
+    const previous = fs.statSync(file);
+    fs.writeFileSync(file, 'edit');
+    fs.utimesSync(file, previous.atime, previous.mtime);
+    expect((await coordinator.reconcile()).errors).toEqual([]);
+    expect(Buffer.from(adapter.files.get('stable.md')!.content).toString()).toBe('edit');
+    expect(adapter.updateCalls).toBe(1);
+  }, 30000);
+
+  it('audit: unreadable inventory fails without deleting or acknowledging the tracked file', async () => {
+    const file = path.join(tmpDir, 'unreadable.md');
+    fs.writeFileSync(file, 'base');
+    const remote = adapter.addRemoteFile('unreadable.md', Buffer.from('base'));
+    await coordinator.reconcile();
+    fs.writeFileSync(file, 'changed');
+    const read = fs.promises.readFile.bind(fs.promises);
+    vi.spyOn(fs.promises, 'readFile').mockImplementation((...args: Parameters<typeof fs.promises.readFile>) => {
+      if (args[0] === file) return Promise.reject(new Error('EACCES audit fixture'));
+      return read(...args);
+    });
+    const result = await coordinator.reconcile();
+    expect(result.errors.join(' ')).toContain('EACCES');
+    expect(coordinator.getSyncState().files.get('unreadable.md')?.remoteFileId).toBe(remote.id);
+    expect(Buffer.from(adapter.files.get('unreadable.md')!.content).toString()).toBe('base');
+    expect(fs.readFileSync(file, 'utf8')).toBe('changed');
+  });
+
+  it('audit: an upload whose previous reply was lost adopts equal remote bytes without rewriting', async () => {
+    const file = path.join(tmpDir, 'lost-reply.md');
+    fs.writeFileSync(file, 'base');
+    const remote = adapter.addRemoteFile('lost-reply.md', Buffer.from('base'));
+    await coordinator.reconcile();
+    fs.writeFileSync(file, 'edit');
+    // The server committed a previous attempt, but the persisted baseline is old
+    // and its Changes page has not delivered the write yet.
+    adapter.addRemoteFileWithId('lost-reply.md', remote.id, Buffer.from('edit'));
+    adapter.pendingChanges = [];
+    expect((await coordinator.reconcile()).errors).toEqual([]);
+    expect(adapter.updateCalls).toBe(0);
+    expect(coordinator.getSyncState().files.get('lost-reply.md')?.baseHash)
+      .toBe(crypto.createHash('sha256').update('edit').digest('hex'));
+  });
+
+  it('audit: duplicate provider events are suppressed but subsequent user edits are not', async () => {
+    adapter.addRemoteFile('download.md', Buffer.from('remote'));
+    await coordinator.reconcile();
+    for (let event = 0; event < 3; event++) {
+      expect(coordinator.consumeExpectedWatcherEvent('download.md', Buffer.from('remote'))).toBe(true);
+    }
+    expect(coordinator.consumeExpectedWatcherEvent('download.md', Buffer.from('user'))).toBe(false);
+    expect(coordinator.consumeExpectedWatcherEvent('download.md', Buffer.from('remote'))).toBe(false);
+  });
+
+  it('audit: expired change cursor checkpoints a full inventory for the next retry', async () => {
+    fs.writeFileSync(path.join(tmpDir, 'cursor.md'), 'base');
+    adapter.addRemoteFile('cursor.md', Buffer.from('base'));
+    await coordinator.reconcile();
+    const original = adapter.listChanges.bind(adapter);
+    adapter.listChanges = async () => { throw { response: {status:410} }; };
+    expect((await coordinator.reconcile()).errors).not.toEqual([]);
+    adapter.listChanges = original;
+    const before = adapter.listFilesCalls;
+    expect((await coordinator.reconcile()).errors).toEqual([]);
+    expect(adapter.listFilesCalls).toBeGreaterThan(before);
+    expect(adapter.updateCalls).toBe(0);
+  });
+
+  it('audit: watcher proofs do not cross storage accounts', async () => {
+    adapter.addRemoteFile('download.md', Buffer.from('remote'));
+    await coordinator.reconcile();
+    expect(coordinator.consumeExpectedWatcherEvent('download.md', Buffer.from('remote'))).toBe(true);
+    await coordinator.setAccountIdentity('another-account');
+    expect(coordinator.consumeExpectedWatcherEvent('download.md', Buffer.from('remote'))).toBe(false);
+  });
+
+  it('audit: observing a synced edit without a watcher invalidates an older write proof', async () => {
+    adapter.addRemoteFile('missed-event.md',Buffer.from('A'));
+    await coordinator.reconcile();
+    const file=path.join(tmpDir,'missed-event.md');
+    fs.writeFileSync(file,'B');
+    expect((await coordinator.reconcile()).errors).toEqual([]);
+    expect(Buffer.from(adapter.files.get('missed-event.md')!.content).toString()).toBe('B');
+    fs.writeFileSync(file,'A');
+    expect(coordinator.consumeExpectedWatcherEvent('missed-event.md',Buffer.from('A'))).toBe(false);
+    expect((await coordinator.reconcile()).errors).toEqual([]);
+    expect(Buffer.from(adapter.files.get('missed-event.md')!.content).toString()).toBe('A');
+  });
+
+  it('audit: permission errors cannot masquerade as remote removal', async () => {
+    const file = path.join(tmpDir, 'permission.md');
+    fs.writeFileSync(file, 'base');
+    const remote = adapter.addRemoteFile('permission.md', Buffer.from('base'));
+    await coordinator.reconcile();
+    const metadata = await adapter.getFileMetadata(remote.id);
+    adapter.pendingChanges = [{fileId:remote.id,removed:false,file:{...metadata,parents:['denied-parent']}}];
+    const original = adapter.getFileMetadata.bind(adapter);
+    adapter.getFileMetadata = async id => {
+      if (id === 'denied-parent') throw Object.assign(new Error('Permission denied'),{code:403});
+      return original(id);
+    };
+    const result = await coordinator.reconcile();
+    expect(result.errors.join(' ')).toContain('Permission denied');
+    expect(result.conflicts).toBe(0);
+    expect(fs.readFileSync(file,'utf8')).toBe('base');
+  });
+
+  it('audit: rescanning the same true conflict does not rewrite its artifacts', async () => {
+    fs.writeFileSync(path.join(tmpDir,'conflict.md'),'local');
+    adapter.addRemoteFile('conflict.md',Buffer.from('remote'));
+    expect((await coordinator.reconcile()).conflicts).toBe(1);
+    const artifact = path.join(tmpDir,'_conflicts','conflict.md.conflict.json');
+    const before = fs.readFileSync(artifact,'utf8');
+    expect((await coordinator.reconcile(true)).conflicts).toBe(1);
+    expect(fs.readFileSync(artifact,'utf8')).toBe(before);
+  });
+
+  it('audit: equal canonical bytes retire an obsolete conflict without content writes', async () => {
+    const file=path.join(tmpDir,'converged.md');
+    fs.writeFileSync(file,'local');
+    adapter.addRemoteFile('converged.md',Buffer.from('remote'));
+    await coordinator.reconcile();
+    expect(coordinator.getConflicts()).toHaveLength(1);
+    fs.writeFileSync(file,'remote');
+    expect((await coordinator.reconcile()).errors).toEqual([]);
+    expect(coordinator.getConflicts()).toHaveLength(0);
+    expect(adapter.updateCalls).toBe(0);
+  });
+
+  it.skipIf(!process.env.SYNC_AUDIT_EXCHANGE)('audit: cross-client exchange', async () => {
+    const exchangePath = process.env.SYNC_AUDIT_EXCHANGE!;
+    const file = path.join(tmpDir, 'exchange.md');
+    const statePath = path.join(tmpDir, '.quartzo-sync-state.json');
+    const stage = process.env.SYNC_AUDIT_STAGE;
+    const data = stage === 'seed' ? {} : JSON.parse(fs.readFileSync(exchangePath, 'utf8'));
+    if (stage === 'seed') {
+      fs.writeFileSync(file, 'base');
+      adapter.addRemoteFile('exchange.md', Buffer.from('base'));
+      expect((await coordinator.reconcile()).errors).toEqual([]);
+      fs.writeFileSync(file, 'companion-one');
+    } else {
+      fs.writeFileSync(file, Buffer.from(data.companionBytes));
+      fs.writeFileSync(statePath, data.companionState);
+      adapter.addRemoteFileWithId('exchange.md', data.remote.id, Buffer.from(data.remote.bytes));
+      expect((await coordinator.reconcile(true)).errors).toEqual([]);
+      expect(fs.readFileSync(file, 'utf8')).toBe('quartzo-one');
+      fs.writeFileSync(file, 'companion-two');
+    }
+    expect((await coordinator.reconcile()).errors).toEqual([]);
+    expect(coordinator.getConflicts()).toEqual([]);
+    const remote = adapter.files.get('exchange.md')!;
+    fs.writeFileSync(exchangePath, JSON.stringify({ ...data,
+      companionBytes: Array.from(fs.readFileSync(file)), companionState: fs.readFileSync(statePath, 'utf8'),
+      remote: { id: remote.id, bytes: Array.from(remote.content) },
+    }));
+  });
+
+  it.each([1000, 10000])('audit: measures steady state and one edit across %i real files', async count => {
+    for (let index = 0; index < count; index++) {
+      const name = `fixture-${index}.md`;
+      fs.writeFileSync(path.join(tmpDir, name), 'base');
+      adapter.addRemoteFile(name, Buffer.from('base'));
+    }
+    const reads = vi.spyOn(fs.promises, 'readFile');
+    const verifiedReads = vi.mocked(fs.readFileSync);
+    verifiedReads.mockClear();
+    // A start-page token excludes changes that predate the initial inventory.
+    // The lightweight fake does not implement token filtering itself.
+    adapter.pendingChanges = [];
+    await coordinator.reconcile();
+    const coldReads = reads.mock.calls.length;
+    reads.mockClear();
+    verifiedReads.mockClear();
+    const downloads = adapter.downloadCalls;
+    await coordinator.reconcile();
+    const warmReads = reads.mock.calls.length;
+    expect(warmReads).toBe(0);
+    expect(verifiedReads.mock.calls.filter(([file]) => String(file).includes('fixture-'))).toHaveLength(0);
+    expect(adapter.downloadCalls - downloads).toBe(0);
+    reads.mockClear();
+    fs.writeFileSync(path.join(tmpDir, 'fixture-0.md'), 'edit');
+    expect((await coordinator.reconcile()).errors).toEqual([]);
+    expect(adapter.updateCalls).toBe(1);
+    expect(reads.mock.calls.length).toBe(1);
+    expect(verifiedReads.mock.calls.filter(([file]) => String(file).includes('fixture-'))).toHaveLength(2);
+    console.log('SYNC_AUDIT_METRIC', JSON.stringify({ client: 'companion', files: count, coldReads, warmReads,
+      changedReads: reads.mock.calls.length, contentUpdates: adapter.updateCalls,
+      mutationVerificationReads: verifiedReads.mock.calls.filter(([file]) => String(file).includes('fixture-')).length,
+      warmDownloads: adapter.downloadCalls - downloads - 1 }));
+  }, 300000);
 
   it('isolates the same remote folder by storage account and restores old pending work', async () => {
     await coordinator.setAccountIdentity('account-a');

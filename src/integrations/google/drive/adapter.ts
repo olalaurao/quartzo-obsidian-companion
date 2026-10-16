@@ -9,6 +9,7 @@ import {
 import { drive_v3, drive_v2, drive } from '@googleapis/drive';
 import { OAuth2Client } from 'google-auth-library';
 import { normalizeVaultPath } from '../../../sync/coordinator/path-utils';
+import { VaultSyncFilePolicy } from '../../../sync/coordinator/file-policy';
 import * as crypto from 'crypto';
 
 const DRIVE_REQUEST_TIMEOUT_MS = 60_000;
@@ -375,6 +376,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
         );
         if (file.trashed === true) continue;
         if (file.mimeType === 'application/vnd.google-apps.folder') {
+          if (!VaultSyncFilePolicy.shouldSyncDirectory(relativePath)) continue;
           await this.listAllFilesRecursive(file.id, allFiles, relativePath, onProgress);
         } else {
           allFiles.push({ ...file, relativePath });

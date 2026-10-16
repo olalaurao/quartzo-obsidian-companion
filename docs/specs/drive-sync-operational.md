@@ -63,4 +63,14 @@ concurrent remote edits remain explicit conflicts with recoverable bytes. New,
 untracked remote files retain the normal pull behavior. Pending canonical renames
 continue to own disappearance at their old path.
 
+### Stable sync and byte evidence
+
+Unchanged content must not be uploaded again, including after a lost upload reply. Local inventory may reuse an in-memory SHA-256 only while file identity, size, nanosecond modification/change times and birth time remain identical; unreadable or disappearing inventory entries abort the pass rather than becoming deletion evidence. This cache is reconstructible, never a baseline or persisted source of truth. Remote inventory prunes the canonical excluded folders before traversal. An expired Changes cursor checkpoints a full reconciliation for the next attempt.
+
+Expected watcher writes are matched by path and actual bytes; duplicate matching events remain suppressed until different bytes invalidate the proof. Later user edits must remain visible. Sync stability tests measure quiet cycles, restart, same-size edits with restored timestamps, failed reads and 1,000/10,000-file inventories. Cross-client exchange tests can run against an isolated shared byte fixture without Google credentials.
+
+Inventory observations also invalidate an older watcher proof when the actual SHA-256 differs, even when the corresponding filesystem event was lost. A later edit back to the old bytes is then a normal new edit, not a delayed echo of the original download.
+
+`npm run test:sync:exchange` runs both coordinators with a sibling `quartzo` checkout and Flutter on PATH. It records the four exchange stages under the workspace `_diagnostics` directory. Equal current canonical bytes retire an obsolete conflict only after the advanced baseline is persisted; repeated scans of unchanged divergent versions retain the existing artifacts.
+
 Run sync regression tests, contract verification, architecture gates, safe cleanup, hash/identity recovery, quota, timeout and restart tests. Shared protocol changes must originate upstream before vendoring.
