@@ -168,6 +168,8 @@ function checkStubLoad() {
       Notice: class Notice {},
       ItemView: class ItemView { get contentEl() { return { empty() {}, innerHTML: '', querySelector() { return null; } }; } },
       Modal: class Modal { constructor() { this.contentEl = {}; } open() {} close() {} },
+      FuzzySuggestModal: class FuzzySuggestModal { constructor(app) { this.app = app; } setPlaceholder() {} open() {} close() {} },
+      TFolder: class TFolder {},
       TFile: class TFile {},
       TAbstractFile: class TAbstractFile {},
       FileSystemAdapter: class FileSystemAdapter {},

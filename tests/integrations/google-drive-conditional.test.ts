@@ -21,6 +21,20 @@ function fixture() {
 }
 
 describe('conditional Drive mutation boundary', () => {
+  it('paginates inventory without traversing backups or diagnostics', async () => {
+    const adapter = new GoogleDriveAdapter('test-only');
+    const calls: Array<{ q: string; pageToken?: string }> = [];
+    Object.assign(adapter, { getDriveClient: () => ({ files: { list: async (params: { q: string; pageToken?: string }) => {
+      calls.push(params);
+      if (params.pageToken) return { data: { files: [{ id:'note', name:'note.md', mimeType:'text/plain', md5Checksum:'checksum' }] } };
+      return { data: { nextPageToken:'page-2', files: ['_backups','_diagnostics','.obsidian'].map(name => ({id:name,name,mimeType:'application/vnd.google-apps.folder'})) } };
+    } } }) });
+    const files = await adapter.listAllFiles('root');
+    expect(calls).toHaveLength(2);
+    expect(calls.every(call => call.q.includes("'root'"))).toBe(true);
+    expect(files.map(file => file.relativePath)).toEqual(['note.md']);
+    expect(files[0].md5Checksum).toBe('checksum');
+  });
   it('rejects a write when another client changes the verified version', async () => {
     const f = fixture(); await f.adapter.downloadFile('file'); f.mutate();
     await expect(f.adapter.updateFile('file', Buffer.from('local edit'), 'local-hash')).rejects.toMatchObject({ response: { status: 412 } });
@@ -35,6 +49,14 @@ describe('conditional Drive mutation boundary', () => {
   it('refuses an update without a verified remote snapshot', async () => {
     const f = fixture();
     await expect(f.adapter.updateFile('file', Buffer.from('local edit'), 'local-hash')).rejects.toThrow('verified');
+    expect(f.writes).toHaveLength(0);
+  });
+  it('rejects media that changed version while downloading', async () => {
+    const f = fixture();
+    Object.assign(f.adapter, { getDriveClient: () => ({ files: { get: async () => {
+      f.mutate(); return { data: Buffer.from('untrustworthy snapshot') };
+    } } }) });
+    await expect(f.adapter.downloadFile('file')).rejects.toThrow('changed during download');
     expect(f.writes).toHaveLength(0);
   });
 });

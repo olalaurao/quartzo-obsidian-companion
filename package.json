@@ -1,6 +1,6 @@
 {
   "name": "quartzo-obsidian-companion",
-  "version": "1.0.42",
+  "version": "1.0.43",
   "description": "Quartzo Obsidian Companion V1",
   "main": "main.js",
   "scripts": {
@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:contracts": "vitest run tests/contracts",
     "test:sync": "vitest run tests/contracts/sync.test.ts tests/sync/runtime.test.ts tests/sync/regression.test.ts tests/sync/p0-regression.test.ts",
+    "test:sync:exchange": "node scripts/audit-sync-exchange.mjs",
     "contracts:sync": "node scripts/sync-contracts.mjs sync",
     "contracts:verify": "node scripts/sync-contracts.mjs verify",
     "architecture:check": "node scripts/architecture-check.mjs",
