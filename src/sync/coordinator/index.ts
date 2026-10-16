@@ -2367,7 +2367,8 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     const modifiedTime = metadata.modifiedTime || null;
     const cached = this.remoteHashCache.get(metadata.id);
     if (cached && (metadata.md5Checksum ? cached.md5Checksum === metadata.md5Checksum :
-      modifiedTime !== null && cached.modifiedTime === modifiedTime)) {
+      modifiedTime !== null && cached.modifiedTime === modifiedTime &&
+      (!metadata.quartzoHash || metadata.quartzoHash === cached.hash))) {
       return cached.hash;
     }
 

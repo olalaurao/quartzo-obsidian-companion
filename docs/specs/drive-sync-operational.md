@@ -71,6 +71,8 @@ Expected watcher writes are matched by path and actual bytes; duplicate matching
 
 Inventory observations also invalidate an older watcher proof when the actual SHA-256 differs, even when the corresponding filesystem event was lost. A later edit back to the old bytes is then a normal new edit, not a delayed echo of the original download.
 
+Without a server checksum, an unchanged remote timestamp cannot validate a cached hash when the newly advertised hash contradicts it. Reverify that version before deciding whether to pull; timestamps may be equal across distinct byte snapshots.
+
 `npm run test:sync:exchange` runs both coordinators with a sibling `quartzo` checkout and Flutter on PATH. It records the four exchange stages under the workspace `_diagnostics` directory. Equal current canonical bytes retire an obsolete conflict only after the advanced baseline is persisted; repeated scans of unchanged divergent versions retain the existing artifacts.
 
 Run sync regression tests, contract verification, architecture gates, safe cleanup, hash/identity recovery, quota, timeout and restart tests. Shared protocol changes must originate upstream before vendoring.

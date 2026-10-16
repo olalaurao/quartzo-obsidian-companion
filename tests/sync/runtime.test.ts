@@ -453,6 +453,21 @@ describe('Runtime Sync Tests', () => {
     expect(sf?.remoteExists).toBe(false);
   });
 
+  it('reverifies changed remote hash evidence even when its timestamp is identical', async () => {
+    const file = path.join(tmpDir, 'same-time.md');
+    fs.writeFileSync(file, 'base');
+    const remote = adapter.addRemoteFile('same-time.md', Buffer.from('base'));
+    await coordinator.reconcile();
+    const modifiedTime = adapter.files.get('same-time.md')!.modifiedTime;
+    const resolutions = adapter.resolveRemoteHashCalls;
+    adapter.addRemoteFileWithId('same-time.md', remote.id, Buffer.from('remote'));
+    adapter.files.get('same-time.md')!.modifiedTime = modifiedTime;
+    adapter.pendingChanges[adapter.pendingChanges.length - 1].file!.modifiedTime = modifiedTime;
+    expect((await coordinator.reconcile()).errors).toEqual([]);
+    expect(adapter.resolveRemoteHashCalls).toBeGreaterThan(resolutions);
+    expect(fs.readFileSync(file, 'utf8')).toBe('remote');
+  });
+
   it('preserves an edit made while remote bytes are downloading', async () => {
     const file = path.join(tmpDir, 'racing.md');
     fs.writeFileSync(file, 'base');
