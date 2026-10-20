@@ -49,8 +49,15 @@ the first ten SDK cases; four added loss/CAS cases then passed in the final
 **53-test adapter subset**, including all fourteen real-SDK cases. Typecheck,
 scoped lint, architecture, documentation and whitespace pass. The first upstream
 verification attempt lacked authentication and failed HTTP 404; the canonical
-authenticated retry is recorded separately when complete. Committed-source
-build/hosted CI and a new official exact-main artifact test still follow.
+authenticated retry verified all **51 pinned contract files byte-for-byte**.
+Exact committed source **e53e501a280f31084748bef42f1160c32289f3be** passed
+production build, non-release validation and clean-artifact smoke.
+[Build observation](binary-media-build-2026-10-20.json) records bundle SHA-256
+`920395ad695c8cff4bcb4fa3ed63b7012cb313abb2251276557aa19f816b74f3`
+(1175174 bytes). Only generated tracked `main.js` changed; it was archived and
+restored, with all build inputs and the checkout clean. No OAuth release proof,
+installation or tag change is implied. Final-head hosted CI and a new official
+exact-main artifact test still follow.
 Existing corrupt sandbox copies must be preserved
 and repaired through the reviewed original-byte owner; neither metadata nor
 local baselines may be manually rewritten to manufacture convergence.
