@@ -14,6 +14,67 @@ Authority: [pinned Reading Activity contract](../../contracts/quartzo/reading_ac
 
 ## Open gates
 
+### 2026-10-20 — Explicit adoption review and truthful pending feedback candidate
+
+Binary media correction [PR89](https://github.com/olalaurao/quartzo-obsidian-companion/pull/89)
+at **a0a7c68c4272fa8683e550921b5655273450651d** passed all six final checks:
+[PR CI 39386360941](https://github.com/olalaurao/quartzo-obsidian-companion/actions/runs/39386360941)
+and [push CI 39386355001](https://github.com/olalaurao/quartzo-obsidian-companion/actions/runs/39386355001),
+Linux/Windows/macOS. User authorization for that specific merge and official
+exact-main preflight is pending; the running sandbox still uses official 5ba99fd.
+This follow-up is based on that tested correction and has not been installed.
+
+The actual Sync Center now shows pending paths separately from reasons, derives
+post-sync feedback from a fresh coordinator snapshot, and no longer equates an
+empty conflict list with all files synchronized. Review adoption displays one
+path and target before Adopt file invokes the existing plugin/coordinator. A
+changed target, disconnected/offline state or active operation cannot authorize
+another adoption. A successful, blocked or failed result remains visible and
+copyable; the plugin no longer swallows errors or announces adoption success
+when the coordinator may instead have preserved a divergence.
+
+The same coordinator's adoption operation now holds the existing mutex and
+reports real progress/checkpoints, rejects unsupported local identities and
+Reading bytes, revalidates local bytes/target around awaits, and independently
+hashes an existing remote even when its metadata claims equality. Different
+copies remain conflicts. A null-baseline tracked ID stays pending after restart,
+so a conflict-artifact failure cannot become a false synced state or prevent
+explicit retry. Pairing cannot enter while that canonical sync lock is held.
+No persisted UI state, parallel owner, production ingestion, cursor or ACK was
+added. Nine actual-render/plugin-handler tests and eleven new actual-coordinator
+cases cover review/confirmation/failure, retarget, canonical locking, byte/hash
+spoofing, restart after conflict-artifact failure, cancellation and oversized
+Reading rejection before body reads. The first full run rejected three legacy
+fixtures that adopted without configuring a paired target; their setup now
+selects the actual synthetic adapter root, while a dedicated negative test proves
+that unpaired adoption stays blocked. The corrected full suite passed **1022
+tests / two opt-in skips** (90 files, 76.88s). A later pre-read size guard, final
+UI report/notice adjustments and the added oversized case passed in the final
+**55-case scoped suite**; other cases were excluded only by that focused selector.
+Typecheck, full lint, architecture, docs and whitespace pass. Exact committed
+**e4d139ecdf233342da2626f8b95e87b9bc70224b** passed production build,
+non-release validation and clean-artifact smoke. The
+[build observation](adoption-review-build-2026-10-20.json) records bundle SHA-256
+`b4d85fe4c1903ee2a10138d1c64ec179badf1a780972740d35d225359e6b3271`
+(1179835 bytes). Only generated tracked `main.js` changed; the output was
+archived and that file restored, leaving the source checkout clean. No local
+candidate was installed and no tag/release changed. Final-head hosted checks,
+merge authorization and official exact-main artifact/live UI acceptance remain
+separate requirements.
+
+Candidate [PR90](https://github.com/olalaurao/quartzo-obsidian-companion/pull/90)
+at **a66915be2a0cac92e84c03008b4e90c3dab29ba9** subsequently passed all six
+final Linux/Windows/macOS checks in
+[PR CI 39389274003](https://github.com/olalaurao/quartzo-obsidian-companion/actions/runs/39389274003)
+and [push CI 39388663625](https://github.com/olalaurao/quartzo-obsidian-companion/actions/runs/39388663625).
+Linux/macOS full: **1022 PASS / three skips**; contracts: **397 PASS**; sync:
+**390 PASS / three skips**. Windows sync: **391 PASS / two skips**. All fourteen
+real-SDK media cases remain part of every sync run. PR89 transport inputs are
+byte-identical in this dependent follow-up. The user has been asked separately
+to authorize the PR89/PR90 merges and final official preflight for this sandbox;
+neither approval nor a new installed-artifact result is assumed. The following
+documentation-only checkpoint does not change these tested runtime inputs.
+
 ### 2026-10-20 — Live Obsidian/Drive rejected: binary upload omitted media
 
 The user opened and paired the isolated corrected-main sandbox using official

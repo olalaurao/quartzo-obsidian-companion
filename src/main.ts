@@ -3268,13 +3268,14 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
   async adoptFile(filePath: string): Promise<void> {
     if (!this.driveSyncCoordinator || !this.settings.isPaired) {
       new Notice('Not connected to Google Drive.');
-      return;
+      throw new Error('Not connected to Google Drive.');
     }
     try {
       await this.driveSyncCoordinator.explicitAdopt(filePath);
-      new Notice(`File adopted: ${filePath}`);
+      new Notice(`Adoption checked: ${filePath}. Review Sync Center for remaining diagnostics.`);
     } catch (error) {
       new Notice(`Adoption failed: ${error}`);
+      throw error;
     }
   }
 

@@ -1,0 +1,29 @@
+{
+  "oauth_release_proof": false,
+  "canonical_ack": false,
+  "assets": [
+    {
+      "bytes": 1179835,
+      "name": "main.js",
+      "sha256": "b4d85fe4c1903ee2a10138d1c64ec179badf1a780972740d35d225359e6b3271"
+    },
+    {
+      "bytes": 321,
+      "name": "manifest.json",
+      "sha256": "9dee108e94d84e08d31a6aca746602148be6ac567ce2b825e236d5e3b07d53f2"
+    },
+    {
+      "bytes": 45659,
+      "name": "styles.css",
+      "sha256": "25c085e918fb2fb62048ef3621073aa4b710f4413c3f7101eab0b52e2714734e"
+    }
+  ],
+  "source_commit": "e4d139ecdf233342da2626f8b95e87b9bc70224b",
+  "cloud_acceptance": false,
+  "checks": [
+    "production build",
+    "non-release validation",
+    "clean-artifact smoke"
+  ],
+  "installed": false
+}

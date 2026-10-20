@@ -2583,7 +2583,8 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       const syncFile = this.syncState.files.get(filePath);
       if (!syncFile) {
         addDiagnostic({ path: filePath, reason: 'local_create' });
-      } else if (!syncFile.remoteFileId) {
+      } else if (!syncFile.remoteFileId || syncFile.baseHash === null) {
+        if (this.conflicts.has(filePath)) continue;
         addDiagnostic({ path: filePath, reason: 'adoption_required' });
       } else if (syncFile.localHash !== localFile.hash) {
         addDiagnostic({ path: filePath, reason: 'local_modify' });
@@ -3021,6 +3022,10 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       result.errors.push('Pairing already in progress. Wait for the current pairing operation to finish.');
       return result;
     }
+    if (this.triggersSuspended || this.syncMutex) {
+      result.errors.push('Wait for active sync before applying pairing decisions.');
+      return result;
+    }
 
     this.pairingApplyInProgress = true;
     this.operationControl = { paused: false, cancelRequested: false, resumeWaiters: [] };
@@ -3360,29 +3365,82 @@ export class DriveSyncCoordinator implements ConflictRegistry {
   }
 
   async explicitAdopt(filePath: string): Promise<void> {
+    if (this.triggersSuspended || this.syncMutex || this.pairingApplyInProgress) throw new Error('Wait for active sync before adopting a file');
+    this.syncMutex = true;
+    this.operationControl = { paused: false, cancelRequested: false, resumeWaiters: [] };
+    this.beginSyncProgress('incremental');
+    try {
+      await this.explicitAdoptOwned(filePath);
+      this.lastError = null;
+    } catch (error) {
+      this.lastError = `Adoption failed: ${error instanceof Error ? error.message : String(error)}`;
+      throw error;
+    } finally {
+      this.syncMutex = false;
+      this.syncProgress = null;
+      this.operationControl = null;
+      if (this.syncRerunRequested) {
+        this.syncRerunRequested = false;
+        const full = this.syncRerunForceFull;
+        this.syncRerunForceFull = false;
+        void this.reconcile(full);
+      }
+    }
+  }
+
+  private async explicitAdoptOwned(filePath: string): Promise<void> {
     const normalized = normalizeVaultPath(filePath);
+    if (!VaultSyncFilePolicy.shouldSyncFile(normalized)) throw new Error('File is outside canonical sync scope');
+    const checkLocal = this.captureReadingLocalPath(normalized);
     const localFilePath = pathModule.join(this.vaultPath, normalized);
-    if (!fs.existsSync(localFilePath)) {
+    if (!fs.existsSync(localFilePath) || !fs.lstatSync(localFilePath).isFile()) {
       throw new Error(`Local file not found: ${normalized}`);
     }
 
     const existingSyncFile = this.syncState.files.get(normalized);
-    if (existingSyncFile && existingSyncFile.remoteFileId) {
+    if (existingSyncFile && existingSyncFile.remoteFileId && existingSyncFile.baseHash !== null) {
       throw new Error(`File ${normalized} already has a remote counterpart. Use sync instead of adopt.`);
     }
     if (existingSyncFile && existingSyncFile.baseHash !== null) {
       throw new Error(`File ${normalized} is not in adoption_required state (baseHash is set).`);
     }
 
+    const immutableHash = SyncEngine.immutableReadingHash(normalized);
+    if (immutableHash && fs.statSync(localFilePath).size > SyncEngine.readingShardMaxBytes) {
+      throw new Error('Reading adoption exceeds the shard bound');
+    }
     const content = new Uint8Array(fs.readFileSync(localFilePath));
     const quartzoHash = crypto.createHash('sha256').update(content).digest('hex');
-    const folderId = this.syncState.driveFolderId || '';
+    if (immutableHash && (content.byteLength > SyncEngine.readingShardMaxBytes || immutableHash !== quartzoHash)) {
+      throw new Error('Reading adoption requires original filename bytes within the shard bound');
+    }
+    const folderId = this.syncState.driveFolderId;
+    if (!folderId) throw new Error('Pair the vault before adopting a file');
+    const checkSnapshot = async () => {
+      checkLocal();
+      if (await this.driveAdapter.getFolderId() !== folderId) throw new Error('Drive target changed during adoption');
+      checkLocal();
+      if (immutableHash && fs.statSync(localFilePath).size > SyncEngine.readingShardMaxBytes) {
+        throw new Error('Reading adoption exceeds the shard bound');
+      }
+      if (this.calculateHash(new Uint8Array(fs.readFileSync(localFilePath))) !== quartzoHash) {
+        throw new Error('Local file changed during adoption; review it again');
+      }
+    };
+    await checkSnapshot();
+    await this.driveAdapter.verifyConditionalMutationSupport?.();
+    await checkSnapshot();
+    this.reportSyncProgress({ phase: 'remote_inventory', completed: 0, total: 0, currentPath: normalized });
 
     const remoteFiles = await this.driveAdapter.listAllFiles(folderId);
+    await checkSnapshot();
+    await this.checkpointSync();
     let duplicateRemote: DriveFileMetadata | undefined;
     let matchedCount = 0;
     for (const f of remoteFiles) {
+      if (f.trashed === true) continue;
       const remotePath = await this.resolveRemotePath(f, folderId);
+      checkLocal();
       if (remotePath === normalized) {
         duplicateRemote = f;
         matchedCount++;
@@ -3391,13 +3449,14 @@ export class DriveSyncCoordinator implements ConflictRegistry {
     if (matchedCount > 1) {
       throw new Error('Ambiguous duplicate remote files found');
     }
+    await checkSnapshot();
 
     if (duplicateRemote) {
-      let remoteHash = duplicateRemote.quartzoHash || null;
-      if (!remoteHash) {
-        const remoteContent = await this.driveAdapter.downloadFile(duplicateRemote.id!);
-        remoteHash = crypto.createHash('sha256').update(remoteContent).digest('hex');
-      }
+      this.reportSyncProgress({ phase: 'hashing_remote', completed: 0, total: 1, currentPath: normalized });
+      const remoteContent = await this.driveAdapter.downloadFile(duplicateRemote.id!, immutableHash ? normalized : undefined);
+      const remoteHash = this.calculateHash(remoteContent);
+      await checkSnapshot();
+      await this.checkpointSync();
       if (remoteHash === quartzoHash) {
         const syncFile = this.createSyncFile(normalized, { hash: quartzoHash, exists: true });
         syncFile.baseHash = quartzoHash;
@@ -3419,7 +3478,11 @@ export class DriveSyncCoordinator implements ConflictRegistry {
       return;
     }
 
+    this.reportSyncProgress({ phase: 'processing_local_changes', completed: 0, total: 1, currentPath: normalized });
+    await this.checkpointSync();
+    await checkSnapshot();
     const metadata = await this.driveAdapter.uploadFile({ folderId, name: normalized, content, quartzoHash });
+    await checkSnapshot();
 
     const syncFile = this.createSyncFile(normalized, { hash: quartzoHash, exists: true });
     syncFile.baseHash = quartzoHash;
