@@ -67,7 +67,7 @@ export interface DriveAdapter {
   listQuartzoVaultCandidates(): Promise<Array<{ id: string; name: string }>>;
   getStartPageToken(): Promise<string>;
   listChanges(pageToken: string): Promise<{ changes: DriveChange[]; newStartPageToken: string; nextPageToken: string | null }>;
-  downloadFile(fileId: string): Promise<Uint8Array>;
+  downloadFile(fileId: string, expectedReadingPath?: string): Promise<Uint8Array>;
   uploadFile(params: UploadFileParams): Promise<DriveFileMetadata>;
   updateFile(fileId: string, content: Uint8Array, quartzoHash: string): Promise<DriveFileMetadata>;
   renameFile(fileId: string, newName: string, newParentId?: string): Promise<DriveFileMetadata>;

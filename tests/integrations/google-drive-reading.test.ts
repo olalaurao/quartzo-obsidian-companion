@@ -1,0 +1,188 @@
+import { describe, expect, it } from 'vitest';
+import * as crypto from 'crypto';
+import { strict as assert } from 'assert';
+import { GoogleDriveAdapter } from '../../src/integrations/google/drive/adapter';
+interface FixtureMetadata {
+    id: string;
+    name: string;
+    mimeType: string;
+    parents: string[];
+    trashed: boolean;
+    properties?: Record<string, string>;
+}
+interface FixtureRequest {
+    fileId?: string;
+    alt?: string;
+    q?: string;
+    addParents?: string;
+    requestBody?: {
+        name?: string;
+        parents?: string[];
+        title?: string;
+        labels?: {
+            trashed?: boolean;
+        };
+    };
+    media?: {
+        body: Uint8Array;
+    };
+}
+interface FixtureOptions {
+    headers: Record<string, string>;
+}
+const hash = (bytes: Uint8Array | string) => crypto.createHash('sha256').update(bytes).digest('hex');
+const original = Buffer.from('opaque synthetic reading bytes\n'), digest = hash(original);
+const canonical = `sessions/reading_activity_v1/${'a'.repeat(64)}/${'b'.repeat(64)}/2026/10/${digest}.jsonl`;
+const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+function fixture(kind: 'reading' | 'ordinary' | 'ordinary_hash' = 'reading') {
+    const adapter = new GoogleDriveAdapter('synthetic-only');
+    const segments = canonical.split('/'), folders = new Map<string, FixtureMetadata>();
+    let parent = 'root';
+    for (let index = 0; index < segments.length - 1; index++) {
+        const id = `folder-${index}`;
+        folders.set(id, { id, name: segments[index], mimeType: 'application/vnd.google-apps.folder', parents: [parent], trashed: false });
+        parent = id;
+    }
+    folders.set('notes', { id: 'notes', name: 'notes', mimeType: 'application/vnd.google-apps.folder', parents: ['root'], trashed: false });
+    let bytes = Buffer.from(original), exists = true, etag = 'e1', title = kind === 'ordinary' ? 'ordinary.md' : `${digest}.jsonl`, parents = [kind === 'reading' ? parent : 'notes'];
+    const calls: Array<{
+        operation: string;
+        if_match?: string;
+    }> = [];
+    let hook: ((id: string) => Promise<void>) | null = null;
+    const version = () => ({ id: 'file', etag, title, mimeType: 'application/octet-stream', parents: parents.map(id => ({ id })), labels: { trashed: false }, properties: [] });
+    const metadata = () => ({ id: 'file', name: title, mimeType: 'application/octet-stream', parents, trashed: false, properties: { Quartzo_hash: hash(bytes) } });
+    const v2 = { files: {
+            get: async () => { if (!exists)
+                throw { response: { status: 404 } }; return { data: clone(version()) }; },
+            update: async (params: FixtureRequest, options: FixtureOptions) => {
+                calls.push({ operation: 'update', if_match: options.headers['If-Match'] });
+                if (options.headers['If-Match'] !== etag)
+                    throw { response: { status: 412 } };
+                if (params.media)
+                    bytes = Buffer.from(params.media!.body);
+                if (params.requestBody?.title)
+                    title = params.requestBody.title;
+                if (params.addParents)
+                    parents = [params.addParents];
+                await hook?.('mutation_reply');
+                return { data: { ...clone(version()), labels: { trashed: params.requestBody?.labels?.trashed === true } } };
+            },
+            delete: async (params: FixtureRequest, options: FixtureOptions) => { calls.push({ operation: 'delete', if_match: options.headers['If-Match'] }); if (options.headers['If-Match'] !== etag)
+                throw { response: { status: 412 } }; exists = false; return { data: {} }; },
+        } };
+    const v3 = { files: {
+            get: async (params: FixtureRequest) => {
+                await hook?.(params.fileId!);
+                if (params.alt === 'media')
+                    return { data: Buffer.from(bytes) };
+                if (params.fileId === 'file')
+                    return { data: clone(metadata()) };
+                const folder = folders.get(params.fileId!);
+                if (!folder)
+                    throw { response: { status: 404 } };
+                return { data: clone(folder) };
+            },
+            list: async (params: FixtureRequest) => {
+                await hook?.('list');
+                const parentMatch = /'([^']+)' in parents/.exec(params.q || ''), nameMatch = /name = '([^']+)'/.exec(params.q || '');
+                const wantedParent = parentMatch?.[1], wantedName = nameMatch?.[1];
+                const values = [...folders.values()].filter(item => item.parents[0] === wantedParent && item.name === wantedName);
+                if (exists && parents[0] === wantedParent && title === wantedName)
+                    values.push(metadata());
+                return { data: { files: clone(values) } };
+            },
+            create: async (params: FixtureRequest) => { calls.push({ operation: 'create' }); assert.equal(params.requestBody!.name, `${digest}.jsonl`); assert.equal(params.requestBody!.parents![0], parent); bytes = Buffer.from(params.media!.body); exists = true; parents = [parent]; title = `${digest}.jsonl`; return { data: metadata() }; },
+            delete: async () => { calls.push({ operation: 'unconditional_delete' }); exists = false; return { data: {} }; },
+        } };
+    Object.assign(adapter, { folderId: 'root', getDriveClient: () => v3, getConditionalClient: () => v2, withRetry: async (operation: () => Promise<unknown>) => operation() });
+    return { adapter, calls, parent, bytes: () => bytes, empty: () => { exists = false; }, hook: (fn: ((id: string) => Promise<void>) | null) => { hook = fn; }, mutate: () => { etag = 'e2'; bytes = Buffer.from('concurrent remote bytes'); } };
+}
+describe('Reading Drive file identity and immutable publication', () => {
+    for (const operation of ['update', 'trash', 'delete', 'rename', 'rename_into', 'ordinary_hash_update', 'ordinary_update', 'upload_wrong', 'upload_alias', 'upload_original', 'retarget_update', 'concurrent_version', 'upload_caller_mutation', 'upload_retarget', 'reading_bound_download', 'foreign_bound_download', 'download_retarget', 'rename_retarget'] as const) {
+        it(operation, async () => {
+            const ordinary = ['rename_into', 'ordinary_update', 'concurrent_version', 'rename_retarget'].includes(operation);
+            const f = fixture(ordinary ? 'ordinary' : ['ordinary_hash_update', 'foreign_bound_download'].includes(operation) ? 'ordinary_hash' : 'reading');
+            let outcome = 'accepted';
+            try {
+                if (!operation.startsWith('upload'))
+                    await f.adapter.downloadFile('file');
+                if (operation === 'retarget_update')
+                    f.hook(async (id) => { if (id === 'folder-5')
+                        f.adapter.setAccessToken('other-synthetic-account'); });
+                if (operation === 'concurrent_version')
+                    f.hook(async (id) => { if (id === 'file') {
+                        f.hook(null);
+                        f.mutate();
+                        await f.adapter.downloadFile('file');
+                    } });
+                if (operation === 'download_retarget')
+                    f.hook(async (id) => { if (id === 'file') {
+                        f.hook(null);
+                        f.adapter.setAccessToken('other-synthetic-account');
+                    } });
+                if (operation === 'rename_retarget')
+                    f.hook(async (id) => { if (id === 'mutation_reply') {
+                        f.hook(null);
+                        f.adapter.setAccessToken('other-synthetic-account');
+                    } });
+                if (['update', 'ordinary_update', 'ordinary_hash_update', 'retarget_update', 'concurrent_version'].includes(operation))
+                    await f.adapter.updateFile('file', Buffer.from('changed'), hash('changed'));
+                if (operation === 'trash')
+                    await f.adapter.trashFile('file');
+                if (operation === 'delete')
+                    await f.adapter.deleteFile('file');
+                if (operation === 'rename' || operation === 'rename_retarget')
+                    await f.adapter.renameFile('file', 'renamed.md', 'notes');
+                if (operation === 'rename_into')
+                    await f.adapter.renameFile('file', `${digest}.jsonl`, f.parent);
+                if (operation === 'upload_wrong') {
+                    f.empty();
+                    await f.adapter.uploadFile({ folderId: 'root', name: canonical, content: Buffer.from('wrong'), quartzoHash: hash('wrong') });
+                }
+                if (operation === 'upload_alias') {
+                    f.empty();
+                    await f.adapter.uploadFile({ folderId: 'root', parentId: f.parent, name: `${digest}.jsonl`, content: original, quartzoHash: digest });
+                }
+                if (operation === 'upload_original') {
+                    f.empty();
+                    await f.adapter.uploadFile({ folderId: 'root', name: canonical, content: original, quartzoHash: digest });
+                }
+                if (operation === 'upload_caller_mutation') {
+                    f.empty();
+                    const input = new Uint8Array(original);
+                    f.hook(async (id) => { if (id === 'list') {
+                        f.hook(null);
+                        input.fill(120);
+                    } });
+                    await f.adapter.uploadFile({ folderId: 'root', name: canonical, content: input, quartzoHash: digest });
+                }
+                if (operation === 'upload_retarget') {
+                    f.empty();
+                    f.hook(async (id) => { if (id === 'list') {
+                        f.hook(null);
+                        f.adapter.setAccessToken('other-synthetic-account');
+                    } });
+                    await f.adapter.uploadFile({ folderId: 'root', name: canonical, content: original, quartzoHash: digest });
+                }
+                if (operation === 'reading_bound_download' || operation === 'foreign_bound_download')
+                    await f.adapter.downloadFile('file', canonical);
+                if (operation === 'download_retarget')
+                    await f.adapter.downloadFile('file');
+            }
+            catch {
+                outcome = 'rejected';
+            }
+            const allowed = ['ordinary_update', 'ordinary_hash_update', 'upload_original', 'upload_caller_mutation', 'reading_bound_download'].includes(operation);
+            expect(outcome).toBe(allowed ? 'accepted' : 'rejected');
+            if (operation === 'concurrent_version' || operation === 'rename_retarget') {
+                expect(f.calls).toEqual([{ operation: 'update', if_match: 'e1' }]);
+                if (operation === 'concurrent_version') expect(f.bytes().toString()).toBe('concurrent remote bytes');
+            }
+            else if (!allowed)
+                expect(f.calls).toEqual([]);
+            if (operation === 'upload_caller_mutation')
+                expect(hash(f.bytes())).toBe(digest);
+        });
+    }
+});

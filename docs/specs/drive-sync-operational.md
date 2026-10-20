@@ -1,8 +1,8 @@
 # Companion Drive Sync — Operational Specification
 
 Status: **ACTIVE LOCAL OPERATIONAL SPEC**  
-Last reconciled date: 2026-10-08 (documentation migration; shared protocol unchanged)  
-Last reconciled main SHA: `507f2ccfe2f991ea775e1f1aca5ca05e6f4c5218`  
+Last reconciled date: 2026-10-20 (Reading immutable owner candidate; live acceptance still open)
+Last reconciled main SHA: `efa53aa64d8c08277aa7e68dbd79e8e9a61229be`
 Canonical implementation owners: `DriveSyncCoordinator`, `GoogleDriveAdapter`, `VaultSyncFilePolicy`, first-pairing workflow, canonical state/lock  
 Depends on: `contracts/UPSTREAM.lock.json`, shared upstream sync contracts, `guidelines.md`, `agents.md`  
 Supersedes: detailed local rules 9–23 in the former guidelines (text unchanged below)  
@@ -51,6 +51,16 @@ The adapter owns finite network request deadlines and quota-aware cooldown/retri
 **C-GUID-23 — Modo Manual também hidrata estado local no startup:** recarregar/atualizar o plugin não pode fazer o Sync Center esquecer temporariamente o último sync, baselines, IDs remotos, conflitos persistidos ou inflar `Pending local changes` só porque nenhum sync foi disparado. O estado device-local persistido deve ser carregado durante o startup do plugin antes de a superfície de Sync ser exposta. Essa hidratação é somente leitura local e não conta como sync automático: não faz chamadas ao Drive, não reconcilia e não viola o modo `Manual`. Estado ausente/corrompido deve permanecer fail-closed e observável.
 
 ## Verification
+
+### Reading immutable history
+
+The pinned upstream Reading Activity contract classifies only exact device/epoch/year/month/SHA-256 JSONL paths. Sync transports opaque bytes; raw-event parsing and semantic acceptance stay with the Reading domain. `SyncEngine` executes the same 15 lifecycle and 14 path vectors as Dart. Divergence and remote absence after baseline preserve existing conflict evidence and baselines before watcher suppression. A missing local file without deletion intent may restore only the original filename bytes; explicit deletion intent stays pending for review. Generic rename, delete and purge cannot remove Reading facts, including folder-change and incremental paths. Both sides missing does not erase the baseline.
+
+`DriveSyncCoordinator` retains the existing state/conflict owners. Local publication uses an exclusively allocated, file-flushed sibling and atomic no-replace hard-link installation; unsupported filesystems fail without a copy/replace fallback. Cleanup checks the allocated inode and preserves foreign collisions. Byte readback precedes baseline success. Root/account/folder identity and existing Reading ancestors are rechecked around awaits. I/O aliases into Reading, Windows case aliases, shared hard links and containment escapes cannot downgrade an immutable fact to ordinary mutable transport. Independent ordinary files retain their existing reconciliation behavior.
+
+Explicit local conflict repair requires a current snapshot and the original filename digest, never generic deletion or newest-wins. Reading conflict projections copy byte arrays before exposing them. The Drive adapter independently verifies actual ID/ETag and bounded singular ancestry for candidate shard filenames; caller labels and caches are not authority. Each conditional request retains its own version even when another read updates the cache. Uploads snapshot caller bytes before awaits, verify destination/name/digest and abort on retarget; expected Reading downloads verify rooted identity before and after media. Generic remote update, rename, trash, permanent deletion and duplicate cleanup reject Reading identities. Remote history repair remains unavailable until a separate explicit operation is reviewed and proved.
+
+These are guarded operations and filesystem observations, not a global snapshot, cross-process lease, all-writer cooperation, directory/power-loss durability, real Drive/Obsidian interoperability or source-cursor permission. No Reading ingress, automation or canonical ACK is enabled. Readwise Markdown and production plugin/app installations are outside this change.
 
 ### Obsidian-native deletion
 

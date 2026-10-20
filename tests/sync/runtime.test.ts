@@ -211,7 +211,12 @@ describe('Runtime Sync Tests', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    const ownedRoot = fs.realpathSync(tmpDir);
+    const relative = path.relative(fs.realpathSync(tmpdir()), ownedRoot);
+    expect(path.isAbsolute(relative) || relative === '..' || relative.startsWith('..' + path.sep)).toBe(false);
+    expect(path.basename(ownedRoot).startsWith('companion-rt-')).toBe(true);
+    expect(fs.lstatSync(tmpDir).isSymbolicLink()).toBe(false);
+    fs.rmSync(ownedRoot, { recursive: true, force: true });
   });
 
   it('audit: warm inventories reuse proven bytes and detect same-size edits with restored mtime', async () => {
@@ -2475,6 +2480,179 @@ describe('Runtime Sync Tests', () => {
         reason: 'untracked_remote',
       }),
     ]);
+  });
+
+  for (const mode of ['full', 'incremental'] as const) {
+    for (const change of ['local_edit', 'remote_edit', 'remote_missing', 'local_missing', 'both_missing', 'queued_delete', 'remote_rename'] as const) {
+      it(`Reading immutable lifecycle ${mode}/${change} preserves bytes and baseline`, async () => {
+        // Deliberately opaque future bytes: sync owns byte identity, not parsing.
+        const original = Buffer.from('opaque future reading fixture\n');
+        const changed = Buffer.from('divergent opaque bytes\n');
+        const digest = crypto.createHash('sha256').update(original).digest('hex');
+        const relative = `sessions/reading_activity_v1/${'a'.repeat(64)}/${'b'.repeat(64)}/2026/10/${digest}.jsonl`;
+        const local = path.join(tmpDir, relative);
+        fs.mkdirSync(path.dirname(local), { recursive: true });
+        fs.writeFileSync(local, original);
+        const remote = adapter.addRemoteFile(relative, original);
+        expect(await coordinator.reconcile(true)).toMatchObject({ errors: [], conflicts: 0 });
+        adapter.pendingChanges = [];
+        const rename = vi.spyOn(adapter, 'renameFile');
+        if (change === 'local_edit') fs.writeFileSync(local, changed);
+        if (change === 'remote_edit') adapter.addRemoteFileWithId(relative, remote.id, changed);
+        if (['remote_missing', 'both_missing'].includes(change)) {
+          adapter.files.delete(relative);
+          adapter.pendingChanges = [{ fileId: remote.id, removed: true }];
+        }
+        if (['local_missing', 'both_missing', 'queued_delete'].includes(change)) fs.unlinkSync(local);
+        if (change === 'queued_delete') {
+          coordinator.queueDelete(relative);
+          await new Promise<void>(resolve => setImmediate(resolve));
+        }
+        if (change === 'remote_rename') {
+          const entry = adapter.files.get(relative)!;
+          adapter.files.delete(relative);
+          adapter.files.set('externally-renamed.md', entry);
+          adapter.pendingChanges = [{ fileId: remote.id, removed: false, file: await adapter.getFileMetadata(remote.id) }];
+        }
+        const result = await coordinator.reconcile(mode === 'full');
+        expect(result.errors).toEqual([]);
+        expect(adapter.updateCalls).toBe(0);
+        expect(adapter.uploadCalls).toBe(0);
+        expect(adapter.trashCalls).toBe(0);
+        expect(rename).not.toHaveBeenCalled();
+        expect(coordinator.getSyncState().files.get(relative)?.baseHash).toBe(digest);
+        if (change === 'local_missing') {
+          expect(fs.readFileSync(local)).toEqual(original);
+          expect(coordinator.getConflicts()).toHaveLength(0);
+        } else {
+          expect(coordinator.getConflicts()).toHaveLength(1);
+          expect(result.conflicts).toBeGreaterThan(0);
+          if (change !== 'both_missing' && change !== 'queued_delete') {
+            expect(fs.readFileSync(local)).toEqual(change === 'local_edit' ? changed : original);
+          }
+          const restarted = new DriveSyncCoordinator(adapter, tmpDir, path.join(tmpDir, '.quartzo-sync-state.json'));
+          await restarted.hydratePersistedState();
+          expect(restarted.getConflicts()).toHaveLength(1);
+          expect(restarted.getSyncState().files.get(relative)?.baseHash).toBe(digest);
+        }
+        if (!['remote_missing', 'both_missing', 'remote_rename'].includes(change)) {
+          expect(Buffer.from(adapter.files.get(relative)!.content)).toEqual(change === 'remote_edit' ? changed : original);
+        }
+      });
+    }
+  }
+
+  it('Reading conflict refuses wrong digest and generic deletion without discarding evidence', async () => {
+    const original = Buffer.from('original Reading bytes\n');
+    const digest = crypto.createHash('sha256').update(original).digest('hex');
+    const relative = `sessions/reading_activity_v1/${'a'.repeat(64)}/${'b'.repeat(64)}/2026/10/${digest}.jsonl`;
+    const local = path.join(tmpDir, relative);
+    fs.mkdirSync(path.dirname(local), { recursive: true });
+    fs.writeFileSync(local, original);
+    const remote = adapter.addRemoteFile(relative, original);
+    await coordinator.reconcile(true);
+    fs.writeFileSync(local, 'wrong local bytes');
+    adapter.addRemoteFileWithId(relative, remote.id, Buffer.from('wrong remote bytes'));
+    await coordinator.reconcile(true);
+    await expect(coordinator.resolveConflict(relative, 'keep_local')).rejects.toThrow('original filename bytes');
+    await expect(coordinator.resolveConflict(relative, 'keep_drive')).rejects.toThrow('original filename bytes');
+    await expect(coordinator.resolveConflict(relative, 'keep_newest')).rejects.toThrow('original filename bytes');
+    expect(coordinator.getConflicts()).toHaveLength(1);
+    expect(fs.readFileSync(local, 'utf8')).toBe('wrong local bytes');
+    expect(Buffer.from(adapter.files.get(relative)!.content).toString()).toBe('wrong remote bytes');
+    expect(adapter.updateCalls).toBe(0);
+    expect(adapter.trashCalls).toBe(0);
+  });
+
+  it('Reading remote-only bytes must match the exact filename before local publication', async () => {
+    const digest = crypto.createHash('sha256').update('original').digest('hex');
+    const relative = `sessions/reading_activity_v1/${'a'.repeat(64)}/${'b'.repeat(64)}/2026/10/${digest}.jsonl`;
+    adapter.addRemoteFile(relative, Buffer.from('different bytes'));
+    const result = await coordinator.reconcile(true);
+    expect(result.errors.join(' ')).toContain('filename does not match downloaded bytes');
+    expect(fs.existsSync(path.join(tmpDir, relative))).toBe(false);
+    expect(coordinator.getSyncState().files.get(relative)?.baseHash ?? null).toBeNull();
+    expect(adapter.updateCalls).toBe(0);
+    expect(adapter.trashCalls).toBe(0);
+  });
+
+  it('ordinary conflict repair cannot truncate Reading bytes through a hard-link alias', async () => {
+    const original = Buffer.from('original hard-link fixture\n');
+    const digest = crypto.createHash('sha256').update(original).digest('hex');
+    const relative = `sessions/reading_activity_v1/${'a'.repeat(64)}/${'b'.repeat(64)}/2026/10/${digest}.jsonl`;
+    const local = path.join(tmpDir, relative);
+    fs.mkdirSync(path.dirname(local), { recursive: true });
+    fs.writeFileSync(local, original);
+    adapter.addRemoteFile(relative, original);
+    await coordinator.reconcile(true);
+    fs.linkSync(local, path.join(tmpDir, 'ordinary-alias.md'));
+    adapter.addRemoteFile('ordinary-alias.md', Buffer.from('ordinary remote replacement'));
+    await coordinator.reconcile(true);
+    await expect(coordinator.resolveConflict('ordinary-alias.md', 'keep_drive')).rejects.toThrow('hard-link');
+    expect(fs.readFileSync(local)).toEqual(original);
+    expect(coordinator.getConflicts().some(conflict => conflict.originalPath === 'ordinary-alias.md')).toBe(true);
+  });
+
+  it('ordinary remote pull cannot replace Reading bytes through a parent junction or symlink', async () => {
+    const original = Buffer.from('original parent-alias fixture\n');
+    const digest = crypto.createHash('sha256').update(original).digest('hex');
+    const suffix = `${'a'.repeat(64)}/${'b'.repeat(64)}/2026/10/${digest}.jsonl`;
+    const relative = `sessions/reading_activity_v1/${suffix}`;
+    const local = path.join(tmpDir, relative);
+    fs.mkdirSync(path.dirname(local), { recursive: true });
+    fs.writeFileSync(local, original);
+    adapter.addRemoteFile(relative, original);
+    await coordinator.reconcile(true);
+    fs.symlinkSync(path.join(tmpDir, 'sessions/reading_activity_v1'), path.join(tmpDir, 'ordinary-alias'), process.platform === 'win32' ? 'junction' : 'dir');
+    adapter.addRemoteFile(`ordinary-alias/${suffix}`, Buffer.from('replacement through alias'));
+    const result = await coordinator.reconcile(true);
+    expect(result.errors.join(' ')).toContain('alias');
+    expect(fs.readFileSync(local)).toEqual(original);
+  });
+
+  it.skipIf(process.platform !== 'win32')('Windows case aliases cannot downgrade Reading to ordinary mutable transport', async () => {
+    const original = Buffer.from('original case-alias fixture\n');
+    const digest = crypto.createHash('sha256').update(original).digest('hex');
+    const relative = `sessions/reading_activity_v1/${'a'.repeat(64)}/${'b'.repeat(64)}/2026/10/${digest}.jsonl`;
+    const local = path.join(tmpDir, relative);
+    fs.mkdirSync(path.dirname(local), { recursive: true });
+    fs.writeFileSync(local, original);
+    adapter.addRemoteFile(relative, original);
+    await coordinator.reconcile(true);
+    adapter.addRemoteFile(relative.replace('a'.repeat(64), 'A'.repeat(64)), Buffer.from('replacement through case alias'));
+    const result = await coordinator.reconcile(true);
+    expect(result.errors.join(' ')).toContain('alias');
+    expect(fs.readFileSync(local)).toEqual(original);
+  });
+
+  it('a collision before temporary allocation preserves the foreign sibling', async () => {
+    const original = Buffer.from('original collision fixture\n');
+    const digest = crypto.createHash('sha256').update(original).digest('hex');
+    const relative = `sessions/reading_activity_v1/${'a'.repeat(64)}/${'b'.repeat(64)}/2026/10/${digest}.jsonl`;
+    const local = path.join(tmpDir, relative);
+    fs.mkdirSync(path.dirname(local), { recursive: true });
+    fs.writeFileSync(local, original);
+    adapter.addRemoteFile(relative, original);
+    await coordinator.reconcile(true);
+    fs.unlinkSync(local);
+    const open = fs.openSync;
+    let foreign = '';
+    vi.spyOn(fs, 'openSync').mockImplementation((file, flags, mode) => {
+      if (typeof file === 'string' && file.endsWith('.tmp') && flags === 'wx') {
+        const descriptor = open(file, flags, mode);
+        fs.writeFileSync(descriptor, 'foreign sibling');
+        fs.closeSync(descriptor);
+        foreign = file;
+        throw Object.assign(new Error('EEXIST synthetic collision'), { code: 'EEXIST' });
+      }
+      return open(file, flags, mode);
+    });
+    const result = await coordinator.reconcile(true);
+    expect(result.errors.join(' ')).toContain('EEXIST');
+    expect(foreign).not.toBe('');
+    expect(fs.readFileSync(foreign, 'utf8')).toBe('foreign sibling');
+    expect(fs.existsSync(local)).toBe(false);
+    expect(coordinator.getSyncState().files.get(relative)?.baseHash).toBe(digest);
   });
 
 });
