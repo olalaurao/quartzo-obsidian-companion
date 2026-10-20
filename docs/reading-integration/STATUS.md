@@ -62,6 +62,19 @@ candidate was installed and no tag/release changed. Final-head hosted checks,
 merge authorization and official exact-main artifact/live UI acceptance remain
 separate requirements.
 
+Candidate [PR90](https://github.com/olalaurao/quartzo-obsidian-companion/pull/90)
+at **a66915be2a0cac92e84c03008b4e90c3dab29ba9** subsequently passed all six
+final Linux/Windows/macOS checks in
+[PR CI 39389274003](https://github.com/olalaurao/quartzo-obsidian-companion/actions/runs/39389274003)
+and [push CI 39388663625](https://github.com/olalaurao/quartzo-obsidian-companion/actions/runs/39388663625).
+Linux/macOS full: **1022 PASS / three skips**; contracts: **397 PASS**; sync:
+**390 PASS / three skips**. Windows sync: **391 PASS / two skips**. All fourteen
+real-SDK media cases remain part of every sync run. PR89 transport inputs are
+byte-identical in this dependent follow-up. The user has been asked separately
+to authorize the PR89/PR90 merges and final official preflight for this sandbox;
+neither approval nor a new installed-artifact result is assumed. The following
+documentation-only checkpoint does not change these tested runtime inputs.
+
 ### 2026-10-20 — Live Obsidian/Drive rejected: binary upload omitted media
 
 The user opened and paired the isolated corrected-main sandbox using official
