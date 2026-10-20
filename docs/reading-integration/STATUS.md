@@ -14,6 +14,49 @@ Authority: [pinned Reading Activity contract](../../contracts/quartzo/reading_ac
 
 ## Open gates
 
+### 2026-10-20 — Preserve Manual mode before live sandbox pairing
+
+PR86 merged with user authorization as `34d1244ec718cbd100f0f124ed76816dbde9008d`,
+tree-identical to tested c09980e. Normal main CI and official
+[Release Preflight 39374550229](https://github.com/olalaurao/quartzo-obsidian-companion/actions/runs/39374550229)
+passed on that exact commit. Its official artifact was checksummed and staged in
+a new synthetic local vault, disabled, Manual and unpaired. The source-bound
+artifact metadata and live acceptance procedure are in documentation-only
+[PR87](https://github.com/olalaurao/quartzo-obsidian-companion/pull/87), whose final
+Linux/Windows/macOS checks passed at cc66822. Neither live pairing nor production
+installation occurred; the existing 1.0.43 tag was not changed.
+
+Inspection before live pairing found all three existing completion paths silently
+switching Manual to Automatic, including a duplicated assignment in divergence
+resolution. Nine tests invoke the actual plugin handlers with mocked platform,
+DOM and coordinator boundaries, checking successful Manual/Automatic completion,
+saved preference, actual polling timers and failed pairing. Before the fix,
+**three Manual regressions failed / six controls passed**. Removing those
+assignments preserves the current user preference; pairing still applies only
+its explicit reviewed operation. No new state/transport/mutation owner is added.
+
+After correction: **27 targeted tests PASS**; full suite **989 PASS / two opt-in
+exchange skips**, 88 files (61.16s). Typecheck, lint, architecture, documentation
+and whitespace checks pass. Exact committed source
+**b97d9c609a673a7bc304fb95811a09ba4e057cb1** also passed production build,
+non-release validation, clean-artifact smoke and all nine handler cases again.
+[Build observation](pairing-mode-build-2026-10-20.json) records bundle SHA-256
+`bdd9e9769a7fe44c28d434d70b63ceff352101de6eed11a80fabffd07edcaaf7`
+(1174524 bytes). The initial checkout guard rejected the expected generated
+tracked `main.js` change; only that generated output differed. It was archived,
+the original tracked output restored, and the checkout/input source verified
+clean. This is a local non-release build without OAuth release proof.
+[PR88](https://github.com/olalaurao/quartzo-obsidian-companion/pull/88) is draft;
+final hosted checks and merge authorization remain separate.
+The old preflighted artifact does not contain this fix: a newly approved main
+merge and exact-main official preflight are required before using a corrected
+artifact for live acceptance. G03/cloud/Obsidian/ACK remains open.
+
+The independent exact-source offline codec diagnostic also
+[passed on the actual PW3](https://github.com/olalaurao/quartzo-koplugin/blob/d3a249f/docs/evidence/wire-consumer-pw3-2026-10-20.json)
+after user-confirmed KUAL execution. Its ARM/native-library/codec evidence grants
+no canonical persistence, network delivery, source cursor or production effect.
+
 ### 2026-10-20 — Build, hosted CI and cross-client exchange
 
 Runtime checkpoint `e2b1664950262c8f9a354eb7f2cd97b38d2181d2` passed [PR CI 39369670535](https://github.com/olalaurao/quartzo-obsidian-companion/actions/runs/39369670535) and [push CI 39369667299](https://github.com/olalaurao/quartzo-obsidian-companion/actions/runs/39369667299) on Linux, Windows and macOS. Linux/macOS full suites: **979 PASS / two skipped**; Windows sync: **366 PASS / one skipped**; Linux/macOS sync: **365 PASS / two skipped**. Both Unix contract runs have **397 PASS**. Official contract verification, audit, docs, typecheck, lint/architecture where configured, build, smoke and packaging also passed. The platform-dependent case-alias case and opt-in exchange explain the different skips. [PR86](https://github.com/olalaurao/quartzo-obsidian-companion/pull/86) is draft, not merged or released.

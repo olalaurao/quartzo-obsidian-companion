@@ -52,6 +52,16 @@ The adapter owns finite network request deadlines and quota-aware cooldown/retri
 
 ## Verification
 
+### Pairing and sync preference
+
+Completing a reviewed pairing snapshot, including divergence resolution or the
+direct adoption/pull path, preserves the current device-local Manual/Automatic
+preference. Acceptance authorizes that explicit operation, not future background
+sync. The existing settings mode selector remains the owner of an explicit mode
+change. Actual plugin-handler tests cover every completion path, failed pairing,
+saved preference and polling behavior; the initial regression reproduced Manual
+being silently changed to Automatic in all three paths.
+
 ### Reading immutable history
 
 The pinned upstream Reading Activity contract classifies only exact device/epoch/year/month/SHA-256 JSONL paths. Sync transports opaque bytes; raw-event parsing and semantic acceptance stay with the Reading domain. `SyncEngine` executes the same 15 lifecycle and 14 path vectors as Dart. Divergence and remote absence after baseline preserve existing conflict evidence and baselines before watcher suppression. A missing local file without deletion intent may restore only the original filename bytes; explicit deletion intent stays pending for review. Generic rename, delete and purge cannot remove Reading facts, including folder-change and incremental paths. Both sides missing does not erase the baseline.
