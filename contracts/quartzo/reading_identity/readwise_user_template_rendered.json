@@ -1,0 +1,32 @@
+{
+  "source": "User-provided account-template text, 2026-10-16; component boundaries not confirmed by an actual export",
+  "normalized_source_sha256": "c0f674aa7f131db1b742f83ac68881f3bede0a6076c9c99b2e258173581f030e",
+  "renderer": "Jinja2 3.1.6, sandbox, synthetic values, limited Readwise-style date filter shim",
+  "scope": "Offline fixture only. No real export/re-export, YAML serialization or append-only behavior certified.",
+  "variants": [
+    {
+      "name": "new_page",
+      "literal_combined": "Synthetic exported article\n<!-- readwise-book-id: export_fixture_900001 -->\n- Summary: Synthetic summary\n- Readwise note: Synthetic document note\n- URL: https://example.invalid/article\n\n###### Highlights [[2026-10-16]] at 12:34\n- Synthetic passage, never an identity key. ([12](https://example.invalid/location/12)) <!-- readwise-highlight-id: highlight_fixture_910001 --> <!-- readwise-highlight-date: 2026-10-15 23:10 -->\n    - Tags: [[fantasia]] [[ficção científica]] \n    - Note: Synthetic annotation note\ntype: resource\nmedia_type: articles\nauthor: Synthetic Author\ncover: https://example.invalid/cover.png\nsource_url: https://example.invalid/article\nreadwise_category: articles\nreadwise_source: reader\nrating:\ncategory: [[artigo]] [[projeto de pesquisa]] \n",
+      "body_assuming_separate_components": "Synthetic exported article\n\n<!-- readwise-book-id: export_fixture_900001 -->\n- Summary: Synthetic summary\n- Readwise note: Synthetic document note\n- URL: https://example.invalid/article\n\n###### Highlights [[2026-10-16]] at 12:34\n\n- Synthetic passage, never an identity key. ([12](https://example.invalid/location/12)) <!-- readwise-highlight-id: highlight_fixture_910001 --> <!-- readwise-highlight-date: 2026-10-15 23:10 -->\n    - Tags: [[fantasia]] [[ficção científica]] \n    - Note: Synthetic annotation note\n",
+      "properties_assuming_separate_component": "type: resource\nmedia_type: articles\nauthor: Synthetic Author\ncover: https://example.invalid/cover.png\nsource_url: https://example.invalid/article\nreadwise_category: articles\nreadwise_source: reader\nrating:\ncategory: [[artigo]] [[projeto de pesquisa]] \n"
+    },
+    {
+      "name": "new_highlight",
+      "literal_combined": "Synthetic exported article\n<!-- readwise-book-id: export_fixture_900001 -->\n- Summary: Synthetic summary\n- Readwise note: Synthetic document note\n- URL: https://example.invalid/article\n###### New highlights added [[2026-10-16]] at 12:34\n- Synthetic passage, never an identity key. ([12](https://example.invalid/location/12)) <!-- readwise-highlight-id: highlight_fixture_910002 --> <!-- readwise-highlight-date: 2026-10-15 23:10 -->\n    - Tags: [[fantasia]] [[ficção científica]] \n    - Note: Synthetic annotation note\ntype: resource\nmedia_type: articles\nauthor: Synthetic Author\ncover: https://example.invalid/cover.png\nsource_url: https://example.invalid/article\nreadwise_category: articles\nreadwise_source: reader\nrating:\ncategory: [[artigo]] [[projeto de pesquisa]] \n",
+      "body_assuming_separate_components": "Synthetic exported article\n\n<!-- readwise-book-id: export_fixture_900001 -->\n- Summary: Synthetic summary\n- Readwise note: Synthetic document note\n- URL: https://example.invalid/article\n\n###### New highlights added [[2026-10-16]] at 12:34\n\n- Synthetic passage, never an identity key. ([12](https://example.invalid/location/12)) <!-- readwise-highlight-id: highlight_fixture_910002 --> <!-- readwise-highlight-date: 2026-10-15 23:10 -->\n    - Tags: [[fantasia]] [[ficção científica]] \n    - Note: Synthetic annotation note\n",
+      "properties_assuming_separate_component": "type: resource\nmedia_type: articles\nauthor: Synthetic Author\ncover: https://example.invalid/cover.png\nsource_url: https://example.invalid/article\nreadwise_category: articles\nreadwise_source: reader\nrating:\ncategory: [[artigo]] [[projeto de pesquisa]] \n"
+    },
+    {
+      "name": "no_document_tags",
+      "literal_combined": "Synthetic exported article\n<!-- readwise-book-id: export_fixture_900001 -->\n- Summary: Synthetic summary\n- Readwise note: Synthetic document note\n- URL: https://example.invalid/article\n\n###### Highlights [[2026-10-16]] at 12:34\n- Synthetic passage, never an identity key. ([12](https://example.invalid/location/12)) <!-- readwise-highlight-id: highlight_fixture_910001 --> <!-- readwise-highlight-date: 2026-10-15 23:10 -->\n    - Tags: [[fantasia]] [[ficção científica]] \n    - Note: Synthetic annotation note\ntype: resource\nmedia_type: articles\nauthor: Synthetic Author\ncover: https://example.invalid/cover.png\nsource_url: https://example.invalid/article\nreadwise_category: articles\nreadwise_source: reader\nrating:\ncategory: \n",
+      "body_assuming_separate_components": "Synthetic exported article\n\n<!-- readwise-book-id: export_fixture_900001 -->\n- Summary: Synthetic summary\n- Readwise note: Synthetic document note\n- URL: https://example.invalid/article\n\n###### Highlights [[2026-10-16]] at 12:34\n\n- Synthetic passage, never an identity key. ([12](https://example.invalid/location/12)) <!-- readwise-highlight-id: highlight_fixture_910001 --> <!-- readwise-highlight-date: 2026-10-15 23:10 -->\n    - Tags: [[fantasia]] [[ficção científica]] \n    - Note: Synthetic annotation note\n",
+      "properties_assuming_separate_component": "type: resource\nmedia_type: articles\nauthor: Synthetic Author\ncover: https://example.invalid/cover.png\nsource_url: https://example.invalid/article\nreadwise_category: articles\nreadwise_source: reader\nrating:\ncategory: \n"
+    },
+    {
+      "name": "no_optional_fields",
+      "literal_combined": "Synthetic exported article\n\n###### Highlights [[2026-10-16]] at 12:34\n- Synthetic passage, never an identity key.\ntype: resource\nmedia_type: articles\nauthor: Synthetic Author\ncover: \nsource_url: \nreadwise_category: articles\nreadwise_source: reader\nrating:\ncategory: \n",
+      "body_assuming_separate_components": "Synthetic exported article\n\n\n\n###### Highlights [[2026-10-16]] at 12:34\n\n- Synthetic passage, never an identity key.\n",
+      "properties_assuming_separate_component": "type: resource\nmedia_type: articles\nauthor: Synthetic Author\ncover: \nsource_url: \nreadwise_category: articles\nreadwise_source: reader\nrating:\ncategory: \n"
+    }
+  ]
+}

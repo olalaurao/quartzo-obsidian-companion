@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "sourceCommit": "e2b1664950262c8f9a354eb7f2cd97b38d2181d2",
+  "sourceTree": "0348d089378022ed587901b8acaa63ffd4cca317",
+  "bundle": {
+    "sha256": "d0a33e73b94bb9e5bc57acfbdd31bbeea3c0da81ee8f2e2a6b6bd43b38b722ec",
+    "bytes": 1174768
+  },
+  "validation": {
+    "build": true,
+    "nonReleaseArtifactValidation": true,
+    "cleanArtifactSmoke": true,
+    "packaging": true
+  },
+  "boundary": {
+    "oauthBuildCredentials": false,
+    "productionReleasePreflight": false,
+    "installed": false,
+    "published": false,
+    "liveObsidian": false,
+    "liveDrive": false,
+    "canonicalAck": false
+  }
+}

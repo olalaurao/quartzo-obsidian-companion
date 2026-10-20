@@ -1,6 +1,14 @@
 import { SyncVector, SyncResult } from './types';
 
 export class SyncEngine {
+  static readonly readingShardMaxBytes = 524288;
+  /** Exact opaque Reading shard namespace; transport never parses raw events. */
+  static immutableReadingHash(filePath: string): string | null {
+    const match = /^sessions\/reading_activity_v1\/[a-f0-9]{64}\/[a-f0-9]{64}\/([0-9]{4})\/(0[1-9]|1[0-2])\/([a-f0-9]{64})\.jsonl$/.exec(filePath);
+    return match && match[0].length === filePath.length && match[1] !== '0000'
+      ? match[3] : null;
+  }
+
   static reconcile(vector: SyncVector): SyncResult {
     const {
       id,
@@ -20,13 +28,21 @@ export class SyncEngine {
       return { action: 'fail_closed', failClosed: true };
     }
 
+    const immutablePath = SyncEngine.immutableReadingHash(id) !== null ||
+      SyncEngine.immutableReadingHash(path ?? '') !== null;
+    if (immutablePath && localExists &&
+        ((remoteExists && localHash !== remoteHash) ||
+         (!remoteExists && baseHash != null))) {
+      return { action: 'conflict', conflict: true };
+    }
+
     // Handle watcher write back
     if (postWriteExpectedHash && localHash === postWriteExpectedHash) {
       return { action: 'suppress_redundant_push' };
     }
 
     // Handle file scope checks
-    if (path) {
+    if (path && !immutablePath) {
       if (path.includes('_deleted')) {
         return { action: 'include_deleted' };
       }

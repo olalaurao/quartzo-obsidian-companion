@@ -1,0 +1,171 @@
+{
+  "version": "1.0.0",
+  "batch_identity_preimage": [
+    "quartzo-reading-transport-batch-v1",
+    "binding_fixture",
+    "vault_fixture",
+    "qrd_fixture",
+    "db_epoch_fixture",
+    [
+      "{\"schema_version\":1,\"event_id\":\"qre_7e0b6f65e1e70bfa1a19eed6151a4b03f18e938262fb5572d72c30ac14f1e6a6\",\"source\":\"koreader_statistics\",\"device_id\":\"qrd_fixture\",\"source_epoch\":\"db_epoch_fixture\",\"book_row_id\":17,\"page\":4,\"started_at_utc\":\"2026-10-14T02:50:00.000Z\",\"duration_seconds\":1800,\"total_pages\":120,\"observed_at_utc\":\"2026-10-16T12:00:00.000Z\",\"source_schema_version\":\"fixture_only\"}"
+    ]
+  ],
+  "batch_id": "qrtb_a5377ecd9ee99060270ef29a623b5eaa685e7f8448876a401ec24e9e3b8b9922",
+  "request": {
+    "protocol_version": 1,
+    "binding_id": "binding_fixture",
+    "vault_scope": "vault_fixture",
+    "device_id": "qrd_fixture",
+    "source_epoch": "db_epoch_fixture",
+    "request_id": "qrtr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "issued_at_utc": "2026-10-17T12:00:00.000Z",
+    "expires_at_utc": "2026-10-17T12:05:00.000Z",
+    "batch_id": "qrtb_a5377ecd9ee99060270ef29a623b5eaa685e7f8448876a401ec24e9e3b8b9922",
+    "event_lines": [
+      "{\"schema_version\":1,\"event_id\":\"qre_7e0b6f65e1e70bfa1a19eed6151a4b03f18e938262fb5572d72c30ac14f1e6a6\",\"source\":\"koreader_statistics\",\"device_id\":\"qrd_fixture\",\"source_epoch\":\"db_epoch_fixture\",\"book_row_id\":17,\"page\":4,\"started_at_utc\":\"2026-10-14T02:50:00.000Z\",\"duration_seconds\":1800,\"total_pages\":120,\"observed_at_utc\":\"2026-10-16T12:00:00.000Z\",\"source_schema_version\":\"fixture_only\"}"
+    ]
+  },
+  "request_json": "{\"protocol_version\":1,\"binding_id\":\"binding_fixture\",\"vault_scope\":\"vault_fixture\",\"device_id\":\"qrd_fixture\",\"source_epoch\":\"db_epoch_fixture\",\"request_id\":\"qrtr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"issued_at_utc\":\"2026-10-17T12:00:00.000Z\",\"expires_at_utc\":\"2026-10-17T12:05:00.000Z\",\"batch_id\":\"qrtb_a5377ecd9ee99060270ef29a623b5eaa685e7f8448876a401ec24e9e3b8b9922\",\"event_lines\":[\"{\\\"schema_version\\\":1,\\\"event_id\\\":\\\"qre_7e0b6f65e1e70bfa1a19eed6151a4b03f18e938262fb5572d72c30ac14f1e6a6\\\",\\\"source\\\":\\\"koreader_statistics\\\",\\\"device_id\\\":\\\"qrd_fixture\\\",\\\"source_epoch\\\":\\\"db_epoch_fixture\\\",\\\"book_row_id\\\":17,\\\"page\\\":4,\\\"started_at_utc\\\":\\\"2026-10-14T02:50:00.000Z\\\",\\\"duration_seconds\\\":1800,\\\"total_pages\\\":120,\\\"observed_at_utc\\\":\\\"2026-10-16T12:00:00.000Z\\\",\\\"source_schema_version\\\":\\\"fixture_only\\\"}\"]}",
+  "request_bytes": 812,
+  "response": {
+    "protocol_version": 1,
+    "binding_id": "binding_fixture",
+    "vault_scope": "vault_fixture",
+    "device_id": "qrd_fixture",
+    "source_epoch": "db_epoch_fixture",
+    "request_id": "qrtr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "batch_id": "qrtb_a5377ecd9ee99060270ef29a623b5eaa685e7f8448876a401ec24e9e3b8b9922",
+    "results": [
+      {
+        "index": 0,
+        "line_digest": "5e01bbf6c43cb0ca84c2fdfd697579a35e9e3ff1a39c5a180ad98b72f2278e0c",
+        "event_id": "qre_7e0b6f65e1e70bfa1a19eed6151a4b03f18e938262fb5572d72c30ac14f1e6a6",
+        "native_digest": "b704d5260f5de9ae77aa069274ff3f9123efbb3b6a806cea1fe31a72d2be9f08",
+        "outcome": "committed",
+        "canonical_commit": "canonical_commit_fixture"
+      }
+    ]
+  },
+  "response_json": "{\"protocol_version\":1,\"binding_id\":\"binding_fixture\",\"vault_scope\":\"vault_fixture\",\"device_id\":\"qrd_fixture\",\"source_epoch\":\"db_epoch_fixture\",\"request_id\":\"qrtr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"batch_id\":\"qrtb_a5377ecd9ee99060270ef29a623b5eaa685e7f8448876a401ec24e9e3b8b9922\",\"results\":[{\"index\":0,\"line_digest\":\"5e01bbf6c43cb0ca84c2fdfd697579a35e9e3ff1a39c5a180ad98b72f2278e0c\",\"event_id\":\"qre_7e0b6f65e1e70bfa1a19eed6151a4b03f18e938262fb5572d72c30ac14f1e6a6\",\"native_digest\":\"b704d5260f5de9ae77aa069274ff3f9123efbb3b6a806cea1fe31a72d2be9f08\",\"outcome\":\"committed\",\"canonical_commit\":\"canonical_commit_fixture\"}]}",
+  "response_bytes": 617,
+  "negative_cases": [
+    {
+      "id": "request_future_version",
+      "side": "request",
+      "path": [
+        "protocol_version"
+      ],
+      "value": 2,
+      "schema_rejected": true
+    },
+    {
+      "id": "request_unknown_field",
+      "side": "request",
+      "path": [
+        "access_token"
+      ],
+      "value": "forbidden_fixture",
+      "schema_rejected": true
+    },
+    {
+      "id": "request_wrong_batch_digest",
+      "side": "request",
+      "path": [
+        "batch_id"
+      ],
+      "value": "qrtb_0000000000000000000000000000000000000000000000000000000000000000",
+      "schema_rejected": false
+    },
+    {
+      "id": "request_wrong_pairing",
+      "side": "request",
+      "path": [
+        "binding_id"
+      ],
+      "value": "other_pairing",
+      "schema_rejected": false
+    },
+    {
+      "id": "request_invalid_calendar",
+      "side": "request",
+      "path": [
+        "issued_at_utc"
+      ],
+      "value": "2026-02-30T12:00:00.000Z",
+      "schema_rejected": true
+    },
+    {
+      "id": "response_stale_request",
+      "side": "response",
+      "path": [
+        "request_id"
+      ],
+      "value": "qrtr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "schema_rejected": false
+    },
+    {
+      "id": "response_other_vault",
+      "side": "response",
+      "path": [
+        "vault_scope"
+      ],
+      "value": "other_vault",
+      "schema_rejected": false
+    },
+    {
+      "id": "response_wrong_line",
+      "side": "response",
+      "path": [
+        "results",
+        0,
+        "line_digest"
+      ],
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "schema_rejected": false
+    },
+    {
+      "id": "response_wrong_native",
+      "side": "response",
+      "path": [
+        "results",
+        0,
+        "native_digest"
+      ],
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "schema_rejected": false
+    },
+    {
+      "id": "response_commit_missing",
+      "side": "response",
+      "path": [
+        "results",
+        0,
+        "canonical_commit"
+      ],
+      "value": null,
+      "schema_rejected": true
+    },
+    {
+      "id": "response_staging_with_commit",
+      "side": "response",
+      "path": [
+        "results",
+        0,
+        "outcome"
+      ],
+      "value": "staged",
+      "schema_rejected": true
+    },
+    {
+      "id": "response_invented_position",
+      "side": "response",
+      "path": [
+        "results",
+        0,
+        "index"
+      ],
+      "value": 1,
+      "schema_rejected": false
+    }
+  ]
+}

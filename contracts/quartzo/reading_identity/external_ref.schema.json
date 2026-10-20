@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:quartzo:reading-external-ref:1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "identity",
+    "decision",
+    "evidence_kind",
+    "operation_id",
+    "decided_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "identity": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "urn:quartzo:reading-identity:1",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "provider",
+        "kind",
+        "scope",
+        "id"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "provider": {
+          "enum": [
+            "quartzo",
+            "reader_v3",
+            "readwise_export",
+            "readwise_highlight",
+            "koreader",
+            "obsidian"
+          ]
+        },
+        "kind": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "provider": {
+                "const": "quartzo"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "resource"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "provider": {
+                "const": "reader_v3"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "document"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "provider": {
+                "const": "readwise_export"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "book"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "provider": {
+                "const": "readwise_highlight"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "highlight"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "provider": {
+                "const": "koreader"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "artifact",
+                  "stats_book",
+                  "reading_event"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "provider": {
+                "const": "obsidian"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "file",
+                  "block"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "decision": {
+      "enum": [
+        "confirmed_auto",
+        "confirmed_user",
+        "rejected",
+        "unlinked"
+      ]
+    },
+    "evidence_kind": {
+      "enum": [
+        "persisted_reader_provenance",
+        "approved_manual_link",
+        "safe_url_rule",
+        "verified_isbn_edition"
+      ]
+    },
+    "operation_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "decided_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$"
+    }
+  }
+}

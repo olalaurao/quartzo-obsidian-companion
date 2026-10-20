@@ -1,0 +1,42 @@
+{
+  "version": "1.0.0",
+  "status": "review_candidate_not_deployed",
+  "owner": "ReadingStatusPolicy (pure); VaultNotifier.mutateObject<Resource> (future runtime)",
+  "resource_status": [
+    "toConsume",
+    "inProgress",
+    "completed",
+    "dropped"
+  ],
+  "defaults": {
+    "legacyOriginUnknown": true,
+    "allowNewerAfterManual": false,
+    "resourceWriterVerified": false,
+    "approvedBySource": {}
+  },
+  "manual_intent_fields": [
+    "id",
+    "performedAt",
+    "status"
+  ],
+  "evidence_fields": [
+    "id",
+    "kind",
+    "source",
+    "occurredAt",
+    "clockTrust",
+    "validatedAndLinked"
+  ],
+  "rules": [
+    "current null stays external",
+    "manual older/equal/unknown ordering cannot change status",
+    "later manual-relative evidence requires explicit approved policy",
+    "terminal states never reopen automatically",
+    "conflicting terminal evidence requires review",
+    "Readwise export and Reader Archive cannot control status",
+    "Reader remote progress/finish semantics remain unproven for runtime",
+    "pure decision is not a durable application receipt",
+    "approval is per source + kind pair; KOReader finish approval cannot authorize Reader remote finish",
+    "source/link approval does not prove Markdown ownership; transitions require verified canonical Resource writer"
+  ]
+}

@@ -1,8 +1,8 @@
 # Companion Drive Sync — Operational Specification
 
 Status: **ACTIVE LOCAL OPERATIONAL SPEC**  
-Last reconciled date: 2026-10-08 (documentation migration; shared protocol unchanged)  
-Last reconciled main SHA: `507f2ccfe2f991ea775e1f1aca5ca05e6f4c5218`  
+Last reconciled date: 2026-10-20 (Reading immutable owner candidate; live acceptance still open)
+Last reconciled main SHA: `efa53aa64d8c08277aa7e68dbd79e8e9a61229be`
 Canonical implementation owners: `DriveSyncCoordinator`, `GoogleDriveAdapter`, `VaultSyncFilePolicy`, first-pairing workflow, canonical state/lock  
 Depends on: `contracts/UPSTREAM.lock.json`, shared upstream sync contracts, `guidelines.md`, `agents.md`  
 Supersedes: detailed local rules 9–23 in the former guidelines (text unchanged below)  
@@ -52,6 +52,18 @@ The adapter owns finite network request deadlines and quota-aware cooldown/retri
 
 ## Verification
 
+### Reading immutable history
+
+The pinned upstream Reading Activity contract classifies only exact device/epoch/year/month/SHA-256 JSONL paths. Sync transports opaque bytes; raw-event parsing and semantic acceptance stay with the Reading domain. `SyncEngine` executes the same 15 lifecycle and 14 path vectors as Dart. Divergence and remote absence after baseline preserve existing conflict evidence and baselines before watcher suppression. A missing local file without deletion intent may restore only the original filename bytes; explicit deletion intent stays pending for review. Generic rename, delete and purge cannot remove Reading facts, including folder-change and incremental paths. Both sides missing does not erase the baseline.
+
+`DriveSyncCoordinator` retains the existing state/conflict owners. Local publication uses an exclusively allocated, file-flushed sibling and atomic no-replace hard-link installation; unsupported filesystems fail without a copy/replace fallback. Cleanup checks the allocated inode and preserves foreign collisions. Byte readback precedes baseline success. Root/account/folder identity and existing Reading ancestors are rechecked around awaits. I/O aliases into Reading, Windows case aliases, shared hard links and containment escapes cannot downgrade an immutable fact to ordinary mutable transport. Independent ordinary files retain their existing reconciliation behavior.
+
+Explicit conflict repair requires a current snapshot and the original filename digest, never generic deletion or newest-wins. Reading conflict projections copy byte arrays before exposing them. The Drive adapter independently verifies actual ID/ETag and bounded singular ancestry for candidate shard filenames; caller labels and caches are not authority. Each conditional request retains its own version even when another read updates the cache. Uploads snapshot caller bytes before awaits, verify destination/name/digest and abort on retarget; expected Reading downloads verify rooted identity before and after media. Generic remote update, rename, trash, permanent deletion and duplicate cleanup reject Reading identities.
+
+Remote restoration uses the explicit `repairReadingFile` operation in that same adapter. It snapshots the reviewed request, obtains its own current bytes and ETag, verifies their hash against the reviewed conflict and rejects duplicate/incomplete identity before conditionally restoring the original filename bytes. An independent bounded post-write download rechecks bytes, rooted identity and uniqueness before reporting success. An already-restored original is idempotent; a lost response retains the conflict until verified convergence or another explicit attempt. The 524288-byte limit comes from the pinned contract and is checked on local inventory/upload, declared Drive media size, HTTP response limit and returned bytes. Unsupported adapters fail closed. A successful explicit original-byte repair retires only deletion/rename intents captured by that review; a newer same-path watcher intent remains pending. Relocation review restores the original while preserving the relocated copy. No operation removes immutable history or authorizes ACK.
+
+These are guarded operations and filesystem observations, not a global snapshot, cross-process lease, all-writer cooperation, directory/power-loss durability, real Drive/Obsidian interoperability or source-cursor permission. No Reading ingress, automation or canonical ACK is enabled. Readwise Markdown and production plugin/app installations are outside this change.
+
 ### Obsidian-native deletion
 
 A missing file with a synchronized baseline represents local deletion even after
@@ -68,6 +80,8 @@ continue to own disappearance at their old path.
 Unchanged content must not be uploaded again, including after a lost upload reply. Local inventory may reuse an in-memory SHA-256 only while file identity, size, nanosecond modification/change times and birth time remain identical; unreadable or disappearing inventory entries abort the pass rather than becoming deletion evidence. This cache is reconstructible, never a baseline or persisted source of truth. Remote inventory prunes the canonical excluded folders before traversal. An expired Changes cursor checkpoints a full reconciliation for the next attempt.
 
 Expected watcher writes are matched by path and actual bytes; duplicate matching events remain suppressed until different bytes invalidate the proof. Later user edits must remain visible. Sync stability tests measure quiet cycles, restart, same-size edits with restored timestamps, failed reads and 1,000/10,000-file inventories. Cross-client exchange tests can run against an isolated shared byte fixture without Google credentials.
+
+With the sibling Quartzo checkout present, `npm run test:reading:exchange` runs the Reading-specific four-stage test. The canonical Dart local store produces a shard; Companion transports it through its actual coordinator, restarts, preserves disappearance evidence and explicitly repairs original bytes. Companion also publishes opaque future-schema bytes, which Quartzo transports through its actual sync owner without semantic ingestion, restarts and repairs before a final Companion verification. Each stage owns temporary fixtures; the runner uses a fresh diagnostics directory, records source fingerprints and rejects source changes during the run. This optional workspace evidence is distinct from real Drive/Obsidian acceptance and never grants ACK.
 
 Inventory observations also invalidate an older watcher proof when the actual SHA-256 differs, even when the corresponding filesystem event was lost. A later edit back to the old bytes is then a normal new edit, not a delayed echo of the original download.
 
