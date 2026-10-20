@@ -14,9 +14,43 @@ Authority: [pinned Reading Activity contract](../../contracts/quartzo/reading_ac
 
 ## Open gates
 
+### 2026-10-20 — Authorized merge and official main preflight
+
+The user authorized PR86 merge after all final checks and official Release
+Preflight on main for sandbox preparation. All six checks were revalidated on
+`c09980e89c5b391d0c69be1f28872ef2f0f9d049`; [PR86](https://github.com/olalaurao/quartzo-obsidian-companion/pull/86)
+merged at 05:20:10 UTC as **34d1244ec718cbd100f0f124ed76816dbde9008d**.
+Its tree `a735fe91a1402c2781f660ffaa890557c114b8c7` matches the tested PR head
+exactly. [Normal main CI 39374344480](https://github.com/olalaurao/quartzo-obsidian-companion/actions/runs/39374344480)
+then passed Linux, Windows and macOS. Official
+[Release Preflight 39374550229](https://github.com/olalaurao/quartzo-obsidian-companion/actions/runs/39374550229)
+passed on the same exact SHA, including OAuth artifact injection, canonical
+contracts, audit, typecheck/lint, architecture, production build, release
+validation, clean-artifact smoke, packaging and upload. Main Linux/macOS and Linux preflight
+full suites: **979 PASS / three skipped**; contracts **397 PASS**; sync
+**365 PASS / three skipped**. Main Windows sync: **366 PASS / two skipped**.
+Two skips are the optional cross-client exchanges; Unix additionally skips its
+case-alias case. The separately executed Reading exchange remains its own proof.
+
+A fresh local sandbox outside production vaults contains only the two synthetic
+shards from the source-fingerprinted exchange and an ordinary text control. Both
+shard filename digests were independently checked. The official artifact was
+downloaded and its three assets independently matched the packaged SHA256SUMS;
+manifest/styles also match the exact committed blobs. Staged bundle SHA-256 is
+`12743ddb779a4bea9e923c5c7d1f3d0949189abfe982f8468881697a2dfdf702`
+(1174875 bytes). It is present only in the new sandbox, disabled, with fresh Manual
+and unpaired settings. No Obsidian session, OAuth pairing or live cloud test was
+started. [Exact-main artifact evidence](main-preflight-2026-10-20.json) records
+public build metadata/hashes and explicit false live/production/ACK fields;
+embedded build credentials and account secrets are absent from that evidence.
+The [live acceptance procedure](LIVE_SANDBOX_RUNBOOK.md) defines the exact-artifact,
+manual test-target setup and required observations. No tag/release, production
+installation, source cursor or Resource effect was authorized by this preparation.
+The package version remains 1.0.43; its existing published tag is not moved/reused.
+
 ### 2026-10-20 — Build, hosted CI and cross-client exchange
 
-Runtime checkpoint `e2b1664950262c8f9a354eb7f2cd97b38d2181d2` passed [PR CI 39369670535](https://github.com/olalaurao/quartzo-obsidian-companion/actions/runs/39369670535) and [push CI 39369667299](https://github.com/olalaurao/quartzo-obsidian-companion/actions/runs/39369667299) on Linux, Windows and macOS. Linux/macOS full suites: **979 PASS / two skipped**; Windows sync: **366 PASS / one skipped**; Linux/macOS sync: **365 PASS / two skipped**. Both Unix contract runs have **397 PASS**. Official contract verification, audit, docs, typecheck, lint/architecture where configured, build, smoke and packaging also passed. The platform-dependent case-alias case and opt-in exchange explain the different skips. [PR86](https://github.com/olalaurao/quartzo-obsidian-companion/pull/86) is draft, not merged or released.
+Runtime checkpoint `e2b1664950262c8f9a354eb7f2cd97b38d2181d2` passed [PR CI 39369670535](https://github.com/olalaurao/quartzo-obsidian-companion/actions/runs/39369670535) and [push CI 39369667299](https://github.com/olalaurao/quartzo-obsidian-companion/actions/runs/39369667299) on Linux, Windows and macOS. Linux/macOS full suites: **979 PASS / two skipped**; Windows sync: **366 PASS / one skipped**; Linux/macOS sync: **365 PASS / two skipped**. Both Unix contract runs have **397 PASS**. Official contract verification, audit, docs, typecheck, lint/architecture where configured, build, smoke and packaging also passed. The platform-dependent case-alias case and opt-in exchange explain the different skips. [PR86](https://github.com/olalaurao/quartzo-obsidian-companion/pull/86) was draft at this checkpoint; the authorized merge is recorded above.
 
 The same runtime built in a dedicated detached checkout. [Artifact evidence](isolated-build-e2b1664-2026-10-20.json) records bundle SHA-256 `d0a33e73b94bb9e5bc57acfbdd31bbeea3c0da81ee8f2e2a6b6bd43b38b722ec` (1174768 bytes), non-release validation, clean-artifact smoke and packaging. OAuth build credentials were unset; this is not release preflight or a usable installed OAuth release. No installation/publication occurred.
 
@@ -38,6 +72,6 @@ The first full run had **956 PASS / one failed / one skipped** because an unrela
 
 The generic remote mutation guard intentionally remains closed for Reading at this checkpoint. Next implement explicit original-byte remote repair through the same adapter with an operation-bound current-byte/version observation, identity/duplicate checks and post-write verification. This is required recovery work, not a substitute for it. Build/hosted CI and real interoperability still need validation of the final owner source.
 
-G03 has a guarded immutable lifecycle/identity and explicit repair implementation in the existing owners. Committed-source build, hosted CI, real Drive/Companion interoperability and supported-filesystem acceptance remain open. Pure or mocked tests cannot establish global exclusion, all-writer cooperation, directory/power-loss durability or canonical source acknowledgements. Remote history purge requires a separate reviewed contract.
+G03 has a guarded immutable lifecycle/identity and explicit repair implementation in the existing owners, now merged with committed-source build and hosted CI evidence above. Real Drive/Companion interoperability and supported-filesystem acceptance remain open. Pure or mocked tests cannot establish global exclusion, all-writer cooperation, directory/power-loss durability or canonical source acknowledgements. Remote history purge requires a separate reviewed contract.
 
 Production Kindle extraction/outbox, deployed authenticated ingress, cursor advancement, Resource promotion/status effects, automation, analytics/UI, Readwise migration and release/rollback remain outside this checkpoint. No production installation or feature activation is implied by contract adoption.

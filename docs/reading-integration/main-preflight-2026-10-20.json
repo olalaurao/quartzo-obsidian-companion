@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "companion_main": "34d1244ec718cbd100f0f124ed76816dbde9008d",
+  "tested_head": "c09980e89c5b391d0c69be1f28872ef2f0f9d049",
+  "tree": "a735fe91a1402c2781f660ffaa890557c114b8c7",
+  "merge_tree_matches_tested_head": true,
+  "normal_ci_run": 39374344480,
+  "preflight_run": 39374550229,
+  "preflight_conclusion": "success",
+  "artifact_id": 12242203912,
+  "artifact_name": "quartzo-companion-34d1244ec718cbd100f0f124ed76816dbde9008d",
+  "github_artifact_digest": "sha256:160282022824703519216457a979e1e8012bd060ef2f27f17b89b49f4f90a94e",
+  "asset_sha256": {
+    "main.js": "12743ddb779a4bea9e923c5c7d1f3d0949189abfe982f8468881697a2dfdf702",
+    "manifest.json": "b8558cfa5a33946a94064fe6e7c1f7a47d156832214fe7bda03fff473e109fe0",
+    "styles.css": "2e43b4d30dd40aec7d724eecfbd900275d4f25bc16b38d18ffe9c26df324752f"
+  },
+  "main_js_bytes": 1174875,
+  "manifest_version": "1.0.43",
+  "minimum_obsidian": "1.11.4",
+  "sandbox_plugin_staged": true,
+  "sandbox_plugin_enabled": false,
+  "sync_mode": "manual",
+  "paired": false,
+  "obsidian_started": false,
+  "real_drive_tested": false,
+  "real_obsidian_tested": false,
+  "canonical_ack": false,
+  "production_modified": false,
+  "tag_created_or_moved": false,
+  "release_published": false,
+  "normal_ci": {
+    "conclusion": "success",
+    "linux_macos_full": {
+      "passed": 979,
+      "skipped": 3
+    },
+    "linux_macos_contracts": {
+      "passed": 397,
+      "skipped": 0
+    },
+    "linux_macos_sync": {
+      "passed": 365,
+      "skipped": 3
+    },
+    "windows_sync": {
+      "passed": 366,
+      "skipped": 2
+    }
+  },
+  "preflight_tests": {
+    "full": {
+      "passed": 979,
+      "skipped": 3
+    },
+    "contracts": {
+      "passed": 397,
+      "skipped": 0
+    },
+    "sync": {
+      "passed": 365,
+      "skipped": 3
+    }
+  },
+  "skips": "Two opt-in cross-client workspace exchanges; additionally one case-alias case on Unix. The separate source-fingerprinted Reading exchange is recorded independently.",
+  "proof": "exact_main_official_preflight_artifact_and_disabled_local_sandbox_staging",
+  "github_artifact_digest_origin": "GitHub API metadata; extracted assets independently matched the packaged SHA256SUMS, manifest/styles also matched exact committed blobs"
+}
