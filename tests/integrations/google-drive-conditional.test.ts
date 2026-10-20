@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { GoogleDriveAdapter } from '../../src/integrations/google/drive/adapter';
 import { decodeDriveMultipart } from '../fixtures/drive-multipart';
 
@@ -24,6 +24,50 @@ function fixture() {
 }
 
 describe('conditional Drive mutation boundary', () => {
+  it.each(['first-page', 'later-page'])('refreshes the actual folder lookup client after an expired token on %s', async expiry => {
+    const adapter = new GoogleDriveAdapter('synthetic-expired');
+    let generation = 'expired';
+    const calls: Array<{ generation: string; parent: string; page: string | null }> = [];
+    const refresh = vi.fn(async () => { generation = 'refreshed'; return 'synthetic-refreshed'; });
+    adapter.setTokenRefreshCallback(refresh);
+    Object.assign(adapter, { getDriveClient: () => {
+      const captured = generation;
+      return { files: { list: async (params: { q: string; pageToken?: string }) => {
+        const parent = params.q.includes("'root' in parents") ? 'root' : 'diagnostics';
+        calls.push({ generation: captured, parent, page: params.pageToken || null });
+        if (captured === 'expired' && (expiry === 'first-page' || params.pageToken === 'second')) {
+          throw { response: { status: 401 }, message: 'synthetic expired credential' };
+        }
+        if (parent === 'root') return { data: params.pageToken ? { files: [] } : {
+          nextPageToken: expiry === 'later-page' ? 'second' : undefined,
+          files: [{ id: 'diagnostics', name: '_diagnostics', mimeType: 'application/vnd.google-apps.folder' }],
+        } };
+        return { data: { files: [{ id: 'preconditions', name: 'preconditions', mimeType: 'application/vnd.google-apps.folder' }] } };
+      } } };
+    } });
+    await expect(adapter.ensureParentFolder('root', '_diagnostics/preconditions/probe.bin')).resolves.toBe('preconditions');
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(calls.filter(call => call.generation === 'refreshed')).toEqual([
+      { generation: 'refreshed', parent: 'root', page: expiry === 'later-page' ? 'second' : null },
+      { generation: 'refreshed', parent: 'diagnostics', page: null },
+    ]);
+    if (expiry === 'later-page') expect(calls.filter(call => call.parent === 'root' && call.page === null)).toHaveLength(1);
+  });
+
+  it('stops folder lookup after one unsuccessful credential refresh without creating a folder', async () => {
+    const adapter = new GoogleDriveAdapter('synthetic-expired');
+    const failure = { response: { status: 401 }, message: 'synthetic expired credential' };
+    const list = vi.fn(async () => { throw failure; });
+    const create = vi.fn();
+    const refresh = vi.fn(async () => 'synthetic-still-rejected');
+    adapter.setTokenRefreshCallback(refresh);
+    Object.assign(adapter, { getDriveClient: () => ({ files: { list, create } }) });
+    await expect(adapter.ensureParentFolder('root', '_diagnostics/preconditions/probe.bin')).rejects.toBe(failure);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it('paginates inventory without traversing backups or diagnostics', async () => {
     const adapter = new GoogleDriveAdapter('test-only');
     const calls: Array<{ q: string; pageToken?: string }> = [];

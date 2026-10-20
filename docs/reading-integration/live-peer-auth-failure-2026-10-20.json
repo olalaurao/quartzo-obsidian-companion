@@ -1,0 +1,21 @@
+{
+  "observed_at_utc": "2026-10-20T19:41:39.208320+00:00",
+  "source_commit": "8c515898ab919a4b9e214ff84563cd36c6d4c243",
+  "asset_sha256": "ffb75be60cbcf9e3e8c6c042d2fedec921b463fbbc0822fac3b2a2f551c8160c",
+  "proof": "actual_independent_client_attempt_failed",
+  "independent_adapter": true,
+  "independent_coordinator": true,
+  "original_manual_paired": true,
+  "peer_status": "error",
+  "peer_busy": false,
+  "original_busy": false,
+  "error_categories": [
+    "token",
+    "credential"
+  ],
+  "conditional_preflight_verified": false,
+  "peer_files": 0,
+  "original_six_fixture_hashes_unchanged": true,
+  "canonical_ack": false,
+  "concurrent_race_proven": false
+}
