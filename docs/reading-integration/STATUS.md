@@ -1,5 +1,44 @@
 # Reading Integration — Companion status
 
+## 2026-10-20 — Actual independent peer recovery and two-client Drive races
+
+The unchanged official main8c515898 artifact was used for all observations below;
+these are separate adapter/coordinator instances and local roots/state within one
+Obsidian renderer, not separate OS-process/reboot evidence. Test barriers delayed
+real owner calls only; SDK/OAuth/HTTP and Drive mutations were not replaced.
+Both race roots live under the selected sandbox's excluded `_diagnostics` tree.
+The original six local fixture hashes remained unchanged throughout.
+
+- [Fresh-peer failure](live-peer-auth-failure-2026-10-20.json): expired credentials
+  stopped before downloads, with the canonical lock released. Focused regressions
+  reproduced a captured stale SDK client after renewal on first/later pages.
+  [PR92](https://github.com/olalaurao/quartzo-obsidian-companion/pull/92) fixes that
+  lookup using the existing retry owner. The candidate is not installed here.
+- [Recovery after explicit owner renewal](live-peer-recovery-after-refresh-2026-10-20.json):
+  a separate retry downloaded all six exact files into an independent local root,
+  with both clients synced and zero pending/conflicts/errors. This does not prove
+  automatic expiry recovery for the PR92 candidate.
+- [Actual conditional-write race](live-two-client-cas-2026-10-20.json): two real
+  clients reached writes with the same verified ETag. One succeeded; one received
+  412. Replay preserved both local edits and a single remote identity, retaining
+  the losing client's unchanged baseline and framed local/remote conflict bytes.
+  Host inspection independently verified both local files, both persisted conflict
+  snapshots and the persisted baseline. This was an ordinary synthetic file.
+- [Actual immutable-create race](live-two-client-immutable-create-2026-10-20.json):
+  both real multipart creates reached Drive for the same 452-byte canonical
+  synthetic shard produced by the physically tested Android owner. Two distinct
+  remote identities retained exact bytes. Both clients returned zero synced,
+  preserved local copies and quarantined the ambiguity on replay. Fresh canonical
+  coordinator instances rehydrated their state and blocked the same path again;
+  host inspection found no synchronized baseline granted. No automatic duplicate
+  cleanup, history deletion, merge, source cursor or canonical ACK occurred.
+
+These results establish the observed conditional mutation and ambiguity behavior,
+not distributed exclusive creation, a global stable ledger, process/power-loss
+recovery, full Quartzo/Companion exchange or completed G03/G04. The intentionally
+conflicting synthetic evidence remains isolated and preserved. Production source,
+outbox/receipt lifecycle and later integrated effects remain gated.
+
 ## 2026-10-20 — Actual PW3 to Android canonical wire diagnostic
 
 [Source-bound physical evidence](wire-canonical-physical-2026-10-20.json).

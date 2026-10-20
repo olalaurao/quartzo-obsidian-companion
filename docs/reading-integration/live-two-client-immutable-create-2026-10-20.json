@@ -1,0 +1,97 @@
+{
+  "source_commit": "8c515898ab919a4b9e214ff84563cd36c6d4c243",
+  "runtime_asset_sha256": "ffb75be60cbcf9e3e8c6c042d2fedec921b463fbbc0822fac3b2a2f551c8160c",
+  "harness_sha256": "3f17740ab5eeeef744c5db63de59564708a12300950e065635820d4922c05b78",
+  "harness_scope": "Two official adapter/coordinator instances in one renderer; test-only barrier before real SDK multipart creates; no HTTP replacement",
+  "observation": {
+    "observedAt": "2026-10-20T19:55:39.791Z",
+    "proof": "actual_two_client_immutable_create_ambiguity",
+    "sourceData": "synthetic",
+    "assetSha256": "ffb75be60cbcf9e3e8c6c042d2fedec921b463fbbc0822fac3b2a2f551c8160c",
+    "sourceFixtureSha256": "91339da747710bb51bdce51a3cfd79bdf75077c3c964f043b3bde10eaafa0e56",
+    "fixtureFromPhysicalCanonicalOwner": true,
+    "explicitOwnerRefreshBeforeRun": true,
+    "isolatedRemoteRootWithinExcludedSandboxDiagnostics": true,
+    "independentAdapters": true,
+    "independentCoordinators": true,
+    "independentLocalRootsAndState": true,
+    "actualCreateBarrierArrivals": 2,
+    "remoteCandidateCount": 2,
+    "distinctRemoteIdentities": 2,
+    "remoteMatches": [
+      {
+        "bytes": 452,
+        "sha256": "bc70b85006d54806949d73d1534893edb2bab49c67ff63f940efb9429b2f5757",
+        "match": true
+      },
+      {
+        "bytes": 452,
+        "sha256": "bc70b85006d54806949d73d1534893edb2bab49c67ff63f940efb9429b2f5757",
+        "match": true
+      }
+    ],
+    "localCopiesPreserved": true,
+    "initial": [
+      {
+        "synced": 0,
+        "conflicts": 0,
+        "errors": 1
+      },
+      {
+        "synced": 0,
+        "conflicts": 0,
+        "errors": 1
+      }
+    ],
+    "replay": [
+      {
+        "synced": 0,
+        "conflicts": 1,
+        "errors": 2
+      },
+      {
+        "synced": 0,
+        "conflicts": 1,
+        "errors": 2
+      }
+    ],
+    "quarantinedOnBoth": true,
+    "statuses": [
+      {
+        "status": "error",
+        "pending": 2,
+        "conflicts": 0
+      },
+      {
+        "status": "error",
+        "pending": 2,
+        "conflicts": 0
+      }
+    ],
+    "freshCoordinatorRehydration": [
+      {
+        "ambiguous": true,
+        "status": "error",
+        "pending": 2,
+        "errors": 2
+      },
+      {
+        "ambiguous": true,
+        "status": "error",
+        "pending": 2,
+        "errors": 2
+      }
+    ],
+    "originalSixFixturesUnchanged": true,
+    "automaticDuplicateCleanupPerformed": false,
+    "canonicalAck": false,
+    "distributedExclusiveCreateProven": false,
+    "processRestartProven": false,
+    "expectationsMet": true
+  },
+  "host_verification": {
+    "both_actual_local_shard_hashes_match_physical_fixture": true,
+    "no_synchronized_baseline_granted": true
+  },
+  "canonical_ack": false
+}
