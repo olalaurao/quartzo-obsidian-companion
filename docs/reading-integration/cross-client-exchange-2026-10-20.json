@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "observedAtUtc": "2026-10-20T04:33:20.825Z",
+  "passed": true,
+  "observations": [
+    {
+      "client": "quartzo",
+      "stage": "quartzo-seed",
+      "pass": true
+    },
+    {
+      "client": "companion",
+      "stage": "companion-middle",
+      "pass": true
+    },
+    {
+      "client": "quartzo",
+      "stage": "quartzo-return",
+      "pass": true
+    },
+    {
+      "client": "companion",
+      "stage": "companion-finish",
+      "pass": true
+    }
+  ],
+  "unchangedSources": true,
+  "sources": {
+    "quartzo": {
+      "head": "db89ac5544704104c992facc6082548895f489a0",
+      "trackedDiffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "files": {
+        "test/sync_stability_audit_test.dart": "dd169ad0890f7e8f3c52a5c20da6b6f8a230128b36630152b1f535a5ccc47f02",
+        "lib/models/reading_activity_event.dart": "176ddb26246b2e9f82f222f67370a4ca15bbe9ae62f685cfd08ec436eb05585f",
+        "lib/services/reading_activity_local_store.dart": "5577f8be22a9807ba4e7cd192ae7a7fbafa084933556d1cc793bb148ad0fe922",
+        "lib/services/reading_activity_shards.dart": "b6646ce1440b18c68af627d31eaef6dcab52f096997366e81a6fdb62a8d13f4c",
+        "lib/services/obsidian_service.dart": "62a585e88c497a3550c07f50193c952bd94c2950e74d7ee97bc0ba491a9d921f",
+        "lib/services/sync_manager.dart": "31ec6c7a77d6846586897a07cd8ce4e149c9e3058fbaea42b268ad2244bb629a",
+        "lib/services/sync_queue_service.dart": "e254cd137b0a28641d538e55c7436e66c1d85d2b3eb73cf063f3d31c028e9185",
+        "lib/services/google_drive_sync_service.dart": "29457274cff898a4b1679e3f840dc888807265d8ef9a891c88e15717bd61e518",
+        "lib/services/sync_conflict_resolution_service.dart": "db1a0ea3f1f5239ad3f5070c87db07c3011164784d846370474ce51653128538"
+      }
+    },
+    "companion": {
+      "head": "084c279ea9cb72c996956c1daa630df2de2536c8",
+      "trackedDiffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "files": {
+        "tests/sync/runtime.test.ts": "7cd3e0c9caf66ff523692c4a0a6f4c632353457a148cabfa8a5e9450d36a91b4",
+        "scripts/audit-reading-exchange.mjs": "37ccdc8486c3c29787bc66a1f0b0c3597ab6c486398ceca9f00caa0bcf493d2e",
+        "package.json": "a86ce10e87610c27e99ff7eeece95c4cc87eb686428d89f055bdcb50c2f2001f",
+        "src/core/sync/engine.ts": "e5587b43f0b17a11e545557f6aaf8899d2424688dcb53730ed84b95c037ee4c3",
+        "src/integrations/google/drive/adapter.ts": "bb93dafe5936b57820a710db6de721c21c8d4d5e8468032d590c2cc7997f4dcc",
+        "src/sync/coordinator/index.ts": "67a29f8eeee71e36453bd1f77062ca177005972ae46eec76d97312f3ecbf6762",
+        "src/sync/coordinator/types.ts": "14764c09d20b62a296be1cc504253b57dc4f7e7ef8aef3ba8c8c17086dfbcd81"
+      }
+    }
+  },
+  "finalStage": "companion-finish",
+  "proof": {
+    "actualLocalOwners": true,
+    "syntheticRemoteBytes": true,
+    "realDrive": false,
+    "realObsidian": false,
+    "directoryPowerLoss": false,
+    "canonicalAck": false
+  }
+}
