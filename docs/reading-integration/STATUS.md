@@ -14,6 +14,47 @@ Authority: [pinned Reading Activity contract](../../contracts/quartzo/reading_ac
 
 ## Open gates
 
+### 2026-10-20 — Live Obsidian/Drive rejected: binary upload omitted media
+
+The user opened and paired the isolated corrected-main sandbox using official
+source **5ba99fd02c87df072103390a377f611f7f452ff4** and confirmed setup. Native
+inspection observed **Obsidian 1.14.4**, Manual preserved and the new dedicated
+test vault paired. Three owned synthetic fixtures were seeded only after the
+empty pairing. Actual Sync now reported three `adoption_required` items and zero
+synced files. The Sync Center omitted their paths, offered no adoption action,
+and incorrectly claimed no follow-up/all files in sync; those UI recovery gaps
+remain open and are not a successful user flow.
+
+Under exact sandbox and fixture-hash guards, DevTools invoked the existing
+coordinator's explicit adoption operation for those three files, then the real
+Drive adapter downloaded their bodies. All downloads were empty. An independent
+Drive v2 metadata observation confirmed all three stored sizes **0** and MD5
+`d41d8cd98f00b204e9800998ecf8427e`, while public hash properties still advertised
+the original fixture digests. [Sanitized failure evidence](live-drive-media-failure-2026-10-20.json)
+contains no account, folder or remote file IDs, credentials or personal content.
+No production content was touched and no cloud/ACK gate passed.
+
+The installed SDK's browser multipart branch includes only string parts and
+silently omits Buffer media in the renderer; its Node branch instead expects a
+stream. Four initial real-SDK HTTP-boundary regressions failed. The adapter now
+supplies a byte-preserving multipart body through that same SDK/OAuth pipeline
+for all media writes, retaining metadata atomicity, finite deadlines and exact
+If-Match. Create requires independent unique-path/byte verification; mutable
+update independently downloads and hashes the written bytes before success.
+Existing explicit Reading repair retains its own post-write proof. Fourteen
+real-SDK cases pass in Node/renderer conditions, including non-UTF8, legitimate
+empty content, false-success dropped bytes, lost create reply and stale CAS.
+The full suite passed **999 tests / two opt-in skips** (89 files, 79.71s) with
+the first ten SDK cases; four added loss/CAS cases then passed in the final
+**53-test adapter subset**, including all fourteen real-SDK cases. Typecheck,
+scoped lint, architecture, documentation and whitespace pass. The first upstream
+verification attempt lacked authentication and failed HTTP 404; the canonical
+authenticated retry is recorded separately when complete. Committed-source
+build/hosted CI and a new official exact-main artifact test still follow.
+Existing corrupt sandbox copies must be preserved
+and repaired through the reviewed original-byte owner; neither metadata nor
+local baselines may be manually rewritten to manufacture convergence.
+
 ### 2026-10-20 — Preserve Manual mode before live sandbox pairing
 
 PR86 merged with user authorization as `34d1244ec718cbd100f0f124ed76816dbde9008d`,

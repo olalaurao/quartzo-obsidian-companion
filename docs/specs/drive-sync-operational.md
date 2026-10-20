@@ -87,6 +87,22 @@ continue to own disappearance at their old path.
 
 ### Stable sync and byte evidence
 
+All binary media writes, including create, conditional mutable update, explicit
+Reading repair and the safe-write probe, use binary `multipart/related` bodies
+through the existing Google SDK/OAuth pipeline. The adapter must preserve every
+byte in both Node and the Obsidian renderer; the SDK's string-only browser
+multipart branch is not a valid binary transport. Metadata and media remain in
+one request, and conditional updates retain their operation-bound `If-Match`.
+Successful create responses require a fresh unique path inventory and actual
+byte readback; mutable updates also verify actual returned bytes before success.
+An advertised `Quartzo_hash`, a 2xx reply or an empty download alone never proves
+the expected payload. An acknowledged wrong body leaves the operation failed;
+it does not establish a coordinator baseline or permit canonical Reading ACK.
+Real-SDK HTTP-boundary tests run in Node and renderer conditions on every sync
+CI platform, including arbitrary binary bytes, empty files, dropped media,
+lost create responses and stale conditional writes. These deterministic tests
+do not replace exact-artifact live cloud acceptance.
+
 Unchanged content must not be uploaded again, including after a lost upload reply. Local inventory may reuse an in-memory SHA-256 only while file identity, size, nanosecond modification/change times and birth time remain identical; unreadable or disappearing inventory entries abort the pass rather than becoming deletion evidence. This cache is reconstructible, never a baseline or persisted source of truth. Remote inventory prunes the canonical excluded folders before traversal. An expired Changes cursor checkpoints a full reconciliation for the next attempt.
 
 Expected watcher writes are matched by path and actual bytes; duplicate matching events remain suppressed until different bytes invalidate the proof. Later user edits must remain visible. Sync stability tests measure quiet cycles, restart, same-size edits with restored timestamps, failed reads and 1,000/10,000-file inventories. Cross-client exchange tests can run against an isolated shared byte fixture without Google credentials.
