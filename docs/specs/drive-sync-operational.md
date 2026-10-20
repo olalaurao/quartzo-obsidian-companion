@@ -1,8 +1,8 @@
 # Companion Drive Sync — Operational Specification
 
 Status: **ACTIVE LOCAL OPERATIONAL SPEC**  
-Last reconciled date: 2026-10-20 (Reading immutable owner candidate; live acceptance still open)
-Last reconciled main SHA: `efa53aa64d8c08277aa7e68dbd79e8e9a61229be`
+Last reconciled date: 2026-10-20 (Reading owners merged; partial actual byte-recovery acceptance)
+Last reconciled main SHA: `10e840ab09fe98fe2365c3a30a34be4c0eef6b4d`
 Canonical implementation owners: `DriveSyncCoordinator`, `GoogleDriveAdapter`, `VaultSyncFilePolicy`, first-pairing workflow, canonical state/lock  
 Depends on: `contracts/UPSTREAM.lock.json`, shared upstream sync contracts, `guidelines.md`, `agents.md`  
 Supersedes: detailed local rules 9–23 in the former guidelines (text unchanged below)  
@@ -61,6 +61,13 @@ pages. A second credential failure stops without creating a folder. This does
 not relax captured mutation target or ETag checks, add background renewal or
 change pairing/account authority. First/later-page expiry and failed renewal
 are covered through the public parent-folder operation.
+
+The official10e840ab sandbox artifact additionally passed a real HTTP401 induced
+by a synthetic invalid bearer: one canonical OAuth renewal, two real SDK clients,
+same existing parent recovery and zero attempted diagnostic writes. Manual and
+pairing survived renderer reload; full replay and six independent remote-byte
+checks passed. Evidence remains source-bound in the Reading status ledger; this
+does not claim a timed real-token-expiry wait or production rollout.
 
 ### Pairing and sync preference
 

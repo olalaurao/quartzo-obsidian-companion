@@ -1,5 +1,119 @@
 # Reading Integration — Companion status
 
+## 2026-10-20 — Actual physical-shard cloud path and canonical Quartzo consumption passed
+
+[Combined source-bound evidence](wire-cloud-canonical-bridge-2026-10-20.json) has byte-identical copies across all three repositories (SHA2568428ade8d85a74e51ee0681e1970fe697888e69cdc82e761093a888089bed8f5). The exact three synthetic shards collected from the physical Android run passed actual official Companion10e840ab SDK/OAuth/HTTP upload, independent fresh-peer download and separate remote byte checks (three unique files /1356bytes). Source and rehydrated-peer replay performed zero sync work; both peers were synced and the original six sandbox hashes plus Manual/pairing remained unchanged. These are separate adapters/coordinators/local roots/state in one renderer, not separate OS-process restart proof. The dedicated child is under the selected sandbox's excluded diagnostics tree; no production target was selected.
+
+The explicit live-input Flutter consumer then passed on **clean committed Quartzo2921191f5c5d1bb7490bb93c80da5f4b35a3efbb**: actual existing ReadingActivityLocalStore discovery, whole observed verification and batch parsing of those actual downloaded bytes yielded **three native facts / three unique events /120 synthetic seconds**, unchanged on replay. Exact file hashes/native IDs were checked, the temporary queue stayed empty, disposable index and owned scratch were removed, and success was published only after queue close/cleanup. Seven exact source fingerprints and both raw observation digests bind the result. The initial input-free test was explicitly skipped, never counted as cloud acceptance. Source artifacts and downloaded history remain preserved. The earlier cloud-only report's semantic-pending field is a historical phase and was not rewritten.
+
+This adds actual cross-client byte/semantic/replay acceptance without canonical source ACK, cursor movement, real Statistics access, Resource effects, production ingestion or complete G03/G04/release claims. The earlier physical source boundaries remain unchanged; the new cloud consumer is source-bound separately. Remaining work is the explicit G03 exit audit and G04 current binding/default-root, production certificate/pairing/lifecycle and trusted per-event ACK composition, followed by gated ingestion/effects and later product/release phases.
+
+
+## 2026-10-20 — Authorized refresh fix merged and official sandbox 401 recovery passed
+
+The user explicitly authorized PR92 after its final checks. All six final
+Linux/Windows/macOS checks passed on `b84d1c17db23c34d0a574883a2e10099ffa614e6`.
+It merged as `10e840ab09fe98fe2365c3a30a34be4c0eef6b4d`, with a tree identical
+to the approved candidate. Exact-main official [Preflight39488284446](https://github.com/olalaurao/quartzo-obsidian-companion/actions/runs/39488284446)
+passed. [Source-bound artifact/install/runtime evidence](live-official-refresh-2026-10-20.json)
+records GitHub artifact12293868629, verified ZIP digest
+`01c046bb5c394740402657ba15496e5a24a86c1bfb8d8a13f0942539ed15870e`
+and installed main.js `ad9e604339363e6e8d5bdfa5d6700e364f822d9c6242498396119eb3003c09e3`.
+The five existing sandbox plugin files were backed up; atomic asset replacement
+left settings/state bytes untouched. Actual renderer reload verified the new
+lookup implementation, Manual/pairing and zero pending/conflicts before testing.
+
+A separate diagnostic adapter supplied a synthetic invalid bearer to induce a
+real Google HTTP401, not a mock or timed expiry wait. The existing canonical OAuth
+owner renewed once, the adapter created a fresh real SDK client, and the same
+existing parent was recovered over three real list requests with zero attempted
+writes. An explicit full canonical replay then reported zero synced/conflicts/
+errors/pending. Separate downloads verified all six unique exact files; independent
+host hashing confirmed unchanged originals. No token was logged or exported.
+Normal main CI39488225722 passed Linux/Windows; its macOS job was subsequently
+cancelled without any steps, so that run is not reported wholly green. All six
+approved PR92 checks and the official preflight passed separately. Evidence
+head236e17d passed all three OS checks in CI39490847254. No tag/release or production installation occurred.
+
+The older peer/race observations below retain their prior8c source boundaries.
+This documentation branch incorporates approved main without changing runtime or
+upstream contracts. Per-event durable source ACK, production lifecycle and later
+integrated gates remain open.
+
+## 2026-10-20 — Actual independent peer recovery and two-client Drive races
+
+The unchanged official main8c515898 artifact was used for all observations below;
+these are separate adapter/coordinator instances and local roots/state within one
+Obsidian renderer, not separate OS-process/reboot evidence. Test barriers delayed
+real owner calls only; SDK/OAuth/HTTP and Drive mutations were not replaced.
+Both race roots live under the selected sandbox's excluded `_diagnostics` tree.
+The original six local fixture hashes remained unchanged throughout.
+
+- [Fresh-peer failure](live-peer-auth-failure-2026-10-20.json): expired credentials
+  stopped before downloads, with the canonical lock released. Focused regressions
+  reproduced a captured stale SDK client after renewal on first/later pages.
+  [PR92](https://github.com/olalaurao/quartzo-obsidian-companion/pull/92) fixes that
+  lookup using the existing retry owner. That run predates the sandbox upgrade.
+- [Recovery after explicit owner renewal](live-peer-recovery-after-refresh-2026-10-20.json):
+  a separate retry downloaded all six exact files into an independent local root,
+  with both clients synced and zero pending/conflicts/errors. This does not prove
+  automatic expiry recovery for the PR92 candidate.
+- [Actual conditional-write race](live-two-client-cas-2026-10-20.json): two real
+  clients reached writes with the same verified ETag. One succeeded; one received
+  412. Replay preserved both local edits and a single remote identity, retaining
+  the losing client's unchanged baseline and framed local/remote conflict bytes.
+  Host inspection independently verified both local files, both persisted conflict
+  snapshots and the persisted baseline. This was an ordinary synthetic file.
+- [Actual immutable-create race](live-two-client-immutable-create-2026-10-20.json):
+  both real multipart creates reached Drive for the same 452-byte canonical
+  synthetic shard produced by the physically tested Android owner. Two distinct
+  remote identities retained exact bytes. Both clients returned zero synced,
+  preserved local copies and quarantined the ambiguity on replay. Fresh canonical
+  coordinator instances rehydrated their state and blocked the same path again;
+  host inspection found no synchronized baseline granted. No automatic duplicate
+  cleanup, history deletion, merge, source cursor or canonical ACK occurred.
+
+These results establish the observed conditional mutation and ambiguity behavior,
+not distributed exclusive creation, a global stable ledger, process/power-loss
+recovery, full Quartzo/Companion exchange or completed G03/G04. The intentionally
+conflicting synthetic evidence remains isolated and preserved. Production source,
+outbox/receipt lifecycle and later integrated effects remain gated.
+
+## 2026-10-20 — Actual PW3 to Android canonical wire diagnostic
+
+[Source-bound physical evidence](wire-canonical-physical-2026-10-20.json).
+
+The user executed the installed finite KUAL sequence and reconnected the actual
+PW3. Exact Kindle source `b18e6f07bd2b4a5e6e48c96692a10faad7412aef` ran on
+KOReader v2026.07.1 / ARM LuaJIT. The isolated Android APK source remains
+`314973aefde1b3fc5ca02a1872fedc1f82dab480`; all seventeen runtime fingerprints
+matched current source. Installation used host `559c6eb3`; corrected binary
+collection used host `442160a8`.
+
+The independent correlated collector passed: ten client attempts, five checked
+responses and one deliberately discarded response; nine actual HTTP requests
+(401/429/503 once each, six 200), zero transport errors, three exact canonical
+shards, three unique synthetic events / 120 seconds / six queued revisions.
+Credential revocation, listener closure and unchanged production metadata were
+observed. The owned diagnostic package and KUAL extension were removed only
+after source/UID/hash checks and nonsecret evidence archival; active private
+keys/input/bundle/temporary exports were removed. Kindle native source snapshots
+remained unchanged. No Statistics access or automatic Wi-Fi change occurred.
+
+Initial fresh-install directory and host TAR newline conversion defects were
+fixed and retained as failed preparation/collection observations, never relabeled
+as physical success. Twelve scoped host cases pass, including actual shell
+noclobber and corrupted/truncated/hidden TAR rejection. Binary `exec-out` export
+preserved all 19 archive entries / nine files; exact shard bytes were checked
+against the generated canonical fixture.
+
+This is actual finite synthetic transport and local owner evidence. Diagnostic
+reports retain false physical self-attestation; the separate human/USB/ADB
+observations establish the physical execution. It does not grant canonical ACK,
+cloud delivery, production extraction/outbox, global stability, power-loss or
+completed G03/G04. Actual cross-client Drive races and durable per-event source
+acknowledgement remain required before production ingestion.
+
 ## 2026-10-20 — Expired credential during fresh peer recovery
 
 An actual isolated second adapter/coordinator using the official sandbox artifact
@@ -19,8 +133,8 @@ a folder. Conditional mutation/target guards and upstream contracts are unchange
 Local validation also passed typecheck, lint, build, architecture/docs gates and
 the complete suite: **1026 PASS / two explicit skips** across 90 files. The full
 suite contains the focused regression cases; no hosted CI result is assumed.
-This source has not been installed or physically rerun in the sandbox; official
-merge/preflight/asset verification and subsequent expiry/race acceptance remain open.
+At that pre-merge checkpoint the source had not been installed. The subsequent
+authorized official artifact and live401-recovery proof are recorded above.
 
 A separate explicit retry on the unchanged official 8c515898 artifact, after
 renewal through the existing plugin OAuth owner, recovered all six files into
@@ -34,6 +148,56 @@ new source's automatic refresh. Peer state stays outside the production vault.
 Date: 2026-10-20, America/Sao_Paulo
 Status: implementation in progress; canonical contract adoption verified, runtime and interoperability gates open
 Authority: [pinned Reading Activity contract](../../contracts/quartzo/reading_activity/README.md), [local operational spec](../specs/drive-sync-operational.md), existing sync owners
+
+## 2026-10-20 — Authorized official main and actual sandbox byte recovery
+
+The separately authorized PR89/90 merges completed as `5b69a6e` and
+`8c515898ab919a4b9e214ff84563cd36c6d4c243`, with trees identical to their
+approved final heads. Both normal main CIs and exact-main official preflights
+passed; final [Preflight 39425583160](https://github.com/olalaurao/quartzo-obsidian-companion/actions/runs/39425583160)
+produced the checksummed artifact installed only in the existing paired sandbox.
+No tag, release or production installation occurred. Earlier pending-approval
+and old-artifact statements below describe historical checkpoints.
+
+Actual Obsidian 1.14.4 reloaded that final artifact, with installed `main.js`
+SHA-256 `ffb75be60cbcf9e3e8c6c042d2fedec921b463fbbc0822fac3b2a2f551c8160c`,
+pairing retained and Manual verified. Full reconciliation independently found
+the two empty remote Reading files despite advertised original hashes, preserved
+both good local originals and reported **one synced / two conflicts / zero errors /
+two pending**. The ordinary mutable control pulled the existing empty remote
+version normally; its original fixture backup remains outside the vault.
+
+Both conflicts were explicitly repaired with the Sync Center's Keep local action.
+A subsequent separate inventory/download through the existing adapter verified
+the exact **382-byte native Dart shard** and **43-byte opaque future-schema shard**
+against their original filename SHA-256, with zero conflicts/pending and Manual
+preserved. [Sanitized actual evidence](live-official-byte-recovery-2026-10-20.json)
+records provenance and the narrow acceptance.
+
+Fresh canonical sync then created a **90-byte opaque Reading shard** and a
+**32-byte binary control containing NUL/Unicode**, and updated the ordinary
+control to its original **38 bytes**: three synced, zero conflicts/errors/pending.
+New files used actual watcher creation provenance; this does not exercise the
+explicit reviewed-adoption UI branch. Independent inventory/download verified
+all five unique files and exact hashes. Actual renderer restart restored Manual,
+pairing and zero pending. A full replay reported **zero synced / zero conflicts /
+zero errors / zero pending**; another independent download after that restart
+again verified all five hashes and unique identities. Documentation and
+architecture checks pass; runtime/contract sources are unchanged by this evidence.
+
+The actual reviewed-adoption UI branch subsequently passed too. The existing
+Obsidian plugin manager temporarily unloaded only this sandbox plugin while an
+83-byte opaque fixture was seeded, then restored it with Manual/pairing and the
+five persisted baselines. Manual sync reported zero synced/errors/conflicts and
+one `adoption_required` path. Review adoption displayed the exact path and paired
+test target; Adopt file produced persistent **File adopted / attempted 1 / applied
+1 / failed 0**. Independent inventory/download verified all **six unique files**
+and exact hashes, including the new 83-byte shard, with zero pending/conflicts.
+The plugin enablement file's hash remained unchanged. No baseline was manually
+edited to create this case.
+
+Actual Quartzo/Companion cloud exchange/races and durable source ACK remain
+required. No complete G03/G04 or production effect is claimed.
 
 ## 2026-10-19 — Contract adoption checkpoint before owner integration
 

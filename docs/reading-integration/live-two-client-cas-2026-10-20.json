@@ -1,0 +1,82 @@
+{
+  "source_commit": "8c515898ab919a4b9e214ff84563cd36c6d4c243",
+  "runtime_asset_sha256": "ffb75be60cbcf9e3e8c6c042d2fedec921b463fbbc0822fac3b2a2f551c8160c",
+  "harness_sha256": "37833c64423d5a6c35381017be7a47de752795c13b6d0b0b7e098086086d1268",
+  "harness_scope": "Separate official adapter/coordinator instances in one renderer; test-only barrier before real owner update calls, no network replacement",
+  "observation": {
+    "observedAt": "2026-10-20T19:51:14.459Z",
+    "proof": "actual_drive_two_client_conditional_write_race",
+    "sourceData": "synthetic",
+    "assetSha256": "ffb75be60cbcf9e3e8c6c042d2fedec921b463fbbc0822fac3b2a2f551c8160c",
+    "explicitOwnerRefreshBeforeRun": true,
+    "isolatedRemoteRootWithinExcludedSandboxDiagnostics": true,
+    "independentAdapters": true,
+    "independentCoordinators": true,
+    "independentLocalRootsAndState": true,
+    "barrierArrivals": 2,
+    "conditionalEtagsMatch": true,
+    "stalePreconditionRejections": 1,
+    "race": [
+      {
+        "synced": 1,
+        "conflicts": 0,
+        "errors": 0
+      },
+      {
+        "synced": 0,
+        "conflicts": 0,
+        "errors": 1
+      }
+    ],
+    "replay": [
+      {
+        "synced": 0,
+        "conflicts": 0,
+        "errors": 0
+      },
+      {
+        "synced": 0,
+        "conflicts": 1,
+        "errors": 0
+      }
+    ],
+    "statuses": [
+      {
+        "status": "synced",
+        "pending": 0,
+        "conflicts": 0
+      },
+      {
+        "status": "conflict",
+        "pending": 2,
+        "conflicts": 1
+      }
+    ],
+    "remoteUnique": true,
+    "remoteHash": "2e8f99f631ba361829e8ff9959efbe1ee2e479e49b7fd982ffc1bce7a0db3b59",
+    "baseHash": "d5dbee75fc01be38f7db1961865abbc4ce6531c3327f664e343c054ffc964949",
+    "aHash": "2e8f99f631ba361829e8ff9959efbe1ee2e479e49b7fd982ffc1bce7a0db3b59",
+    "bHash": "6330ad6b208bc2698dc6fc4e849473550e736cb0f5426f7c5d2e333f689ad7f0",
+    "bothLocalEditsPreserved": true,
+    "conflicts": [
+      {
+        "client": "b",
+        "path": "synthetic-concurrency-control.txt",
+        "localHash": "6330ad6b208bc2698dc6fc4e849473550e736cb0f5426f7c5d2e333f689ad7f0",
+        "remoteHash": "2e8f99f631ba361829e8ff9959efbe1ee2e479e49b7fd982ffc1bce7a0db3b59",
+        "baselineUnchanged": true
+      }
+    ],
+    "originalSixFixturesUnchanged": true,
+    "canonicalAck": false,
+    "immutableReadingRaceProven": false,
+    "expectationsMet": true
+  },
+  "host_verification": {
+    "actual_both_local_hashes_match": true,
+    "actual_both_conflict_snapshots_match": true,
+    "persisted_loser_baseline_unchanged": true
+  },
+  "process_restart_proven": false,
+  "canonical_ack": false
+}

@@ -1,0 +1,304 @@
+{
+  "schema_version": 1,
+  "scope": "actual Obsidian/Google Drive synthetic sandbox byte-recovery acceptance",
+  "source_commit": "8c515898ab919a4b9e214ff84563cd36c6d4c243",
+  "obsidian_version": "1.14.4",
+  "merge_commits": {
+    "pr89": "5b69a6ef7affa3cc02c37c19f28d28cb5ee1f300",
+    "pr90": "8c515898ab919a4b9e214ff84563cd36c6d4c243"
+  },
+  "main_ci_run": 39425548926,
+  "official_preflight_run": 39425583160,
+  "artifact_id": 12265771491,
+  "artifact_zip_sha256": "21241e1673f676f2fd64e3a403593815b25c30b4d813a469363a58663d5c1b30",
+  "installed_main_js_sha256": "ffb75be60cbcf9e3e8c6c042d2fedec921b463fbbc0822fac3b2a2f551c8160c",
+  "installation": {
+    "sandbox_only": true,
+    "original_plugin_backup_verified": true,
+    "settings_and_scoped_sync_state_preserved_at_install": true,
+    "renderer_reload_observed": true,
+    "manual_and_pairing_verified": true
+  },
+  "full_reconciliation": {
+    "actual_canonical_ui_trigger": true,
+    "synced": 1,
+    "conflicts": 2,
+    "errors": 0,
+    "pending": 2,
+    "local_original_reading_bytes_preserved": true,
+    "old_remote_hash_properties_did_not_hide_empty_bytes": true
+  },
+  "repair": {
+    "actual_sync_center_keep_local": true,
+    "canonical_coordinator_and_adapter": true,
+    "independent_download_observation": {
+      "observedAt": "2026-10-20T13:18:50.261Z",
+      "source": "8c515898ab919a4b9e214ff84563cd36c6d4c243",
+      "mode": "manual",
+      "status": "synced",
+      "pending": 0,
+      "conflicts": 0,
+      "files": [
+        {
+          "name": "b9fdf7c9bf3a6cd58a467680cef77a8ee72ca72c196a475c72dbc58e760bbab5.jsonl",
+          "remoteBytes": 382,
+          "localBytes": 382,
+          "remoteSha256": "b9fdf7c9bf3a6cd58a467680cef77a8ee72ca72c196a475c72dbc58e760bbab5",
+          "localSha256": "b9fdf7c9bf3a6cd58a467680cef77a8ee72ca72c196a475c72dbc58e760bbab5",
+          "expectedSha256": "b9fdf7c9bf3a6cd58a467680cef77a8ee72ca72c196a475c72dbc58e760bbab5",
+          "match": true
+        },
+        {
+          "name": "1a6d510fee4b641af6b9f6c5ade879a0999065bf95a24fdd3d2fbee2905848d1.jsonl",
+          "remoteBytes": 43,
+          "localBytes": 43,
+          "remoteSha256": "1a6d510fee4b641af6b9f6c5ade879a0999065bf95a24fdd3d2fbee2905848d1",
+          "localSha256": "1a6d510fee4b641af6b9f6c5ade879a0999065bf95a24fdd3d2fbee2905848d1",
+          "expectedSha256": "1a6d510fee4b641af6b9f6c5ade879a0999065bf95a24fdd3d2fbee2905848d1",
+          "match": true
+        },
+        {
+          "name": "ordinary-control.txt",
+          "remoteBytes": 0,
+          "localBytes": 0,
+          "remoteSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "localSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "expectedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "match": true
+        }
+      ],
+      "allMatch": true
+    }
+  },
+  "ordinary_control": {
+    "behavior": "Mutable remote zero-byte version pulled normally during reconciliation; original 38-byte local fixture backed up outside vault.",
+    "reading_immutability_not_applied_to_mutable_control": true
+  },
+  "canonical_ack": false,
+  "production_changed": false,
+  "complete_g03": false,
+  "complete_g04": false,
+  "still_required": [
+    "actual Quartzo-to-Companion cloud exchange and races",
+    "PW3 authenticated durable receiver proof",
+    "production extraction/outbox and later integrated gates"
+  ],
+  "fresh_create_and_update": {
+    "actual_sync_center_manual_trigger": true,
+    "synced": 3,
+    "conflicts": 0,
+    "errors": 0,
+    "pending": 0,
+    "local_creation_provenance_observed": true,
+    "explicit_adoption_ui_exercised": false,
+    "independent_download_observation": {
+      "observedAt": "2026-10-20T13:25:14.416Z",
+      "assetSha256": "ffb75be60cbcf9e3e8c6c042d2fedec921b463fbbc0822fac3b2a2f551c8160c",
+      "mode": "manual",
+      "status": "synced",
+      "pending": 0,
+      "conflicts": 0,
+      "remoteFileCount": 5,
+      "files": [
+        {
+          "name": "b9fdf7c9bf3a6cd58a467680cef77a8ee72ca72c196a475c72dbc58e760bbab5.jsonl",
+          "remoteBytes": 382,
+          "localBytes": 382,
+          "remoteSha256": "b9fdf7c9bf3a6cd58a467680cef77a8ee72ca72c196a475c72dbc58e760bbab5",
+          "localSha256": "b9fdf7c9bf3a6cd58a467680cef77a8ee72ca72c196a475c72dbc58e760bbab5",
+          "expectedSha256": "b9fdf7c9bf3a6cd58a467680cef77a8ee72ca72c196a475c72dbc58e760bbab5",
+          "match": true
+        },
+        {
+          "name": "1a6d510fee4b641af6b9f6c5ade879a0999065bf95a24fdd3d2fbee2905848d1.jsonl",
+          "remoteBytes": 43,
+          "localBytes": 43,
+          "remoteSha256": "1a6d510fee4b641af6b9f6c5ade879a0999065bf95a24fdd3d2fbee2905848d1",
+          "localSha256": "1a6d510fee4b641af6b9f6c5ade879a0999065bf95a24fdd3d2fbee2905848d1",
+          "expectedSha256": "1a6d510fee4b641af6b9f6c5ade879a0999065bf95a24fdd3d2fbee2905848d1",
+          "match": true
+        },
+        {
+          "name": "ordinary-control.txt",
+          "remoteBytes": 38,
+          "localBytes": 38,
+          "remoteSha256": "dfc09194931f4f2556a5229ecafda698b63b7903d69aa6386a760bda761bd1e7",
+          "localSha256": "dfc09194931f4f2556a5229ecafda698b63b7903d69aa6386a760bda761bd1e7",
+          "expectedSha256": "dfc09194931f4f2556a5229ecafda698b63b7903d69aa6386a760bda761bd1e7",
+          "match": true
+        },
+        {
+          "name": "e2c55c1e696a0bed8db40befe8e64e993b31a138099e25269ee990a97f103442.jsonl",
+          "remoteBytes": 90,
+          "localBytes": 90,
+          "remoteSha256": "e2c55c1e696a0bed8db40befe8e64e993b31a138099e25269ee990a97f103442",
+          "localSha256": "e2c55c1e696a0bed8db40befe8e64e993b31a138099e25269ee990a97f103442",
+          "expectedSha256": "e2c55c1e696a0bed8db40befe8e64e993b31a138099e25269ee990a97f103442",
+          "match": true
+        },
+        {
+          "name": "ordinary-create-control.bin",
+          "remoteBytes": 32,
+          "localBytes": 32,
+          "remoteSha256": "5e4b982ec84332afd5453b7bd48642eaa047d4075b5a32a14e1eb16a8881c8d4",
+          "localSha256": "5e4b982ec84332afd5453b7bd48642eaa047d4075b5a32a14e1eb16a8881c8d4",
+          "expectedSha256": "5e4b982ec84332afd5453b7bd48642eaa047d4075b5a32a14e1eb16a8881c8d4",
+          "match": true
+        }
+      ],
+      "allMatch": true
+    }
+  },
+  "restart_and_quiet_replay": {
+    "actual_renderer_loading_and_new_workspace_observed": true,
+    "manual_pairing_and_zero_pending_restored": true,
+    "actual_sync_center_full_reconciliation": true,
+    "synced": 0,
+    "conflicts": 0,
+    "errors": 0,
+    "pending": 0,
+    "independent_download_observation": {
+      "observedAt": "2026-10-20T13:30:13.895Z",
+      "assetSha256": "ffb75be60cbcf9e3e8c6c042d2fedec921b463fbbc0822fac3b2a2f551c8160c",
+      "mode": "manual",
+      "status": "synced",
+      "pending": 0,
+      "conflicts": 0,
+      "remoteFileCount": 5,
+      "files": [
+        {
+          "name": "b9fdf7c9bf3a6cd58a467680cef77a8ee72ca72c196a475c72dbc58e760bbab5.jsonl",
+          "remoteBytes": 382,
+          "localBytes": 382,
+          "remoteSha256": "b9fdf7c9bf3a6cd58a467680cef77a8ee72ca72c196a475c72dbc58e760bbab5",
+          "localSha256": "b9fdf7c9bf3a6cd58a467680cef77a8ee72ca72c196a475c72dbc58e760bbab5",
+          "expectedSha256": "b9fdf7c9bf3a6cd58a467680cef77a8ee72ca72c196a475c72dbc58e760bbab5",
+          "match": true
+        },
+        {
+          "name": "1a6d510fee4b641af6b9f6c5ade879a0999065bf95a24fdd3d2fbee2905848d1.jsonl",
+          "remoteBytes": 43,
+          "localBytes": 43,
+          "remoteSha256": "1a6d510fee4b641af6b9f6c5ade879a0999065bf95a24fdd3d2fbee2905848d1",
+          "localSha256": "1a6d510fee4b641af6b9f6c5ade879a0999065bf95a24fdd3d2fbee2905848d1",
+          "expectedSha256": "1a6d510fee4b641af6b9f6c5ade879a0999065bf95a24fdd3d2fbee2905848d1",
+          "match": true
+        },
+        {
+          "name": "ordinary-control.txt",
+          "remoteBytes": 38,
+          "localBytes": 38,
+          "remoteSha256": "dfc09194931f4f2556a5229ecafda698b63b7903d69aa6386a760bda761bd1e7",
+          "localSha256": "dfc09194931f4f2556a5229ecafda698b63b7903d69aa6386a760bda761bd1e7",
+          "expectedSha256": "dfc09194931f4f2556a5229ecafda698b63b7903d69aa6386a760bda761bd1e7",
+          "match": true
+        },
+        {
+          "name": "e2c55c1e696a0bed8db40befe8e64e993b31a138099e25269ee990a97f103442.jsonl",
+          "remoteBytes": 90,
+          "localBytes": 90,
+          "remoteSha256": "e2c55c1e696a0bed8db40befe8e64e993b31a138099e25269ee990a97f103442",
+          "localSha256": "e2c55c1e696a0bed8db40befe8e64e993b31a138099e25269ee990a97f103442",
+          "expectedSha256": "e2c55c1e696a0bed8db40befe8e64e993b31a138099e25269ee990a97f103442",
+          "match": true
+        },
+        {
+          "name": "ordinary-create-control.bin",
+          "remoteBytes": 32,
+          "localBytes": 32,
+          "remoteSha256": "5e4b982ec84332afd5453b7bd48642eaa047d4075b5a32a14e1eb16a8881c8d4",
+          "localSha256": "5e4b982ec84332afd5453b7bd48642eaa047d4075b5a32a14e1eb16a8881c8d4",
+          "expectedSha256": "5e4b982ec84332afd5453b7bd48642eaa047d4075b5a32a14e1eb16a8881c8d4",
+          "match": true
+        }
+      ],
+      "allMatch": true
+    }
+  },
+  "reviewed_adoption": {
+    "actual_plugin_manager_unload_and_reload_in_sandbox": true,
+    "original_five_hashes_verified_before_new_fixture": true,
+    "plugin_enablement_config_unchanged": true,
+    "manual_and_pairing_restored": true,
+    "actual_ui_preconfirmation_report": {
+      "synced": 0,
+      "conflicts": 0,
+      "errors": 0,
+      "pending": 1,
+      "reason": "adoption_required"
+    },
+    "actual_ui_review_and_adopt_file": true,
+    "persistent_ui_result": {
+      "title": "File adopted",
+      "attempted": 1,
+      "applied": 1,
+      "failed": 0
+    },
+    "independent_download_observation": {
+      "observedAt": "2026-10-20T13:56:58.774Z",
+      "assetSha256": "ffb75be60cbcf9e3e8c6c042d2fedec921b463fbbc0822fac3b2a2f551c8160c",
+      "mode": "manual",
+      "status": "synced",
+      "pending": 0,
+      "conflicts": 0,
+      "remoteFileCount": 6,
+      "files": [
+        {
+          "name": "b9fdf7c9bf3a6cd58a467680cef77a8ee72ca72c196a475c72dbc58e760bbab5.jsonl",
+          "remoteBytes": 382,
+          "localBytes": 382,
+          "remoteSha256": "b9fdf7c9bf3a6cd58a467680cef77a8ee72ca72c196a475c72dbc58e760bbab5",
+          "localSha256": "b9fdf7c9bf3a6cd58a467680cef77a8ee72ca72c196a475c72dbc58e760bbab5",
+          "expectedSha256": "b9fdf7c9bf3a6cd58a467680cef77a8ee72ca72c196a475c72dbc58e760bbab5",
+          "match": true
+        },
+        {
+          "name": "1a6d510fee4b641af6b9f6c5ade879a0999065bf95a24fdd3d2fbee2905848d1.jsonl",
+          "remoteBytes": 43,
+          "localBytes": 43,
+          "remoteSha256": "1a6d510fee4b641af6b9f6c5ade879a0999065bf95a24fdd3d2fbee2905848d1",
+          "localSha256": "1a6d510fee4b641af6b9f6c5ade879a0999065bf95a24fdd3d2fbee2905848d1",
+          "expectedSha256": "1a6d510fee4b641af6b9f6c5ade879a0999065bf95a24fdd3d2fbee2905848d1",
+          "match": true
+        },
+        {
+          "name": "ordinary-control.txt",
+          "remoteBytes": 38,
+          "localBytes": 38,
+          "remoteSha256": "dfc09194931f4f2556a5229ecafda698b63b7903d69aa6386a760bda761bd1e7",
+          "localSha256": "dfc09194931f4f2556a5229ecafda698b63b7903d69aa6386a760bda761bd1e7",
+          "expectedSha256": "dfc09194931f4f2556a5229ecafda698b63b7903d69aa6386a760bda761bd1e7",
+          "match": true
+        },
+        {
+          "name": "e2c55c1e696a0bed8db40befe8e64e993b31a138099e25269ee990a97f103442.jsonl",
+          "remoteBytes": 90,
+          "localBytes": 90,
+          "remoteSha256": "e2c55c1e696a0bed8db40befe8e64e993b31a138099e25269ee990a97f103442",
+          "localSha256": "e2c55c1e696a0bed8db40befe8e64e993b31a138099e25269ee990a97f103442",
+          "expectedSha256": "e2c55c1e696a0bed8db40befe8e64e993b31a138099e25269ee990a97f103442",
+          "match": true
+        },
+        {
+          "name": "ordinary-create-control.bin",
+          "remoteBytes": 32,
+          "localBytes": 32,
+          "remoteSha256": "5e4b982ec84332afd5453b7bd48642eaa047d4075b5a32a14e1eb16a8881c8d4",
+          "localSha256": "5e4b982ec84332afd5453b7bd48642eaa047d4075b5a32a14e1eb16a8881c8d4",
+          "expectedSha256": "5e4b982ec84332afd5453b7bd48642eaa047d4075b5a32a14e1eb16a8881c8d4",
+          "match": true
+        },
+        {
+          "name": "d664c32f6c763d257a60650338cbde42a9f62539d76eadade3ca8e167a5f163d.jsonl",
+          "remoteBytes": 83,
+          "localBytes": 83,
+          "remoteSha256": "d664c32f6c763d257a60650338cbde42a9f62539d76eadade3ca8e167a5f163d",
+          "localSha256": "d664c32f6c763d257a60650338cbde42a9f62539d76eadade3ca8e167a5f163d",
+          "expectedSha256": "d664c32f6c763d257a60650338cbde42a9f62539d76eadade3ca8e167a5f163d",
+          "match": true
+        }
+      ],
+      "allMatch": true
+    }
+  }
+}
