@@ -21,8 +21,10 @@ existing parent was recovered over three real list requests with zero attempted
 writes. An explicit full canonical replay then reported zero synced/conflicts/
 errors/pending. Separate downloads verified all six unique exact files; independent
 host hashing confirmed unchanged originals. No token was logged or exported.
-Normal main CI39488225722 has Linux/Windows passed; macOS remains queued at this
-checkpoint. No tag/release or production installation occurred.
+Normal main CI39488225722 passed Linux/Windows; its macOS job was subsequently
+cancelled without any steps, so that run is not reported wholly green. All six
+approved PR92 checks and the official preflight passed separately. Evidence
+head236e17d passed all three OS checks in CI39490847254. No tag/release or production installation occurred.
 
 The older peer/race observations below retain their prior8c source boundaries.
 This documentation branch incorporates approved main without changing runtime or
