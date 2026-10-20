@@ -40,6 +40,10 @@ Manual remains selected afterward. Then load the staged synthetic fixtures into
 this exact local target and explicitly choose **Sync now**. Do not select a
 production vault or import production sync state.
 No account identifiers, folder IDs, callback URLs or tokens belong in public proof.
+The official [SecretStorage guide](https://docs.obsidian.md/plugins/guides/secret-storage)
+documents storage keyed to the specific vault. Use the existing API in the new
+desktop vault; do not copy another vault's configuration or inspect secret values
+as a substitute for the real OAuth/lifecycle test.
 
 Record each step's actual result before continuing:
 

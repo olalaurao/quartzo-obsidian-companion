@@ -14,6 +14,38 @@ Authority: [pinned Reading Activity contract](../../contracts/quartzo/reading_ac
 
 ## Open gates
 
+### 2026-10-20 — Corrected main preflight PASS; live setup pending
+
+After explicit user authorization, PR88 merged as
+**5ba99fd02c87df072103390a377f611f7f452ff4** at 05:39:05 UTC. Its tree
+`d1c0a4a4baee52dee2d9bbd4777303ca9521aa08` exactly matches tested final head
+b1b8e69. All six final PR/push checks had passed Linux/Windows/macOS. Normal
+[main CI 39376029232](https://github.com/olalaurao/quartzo-obsidian-companion/actions/runs/39376029232)
+then passed all three platforms, followed by authorized official
+[Release Preflight 39376273277](https://github.com/olalaurao/quartzo-obsidian-companion/actions/runs/39376273277)
+on the exact same SHA. Preflight includes production OAuth injection/validation,
+contracts, audit, all test/build/architecture/smoke/package steps and artifact
+upload. Its full suite: **988 PASS / three skipped**; contracts **397 PASS**;
+sync **365 PASS / three skipped**. Skips retain the two opt-in exchanges and
+Unix case-alias distinction; they are not live acceptance.
+
+The [corrected official artifact evidence](corrected-main-preflight-2026-10-20.json)
+records independently checked hashes, manifest/styles matching exact Git blobs
+and bundle SHA-256
+`8ecc4889893505264c2fe4dd1b55db60704e76fc1c030cbdf70bf835710a793b`
+(1174631 bytes). Only that artifact was staged into a new empty local test vault,
+disabled, Manual and unpaired; verified synthetic fixtures stay outside it until
+the explicit new-folder pairing. Desktop executable baseline is 1.11.5, above
+the 1.11.4 minimum. No production settings/tokens were copied. The user's manual
+open/enable/OAuth/Create-new-empty-vault/Accept-&-Pair step is requested. Actual
+runtime preference, cloud bytes/identity, conflicts/repair, restart and failure
+observations remain pending; no source ACK or production activation follows.
+
+The earlier 34d1244 artifact/seeded vault remains unstarted historical staging,
+superseded by this empty corrected target. No tag/release or production install
+was created. PR87 reconciles only evidence/runbook changes with the corrected
+main; its runtime/spec/contract inputs remain byte-identical to that main.
+
 ### 2026-10-20 — Preserve Manual mode before live sandbox pairing
 
 PR86 merged with user authorization as `34d1244ec718cbd100f0f124ed76816dbde9008d`,
