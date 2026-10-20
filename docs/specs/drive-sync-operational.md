@@ -1,8 +1,8 @@
 # Companion Drive Sync — Operational Specification
 
 Status: **ACTIVE LOCAL OPERATIONAL SPEC**  
-Last reconciled date: 2026-10-20 (Reading immutable owner candidate; live acceptance still open)
-Last reconciled main SHA: `efa53aa64d8c08277aa7e68dbd79e8e9a61229be`
+Last reconciled date: 2026-10-20 (Reading owners merged; partial actual byte-recovery acceptance)
+Last reconciled main SHA: `8c515898ab919a4b9e214ff84563cd36c6d4c243`
 Canonical implementation owners: `DriveSyncCoordinator`, `GoogleDriveAdapter`, `VaultSyncFilePolicy`, first-pairing workflow, canonical state/lock  
 Depends on: `contracts/UPSTREAM.lock.json`, shared upstream sync contracts, `guidelines.md`, `agents.md`  
 Supersedes: detailed local rules 9–23 in the former guidelines (text unchanged below)  

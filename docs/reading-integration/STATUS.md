@@ -4,6 +4,45 @@ Date: 2026-10-20, America/Sao_Paulo
 Status: implementation in progress; canonical contract adoption verified, runtime and interoperability gates open
 Authority: [pinned Reading Activity contract](../../contracts/quartzo/reading_activity/README.md), [local operational spec](../specs/drive-sync-operational.md), existing sync owners
 
+## 2026-10-20 — Authorized official main and actual sandbox byte recovery
+
+The separately authorized PR89/90 merges completed as `5b69a6e` and
+`8c515898ab919a4b9e214ff84563cd36c6d4c243`, with trees identical to their
+approved final heads. Both normal main CIs and exact-main official preflights
+passed; final [Preflight 39425583160](https://github.com/olalaurao/quartzo-obsidian-companion/actions/runs/39425583160)
+produced the checksummed artifact installed only in the existing paired sandbox.
+No tag, release or production installation occurred. Earlier pending-approval
+and old-artifact statements below describe historical checkpoints.
+
+Actual Obsidian 1.14.4 reloaded that final artifact, with installed `main.js`
+SHA-256 `ffb75be60cbcf9e3e8c6c042d2fedec921b463fbbc0822fac3b2a2f551c8160c`,
+pairing retained and Manual verified. Full reconciliation independently found
+the two empty remote Reading files despite advertised original hashes, preserved
+both good local originals and reported **one synced / two conflicts / zero errors /
+two pending**. The ordinary mutable control pulled the existing empty remote
+version normally; its original fixture backup remains outside the vault.
+
+Both conflicts were explicitly repaired with the Sync Center's Keep local action.
+A subsequent separate inventory/download through the existing adapter verified
+the exact **382-byte native Dart shard** and **43-byte opaque future-schema shard**
+against their original filename SHA-256, with zero conflicts/pending and Manual
+preserved. [Sanitized actual evidence](live-official-byte-recovery-2026-10-20.json)
+records provenance and the narrow acceptance.
+
+Fresh canonical sync then created a **90-byte opaque Reading shard** and a
+**32-byte binary control containing NUL/Unicode**, and updated the ordinary
+control to its original **38 bytes**: three synced, zero conflicts/errors/pending.
+New files used actual watcher creation provenance; this does not exercise the
+explicit reviewed-adoption UI branch. Independent inventory/download verified
+all five unique files and exact hashes. Actual renderer restart restored Manual,
+pairing and zero pending. A full replay reported **zero synced / zero conflicts /
+zero errors / zero pending**; another independent download after that restart
+again verified all five hashes and unique identities. Documentation and
+architecture checks pass; runtime/contract sources are unchanged by this evidence.
+
+Reviewed adoption UI, actual Quartzo/Companion cloud exchange/races and durable
+source ACK remain required. No complete G03/G04 or production effect is claimed.
+
 ## 2026-10-19 — Contract adoption checkpoint before owner integration
 
 - The user authorized Quartzo PR65 after its required checks passed. [PR65](https://github.com/olalaurao/aplicativo/pull/65) merged into upstream main as `e7a661d4ed6d572cdbf722f4e697fea461005b69`. Its tree is identical to tested `2a2cd49b33637f939f521acfc1d7d15cf0d569b2`: Linux **2765 PASS / five skipped**, Windows **2745 PASS / 25 skipped**, with Analyze, Agent Contract Gate and Dial Focus also green. The previous Windows failure was a real deep-path enumeration defect and was corrected before merge; it is not reported as PASS.
