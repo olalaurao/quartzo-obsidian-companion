@@ -4,6 +4,7 @@ import {
   DriveFileMetadata,
   DriveChange,
   UploadFileParams,
+  ReadingFileRepairRequest,
   TemporaryDriveQuotaError,
   DriveRequestTimeoutError,
 } from '../../../sync/coordinator/types';
@@ -145,7 +146,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
 
   private async readVersion(fileId: string): Promise<drive_v2.Schema$File> {
     const response = await this.withRetry(() => this.getConditionalClient().files.get({ fileId, supportsAllDrives: true,
-      fields: 'id,etag,title,mimeType,modifiedDate,md5Checksum,parents,properties,labels,capabilities' }, { timeout: DRIVE_REQUEST_TIMEOUT_MS }));
+      fields: 'id,etag,title,mimeType,fileSize,modifiedDate,md5Checksum,parents,properties,labels,capabilities' }, { timeout: DRIVE_REQUEST_TIMEOUT_MS }));
     if (!response.data.etag) throw new Error('Drive did not provide a remote mutation precondition');
     return response.data;
   }
@@ -504,11 +505,21 @@ export class GoogleDriveAdapter implements DriveAdapter {
   }
 
     async resolveRemoteHash(metadata: DriveFileMetadata): Promise<string> {
-    const bytes = await this.downloadFile(metadata.id);
+    const path = normalizeVaultPath(metadata.relativePath || metadata.name);
+    const bytes = await this.downloadFile(metadata.id, SyncEngine.immutableReadingHash(path) ? path : undefined);
     return this.calculateQuartzoHash(bytes);
   }
 
   async downloadFile(fileId: string, expectedReadingPath?: string): Promise<Uint8Array> {
+    const snapshot = await this.downloadSnapshot(fileId, expectedReadingPath);
+    snapshot.check();
+    this.verifiedVersions.set(fileId, snapshot.version);
+    return snapshot.bytes;
+  }
+
+  private async downloadSnapshot(fileId: string, expectedReadingPath?: string): Promise<{
+    bytes: Uint8Array; version: drive_v2.Schema$File; check: () => void;
+  }> {
     const check = this.captureMutationTarget();
     if (expectedReadingPath && SyncEngine.immutableReadingHash(expectedReadingPath) === null) {
       throw new Error('Expected Reading path is not canonical');
@@ -517,13 +528,15 @@ export class GoogleDriveAdapter implements DriveAdapter {
     if (expectedReadingPath && await this.readingIdentity(fileId, before, check) !== expectedReadingPath) {
       throw new Error('Reading download identity changed');
     }
+    const expectedSize = expectedReadingPath ? this.readingSize(before) : null;
     const bytes = await this.withRetry(async () => {
       check();
       const drive = this.getDriveClient();
       const response = await drive.files.get({
         fileId,
         alt: 'media'
-      }, { responseType: 'arraybuffer', timeout: DRIVE_MEDIA_REQUEST_TIMEOUT_MS });
+      }, { responseType: 'arraybuffer', timeout: DRIVE_MEDIA_REQUEST_TIMEOUT_MS,
+        ...(expectedSize !== null ? {maxContentLength: SyncEngine.readingShardMaxBytes} : {}) });
       return new Uint8Array(response.data as ArrayBuffer);
     });
     check();
@@ -532,8 +545,77 @@ export class GoogleDriveAdapter implements DriveAdapter {
     if (expectedReadingPath && await this.readingIdentity(fileId, after, check) !== expectedReadingPath) {
       throw new Error('Reading download identity changed');
     }
-    this.verifiedVersions.set(fileId, after);
-    return bytes;
+    if (expectedSize !== null && (this.readingSize(after) !== expectedSize || bytes.byteLength !== expectedSize)) {
+      throw new Error('Reading media length changed during download');
+    }
+    check();
+    return { bytes, version: after, check };
+  }
+
+  private readingSize(version: drive_v2.Schema$File): number {
+    const size = version.fileSize;
+    if (typeof size !== 'string' || !/^(0|[1-9][0-9]{0,15})$/.test(size) ||
+        size.length !== size.trim().length || !Number.isSafeInteger(Number(size)) ||
+        Number(size) > SyncEngine.readingShardMaxBytes) {
+      throw new Error('Reading media exceeds the supported byte bound or has no verified size');
+    }
+    return Number(size);
+  }
+
+  private async requireUniqueReadingFile(fileId: string, version: drive_v2.Schema$File, check: () => void): Promise<void> {
+    const parent = version.parents?.[0]?.id;
+    if (!parent || !version.title) throw new Error('Reading repair identity is unavailable');
+    const client = this.getDriveClient();
+    check();
+    const result = await this.withRetry(() => { check(); return client.files.list({
+      q: `'${this.escapeQueryParam(parent)}' in parents and name = '${this.escapeQueryParam(version.title!)}' and mimeType != 'application/vnd.google-apps.folder' and trashed = false`,
+      fields: 'nextPageToken,incompleteSearch,files(id)', pageSize: 2,
+      supportsAllDrives: true, includeItemsFromAllDrives: true,
+    }, {timeout: DRIVE_REQUEST_TIMEOUT_MS}); });
+    check();
+    if (result.data.nextPageToken || result.data.incompleteSearch ||
+        result.data.files?.length !== 1 || result.data.files[0].id !== fileId) {
+      throw new Error('Reading repair has ambiguous or incomplete remote identity');
+    }
+  }
+
+  async repairReadingFile(request: ReadingFileRepairRequest): Promise<DriveFileMetadata> {
+    const {fileId, relativePath, expectedRemoteHash} = request;
+    const bytes = new Uint8Array(request.content);
+    const originalHash = SyncEngine.immutableReadingHash(relativePath);
+    if (!fileId || !originalHash || bytes.byteLength > SyncEngine.readingShardMaxBytes ||
+        this.calculateQuartzoHash(bytes) !== originalHash || typeof expectedRemoteHash !== 'string' ||
+        expectedRemoteHash.length !== 64 || !/^[a-f0-9]{64}$/.test(expectedRemoteHash)) {
+      throw new Error('Reading repair requires original filename bytes and a reviewed remote hash');
+    }
+    const check = this.captureMutationTarget(), client = this.getConditionalClient();
+    const current = await this.downloadSnapshot(fileId, relativePath);
+    check(); current.check();
+    await this.requireUniqueReadingFile(fileId, current.version, check);
+    if (await this.readingIdentity(fileId, current.version, check) !== relativePath) {
+      throw new Error('Reading repair identity changed before mutation');
+    }
+    check();
+    const currentHash = this.calculateQuartzoHash(current.bytes);
+    if (currentHash === originalHash) return {...this.mapConditionalFile(current.version), quartzoHash: originalHash};
+    if (currentHash !== expectedRemoteHash) throw new Error('Reading repair remote bytes changed; rescan before repair');
+    // This tuple came from this operation's own verified read. A concurrent
+    // cache update cannot substitute another ETag into the conditional write.
+    await this.withRetry(() => { check(); return client.files.update({
+      fileId, supportsAllDrives: true,
+      requestBody: { properties: [...(current.version.properties || []).filter(property => property.key !== 'Quartzo_hash'),
+        {key: 'Quartzo_hash', value: originalHash, visibility: 'PUBLIC'}] },
+      media: {mimeType: 'application/octet-stream', body: Buffer.from(bytes)}, fields: 'id',
+    }, {headers: {'If-Match': current.version.etag!}, timeout: DRIVE_MEDIA_REQUEST_TIMEOUT_MS}); });
+    check();
+    const final = await this.downloadSnapshot(fileId, relativePath);
+    check(); final.check();
+    await this.requireUniqueReadingFile(fileId, final.version, check);
+    if (await this.readingIdentity(fileId, final.version, check) !== relativePath || this.calculateQuartzoHash(final.bytes) !== originalHash) {
+      throw new Error('Reading repair post-write verification failed; preserve conflict evidence');
+    }
+    check();
+    return {...this.mapConditionalFile(final.version), quartzoHash: originalHash};
   }
 
   async assertInsideSelectedVault(remoteFileId: string): Promise<void> {
@@ -677,7 +759,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
       if (candidates.length > 1) throw new Error(`Ambiguous remote identity for ${fullPath}`);
       if (candidates.length === 0) return null;
       const candidate = candidates[0];
-      const actualHash = await this.resolveRemoteHash(candidate);
+      const actualHash = await this.resolveRemoteHash({...candidate, relativePath: fullPath});
       check();
       const version = this.verifiedVersions.get(candidate.id);
       if (!version) throw new Error('Remote upload identity was not verified');
@@ -756,7 +838,7 @@ export class GoogleDriveAdapter implements DriveAdapter {
     const normalized = normalizeVaultPath(params.name);
     const expected = SyncEngine.immutableReadingHash(normalized);
     const actualHash = this.calculateQuartzoHash(bytes);
-    if (expected && (expected !== actualHash || params.quartzoHash !== actualHash || params.folderId !== this.folderId)) {
+    if (expected && (bytes.byteLength > SyncEngine.readingShardMaxBytes || expected !== actualHash || params.quartzoHash !== actualHash || params.folderId !== this.folderId)) {
       throw new Error('Immutable reading upload requires exact filename bytes and selected vault');
     }
     const check = this.captureMutationTarget();

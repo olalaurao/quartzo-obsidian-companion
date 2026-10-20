@@ -1,6 +1,7 @@
 import { SyncVector, SyncResult } from './types';
 
 export class SyncEngine {
+  static readonly readingShardMaxBytes = 524288;
   /** Exact opaque Reading shard namespace; transport never parses raw events. */
   static immutableReadingHash(filePath: string): string | null {
     const match = /^sessions\/reading_activity_v1\/[a-f0-9]{64}\/[a-f0-9]{64}\/([0-9]{4})\/(0[1-9]|1[0-2])\/([a-f0-9]{64})\.jsonl$/.exec(filePath);

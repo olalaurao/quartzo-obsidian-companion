@@ -58,6 +58,14 @@ export class TemporaryDriveQuotaError extends Error {
   }
 }
 
+/** Explicit conflict-owner repair, never a generic path-labelled update. */
+export interface ReadingFileRepairRequest {
+  fileId: string;
+  relativePath: string;
+  expectedRemoteHash: string;
+  content: Uint8Array;
+}
+
 export interface DriveAdapter {
   verifyConditionalMutationSupport?(): Promise<void>;
   getFolderId(): Promise<string | null>;
@@ -70,6 +78,7 @@ export interface DriveAdapter {
   downloadFile(fileId: string, expectedReadingPath?: string): Promise<Uint8Array>;
   uploadFile(params: UploadFileParams): Promise<DriveFileMetadata>;
   updateFile(fileId: string, content: Uint8Array, quartzoHash: string): Promise<DriveFileMetadata>;
+  repairReadingFile?(request: ReadingFileRepairRequest): Promise<DriveFileMetadata>;
   renameFile(fileId: string, newName: string, newParentId?: string): Promise<DriveFileMetadata>;
   deleteFile(fileId: string): Promise<void>;
   trashFile(fileId: string): Promise<void>;

@@ -17,6 +17,8 @@ interface ReadingSyncFixture {
 describe('Pinned Reading immutable sync vectors', () => {
     const fixture: ReadingSyncFixture = JSON.parse(fs.readFileSync(path.join(__dirname, '../../contracts/quartzo/reading_activity/vectors.json'), 'utf8'));
     it('executes the complete unique upstream matrix', () => {
+        const contract = JSON.parse(fs.readFileSync(path.join(__dirname, '../../contracts/quartzo/reading_activity/contract.json'), 'utf8')) as {shard_bounds: {max_bytes: number}};
+        expect(SyncEngine.readingShardMaxBytes).toBe(contract.shard_bounds.max_bytes);
         expect(fixture.path_vectors).toHaveLength(14);
         expect(fixture.sync_lifecycle_vectors).toHaveLength(15);
         expect(new Set(fixture.path_vectors.map(vector => vector.id)).size).toBe(14);

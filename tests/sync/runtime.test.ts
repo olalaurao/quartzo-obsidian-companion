@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DriveSyncCoordinator, chooseNewestConflictResolution, type ConflictArtifact } from '../../src/sync/coordinator/index';
 import { VaultSyncFilePolicy } from '../../src/sync/coordinator/file-policy';
 import { normalizeVaultPath, isSameVaultPath } from '../../src/sync/coordinator/path-utils';
-import { DriveRequestTimeoutError, TemporaryDriveQuotaError, type DriveAdapter, type DriveFileMetadata, type DriveChange } from '../../src/sync/coordinator/types';
+import { DriveRequestTimeoutError, TemporaryDriveQuotaError, type DriveAdapter, type DriveFileMetadata, type DriveChange, type ReadingFileRepairRequest } from '../../src/sync/coordinator/types';
 import { GoogleDriveAdapter } from '../../src/integrations/google/drive/adapter';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
@@ -92,6 +92,16 @@ class FakeDriveAdapter implements DriveAdapter {
     const modifiedTime = new Date().toISOString();
     this._files.set(params.name, { id, content: params.content, quartzoHash: params.quartzoHash, modifiedTime });
     return this.makeMetadata(id, params.name, params.quartzoHash, modifiedTime);
+  }
+
+  async repairReadingFile(request: ReadingFileRepairRequest): Promise<DriveFileMetadata> {
+    const current = this._files.get(request.relativePath);
+    if (!current || current.id !== request.fileId) throw new Error('Synthetic repair identity changed');
+    const observed = crypto.createHash('sha256').update(current.content).digest('hex');
+    const desired = crypto.createHash('sha256').update(request.content).digest('hex');
+    if (observed === desired) return this.makeMetadata(current.id, request.relativePath, desired, current.modifiedTime);
+    if (observed !== request.expectedRemoteHash) throw new Error('Synthetic repair bytes changed');
+    return this.updateFile(request.fileId, request.content, desired);
   }
 
   async updateFile(fileId: string, content: Uint8Array, quartzoHash: string) {
@@ -2623,6 +2633,90 @@ describe('Runtime Sync Tests', () => {
     const result = await coordinator.reconcile(true);
     expect(result.errors.join(' ')).toContain('alias');
     expect(fs.readFileSync(local)).toEqual(original);
+  });
+
+  const repairOriginal = Buffer.from('original reviewed repair fixture\n');
+  const repairDigest = crypto.createHash('sha256').update(repairOriginal).digest('hex');
+  const repairPath = `sessions/reading_activity_v1/${'a'.repeat(64)}/${'b'.repeat(64)}/2026/10/${repairDigest}.jsonl`;
+  async function seedRepair(local = repairOriginal, remote = repairOriginal) {
+    const file = path.join(tmpDir, repairPath);
+    fs.mkdirSync(path.dirname(file), {recursive: true}); fs.writeFileSync(file, local);
+    const identity = adapter.addRemoteFile(repairPath, remote);
+    await coordinator.reconcile(true); adapter.pendingChanges = [];
+    return {file, identity};
+  }
+  it('Reading repair uses the explicit adapter operation and preserves remote identity', async () => {
+    const bad = Buffer.from('reviewed remote corruption'); const {file, identity} = await seedRepair(repairOriginal, bad);
+    const repair = vi.spyOn(adapter, 'repairReadingFile');
+    await coordinator.resolveConflict(repairPath, 'keep_local');
+    expect(repair).toHaveBeenCalledWith(expect.objectContaining({fileId: identity.id, relativePath: repairPath,
+      expectedRemoteHash: crypto.createHash('sha256').update(bad).digest('hex')}));
+    expect(fs.readFileSync(file)).toEqual(repairOriginal);
+    expect(Buffer.from(adapter.files.get(repairPath)!.content)).toEqual(repairOriginal);
+    expect(coordinator.getSyncState().files.get(repairPath)?.remoteFileId).toBe(identity.id);
+    expect(coordinator.getConflicts()).toHaveLength(0);
+  });
+  it('Reading repair restores local original bytes without a remote mutation', async () => {
+    const {file} = await seedRepair(Buffer.from('local corruption'), repairOriginal);
+    await coordinator.resolveConflict(repairPath, 'keep_drive');
+    expect(fs.readFileSync(file)).toEqual(repairOriginal);
+    expect(adapter.updateCalls).toBe(0); expect(coordinator.getConflicts()).toHaveLength(0);
+  });
+  it('Reading repair leaves a newly changed remote and its conflict for review', async () => {
+    const {file, identity} = await seedRepair(repairOriginal, Buffer.from('reviewed remote corruption'));
+    const repair = adapter.repairReadingFile.bind(adapter);
+    vi.spyOn(adapter, 'repairReadingFile').mockImplementationOnce(async request => {
+      adapter.addRemoteFileWithId(repairPath, identity.id, Buffer.from('new remote version'));
+      return repair(request);
+    });
+    await expect(coordinator.resolveConflict(repairPath, 'keep_local')).rejects.toThrow('bytes changed');
+    expect(fs.readFileSync(file)).toEqual(repairOriginal);
+    expect(Buffer.from(adapter.files.get(repairPath)!.content).toString()).toBe('new remote version');
+    expect(coordinator.getConflicts()).toHaveLength(1); expect(adapter.updateCalls).toBe(0);
+  });
+  it('Reading repair recovers a lost reply through ordinary convergence without rewriting', async () => {
+    await seedRepair(repairOriginal, Buffer.from('reviewed remote corruption'));
+    const repair = adapter.repairReadingFile.bind(adapter);
+    vi.spyOn(adapter, 'repairReadingFile').mockImplementationOnce(async request => {
+      await repair(request); throw new Error('Synthetic lost repair reply');
+    });
+    await expect(coordinator.resolveConflict(repairPath, 'keep_local')).rejects.toThrow('lost repair reply');
+    expect(coordinator.getConflicts()).toHaveLength(1);
+    expect((await coordinator.reconcile(true)).errors).toEqual([]);
+    expect(coordinator.getConflicts()).toHaveLength(0); expect(adapter.updateCalls).toBe(1);
+    expect(coordinator.getSyncState().files.get(repairPath)?.baseHash).toBe(repairDigest);
+  });
+  it('Reading repair retires only the reviewed deletion intent', async () => {
+    const {file} = await seedRepair(); fs.unlinkSync(file);
+    coordinator.queueDelete(repairPath); await new Promise<void>(resolve => setImmediate(resolve));
+    await coordinator.reconcile(); expect(coordinator.getConflicts()).toHaveLength(1);
+    await coordinator.resolveConflict(repairPath, 'keep_drive');
+    expect(fs.readFileSync(file)).toEqual(repairOriginal);
+    expect((await coordinator.getSyncStatusSnapshot()).pendingDiagnostics.some(item => item.path === repairPath && item.reason === 'pending_delete')).toBe(false);
+    expect((await coordinator.reconcile()).errors).toEqual([]); expect(coordinator.getConflicts()).toHaveLength(0);
+  });
+  it('Reading repair preserves a newer same-path deletion intent', async () => {
+    await seedRepair(); coordinator.queueDelete(repairPath);
+    await new Promise<void>(resolve => setImmediate(resolve)); await coordinator.reconcile();
+    const repair = adapter.repairReadingFile.bind(adapter);
+    vi.spyOn(adapter, 'repairReadingFile').mockImplementationOnce(async request => {
+      const result = await repair(request); coordinator.queueDelete(repairPath);
+      await new Promise<void>(resolve => setImmediate(resolve)); return result;
+    });
+    await coordinator.resolveConflict(repairPath, 'keep_local');
+    expect((await coordinator.getSyncStatusSnapshot()).pendingDiagnostics).toContainEqual({path: repairPath, reason: 'pending_delete'});
+    await coordinator.reconcile(); expect(coordinator.getConflicts()).toHaveLength(1);
+    expect(Buffer.from(adapter.files.get(repairPath)!.content)).toEqual(repairOriginal);
+  });
+  it('Reading repair retires a reviewed relocation while preserving the relocated copy', async () => {
+    const {file} = await seedRepair(); const relocated = path.join(tmpDir, 'relocated.jsonl');
+    fs.renameSync(file, relocated); coordinator.queueRename(repairPath, 'relocated.jsonl');
+    await new Promise<void>(resolve => setImmediate(resolve)); await coordinator.reconcile();
+    expect(coordinator.getConflicts()).toHaveLength(1);
+    await coordinator.resolveConflict(repairPath, 'keep_drive');
+    expect(fs.readFileSync(file)).toEqual(repairOriginal); expect(fs.readFileSync(relocated)).toEqual(repairOriginal);
+    expect((await coordinator.getSyncStatusSnapshot()).pendingDiagnostics.some(item => item.path === repairPath && item.reason === 'pending_rename')).toBe(false);
+    expect((await coordinator.reconcile()).errors).toEqual([]); expect(coordinator.getConflicts()).toHaveLength(0);
   });
 
   it('a collision before temporary allocation preserves the foreign sibling', async () => {
