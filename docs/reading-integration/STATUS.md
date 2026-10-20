@@ -1,5 +1,16 @@
 # Reading Integration — Companion status
 
+## 2026-10-20 — Authorized refresh fix merged; official artifact pending verification
+
+The user explicitly authorized PR92 after its final checks. All six final
+Linux/Windows/macOS checks passed on `b84d1c17db23c34d0a574883a2e10099ffa614e6`.
+It merged as `10e840ab09fe98fe2365c3a30a34be4c0eef6b4d`, with a tree identical
+to the approved candidate. Exact-main official [Preflight39488284446](https://github.com/olalaurao/quartzo-obsidian-companion/actions/runs/39488284446)
+passed. Asset checksum/provenance verification and sandbox-only upgrade remain
+pending. The actual peer/race observations below remain bound to the prior8c
+artifact. This documentation branch incorporates main without changing the fix,
+upstream contracts or production installations.
+
 ## 2026-10-20 — Actual independent peer recovery and two-client Drive races
 
 The unchanged official main8c515898 artifact was used for all observations below;
@@ -73,6 +84,37 @@ observations establish the physical execution. It does not grant canonical ACK,
 cloud delivery, production extraction/outbox, global stability, power-loss or
 completed G03/G04. Actual cross-client Drive races and durable per-event source
 acknowledgement remain required before production ingestion.
+
+## 2026-10-20 — Expired credential during fresh peer recovery
+
+An actual isolated second adapter/coordinator using the official sandbox artifact
+at main `8c515898ab919a4b9e214ff84563cd36c6d4c243` failed its initial recovery
+with a token/credential error before downloading files. The peer operation ended
+with its lock released; all six original fixture hashes remained unchanged.
+[Sanitized failed-attempt evidence](live-peer-auth-failure-2026-10-20.json)
+preserves that failure, not a successful cloud race or ACK.
+
+Focused canonical-folder lookup tests then reproduced a stale SDK client after
+refresh: both first-page and later-page expiry cases failed before the fix.
+`GoogleDriveAdapter.listNamedChildren` now resolves its existing SDK client inside
+the existing retry callback. A refreshed token therefore retries the same page
+with the refreshed client; completed pages are retained. Eight focused tests pass,
+including an unsuccessful refresh that stops after two requests without creating
+a folder. Conditional mutation/target guards and upstream contracts are unchanged.
+Local validation also passed typecheck, lint, build, architecture/docs gates and
+the complete suite: **1026 PASS / two explicit skips** across 90 files. The full
+suite contains the focused regression cases; no hosted CI result is assumed.
+This source has not been installed or physically rerun in the sandbox; official
+merge/preflight/asset verification and subsequent expiry/race acceptance remain open.
+
+A separate explicit retry on the unchanged official 8c515898 artifact, after
+renewal through the existing plugin OAuth owner, recovered all six files into
+the independent adapter/coordinator's isolated local root. Both clients ended
+synced with zero pending/conflicts/errors; independent host hashing matched all
+six fixtures and confirmed the originals. [That narrow recovery observation](live-peer-recovery-after-refresh-2026-10-20.json)
+retains `expiredCredentialRecoveryProven=false`, `concurrentRaceProven=false`
+and `canonicalAck=false`. It does not relabel the first failure or prove this
+new source's automatic refresh. Peer state stays outside the production vault.
 
 Date: 2026-10-20, America/Sao_Paulo
 Status: implementation in progress; canonical contract adoption verified, runtime and interoperability gates open

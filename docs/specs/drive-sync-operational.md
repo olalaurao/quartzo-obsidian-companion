@@ -52,6 +52,16 @@ The adapter owns finite network request deadlines and quota-aware cooldown/retri
 
 ## Verification
 
+### Credential refresh during named-child lookup
+
+Folder/file identity lookup resolves the current SDK client for each attempt of
+the existing `GoogleDriveAdapter.withRetry` owner. A successful token refresh must
+retry the failed page with refreshed credentials without restarting completed
+pages. A second credential failure stops without creating a folder. This does
+not relax captured mutation target or ETag checks, add background renewal or
+change pairing/account authority. First/later-page expiry and failed renewal
+are covered through the public parent-folder operation.
+
 ### Pairing and sync preference
 
 Completing a reviewed pairing snapshot, including divergence resolution or the
