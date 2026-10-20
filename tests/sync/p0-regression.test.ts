@@ -350,20 +350,23 @@ describe('P0.6 — Adoption race guard', () => {
     await expect(coordinator.explicitAdopt('paired.md')).rejects.toThrow('already has a remote counterpart');
   });
 
-  it('explicitAdopt fails when duplicate remote candidate appears', async () => {
+  it('explicitAdopt baselines an existing byte-identical remote without another upload', async () => {
     const content = Buffer.from('content');
     fs.writeFileSync(path.join(tmpDir, 'adopt-me.md'), content);
     adapter.addRemoteFile('adopt-me.md', content);
+    await coordinator.setDriveFolderId(await adapter.getFolderId());
 
     await expect(coordinator.explicitAdopt('adopt-me.md')).resolves.toBeUndefined();
     const state = coordinator.getSyncState().files.get('adopt-me.md');
     expect(state).toBeDefined();
     expect(state!.remoteExists).toBe(true);
+    expect(adapter.uploadCalls).toBe(0);
   });
 
   it('explicitAdopt succeeds when no duplicate and adoption_required', async () => {
     const content = Buffer.from('new file');
     fs.writeFileSync(path.join(tmpDir, 'new-file.md'), content);
+    await coordinator.setDriveFolderId(await adapter.getFolderId());
     await coordinator.explicitAdopt('new-file.md');
 
     const state = coordinator.getSyncState();

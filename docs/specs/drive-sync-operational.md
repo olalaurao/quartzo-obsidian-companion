@@ -87,6 +87,29 @@ continue to own disappearance at their old path.
 
 ### Stable sync and byte evidence
 
+Sync Center lists each exact pending path separately from its reason. A pass
+returning zero errors is not clean success while the fresh coordinator snapshot
+still has pending paths or an error. The empty Conflicts panel describes only
+recorded conflicts; it does not claim complete synchronization.
+
+An `adoption_required` row offers Review adoption followed by explicit Adopt file
+for that path and paired target. Reviewing does not mutate files. A changed
+coordinator/Drive target invalidates the confirmation; offline, unpaired and
+active-operation states cannot start another adoption. The existing plugin
+handler propagates failure into a persistent copyable UI report. Reports remain
+transient and never become a second sync state or persisted history.
+
+`DriveSyncCoordinator.explicitAdopt` shares the existing sync mutex, operation
+progress and pause/cancel checkpoints. It rejects excluded/escaping/aliased or
+shared local identities, wrong Reading filename bytes and oversized shards,
+captures actual local bytes, rechecks target and local hash around asynchronous
+work, and compares actual existing remote bytes even when metadata advertises
+equality. Divergence creates the existing conflict evidence without replacing
+either side. A tracked remote ID with a null baseline remains unknown-base and
+pending after restart, including when conflict materialization failed; explicit
+review may retry fresh unique-path/byte comparison. No adoption grants a Reading
+ACK or automatically changes Manual/Automatic mode.
+
 All binary media writes, including create, conditional mutable update, explicit
 Reading repair and the safe-write probe, use binary `multipart/related` bodies
 through the existing Google SDK/OAuth pipeline. The adapter must preserve every

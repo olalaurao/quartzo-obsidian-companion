@@ -165,37 +165,43 @@ function batchOperationReportToActionReport(kind: string, title: string, report:
   return { ...actionReport, copyText: actionReportCopyText(actionReport) };
 }
 
-function syncResultToActionReport(operation: 'incremental' | 'full', result: SyncResult): ActionReport {
+function syncResultToActionReport(operation: 'incremental' | 'full', result: SyncResult, snapshot: SyncStatusSnapshot): ActionReport {
+  const pending = snapshot.pendingLocalChanges;
+  const errors = [...result.errors];
+  if (snapshot.lastError && !errors.includes(snapshot.lastError)) errors.push(snapshot.lastError);
   const title = result.cancelled
     ? operation === 'full' ? 'Full reconciliation cancelled' : 'Sync cancelled'
     : operation === 'full' ? 'Full reconciliation complete' : 'Sync complete';
   const status: ActionReport['status'] = result.cancelled
     ? 'warning'
-    : result.errors.length > 0
+    : errors.length > 0
     ? 'error'
-    : result.conflicts > 0
+    : result.conflicts > 0 || pending > 0
       ? 'warning'
       : 'success';
-  const nextAction = result.errors.length > 0
+  const nextAction = errors.length > 0
     ? 'Copy diagnostics and retry after resolving the reported blocker.'
     : result.cancelled
       ? 'Completed operations were checkpointed. Run sync again to continue.'
     : result.conflicts > 0
       ? 'Open Conflicts or Review Drive duplicates before running sync again.'
+    : pending > 0
+      ? 'Review pending files below. Files requiring adoption need explicit Review adoption before they can sync.'
       : 'No follow-up needed unless you want to review Activity History.';
   const messages = [
-    ...result.errors,
+    ...errors,
     result.conflicts > 0 ? `${result.conflicts} conflict(s) need review.` : null,
+    ...snapshot.pendingDiagnostics.map(formatPendingDiagnostic),
   ].filter((message): message is string => message != null);
   const report: ActionReport = {
     kind: operation === 'full' ? 'sync.full_reconciliation' : 'sync.manual',
     title,
     status,
-    summary: `${result.synced} synced, ${result.conflicts} conflicts, ${result.errors.length} errors. ${nextAction}`,
-    attempted: result.synced + result.conflicts + result.errors.length,
+    summary: `${result.synced} synced, ${result.conflicts} conflicts, ${errors.length} errors, ${pending} pending. ${nextAction}`,
+    attempted: result.synced + result.conflicts + errors.length,
     applied: result.synced,
     skipped: result.conflicts,
-    failed: result.errors.length,
+    failed: errors.length,
     messages,
   };
   return { ...report, copyText: actionReportCopyText(report) };
@@ -2206,9 +2212,57 @@ export class QuartzoView extends ItemView {
         badge.className = reasonBadgeClass[diagnostic.reason];
         badge.textContent = diagnostic.reason.replace(/_/g, ' ');
         const pathSpan = document.createElement('span');
-        pathSpan.textContent = formatPendingDiagnostic(diagnostic).split(': ').slice(1).join(': ') || diagnostic.path;
+        pathSpan.textContent = diagnostic.path + (diagnostic.relatedPath ? ` → ${diagnostic.relatedPath}` : '');
         row.appendChild(badge);
         row.appendChild(pathSpan);
+        if (diagnostic.reason === 'adoption_required' && !conflictsOnly && coordinator && plugin.settings.isPaired) {
+          const review = document.createElement('button');
+          review.className = 'qz-btn qz-btn-secondary qz-btn-sm';
+          review.textContent = 'Review adoption';
+          review.disabled = offline || requiresAuth || snapshot.status === 'syncing';
+          review.addEventListener('click', async () => {
+            const reviewedFolder = plugin.settings.googleDriveFolderId;
+            const path = diagnostic.path;
+            this.syncActionReport = {
+              kind: 'sync.adopt_review', title: 'Review file adoption', status: 'info',
+              summary: `Adopt ${path} into ${plugin.settings.googleDriveFolderName ?? 'the paired Drive vault'}? The coordinator compares existing remote bytes first. Divergent copies remain a conflict; this does not authorize an overwrite.`,
+              messages: [path],
+              nextAction: { label: 'Adopt file', variant: 'primary', onClick: async () => {
+                try {
+                  if (plugin.driveSyncCoordinator !== coordinator || plugin.settings.googleDriveFolderId !== reviewedFolder || !plugin.settings.isPaired) {
+                    throw new Error('The paired vault changed. Review adoption again.');
+                  }
+                  this.syncActionReport = { kind: 'sync.adopt', title: 'Adopting file…', status: 'info', summary: path };
+                  const outcome = plugin.adoptFile(path).then(() => ({ ok: true as const }), (error: unknown) => ({ ok: false as const, error }));
+                  await this.render();
+                  const result = await outcome;
+                  if (!result.ok) throw result.error;
+                  const after = await coordinator.getSyncStatusSnapshot();
+                  const remaining = after.pendingDiagnostics.filter(item => item.path === path);
+                  const report: ActionReport = {
+                    kind: 'sync.adopt', title: remaining.length ? 'Adoption needs review' : 'File adopted',
+                    status: remaining.length ? 'warning' : 'success',
+                    summary: remaining.length ? `Review the remaining sync diagnostics for ${path}.` : `The coordinator established a verified baseline for ${path}.`,
+                    attempted: 1, ...(remaining.length ? {} : { applied: 1 }), failed: 0,
+                    messages: remaining.length ? remaining.map(formatPendingDiagnostic) : [path],
+                  };
+                  this.syncActionReport = { ...report, copyText: actionReportCopyText(report) };
+                } catch (error) {
+                  const report: ActionReport = {
+                    kind: 'sync.adopt', title: 'Adoption failed', status: 'error',
+                    summary: 'The file was not confirmed as adopted. Copy diagnostics, fix the blocker, then review adoption again.',
+                    attempted: 1, applied: 0, skipped: 0, failed: 1,
+                    messages: [path, error instanceof Error ? error.message : String(error)],
+                  };
+                  this.syncActionReport = { ...report, copyText: actionReportCopyText(report) };
+                }
+                await this.render();
+              } },
+            };
+            await this.render();
+          });
+          row.appendChild(review);
+        }
         pendingList.appendChild(row);
       }
       summary.appendChild(pendingList);
@@ -2477,12 +2531,16 @@ export class QuartzoView extends ItemView {
           const result = operation === 'full'
             ? await coordinator.triggerFullReconciliation(onProgress)
             : await coordinator.triggerManualSync(onProgress);
-          if (!this.isCurrentRender(container, generation)) return;
-          this.syncActionReport = syncResultToActionReport(operation, result);
+          const after = await coordinator.getSyncStatusSnapshot();
+          this.syncActionReport = syncResultToActionReport(operation, result, after);
           if (result.cancelled) {
             new Notice('Sync cancelled safely. Completed work was checkpointed; run sync again to continue.');
           } else if (result.errors.length > 0) {
             new Notice(result.errors[result.errors.length - 1]);
+          } else if (after.lastError) {
+            new Notice(after.lastError);
+          } else if (after.pendingLocalChanges > 0) {
+            new Notice(`Sync pass finished with ${after.pendingLocalChanges} pending file(s). Review Sync Center.`);
           } else if (operation === 'full') {
             new Notice(`Full reconciliation complete: ${result.synced} synced, ${result.conflicts} conflicts`);
           } else {
@@ -2599,7 +2657,7 @@ export class QuartzoView extends ItemView {
       emptyTitle.textContent = 'No conflicts';
       const emptyBody = document.createElement('div');
       emptyBody.className = 'qz-empty-state-body';
-      emptyBody.textContent = 'All files are in sync between local vault and Google Drive.';
+      emptyBody.textContent = 'No sync conflicts are recorded. Review the sync status and any pending files above.';
       empty.appendChild(emptyIcon);
       empty.appendChild(emptyTitle);
       empty.appendChild(emptyBody);

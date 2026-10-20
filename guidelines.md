@@ -28,6 +28,12 @@ verificar os bytes gravados antes de o coordenador estabelecer o baseline.
 
 Detailed preserved pairing, quota, cleanup and retry rules C-GUID-09–23 are in [Drive Sync operational spec](docs/specs/drive-sync-operational.md). This remains the same canonical coordinator, never another sync owner.
 
+Sync Center mostra o caminho exato de cada pendência e oferece Review adoption
+antes de Adopt file para arquivos sem baseline. Revisão não grava; confirmação
+vale somente para o vault pareado que foi revisado. Falhas ficam visíveis e
+copiáveis, inclusive após Notice; pendências impedem o resultado "tudo
+sincronizado" mesmo quando a passada terminou sem erros de arquivo.
+
 ## Daily Schedule, occurrence, Focus and interfaces
 
 **C-GUID-24 — Ações de ocorrência são estado compartilhado canônico, não mutação de tela:** `Done`, `Already did`, `Skip`, `Clear/Undo`, `Snooze` e `Dismiss` devem passar pelo owner canônico de occurrence actions e persistir respostas em `sessions/shared_occurrence_state_v1.md` com `actionId` idempotente. Home, Planner, Day Dial, Journal e qualquer outra superfície apenas projetam capabilities/estado e chamam esse owner; não escrevem outcome diretamente no objeto nem mantêm um segundo registro de conclusão. Quando a ação também tiver side effect canônico no objeto-fonte (por exemplo Task one-off, Habit history, Reminder/Event one-off, contato ou Goal deadline), a escrita deve preservar campos desconhecidos e usar mutação segura do Vault; se esse adapter ainda não tiver paridade comprovada, a ação correspondente fica indisponível/fail-closed em vez de aplicar só metade da semântica. O notification delivery registry continua device-local e nunca substitui esse estado compartilhado.

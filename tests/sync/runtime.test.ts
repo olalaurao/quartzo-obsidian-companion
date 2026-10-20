@@ -642,6 +642,127 @@ describe('Runtime Sync Tests', () => {
     expect(adapter.files.get('_deleted/delete-safe.md')?.id).toBe(remote.id);
   });
 
+  it('explicit adoption publishes through the existing owner and survives local state hydration', async () => {
+    fs.writeFileSync(path.join(tmpDir, 'adopt.bin'), 'owned synthetic bytes');
+    await coordinator.reconcile();
+    await coordinator.explicitAdopt('adopt.bin');
+    expect(adapter.uploadCalls).toBe(1);
+    expect(adapter.files.get('adopt.bin')?.content).toEqual(Uint8Array.from(Buffer.from('owned synthetic bytes')));
+    const restarted = new DriveSyncCoordinator(adapter, tmpDir, path.join(tmpDir, '.quartzo-sync-state.json'));
+    const calls = adapter.listFilesCalls;
+    await restarted.hydratePersistedState();
+    expect(adapter.listFilesCalls).toBe(calls);
+    expect(restarted.getSyncState().files.get('adopt.bin')?.baseHash).toBeTruthy();
+    expect((await restarted.getSyncStatusSnapshot()).pendingLocalChanges).toBe(0);
+  });
+
+  it('explicit adoption compares real remote bytes even when metadata advertises the local hash', async () => {
+    const bytes = Buffer.from('opaque original reading bytes');
+    const digest = crypto.createHash('sha256').update(bytes).digest('hex');
+    const relative = `sessions/reading_activity_v1/${'a'.repeat(64)}/${'b'.repeat(64)}/2026/10/${digest}.jsonl`;
+    fs.mkdirSync(path.dirname(path.join(tmpDir, relative)), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, relative), bytes);
+    await coordinator.reconcile();
+    adapter.addRemoteFile(relative, Buffer.alloc(0));
+    adapter.files.get(relative)!.quartzoHash = digest;
+    await coordinator.explicitAdopt(relative);
+    expect(coordinator.getConflicts()).toHaveLength(1);
+    expect(coordinator.getSyncState().files.get(relative)?.baseHash).toBeNull();
+    expect(fs.readFileSync(path.join(tmpDir, relative))).toEqual(bytes);
+    expect(adapter.files.get(relative)?.content).toHaveLength(0);
+    expect(adapter.uploadCalls + adapter.updateCalls).toBe(0);
+  });
+
+  it('explicit adoption holds the canonical lock against another adoption, pairing and retarget', async () => {
+    fs.writeFileSync(path.join(tmpDir, 'adopt.txt'), 'synthetic');
+    await coordinator.reconcile();
+    let release!: () => void;
+    let started!: () => void;
+    const ready = new Promise<void>(resolve => { started = resolve; });
+    vi.spyOn(adapter, 'listAllFiles').mockImplementationOnce(async () => {
+      started(); await new Promise<void>(resolve => { release = resolve; }); return [];
+    });
+    const adopting = coordinator.explicitAdopt('adopt.txt');
+    await ready;
+    expect((await coordinator.getSyncStatusSnapshot()).status).toBe('syncing');
+    await expect(coordinator.explicitAdopt('adopt.txt')).rejects.toThrow('active sync');
+    await expect(coordinator.setDriveFolderId('other')).rejects.toThrow('active sync');
+    const pairing = await coordinator.applyPairingDecisions({ identical: [], localOnly: [], remoteOnly: [], divergent: [], ambiguous: [] }, { autoAdopt: true, autoPull: true });
+    expect(pairing.errors).toEqual(['Wait for active sync before applying pairing decisions.']);
+    release(); await adopting;
+    expect(adapter.uploadCalls).toBe(1);
+  });
+
+  it.each(['local-change', 'drive-retarget'])('explicit adoption rejects %s during remote inventory before upload', async scenario => {
+    fs.writeFileSync(path.join(tmpDir, 'adopt.txt'), 'before');
+    await coordinator.reconcile();
+    vi.spyOn(adapter, 'listAllFiles').mockImplementationOnce(async () => {
+      if (scenario === 'local-change') fs.writeFileSync(path.join(tmpDir, 'adopt.txt'), 'after');
+      else await adapter.setFolderId('foreign');
+      return [];
+    });
+    await expect(coordinator.explicitAdopt('adopt.txt')).rejects.toThrow('changed during adoption');
+    expect(adapter.uploadCalls).toBe(0);
+    expect(coordinator.getSyncState().files.get('adopt.txt')?.baseHash).toBeNull();
+    expect((await coordinator.getSyncStatusSnapshot()).status).toBe('error');
+  });
+
+  it.each(['wrong-digest', 'oversize'])('explicit adoption refuses %s Reading bytes before touching Drive', async scenario => {
+    const relative = `sessions/reading_activity_v1/${'a'.repeat(64)}/${'b'.repeat(64)}/2026/10/${'c'.repeat(64)}.jsonl`;
+    fs.mkdirSync(path.dirname(path.join(tmpDir, relative)), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, relative), scenario === 'oversize' ? Buffer.alloc(SyncEngine.readingShardMaxBytes + 1, 120) : 'wrong digest');
+    await coordinator.setDriveFolderId('root-folder-id');
+    const read = vi.spyOn(fs, 'readFileSync'); read.mockClear();
+    await expect(coordinator.explicitAdopt(relative)).rejects.toThrow(scenario === 'oversize' ? 'exceeds the shard bound' : 'original filename bytes');
+    expect(read.mock.calls.filter(([candidate]) => candidate === path.join(tmpDir, relative))).toHaveLength(scenario === 'oversize' ? 0 : 1);
+    expect(adapter.listFilesCalls + adapter.uploadCalls).toBe(0);
+  });
+
+  it('explicit adoption remains pending after a conflict-artifact failure and restart', async () => {
+    fs.writeFileSync(path.join(tmpDir, 'adopt.txt'), 'local original');
+    await coordinator.reconcile();
+    adapter.addRemoteFile('adopt.txt', Buffer.from('remote divergence'));
+    const conflictOwner = coordinator as unknown as { handleConflict: (...args: unknown[]) => Promise<void> };
+    const fail = vi.spyOn(conflictOwner, 'handleConflict').mockRejectedValueOnce(new Error('synthetic conflict artifact failure'));
+    await expect(coordinator.explicitAdopt('adopt.txt')).rejects.toThrow('artifact failure');
+    fail.mockRestore();
+    const restarted = new DriveSyncCoordinator(adapter, tmpDir, path.join(tmpDir, '.quartzo-sync-state.json'));
+    await restarted.hydratePersistedState();
+    expect((await restarted.getSyncStatusSnapshot()).pendingDiagnostics).toContainEqual({ path: 'adopt.txt', reason: 'adoption_required' });
+    await restarted.explicitAdopt('adopt.txt');
+    expect(restarted.getConflicts()).toHaveLength(1);
+    expect(adapter.uploadCalls + adapter.updateCalls).toBe(0);
+    expect(fs.readFileSync(path.join(tmpDir, 'adopt.txt'), 'utf8')).toBe('local original');
+  });
+
+  it('explicit adoption requires a paired target before any Drive inventory or upload', async () => {
+    fs.writeFileSync(path.join(tmpDir, 'adopt.txt'), 'synthetic');
+    await expect(coordinator.explicitAdopt('adopt.txt')).rejects.toThrow('Pair the vault');
+    expect(adapter.listFilesCalls + adapter.uploadCalls).toBe(0);
+  });
+
+  it('explicit adoption rejects two live remote identities for the same path', async () => {
+    fs.writeFileSync(path.join(tmpDir, 'adopt.txt'), 'synthetic');
+    await coordinator.reconcile();
+    adapter.addRemoteFile('adopt.txt', Buffer.from('synthetic'));
+    const [remote] = await adapter.listAllFiles('root-folder-id');
+    vi.spyOn(adapter, 'listAllFiles').mockResolvedValueOnce([remote, { ...remote, id: 'second-live-identity' }]);
+    await expect(coordinator.explicitAdopt('adopt.txt')).rejects.toThrow('Ambiguous duplicate');
+    expect(adapter.uploadCalls + adapter.updateCalls).toBe(0);
+    expect(coordinator.getSyncState().files.get('adopt.txt')?.baseHash).toBeNull();
+  });
+
+  it('explicit adoption cancels before upload and releases the existing lock for a reviewed retry', async () => {
+    fs.writeFileSync(path.join(tmpDir, 'adopt.txt'), 'synthetic');
+    await coordinator.reconcile();
+    vi.spyOn(adapter, 'listAllFiles').mockImplementationOnce(async () => { coordinator.cancelSync(); return []; });
+    await expect(coordinator.explicitAdopt('adopt.txt')).rejects.toThrow('cancelled at a safe checkpoint');
+    expect(adapter.uploadCalls).toBe(0);
+    await coordinator.explicitAdopt('adopt.txt');
+    expect(adapter.uploadCalls).toBe(1);
+    expect((await coordinator.getSyncStatusSnapshot()).status).toBe('synced');
+  });
+
   it('2: explicit adoption creates remote and baseline', async () => {
     fs.writeFileSync(path.join(tmpDir, 'adopt.md'), 'adopt content');
     await coordinator.reconcile();

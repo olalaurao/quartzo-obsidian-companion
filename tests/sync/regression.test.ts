@@ -903,6 +903,7 @@ describe('Sync Regression Tests', () => {
   describe('Explicit adoption API', () => {
     it('explicitAdopt creates remote file and baseline', async () => {
       fs.writeFileSync(path.join(tmpDir, 'adopt-me.md'), Buffer.from('adopt content'));
+      await coordinator.setDriveFolderId(await adapter.getFolderId());
       await coordinator.explicitAdopt('adopt-me.md');
 
       expect(adapter.files.has('adopt-me.md')).toBe(true);
