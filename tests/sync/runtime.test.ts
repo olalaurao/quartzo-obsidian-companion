@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DriveSyncCoordinator, chooseNewestConflictResolution, type ConflictArtifact } from '../../src/sync/coordinator/index';
 import { VaultSyncFilePolicy } from '../../src/sync/coordinator/file-policy';
+import { SyncEngine } from '../../src/core/sync';
 import { normalizeVaultPath, isSameVaultPath } from '../../src/sync/coordinator/path-utils';
 import { DriveRequestTimeoutError, TemporaryDriveQuotaError, type DriveAdapter, type DriveFileMetadata, type DriveChange, type ReadingFileRepairRequest } from '../../src/sync/coordinator/types';
 import { GoogleDriveAdapter } from '../../src/integrations/google/drive/adapter';
@@ -370,6 +371,62 @@ describe('Runtime Sync Tests', () => {
     expect((await coordinator.reconcile()).errors).toEqual([]);
     expect(coordinator.getConflicts()).toHaveLength(0);
     expect(adapter.updateCalls).toBe(0);
+  });
+
+  it.skipIf(!process.env.READING_SYNC_EXCHANGE)('audit: reading_cross_client_exchange', async () => {
+    const exchange = process.env.READING_SYNC_EXCHANGE!;
+    const stage = process.env.READING_SYNC_STAGE;
+    const data = JSON.parse(fs.readFileSync(exchange, 'utf8')) as {
+      version: number; stage: string; sourcePath: string;
+      files: Array<{path: string; id: string; base64: string}>;
+    };
+    expect(data.version).toBe(1);
+    expect(data.stage).toBe(stage === 'companion-middle' ? 'quartzo-seed' : 'quartzo-return');
+    expect(['companion-middle', 'companion-finish']).toContain(stage);
+    for (const file of data.files) adapter.addRemoteFileWithId(file.path, file.id, Buffer.from(file.base64, 'base64'));
+    expect((await coordinator.reconcile(true)).errors).toEqual([]);
+    for (const file of data.files) {
+      const bytes = Buffer.from(file.base64, 'base64');
+      expect(fs.readFileSync(path.join(tmpDir, file.path))).toEqual(bytes);
+      expect(SyncEngine.immutableReadingHash(file.path)).toBe(crypto.createHash('sha256').update(bytes).digest('hex'));
+      expect(coordinator.getSyncState().files.get(file.path)?.remoteFileId).toBe(file.id);
+    }
+    expect(coordinator.getConflicts()).toHaveLength(0);
+    coordinator = new DriveSyncCoordinator(adapter, tmpDir, path.join(tmpDir, '.quartzo-sync-state.json'));
+    await coordinator.hydratePersistedState();
+    expect((await coordinator.reconcile(true)).errors).toEqual([]);
+    expect(adapter.updateCalls).toBe(0);
+    if (stage === 'companion-middle') {
+      const source = data.files.find(file => file.path === data.sourcePath)!;
+      const file = path.join(tmpDir, source.path);
+      fs.writeFileSync(file, 'synthetic local corruption');
+      await coordinator.reconcile(true);
+      expect(coordinator.getConflicts()).toHaveLength(1);
+      await expect(coordinator.resolveConflict(source.path, 'keep_local')).rejects.toThrow('original filename bytes');
+      await coordinator.resolveConflict(source.path, 'keep_drive');
+      expect(fs.readFileSync(file)).toEqual(Buffer.from(source.base64, 'base64'));
+      expect(adapter.updateCalls).toBe(0);
+      adapter.files.delete(source.path);
+      await coordinator.reconcile(true);
+      expect(coordinator.getConflicts()).toHaveLength(1);
+      expect(coordinator.getSyncState().files.get(source.path)?.baseHash).toBe(SyncEngine.immutableReadingHash(source.path));
+      expect(fs.readFileSync(file)).toEqual(Buffer.from(source.base64, 'base64'));
+      adapter.addRemoteFileWithId(source.path, source.id, Buffer.from(source.base64, 'base64'));
+      expect((await coordinator.reconcile(true)).errors).toEqual([]);
+      expect(coordinator.getConflicts()).toHaveLength(0);
+      const future = Buffer.from('{"schema_version":999,"fixture_only":true}\n');
+      const futurePath = source.path.slice(0, source.path.lastIndexOf('/') + 1) +
+        crypto.createHash('sha256').update(future).digest('hex') + '.jsonl';
+      fs.writeFileSync(path.join(tmpDir, futurePath), future);
+      await coordinator.queueCreate(futurePath);
+      expect((await coordinator.reconcile(true)).errors).toEqual([]);
+      expect(Buffer.from(adapter.files.get(futurePath)!.content)).toEqual(future);
+      data.files.push({path: futurePath, id: adapter.files.get(futurePath)!.id, base64: future.toString('base64')});
+    }
+    expect(coordinator.getConflicts()).toHaveLength(0);
+    expect(adapter.updateCalls).toBe(0);
+    data.stage = stage!;
+    fs.writeFileSync(exchange, JSON.stringify(data));
   });
 
   it.skipIf(!process.env.SYNC_AUDIT_EXCHANGE)('audit: cross-client exchange', async () => {

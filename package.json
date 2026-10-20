@@ -12,6 +12,7 @@
     "test:contracts": "vitest run tests/contracts",
     "test:sync": "vitest run tests/contracts/sync.test.ts tests/contracts/reading-sync-vectors.test.ts tests/sync/runtime.test.ts tests/sync/regression.test.ts tests/sync/p0-regression.test.ts tests/integrations/google-drive-conditional.test.ts tests/integrations/google-drive-reading.test.ts",
     "test:sync:exchange": "node scripts/audit-sync-exchange.mjs",
+    "test:reading:exchange": "node scripts/audit-reading-exchange.mjs",
     "contracts:sync": "node scripts/sync-contracts.mjs sync",
     "contracts:verify": "node scripts/sync-contracts.mjs verify",
     "architecture:check": "node scripts/architecture-check.mjs",
