@@ -3,6 +3,7 @@ import * as crypto from 'crypto';
 import { strict as assert } from 'assert';
 import { GoogleDriveAdapter } from '../../src/integrations/google/drive/adapter';
 import { SyncEngine } from '../../src/core/sync';
+import { decodeDriveMultipart } from '../fixtures/drive-multipart';
 interface FixtureMetadata {
     id: string;
     name: string;
@@ -31,6 +32,7 @@ interface FixtureRequest {
 interface FixtureOptions {
     headers: Record<string, string>;
     maxContentLength?: number;
+    body?: Uint8Array;
 }
 const hash = (bytes: Uint8Array | string) => crypto.createHash('sha256').update(bytes).digest('hex');
 const original = Buffer.from('opaque synthetic reading bytes\n'), digest = hash(original);
@@ -65,8 +67,8 @@ function fixture(kind: 'reading' | 'ordinary' | 'ordinary_hash' = 'reading', see
                 calls.push({ operation: 'update', if_match: options.headers['If-Match'] });
                 if (options.headers['If-Match'] !== etag)
                     throw { response: { status: 412 } };
-                if (params.media)
-                    bytes = Buffer.from(params.media!.body);
+                if (options.body)
+                    bytes = decodeDriveMultipart(options).bytes;
                 if (params.requestBody?.title)
                     title = params.requestBody.title;
                 if (params.addParents)
@@ -103,7 +105,7 @@ function fixture(kind: 'reading' | 'ordinary' | 'ordinary_hash' = 'reading', see
                 if (duplicate && values.some(value => value.id === 'file')) values.push({...metadata(), id: 'duplicate'});
                 return { data: { files: clone(values), nextPageToken: partial ? 'more' : undefined } };
             },
-            create: async (params: FixtureRequest) => { calls.push({ operation: 'create' }); assert.equal(params.requestBody!.name, `${digest}.jsonl`); assert.equal(params.requestBody!.parents![0], parent); bytes = Buffer.from(params.media!.body); exists = true; parents = [parent]; title = `${digest}.jsonl`; return { data: metadata() }; },
+            create: async (_params: FixtureRequest, options: FixtureOptions) => { const media = decodeDriveMultipart(options); calls.push({ operation: 'create' }); assert.equal(media.metadata.name, `${digest}.jsonl`); assert.equal(media.metadata.parents[0], parent); bytes = media.bytes; exists = true; parents = [parent]; title = `${digest}.jsonl`; return { data: metadata() }; },
             delete: async () => { calls.push({ operation: 'unconditional_delete' }); exists = false; return { data: {} }; },
         } };
     Object.assign(adapter, { folderId: 'root', getDriveClient: () => v3, getConditionalClient: () => v2, withRetry: async (operation: () => Promise<unknown>) => operation() });

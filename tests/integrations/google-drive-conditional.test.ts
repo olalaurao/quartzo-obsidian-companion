@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { GoogleDriveAdapter } from '../../src/integrations/google/drive/adapter';
+import { decodeDriveMultipart } from '../fixtures/drive-multipart';
 
 function fixture() {
   const adapter = new GoogleDriveAdapter('test-only');
@@ -8,10 +9,12 @@ function fixture() {
   const writes: Array<{ headers: Record<string, string>; properties: unknown }> = [];
   const v2 = { files: {
     get: async () => ({ data: { id: 'file', etag, title: 'file.md', properties: [{ key: 'future', value: 'preserved', visibility: 'PUBLIC' }] } }),
-    update: async (params: { requestBody: { properties: unknown } }, options: { headers: Record<string, string> }) => {
-      writes.push({ headers: options.headers, properties: params.requestBody.properties });
+    update: async (_params: unknown, options: { headers: Record<string, string>; body: Uint8Array }) => {
+      const media = decodeDriveMultipart(options);
+      writes.push({ headers: options.headers, properties: media.metadata.properties });
       if (options.headers['If-Match'] !== etag) throw { response: { status: 412 } };
-      return { data: { id: 'file', title: 'file.md', properties: params.requestBody.properties } };
+      bytes = media.bytes;
+      return { data: { id: 'file', title: 'file.md', properties: media.metadata.properties } };
     },
   } };
   const v3 = { files: { get: async () => ({ data: bytes }) } };

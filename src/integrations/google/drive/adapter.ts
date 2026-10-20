@@ -13,6 +13,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { normalizeVaultPath } from '../../../sync/coordinator/path-utils';
 import { VaultSyncFilePolicy } from '../../../sync/coordinator/file-policy';
 import * as crypto from 'crypto';
+import { binaryMediaRequest } from './media-request';
 
 const DRIVE_REQUEST_TIMEOUT_MS = 60_000;
 const DRIVE_MEDIA_REQUEST_TIMEOUT_MS = 120_000;
@@ -118,9 +119,10 @@ export class GoogleDriveAdapter implements DriveAdapter {
     if (!this.folderId) throw new Error('Select a vault before checking safe Drive writes');
     const parentId = await this.ensureParentFolder(this.folderId, '_diagnostics/preconditions/probe.bin');
     const created = await this.getDriveClient().files.create({
-      requestBody: { name: `conditional-probe-${crypto.randomUUID()}.bin`, parents: [parentId] },
-      media: { mimeType: 'application/octet-stream', body: Buffer.from('before') }, fields: 'id',
-    }, { timeout: DRIVE_MEDIA_REQUEST_TIMEOUT_MS });
+      uploadType: 'multipart', fields: 'id',
+    }, { ...binaryMediaRequest('create', {
+      name: `conditional-probe-${crypto.randomUUID()}.bin`, parents: [parentId],
+    }, Buffer.from('before')), timeout: DRIVE_MEDIA_REQUEST_TIMEOUT_MS });
     const fileId = created.data.id;
     if (!fileId) throw new Error('Drive safe-write probe did not return an identity');
     try {
@@ -602,11 +604,11 @@ export class GoogleDriveAdapter implements DriveAdapter {
     // This tuple came from this operation's own verified read. A concurrent
     // cache update cannot substitute another ETag into the conditional write.
     await this.withRetry(() => { check(); return client.files.update({
-      fileId, supportsAllDrives: true,
-      requestBody: { properties: [...(current.version.properties || []).filter(property => property.key !== 'Quartzo_hash'),
-        {key: 'Quartzo_hash', value: originalHash, visibility: 'PUBLIC'}] },
-      media: {mimeType: 'application/octet-stream', body: Buffer.from(bytes)}, fields: 'id',
-    }, {headers: {'If-Match': current.version.etag!}, timeout: DRIVE_MEDIA_REQUEST_TIMEOUT_MS}); });
+      fileId, supportsAllDrives: true, uploadType: 'multipart', fields: 'id',
+    }, { ...binaryMediaRequest('update', {
+      properties: [...(current.version.properties || []).filter(property => property.key !== 'Quartzo_hash'),
+        {key: 'Quartzo_hash', value: originalHash, visibility: 'PUBLIC'}],
+    }, bytes, current.version.etag!), timeout: DRIVE_MEDIA_REQUEST_TIMEOUT_MS}); });
     check();
     const final = await this.downloadSnapshot(fileId, relativePath);
     check(); final.check();
@@ -782,28 +784,17 @@ export class GoogleDriveAdapter implements DriveAdapter {
       try {
         check();
         const response = await driveClient.files.create({
-          requestBody: {
-            name: fileName,
-            parents: [parentId],
-            properties: { Quartzo_hash: quartzoHash }
-          },
-          media: {
-            mimeType: 'application/octet-stream',
-            body: Buffer.from(content)
-          },
+          uploadType: 'multipart',
           fields: 'id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties, trashed, capabilities(canTrash)'
-        }, { timeout: DRIVE_MEDIA_REQUEST_TIMEOUT_MS });
+        }, { ...binaryMediaRequest('create', {
+          name: fileName, parents: [parentId], properties: { Quartzo_hash: quartzoHash },
+        }, content), timeout: DRIVE_MEDIA_REQUEST_TIMEOUT_MS });
         check();
-        const data = response.data;
-        return {
-          id: data.id || '',
-          name: fullPath,
-          mimeType: data.mimeType || '',
-          modifiedTime: data.modifiedTime || new Date().toISOString(),
-          md5Checksum: data.md5Checksum || undefined,
-          parents: data.parents || undefined,
-          quartzoHash
-        };
+        if (!response.data.id) throw new Error('Drive create returned no file identity');
+        const verified = await findExpected();
+        check();
+        if (!verified || verified.id !== response.data.id) throw new Error('Drive created file identity was not independently verified');
+        return verified;
       } catch (error) {
         check();
         const after = await findExpected();
@@ -862,13 +853,17 @@ export class GoogleDriveAdapter implements DriveAdapter {
     await this.assertInsideSelectedVault(fileId); check();
     await this.requireMutableIdentity(fileId, version, check);
     const response = await this.withRetry(() => { check(); return client.files.update({
-      fileId, supportsAllDrives: true,
-      requestBody: { properties: [...(version.properties || []).filter(property => property.key !== 'Quartzo_hash'),
-        { key: 'Quartzo_hash', value: quartzoHash, visibility: 'PUBLIC' }] },
-      media: { mimeType: 'application/octet-stream', body: Buffer.from(bytes) },
+      fileId, supportsAllDrives: true, uploadType: 'multipart',
       fields: 'id,title,mimeType,modifiedDate,md5Checksum,parents,properties,labels,capabilities',
-    }, { headers: { 'If-Match': version.etag! }, timeout: DRIVE_MEDIA_REQUEST_TIMEOUT_MS }); });
+    }, { ...binaryMediaRequest('update', {
+      properties: [...(version.properties || []).filter(property => property.key !== 'Quartzo_hash'),
+        { key: 'Quartzo_hash', value: quartzoHash, visibility: 'PUBLIC' }],
+    }, bytes, version.etag!), timeout: DRIVE_MEDIA_REQUEST_TIMEOUT_MS }); });
     check();
+    const final = await this.downloadSnapshot(fileId); check(); final.check();
+    if (this.calculateQuartzoHash(final.bytes) !== this.calculateQuartzoHash(bytes)) {
+      throw new Error('Drive update bytes were not independently verified');
+    }
     return this.mapConditionalFile(response.data);
   }
 

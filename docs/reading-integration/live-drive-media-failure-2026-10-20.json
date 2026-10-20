@@ -1,0 +1,41 @@
+{
+  "observedAt": "2026-10-20T07:14:59.064Z",
+  "proof": "actual Obsidian 1.14.4 official Companion 5ba99fd adapter upload plus independent Drive v2 size and MD5",
+  "sourceMain": "5ba99fd02c87df072103390a377f611f7f452ff4",
+  "files": [
+    {
+      "path": "ordinary-control.txt",
+      "declaredBytes": "0",
+      "md5": "d41d8cd98f00b204e9800998ecf8427e",
+      "mimeType": "text/plain"
+    },
+    {
+      "path": "sessions/reading_activity_v1/4341e0c427fa135df1d2b51df2412481bac88514124adeae820b4b013f9a5083/630666a15fffb361ab7ad8a4b393668ce8a7d208d6f850a9579adbe9fd14053c/2026/10/1a6d510fee4b641af6b9f6c5ade879a0999065bf95a24fdd3d2fbee2905848d1.jsonl",
+      "declaredBytes": "0",
+      "md5": "d41d8cd98f00b204e9800998ecf8427e",
+      "mimeType": "application/octet-stream"
+    },
+    {
+      "path": "sessions/reading_activity_v1/4341e0c427fa135df1d2b51df2412481bac88514124adeae820b4b013f9a5083/630666a15fffb361ab7ad8a4b393668ce8a7d208d6f850a9579adbe9fd14053c/2026/10/b9fdf7c9bf3a6cd58a467680cef77a8ee72ca72c196a475c72dbc58e760bbab5.jsonl",
+      "declaredBytes": "0",
+      "md5": "d41d8cd98f00b204e9800998ecf8427e",
+      "mimeType": "application/octet-stream"
+    }
+  ],
+  "canonicalAck": false,
+  "productionModified": false,
+  "outcome": "FAIL: all three uploaded synthetic files are zero bytes on Drive; metadata hash is not byte evidence",
+  "officialBundleSha256": "8ecc4889893505264c2fe4dd1b55db60704e76fc1c030cbdf70bf835710a793b",
+  "mutationOwner": "existing DriveSyncCoordinator.explicitAdopt invoked in guarded sandbox DevTools; this is not a successful UI adoption flow",
+  "gatesClosed": [
+    "G03 live interoperability",
+    "canonical source ACK",
+    "production ingestion"
+  ],
+  "followUp": [
+    "Fix renderer-safe binary request encoding in existing adapter",
+    "Independently read created/updated bytes before success",
+    "Retest official exact-main artifact, preserve and explicitly repair owned corrupt sandbox copies",
+    "Expose adoption review and truthful pending feedback in Sync Center"
+  ]
+}
