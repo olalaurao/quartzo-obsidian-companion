@@ -22,6 +22,7 @@ The source of shared contracts is the Quartzo upstream; [contracts/UPSTREAM.lock
 - [docs/BETA_RELEASE_RUNBOOK.md](BETA_RELEASE_RUNBOOK.md): release procedure.
 - [README.md](../README.md): onboarding, local-first usage and installation.
 - [docs/audits/agent-docs-reconciliation.md](audits/agent-docs-reconciliation.md): evidence and unresolved migration work, not a second authority.
+- [Reading Integration status](reading-integration/STATUS.md): upstream adoption, source-specific validation and open runtime/interoperability gates; evidence only.
 
 ## Lifecycle
 

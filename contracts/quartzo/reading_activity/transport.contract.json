@@ -1,0 +1,21 @@
+{
+  "version": "1.0.0",
+  "status": "candidate_wire_contract_untrusted_claims_no_production_cursor_grant",
+  "owner": "Existing Reading Activity canonical domain and ObsidianService/SyncQueueService; pure ReadingTransportBinding/Request/Entry/Response never persist or authenticate",
+  "schema": "transport.schema.json",
+  "vectors": "transport_vectors.json",
+  "request_keys": ["protocol_version", "binding_id", "vault_scope", "device_id", "source_epoch", "request_id", "issued_at_utc", "expires_at_utc", "batch_id", "event_lines"],
+  "response_keys": ["protocol_version", "binding_id", "vault_scope", "device_id", "source_epoch", "request_id", "batch_id", "results"],
+  "result_keys": ["index", "line_digest", "event_id", "native_digest", "outcome", "canonical_commit"],
+  "wire_encoding": "UTF-8 without BOM; compact JSON using the declared key order. No duplicate keys, trailing bytes, alternate number encodings, raw CR/LF in lines or lone Unicode surrogates. UTC timestamps use the existing Dart canonical 3-or-6 fractional-digit convention. No credentials or private paths in payloads.",
+  "bounds": {"events": 1000, "line_utf8_bytes": 8192, "payload_utf8_bytes_including_one_lf_per_line": 524288, "request_utf8_bytes": 1048576, "response_utf8_bytes": 524288, "request_lifetime_seconds": 300},
+  "binding": "Opaque pairing generation, vault scope, device and source DB epoch must match the current authenticated principal. Rotate/revoke pairing on account/vault/credential changes. Fields are public context, never credentials or authority. Parsing alone authenticates nothing.",
+  "batch_id": "qrtb_ + lowercase SHA-256 of compact UTF-8 JSON [quartzo-reading-transport-batch-v1, binding_id, vault_scope, device_id, source_epoch, event_lines]. Fresh retries keep immutable event_lines and batch ID; native IDs still deduplicate regrouped batches.",
+  "request_id": "qrtr_ + fresh 128-bit lowercase hexadecimal nonce for each attempt. Require explicit UTC now, issued_at <= now < expires_at and lifetime <=300 seconds. The nonce binds the response; persisted replay/idempotency enforcement by an authenticated receiver remains required.",
+  "event_lines": "Each is one existing canonical ReadingActivityEvent JSON object, without LF. Keeping exact bounded strings permits independent malformed/unsupported-event rejection without hiding valid neighbors. Outbox preserves each line before transmission. Inspect all entries before commit; same native ID with divergent payload quarantines every matching entry in that request.",
+  "result_binding": "Exactly one ordered result for every input position, with SHA-256 of that exact UTF-8 line. Eligible event_id and native_digest must match local recomputation. Invalid/unsupported/conflicting entries have null event_id/native_digest and cannot claim committed/duplicate. Native digest hashes existing nativePayload excluding observation time.",
+  "outcomes": ["committed", "duplicate", "staged", "retryable", "auth_required", "unsupported_version", "conflict", "review", "fatal_corruption"],
+  "canonical_commit": "Only committed/duplicate may carry an opaque nonempty canonical commit revision, after the authenticated canonical owner has proven persistence; duplicate also requires a proven existing canonical native payload. Other outcomes require null. Merely supplying a revision string or matching an echo never proves durability.",
+  "ack_boundary": "Response decoder exposes untrusted claims only. It has no accepted-event/cursor grant or receipt issuer. No ReadingLocalCommit, scratch index, diagnostic receipt, staged result, queue insertion or uploaded byte result can mint a canonical ACK. A future authenticated protocol owner must verify durable canonical receipts and persist outbox acknowledgements per event; request order is never a source watermark.",
+  "remaining": ["Authenticated production transport selection and credential lifecycle", "Canonical cross-process/Drive/Companion durability and receipt issuer", "Persistent replay/idempotency and native conflict checks across batches", "Lua/TS consumers after upstream adoption", "PW3 offline/reboot/cancellation/lost-ACK and real canonical persistence tests"]
+}

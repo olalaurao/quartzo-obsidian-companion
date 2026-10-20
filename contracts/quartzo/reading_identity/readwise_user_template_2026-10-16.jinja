@@ -1,0 +1,31 @@
+{{title}}
+{% if book_id -%}
+<!-- readwise-book-id: {{book_id}} -->
+{% endif -%}
+{% if summary -%}
+- Summary: {{summary}}
+{% endif -%}
+{% if document_note -%}
+- Readwise note: {{document_note}}
+{% endif -%}
+{% if url -%}
+- URL: {{url}}
+{% endif -%}
+
+{% if is_new_page %}
+###### Highlights [[{{date|date('Y-m-d')}}]] at {{time}}
+{% elif has_new_highlights -%}
+###### New highlights added [[{{date|date('Y-m-d')}}]] at {{time}}
+{% endif -%}
+- {{ highlight_text }}{% if highlight_location and highlight_location_url %} ([{{highlight_location}}]({{highlight_location_url}})){% elif highlight_location %} ({{highlight_location}}){% endif %}{% if highlight_id %} <!-- readwise-highlight-id: {{highlight_id}} -->{% endif %}{% if highlight_date %} <!-- readwise-highlight-date: {{highlight_date|date('Y-m-d H:i')}} -->{% endif %}{% if highlight_tags %}
+    - Tags: {% for tag in highlight_tags %}[[{{tag}}]] {% endfor %}{% endif %}{% if highlight_note %}
+    - Note: {{ highlight_note }}{% endif %}
+type: resource
+media_type: {{category}}
+author: {{author}}
+cover: {{image_url}}
+source_url: {{url}}
+readwise_category: {{category}}
+readwise_source: {{source}}
+rating:
+category: {% for tag in document_tags %}[[{{tag}}]] {% endfor %}

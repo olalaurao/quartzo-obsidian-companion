@@ -1,0 +1,424 @@
+{
+  "schema_version": 1,
+  "status": "IMPLEMENTED_CONTRACT_CANDIDATE",
+  "semantics": "Pure policy only; expected_kind adopts safe defaults. I13 tests cardinality separately, not automatic promotion from artifact count.",
+  "cases": [
+    {
+      "id": "I01_reuse_same_remote_id",
+      "input": {
+        "document": {
+          "provider": "reader_v3",
+          "kind": "document",
+          "scope": "account-opaque",
+          "id": "doc123"
+        },
+        "known_links": [
+          {
+            "document": {
+              "provider": "reader_v3",
+              "kind": "document",
+              "scope": "account-opaque",
+              "id": "doc123"
+            },
+            "resource": {
+              "provider": "quartzo",
+              "kind": "resource",
+              "scope": "vault-opaque",
+              "id": "r123"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "resolution": "reuse_existing_resource",
+        "resource_id": "r123"
+      },
+      "expected_kind": "existing"
+    },
+    {
+      "id": "I02_different_ns_same_text",
+      "input": {
+        "document": {
+          "provider": "reader_v3",
+          "kind": "document",
+          "scope": "account-opaque",
+          "id": "123"
+        },
+        "known_links": [
+          {
+            "document": {
+              "provider": "readwise_export",
+              "kind": "book",
+              "scope": "account-opaque",
+              "id": "123"
+            },
+            "resource": {
+              "provider": "quartzo",
+              "kind": "resource",
+              "scope": "vault-opaque",
+              "id": "r123"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "resolution": "no_exact_match",
+        "resource_id": null
+      },
+      "expected_kind": "externalOnly"
+    },
+    {
+      "id": "I03_new_reader_only_no_reading",
+      "input": {
+        "document": {
+          "provider": "reader_v3",
+          "kind": "document",
+          "scope": "account-opaque",
+          "id": "doc123"
+        },
+        "reading_confirmed": false,
+        "known_links": []
+      },
+      "expected": {
+        "resolution": "external_only",
+        "resource_id": null
+      },
+      "expected_kind": "externalOnly"
+    },
+    {
+      "id": "I04_new_reader_after_koreader",
+      "input": {
+        "document": {
+          "provider": "reader_v3",
+          "kind": "document",
+          "scope": "account-opaque",
+          "id": "doc123"
+        },
+        "reading_confirmed": true,
+        "export_ownership_verified": true,
+        "evidence_proven": true,
+        "known_links": [],
+        "resource_candidates": []
+      },
+      "expected": {
+        "resolution": "eligible_for_promotion",
+        "resource_id": null
+      },
+      "expected_kind": "eligibleForPromotion"
+    },
+    {
+      "id": "I05_existing_resource_on_orig_url",
+      "input": {
+        "document": {
+          "provider": "reader_v3",
+          "kind": "document",
+          "scope": "account-opaque",
+          "id": "doc123"
+        },
+        "reading_confirmed": true,
+        "resource_candidates": [
+          {
+            "resource": {
+              "provider": "quartzo",
+              "kind": "resource",
+              "scope": "vault-opaque",
+              "id": "r123"
+            },
+            "match": "safe_url_exact",
+            "candidate_count": 1
+          }
+        ]
+      },
+      "expected": {
+        "resolution": "link_existing_when_verified",
+        "resource_id": "r123"
+      },
+      "expected_kind": "existing"
+    },
+    {
+      "id": "I06_title_only_fuzzy",
+      "input": {
+        "document": {
+          "provider": "reader_v3",
+          "kind": "document",
+          "scope": "account-opaque",
+          "id": "doc123"
+        },
+        "reading_confirmed": true,
+        "resource_candidates": [
+          {
+            "resource": {
+              "provider": "quartzo",
+              "kind": "resource",
+              "scope": "vault-opaque",
+              "id": "r123"
+            },
+            "match": "fuzzy_title",
+            "candidate_count": 1
+          }
+        ]
+      },
+      "expected": {
+        "resolution": "needs_review",
+        "resource_id": null
+      },
+      "expected_kind": "needsReview"
+    },
+    {
+      "id": "I07_two_resources_same_url",
+      "input": {
+        "document": {
+          "provider": "reader_v3",
+          "kind": "document",
+          "scope": "account-opaque",
+          "id": "doc123"
+        },
+        "reading_confirmed": true,
+        "resource_candidates": [
+          {
+            "resource": {
+              "provider": "quartzo",
+              "kind": "resource",
+              "scope": "vault-opaque",
+              "id": "r1"
+            },
+            "match": "url_equivalent"
+          },
+          {
+            "resource": {
+              "provider": "quartzo",
+              "kind": "resource",
+              "scope": "vault-opaque",
+              "id": "r2"
+            },
+            "match": "url_equivalent"
+          }
+        ]
+      },
+      "expected": {
+        "resolution": "needs_review",
+        "resource_id": null
+      },
+      "expected_kind": "needsReview"
+    },
+    {
+      "id": "I08_tenant_isolation",
+      "input": {
+        "document": {
+          "provider": "reader_v3",
+          "kind": "document",
+          "scope": "account-A",
+          "id": "doc123"
+        },
+        "known_links": [
+          {
+            "document": {
+              "provider": "reader_v3",
+              "kind": "document",
+              "scope": "account-B",
+              "id": "doc123"
+            },
+            "resource": {
+              "provider": "quartzo",
+              "kind": "resource",
+              "scope": "vault-opaque",
+              "id": "r123"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "resolution": "no_exact_match",
+        "resource_id": null
+      },
+      "expected_kind": "externalOnly"
+    },
+    {
+      "id": "I09_reader_doc_linked_twice",
+      "input": {
+        "document": {
+          "provider": "reader_v3",
+          "kind": "document",
+          "scope": "account-opaque",
+          "id": "doc123"
+        },
+        "known_links": [
+          {
+            "document": {
+              "provider": "reader_v3",
+              "kind": "document",
+              "scope": "account-opaque",
+              "id": "doc123"
+            },
+            "resource": {
+              "provider": "quartzo",
+              "kind": "resource",
+              "scope": "vault-opaque",
+              "id": "r1"
+            }
+          },
+          {
+            "document": {
+              "provider": "reader_v3",
+              "kind": "document",
+              "scope": "account-opaque",
+              "id": "doc123"
+            },
+            "resource": {
+              "provider": "quartzo",
+              "kind": "resource",
+              "scope": "vault-opaque",
+              "id": "r2"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "resolution": "conflict_no_write",
+        "resource_id": null
+      },
+      "expected_kind": "conflict"
+    },
+    {
+      "id": "I10_backfill_requires_approval",
+      "input": {
+        "document": {
+          "provider": "reader_v3",
+          "kind": "document",
+          "scope": "account-opaque",
+          "id": "doc123"
+        },
+        "reading_confirmed": true,
+        "historical": true,
+        "approval": false
+      },
+      "expected": {
+        "resolution": "preview_only",
+        "resource_id": null
+      },
+      "expected_kind": "previewOnly"
+    },
+    {
+      "id": "I11_usb_unmatched",
+      "input": {
+        "document": null,
+        "reading_confirmed": true,
+        "artifact_origin": "usb"
+      },
+      "expected": {
+        "resolution": "unmatched",
+        "resource_id": null
+      },
+      "expected_kind": "unmatched"
+    },
+    {
+      "id": "I12_nested_highlight",
+      "input": {
+        "document": {
+          "provider": "reader_v3",
+          "kind": "document",
+          "scope": "account-opaque",
+          "id": "doc123"
+        },
+        "reader_entity_type": "highlight",
+        "parent_id": "parentDoc",
+        "reading_confirmed": true
+      },
+      "expected": {
+        "resolution": "not_promotable",
+        "resource_id": null
+      },
+      "expected_kind": "notPromotable"
+    },
+    {
+      "id": "I13_same_format_two_artifacts",
+      "input": {
+        "document": {
+          "provider": "reader_v3",
+          "kind": "document",
+          "scope": "account-opaque",
+          "id": "doc123"
+        },
+        "artifact_ids": [
+          "pdf-1",
+          "epub-2"
+        ],
+        "reading_confirmed": true
+      },
+      "expected": {
+        "resolution": "single_document_resource",
+        "resource_id": null
+      },
+      "expected_kind": "externalOnly"
+    },
+    {
+      "id": "I14_account_switch",
+      "input": {
+        "document": {
+          "provider": "reader_v3",
+          "kind": "document",
+          "scope": "account-opaque",
+          "id": "doc123"
+        },
+        "active_account_scope": "another-account",
+        "reading_confirmed": true
+      },
+      "expected": {
+        "resolution": "conflict_no_write",
+        "resource_id": null
+      },
+      "expected_kind": "conflict"
+    },
+    {
+      "id": "I15_concurrent_no_cas",
+      "input": {
+        "document": {
+          "provider": "reader_v3",
+          "kind": "document",
+          "scope": "account-opaque",
+          "id": "doc123"
+        },
+        "reading_confirmed": true,
+        "two_writers": true,
+        "claim_protocol_proven": false,
+        "evidence_proven": true
+      },
+      "expected": {
+        "resolution": "block_or_single_writer",
+        "resource_id": null
+      },
+      "expected_kind": "blocked",
+      "adoption_note": "Isolate concurrency: artifact provenance is verified in this fixture, but no exclusive writer is proven."
+    },
+    {
+      "id": "I16_rejected_mapping",
+      "input": {
+        "document": {
+          "provider": "reader_v3",
+          "kind": "document",
+          "scope": "account-opaque",
+          "id": "doc123"
+        },
+        "reading_confirmed": true,
+        "manually_rejected_resource": "r123",
+        "resource_candidates": [
+          {
+            "resource": {
+              "provider": "quartzo",
+              "kind": "resource",
+              "scope": "vault-opaque",
+              "id": "r123"
+            },
+            "match": "url_equivalent"
+          }
+        ]
+      },
+      "expected": {
+        "resolution": "needs_review",
+        "resource_id": null
+      },
+      "expected_kind": "needsReview"
+    }
+  ],
+  "version": "1.0.0"
+}

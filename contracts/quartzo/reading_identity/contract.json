@@ -1,0 +1,60 @@
+{
+  "version": "1.0.0",
+  "status": "review_candidate_not_deployed",
+  "owner": "Resource.externalRefs / ReadingIdentityResolver",
+  "identity_fields": [
+    "schema_version",
+    "provider",
+    "kind",
+    "scope",
+    "id"
+  ],
+  "namespace_kinds": {
+    "quartzo": [
+      "resource"
+    ],
+    "reader_v3": [
+      "document"
+    ],
+    "readwise_export": [
+      "book"
+    ],
+    "readwise_highlight": [
+      "highlight"
+    ],
+    "koreader": [
+      "artifact",
+      "stats_book",
+      "reading_event"
+    ],
+    "obsidian": [
+      "file",
+      "block"
+    ]
+  },
+  "resource_field": "external_refs",
+  "link_fields": [
+    "schema_version",
+    "identity",
+    "decision",
+    "evidence_kind",
+    "operation_id",
+    "decided_at"
+  ],
+  "decisions": [
+    "confirmed_auto",
+    "confirmed_user",
+    "rejected",
+    "unlinked"
+  ],
+  "rules": [
+    "legacy book_id stays in readwise_export namespace",
+    "JSON structured opaque IDs; never delimiter-split",
+    "one Reader key per vault has at most one confirmed Resource",
+    "N Reader documents per Resource",
+    "reject/unlink sticky until explicit replacement",
+    "proofVerified is a caller proof obligation, never inferred from a match label",
+    "complete vault snapshot, exclusive writer and verified Readwise export ownership required before promotion eligibility",
+    "no persistence or resource creation in the resolver"
+  ]
+}

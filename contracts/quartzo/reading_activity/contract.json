@@ -1,0 +1,32 @@
+{
+  "version": "1.0.0",
+  "status": "contracts_and_local_adapter_runtime_blocked",
+  "canonical_root": "sessions/reading_activity_v1/",
+  "partition": "<device_scope_hash>/<source_epoch_hash>/YYYY/MM/<immutable_batch_digest>.jsonl",
+  "canonical_owner": "Reading Activity domain via existing ObsidianService / SyncQueueService; unregistered ReadingActivityLocalStore adapter proves local file/queue behavior only, not canonical transport durability",
+  "pure_owner": "ReadingActivityEvent / ReadingActivityCodec / ReadingActivityShards",
+  "shard_bounds": {"max_input_events": 1000, "max_bytes": 524288, "status": "candidate safety limits, not measured PW3 budgets"},
+  "shard_path": "device hash = SHA-256(compact UTF-8 JSON [quartzo-reading-device-v1, device_id]); epoch hash uses [quartzo-reading-epoch-v1, source_epoch]; UTC start month; filename = SHA-256(exact canonical JSONL bytes)",
+  "canonical_event_keys": ["schema_version", "event_id", "source", "device_id", "source_epoch", "book_row_id", "page", "started_at_utc", "duration_seconds", "total_pages", "observed_at_utc", "source_schema_version"],
+  "shard_encoding": "UTF-8 without BOM, compact JSON objects in canonical_event_keys order, native event ID sort within partition, one LF after each object, Dart UTC ISO timestamps with three fractional digits or six when microseconds are nonzero. Sort partitions by path and split greedily at byte bound. Reject noncanonical/path/digest mismatches without rewriting inputs.",
+  "batch_identity_warning": "Batch digest is not native event deduplication. Changed grouping/observation can produce another shard; readers must union event IDs and detect native payload conflicts across shards before effects or ACK.",
+  "identity_preimage": [
+    "quartzo-reading-event-v1",
+    "device_id",
+    "source_epoch",
+    "book_row_id",
+    "page",
+    "started_at_unix_seconds"
+  ],
+  "identity_encoding": "UTF-8 compact JSON array; SHA-256 lowercase hex prefixed qre_",
+  "identity_rule": "duration excluded from identity; changed native payload is conflict, requiring future explicit correction contract",
+  "merge": "union by event_id; compare native payload; observation min; deterministic sort; conflicting or malformed payload blocks entire merge preserving inputs",
+  "time": "UTC whole-second native start; positive recorded duration <=86400; explicit IANA presentation timezone required before day projection",
+  "ack": "The unregistered scoped ReadingTransportReceiver candidate can construct per-position replies from final local verified fact bindings. Android v6 proves its exact-source secure-plugin/local file/queue/process behavior only. Decoded wire claims remain untrusted; no deployed canonical transport, source cursor consumer or production ACK grant exists. Staging cannot ACK; cloud/Companion and full replay/credential/transport proof remain gated.",
+  "sync_lifecycle": "vectors.json#sync_lifecycle_vectors and path_vectors: existing sync owners classify exact device/epoch/year/month/digest paths and preserve divergent immutable bytes or remote absence after baseline as conflicts; ordinary files retain their current reconciliation rules. These fixtures grant no write, semantic acceptance or ACK.",
+  "gates": [
+    "G03 cross-process/Drive durability and Companion proof pending",
+    "G04 isolated PW3 synthetic TLS spike passed; full canonical transport/recovery proof pending",
+    "G08 production ingest disabled"
+  ]
+}

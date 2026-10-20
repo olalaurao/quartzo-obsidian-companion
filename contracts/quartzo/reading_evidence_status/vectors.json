@@ -1,0 +1,250 @@
+{
+  "schema_version": 1,
+  "status": "IMPLEMENTED_CONTRACT_CANDIDATE",
+  "notes": [
+    "Manual override means later manual intent or uncertain ordering; a later explicit event may require approval to advance.",
+    "Explicit finished in these cases assumes KOReader summary.status complete or proven Reader finish; Archive must remain no-op.",
+    "No Resource means external-only and no canonical status."
+  ],
+  "cases": [
+    {
+      "id": "S01_saved_external",
+      "input": {
+        "resource_status": null,
+        "evidence_kind": "saved_or_listed",
+        "manual_intent_blocks": false,
+        "evidence_valid_and_linked": false
+      },
+      "expected": {
+        "decision": "none",
+        "resource_status_after": null
+      }
+    },
+    {
+      "id": "S02_read_koreader_new",
+      "input": {
+        "resource_status": "toConsume",
+        "evidence_kind": "koreader_reading_time_confirmed",
+        "manual_intent_blocks": false,
+        "evidence_valid_and_linked": true,
+        "resource_writer_verified": true
+      },
+      "expected": {
+        "decision": "transition",
+        "resource_status_after": "inProgress"
+      }
+    },
+    {
+      "id": "S03_reader_progress_existing",
+      "input": {
+        "resource_status": "toConsume",
+        "evidence_kind": "reader_progress_observed",
+        "manual_intent_blocks": false,
+        "evidence_valid_and_linked": true,
+        "resource_writer_verified": true
+      },
+      "expected": {
+        "decision": "transition",
+        "resource_status_after": "inProgress"
+      }
+    },
+    {
+      "id": "S04_reader_progress_external",
+      "input": {
+        "resource_status": null,
+        "evidence_kind": "reader_progress_observed",
+        "manual_intent_blocks": false,
+        "evidence_valid_and_linked": false
+      },
+      "expected": {
+        "decision": "none",
+        "resource_status_after": null
+      }
+    },
+    {
+      "id": "S05_archive",
+      "input": {
+        "resource_status": "inProgress",
+        "evidence_kind": "reader_location_changed",
+        "manual_intent_blocks": false,
+        "evidence_valid_and_linked": true
+      },
+      "expected": {
+        "decision": "no_change",
+        "resource_status_after": "inProgress"
+      }
+    },
+    {
+      "id": "S06_explicit_finished",
+      "input": {
+        "resource_status": "inProgress",
+        "evidence_kind": "explicit_finished",
+        "manual_intent_blocks": false,
+        "evidence_valid_and_linked": true,
+        "resource_writer_verified": true
+      },
+      "expected": {
+        "decision": "transition",
+        "resource_status_after": "completed"
+      }
+    },
+    {
+      "id": "S07_explicit_abandoned",
+      "input": {
+        "resource_status": "inProgress",
+        "evidence_kind": "explicit_abandoned",
+        "manual_intent_blocks": false,
+        "evidence_valid_and_linked": true,
+        "resource_writer_verified": true
+      },
+      "expected": {
+        "decision": "transition",
+        "resource_status_after": "dropped"
+      }
+    },
+    {
+      "id": "S08_highlight_only",
+      "input": {
+        "resource_status": "inProgress",
+        "evidence_kind": "highlight_created",
+        "manual_intent_blocks": false,
+        "evidence_valid_and_linked": true
+      },
+      "expected": {
+        "decision": "no_change",
+        "resource_status_after": "inProgress"
+      }
+    },
+    {
+      "id": "S09_reopen_completed",
+      "input": {
+        "resource_status": "completed",
+        "evidence_kind": "koreader_reading_time_confirmed",
+        "manual_intent_blocks": false,
+        "evidence_valid_and_linked": true
+      },
+      "expected": {
+        "decision": "no_change",
+        "resource_status_after": "completed"
+      }
+    },
+    {
+      "id": "S10_reopen_dropped",
+      "input": {
+        "resource_status": "dropped",
+        "evidence_kind": "koreader_reading_time_confirmed",
+        "manual_intent_blocks": false,
+        "evidence_valid_and_linked": true
+      },
+      "expected": {
+        "decision": "no_change",
+        "resource_status_after": "dropped"
+      }
+    },
+    {
+      "id": "S11_stale_manual_completed",
+      "input": {
+        "resource_status": "completed",
+        "evidence_kind": "koreader_reading_time_confirmed",
+        "manual_intent_blocks": true,
+        "evidence_valid_and_linked": true
+      },
+      "expected": {
+        "decision": "no_change",
+        "resource_status_after": "completed"
+      }
+    },
+    {
+      "id": "S12_finished_late_after_manual_inprogress",
+      "input": {
+        "resource_status": "inProgress",
+        "evidence_kind": "explicit_finished",
+        "manual_intent_blocks": true,
+        "evidence_valid_and_linked": true
+      },
+      "expected": {
+        "decision": "no_change",
+        "resource_status_after": "inProgress"
+      }
+    },
+    {
+      "id": "S13_finished_from_unproven_reader",
+      "input": {
+        "resource_status": "inProgress",
+        "evidence_kind": "explicit_finished",
+        "manual_intent_blocks": false,
+        "evidence_valid_and_linked": false
+      },
+      "expected": {
+        "decision": "review",
+        "resource_status_after": "inProgress"
+      }
+    },
+    {
+      "id": "S14_export_static_status",
+      "input": {
+        "resource_status": "completed",
+        "evidence_kind": "saved_or_listed",
+        "manual_intent_blocks": true,
+        "evidence_valid_and_linked": true
+      },
+      "expected": {
+        "decision": "no_change",
+        "resource_status_after": "completed"
+      }
+    },
+    {
+      "id": "S15_finished_dropped_conflict",
+      "input": {
+        "resource_status": "dropped",
+        "evidence_kind": "explicit_finished",
+        "manual_intent_blocks": false,
+        "evidence_valid_and_linked": true
+      },
+      "expected": {
+        "decision": "review",
+        "resource_status_after": "dropped"
+      }
+    },
+    {
+      "id": "S16_unknown_identity",
+      "input": {
+        "resource_status": "toConsume",
+        "evidence_kind": "explicit_finished",
+        "manual_intent_blocks": false,
+        "evidence_valid_and_linked": false
+      },
+      "expected": {
+        "decision": "review",
+        "resource_status_after": "toConsume"
+      }
+    },
+    {
+      "id": "S17_duplicate_event",
+      "input": {
+        "resource_status": "inProgress",
+        "evidence_kind": "koreader_reading_time_confirmed",
+        "manual_intent_blocks": false,
+        "evidence_valid_and_linked": true
+      },
+      "expected": {
+        "decision": "no_change",
+        "resource_status_after": "inProgress"
+      }
+    },
+    {
+      "id": "S18_terminal_manual_override",
+      "input": {
+        "resource_status": "toConsume",
+        "evidence_kind": "explicit_finished",
+        "manual_intent_blocks": true,
+        "evidence_valid_and_linked": true
+      },
+      "expected": {
+        "decision": "no_change",
+        "resource_status_after": "toConsume"
+      }
+    }
+  ],
+  "version": "1.0.0"
+}
