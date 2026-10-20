@@ -1,0 +1,115 @@
+{
+  "artifact": {
+    "source_commit": "10e840ab09fe98fe2365c3a30a34be4c0eef6b4d",
+    "preflight_run": 39488284446,
+    "main_ci_run": 39488225722,
+    "artifact_id": 12293868629,
+    "artifact_zip_sha256": "01c046bb5c394740402657ba15496e5a24a86c1bfb8d8a13f0942539ed15870e",
+    "artifact_digest_verified": true,
+    "asset_sha256": {
+      "main.js": "ad9e604339363e6e8d5bdfa5d6700e364f822d9c6242498396119eb3003c09e3",
+      "manifest.json": "b8558cfa5a33946a94064fe6e7c1f7a47d156832214fe7bda03fff473e109fe0",
+      "styles.css": "2e43b4d30dd40aec7d724eecfbd900275d4f25bc16b38d18ffe9c26df324752f"
+    },
+    "plugin_id": "quartzo-obsidian-companion",
+    "version": "1.0.43"
+  },
+  "asset_install": {
+    "backup_verified": true,
+    "settings_and_sync_state_untouched_by_asset_install": true
+  },
+  "runtime_observation": {
+    "observedAt": "2026-10-20T20:14:59.590Z",
+    "sourceCommit": "10e840ab09fe98fe2365c3a30a34be4c0eef6b4d",
+    "preflightRun": 39488284446,
+    "assetSha256": "ad9e604339363e6e8d5bdfa5d6700e364f822d9c6242498396119eb3003c09e3",
+    "rendererReloaded": true,
+    "refreshedLookupRuntimeVerified": true,
+    "manual": true,
+    "paired": true,
+    "before": {
+      "status": "synced",
+      "pending": 0,
+      "conflicts": 0
+    },
+    "credentialTest": {
+      "syntheticInvalidBearerUsed": true,
+      "realHttp401": 1,
+      "canonicalOwnerRefreshCalls": 1,
+      "realSdkClientInstances": 2,
+      "realListRequests": 3,
+      "writeAttempts": 0,
+      "sameExistingParentRecovered": true,
+      "waitedForActualTokenExpiry": false
+    },
+    "replay": {
+      "synced": 0,
+      "conflicts": 0,
+      "errors": 0
+    },
+    "after": {
+      "status": "synced",
+      "pending": 0,
+      "conflicts": 0
+    },
+    "remoteFileCount": 6,
+    "files": [
+      {
+        "name": "b9fdf7c9bf3a6cd58a467680cef77a8ee72ca72c196a475c72dbc58e760bbab5.jsonl",
+        "bytes": 382,
+        "sha256": "b9fdf7c9bf3a6cd58a467680cef77a8ee72ca72c196a475c72dbc58e760bbab5",
+        "expectedSha256": "b9fdf7c9bf3a6cd58a467680cef77a8ee72ca72c196a475c72dbc58e760bbab5",
+        "match": true
+      },
+      {
+        "name": "1a6d510fee4b641af6b9f6c5ade879a0999065bf95a24fdd3d2fbee2905848d1.jsonl",
+        "bytes": 43,
+        "sha256": "1a6d510fee4b641af6b9f6c5ade879a0999065bf95a24fdd3d2fbee2905848d1",
+        "expectedSha256": "1a6d510fee4b641af6b9f6c5ade879a0999065bf95a24fdd3d2fbee2905848d1",
+        "match": true
+      },
+      {
+        "name": "ordinary-control.txt",
+        "bytes": 38,
+        "sha256": "dfc09194931f4f2556a5229ecafda698b63b7903d69aa6386a760bda761bd1e7",
+        "expectedSha256": "dfc09194931f4f2556a5229ecafda698b63b7903d69aa6386a760bda761bd1e7",
+        "match": true
+      },
+      {
+        "name": "e2c55c1e696a0bed8db40befe8e64e993b31a138099e25269ee990a97f103442.jsonl",
+        "bytes": 90,
+        "sha256": "e2c55c1e696a0bed8db40befe8e64e993b31a138099e25269ee990a97f103442",
+        "expectedSha256": "e2c55c1e696a0bed8db40befe8e64e993b31a138099e25269ee990a97f103442",
+        "match": true
+      },
+      {
+        "name": "ordinary-create-control.bin",
+        "bytes": 32,
+        "sha256": "5e4b982ec84332afd5453b7bd48642eaa047d4075b5a32a14e1eb16a8881c8d4",
+        "expectedSha256": "5e4b982ec84332afd5453b7bd48642eaa047d4075b5a32a14e1eb16a8881c8d4",
+        "match": true
+      },
+      {
+        "name": "d664c32f6c763d257a60650338cbde42a9f62539d76eadade3ca8e167a5f163d.jsonl",
+        "bytes": 83,
+        "sha256": "d664c32f6c763d257a60650338cbde42a9f62539d76eadade3ca8e167a5f163d",
+        "expectedSha256": "d664c32f6c763d257a60650338cbde42a9f62539d76eadade3ca8e167a5f163d",
+        "match": true
+      }
+    ],
+    "originalSixLocalHashesUnchanged": true,
+    "allMatch": true,
+    "canonicalAck": false,
+    "productionChanged": false,
+    "expectationsMet": true,
+    "hydratedBeforeExplicitReconciliation": true
+  },
+  "host_verification": {
+    "installed_main_sha256": "ad9e604339363e6e8d5bdfa5d6700e364f822d9c6242498396119eb3003c09e3",
+    "original_six_local_hashes_rechecked": true
+  },
+  "canonical_ack": false,
+  "production_changed": false,
+  "runtime_report_sha256": "898897d84aed0b0494bb421c50ba94450051dd92fe2b692167f6b23f71cd8500",
+  "runtime_observation_field_notes": "The raw diagnostic named its before-snapshot flag hydratedBeforeNetwork. It was observed after canonical OAuth restoration and before explicit full reconciliation; the published name clarifies that scope. No absence of OAuth network traffic is claimed."
+}

@@ -1,15 +1,33 @@
 # Reading Integration — Companion status
 
-## 2026-10-20 — Authorized refresh fix merged; official artifact pending verification
+## 2026-10-20 — Authorized refresh fix merged and official sandbox 401 recovery passed
 
 The user explicitly authorized PR92 after its final checks. All six final
 Linux/Windows/macOS checks passed on `b84d1c17db23c34d0a574883a2e10099ffa614e6`.
 It merged as `10e840ab09fe98fe2365c3a30a34be4c0eef6b4d`, with a tree identical
 to the approved candidate. Exact-main official [Preflight39488284446](https://github.com/olalaurao/quartzo-obsidian-companion/actions/runs/39488284446)
-passed. Asset checksum/provenance verification and sandbox-only upgrade remain
-pending. The actual peer/race observations below remain bound to the prior8c
-artifact. This documentation branch incorporates main without changing the fix,
-upstream contracts or production installations.
+passed. [Source-bound artifact/install/runtime evidence](live-official-refresh-2026-10-20.json)
+records GitHub artifact12293868629, verified ZIP digest
+`01c046bb5c394740402657ba15496e5a24a86c1bfb8d8a13f0942539ed15870e`
+and installed main.js `ad9e604339363e6e8d5bdfa5d6700e364f822d9c6242498396119eb3003c09e3`.
+The five existing sandbox plugin files were backed up; atomic asset replacement
+left settings/state bytes untouched. Actual renderer reload verified the new
+lookup implementation, Manual/pairing and zero pending/conflicts before testing.
+
+A separate diagnostic adapter supplied a synthetic invalid bearer to induce a
+real Google HTTP401, not a mock or timed expiry wait. The existing canonical OAuth
+owner renewed once, the adapter created a fresh real SDK client, and the same
+existing parent was recovered over three real list requests with zero attempted
+writes. An explicit full canonical replay then reported zero synced/conflicts/
+errors/pending. Separate downloads verified all six unique exact files; independent
+host hashing confirmed unchanged originals. No token was logged or exported.
+Normal main CI39488225722 has Linux/Windows passed; macOS remains queued at this
+checkpoint. No tag/release or production installation occurred.
+
+The older peer/race observations below retain their prior8c source boundaries.
+This documentation branch incorporates approved main without changing runtime or
+upstream contracts. Per-event durable source ACK, production lifecycle and later
+integrated gates remain open.
 
 ## 2026-10-20 — Actual independent peer recovery and two-client Drive races
 
@@ -24,7 +42,7 @@ The original six local fixture hashes remained unchanged throughout.
   stopped before downloads, with the canonical lock released. Focused regressions
   reproduced a captured stale SDK client after renewal on first/later pages.
   [PR92](https://github.com/olalaurao/quartzo-obsidian-companion/pull/92) fixes that
-  lookup using the existing retry owner. The candidate is not installed here.
+  lookup using the existing retry owner. That run predates the sandbox upgrade.
 - [Recovery after explicit owner renewal](live-peer-recovery-after-refresh-2026-10-20.json):
   a separate retry downloaded all six exact files into an independent local root,
   with both clients synced and zero pending/conflicts/errors. This does not prove
@@ -104,8 +122,8 @@ a folder. Conditional mutation/target guards and upstream contracts are unchange
 Local validation also passed typecheck, lint, build, architecture/docs gates and
 the complete suite: **1026 PASS / two explicit skips** across 90 files. The full
 suite contains the focused regression cases; no hosted CI result is assumed.
-This source has not been installed or physically rerun in the sandbox; official
-merge/preflight/asset verification and subsequent expiry/race acceptance remain open.
+At that pre-merge checkpoint the source had not been installed. The subsequent
+authorized official artifact and live401-recovery proof are recorded above.
 
 A separate explicit retry on the unchanged official 8c515898 artifact, after
 renewal through the existing plugin OAuth owner, recovered all six files into
