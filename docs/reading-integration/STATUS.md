@@ -52,7 +52,15 @@ tests / two opt-in skips** (90 files, 76.88s). A later pre-read size guard, fina
 UI report/notice adjustments and the added oversized case passed in the final
 **55-case scoped suite**; other cases were excluded only by that focused selector.
 Typecheck, full lint, architecture, docs and whitespace pass. Exact committed
-build and hosted checks remain separate below.
+**e4d139ecdf233342da2626f8b95e87b9bc70224b** passed production build,
+non-release validation and clean-artifact smoke. The
+[build observation](adoption-review-build-2026-10-20.json) records bundle SHA-256
+`b4d85fe4c1903ee2a10138d1c64ec179badf1a780972740d35d225359e6b3271`
+(1179835 bytes). Only generated tracked `main.js` changed; the output was
+archived and that file restored, leaving the source checkout clean. No local
+candidate was installed and no tag/release changed. Final-head hosted checks,
+merge authorization and official exact-main artifact/live UI acceptance remain
+separate requirements.
 
 ### 2026-10-20 — Live Obsidian/Drive rejected: binary upload omitted media
 
