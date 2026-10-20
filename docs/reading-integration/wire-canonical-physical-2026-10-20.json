@@ -1,0 +1,66 @@
+{
+  "evidence_revision": "reading-wire-physical-correlated-v1",
+  "observed_at_utc": "2026-10-20T14:24:57.300158+00:00",
+  "source_data": "synthetic",
+  "kindle_source_commit": "b18e6f07bd2b4a5e6e48c96692a10faad7412aef",
+  "android_apk_source_commit": "314973aefde1b3fc5ca02a1872fedc1f82dab480",
+  "android_install_host_commit": "559c6eb30beb624c5645dc42ed4b1609b42e5300",
+  "android_export_host_commit": "442160a857cf857afd37017f718310dee2f79f15",
+  "apk_sha256": "956e3949a5a07999cb38fd84a2d28405d9d6d7cea164416844ff2f55bca26fd9",
+  "collector_report_sha256": "691783142f5f96b207587172a7f34ef2769e69d582baf974de35e37fd9b3f4f0",
+  "device_report_sha256": "7fa861b28507a6297a6b54785c2dfd908b1849b0170154ec3cc17dce5d886575",
+  "android_completed_sha256": "37efa53c95474517a5a181420c427d8ffe3a06b30010f4c4c4d5612f111e65c5",
+  "android_export_tar_sha256": "e457890a0caa9d209fb6654af403c88930ff12a73d5824774976d1cf3f21af5f",
+  "kindle_baseline": "v2026.07.1",
+  "kindle_runtime": {
+    "lua_version": "Lua 5.1",
+    "jit_arch": "arm",
+    "jit_version": "LuaJIT 2.1.1783773675",
+    "json_version": "dkjson 2.10",
+    "luasec_version": "1.3.2"
+  },
+  "android_runtime": {
+    "model": "SM-A546E",
+    "api": "36"
+  },
+  "physical_observation": {
+    "human_reported_kual_execution_and_usb_reconnection": true,
+    "mounted_native_snapshot_verified": true,
+    "authorized_adb_target_and_isolated_uid_verified": true,
+    "listener_observed_then_closed": true,
+    "production_metadata_unchanged": true
+  },
+  "attempts": 10,
+  "checked_responses": 5,
+  "deliberately_discarded_responses": 1,
+  "http_request_count": 9,
+  "http_status_counts": {
+    "401": 1,
+    "429": 1,
+    "503": 1,
+    "200": 6
+  },
+  "transport_error_count": 0,
+  "unique_events": 3,
+  "native_seconds": 120,
+  "pending_queue_actions": 6,
+  "exact_shard_bytes_verified": 3,
+  "credential_revocation_observed": true,
+  "canonical_ack": false,
+  "cloud_delivery_proven": false,
+  "source_cursor_changed": false,
+  "statistics_accessed": false,
+  "wifi_changed": false,
+  "production_registered": false,
+  "embedded_diagnostic_physical_attestation": false,
+  "scope_limit": "Actual finite physical synthetic wire sequence and exact local canonical bytes; not production source/outbox, durable ACK, cloud delivery or completed G03/G04",
+  "cleanup_completed": true,
+  "device_cleanup": {
+    "android_owned_probe_uninstalled": true,
+    "kindle_owned_diagnostic_removed": true,
+    "production_metadata_unchanged": true,
+    "kindle_native_snapshot_unchanged": true,
+    "canonical_ack": false
+  },
+  "private_active_session_and_bundle_removed": true
+}

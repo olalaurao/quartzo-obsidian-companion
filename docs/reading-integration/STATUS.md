@@ -1,5 +1,40 @@
 # Reading Integration — Companion status
 
+## 2026-10-20 — Actual PW3 to Android canonical wire diagnostic
+
+[Source-bound physical evidence](wire-canonical-physical-2026-10-20.json).
+
+The user executed the installed finite KUAL sequence and reconnected the actual
+PW3. Exact Kindle source `b18e6f07bd2b4a5e6e48c96692a10faad7412aef` ran on
+KOReader v2026.07.1 / ARM LuaJIT. The isolated Android APK source remains
+`314973aefde1b3fc5ca02a1872fedc1f82dab480`; all seventeen runtime fingerprints
+matched current source. Installation used host `559c6eb3`; corrected binary
+collection used host `442160a8`.
+
+The independent correlated collector passed: ten client attempts, five checked
+responses and one deliberately discarded response; nine actual HTTP requests
+(401/429/503 once each, six 200), zero transport errors, three exact canonical
+shards, three unique synthetic events / 120 seconds / six queued revisions.
+Credential revocation, listener closure and unchanged production metadata were
+observed. The owned diagnostic package and KUAL extension were removed only
+after source/UID/hash checks and nonsecret evidence archival; active private
+keys/input/bundle/temporary exports were removed. Kindle native source snapshots
+remained unchanged. No Statistics access or automatic Wi-Fi change occurred.
+
+Initial fresh-install directory and host TAR newline conversion defects were
+fixed and retained as failed preparation/collection observations, never relabeled
+as physical success. Twelve scoped host cases pass, including actual shell
+noclobber and corrupted/truncated/hidden TAR rejection. Binary `exec-out` export
+preserved all 19 archive entries / nine files; exact shard bytes were checked
+against the generated canonical fixture.
+
+This is actual finite synthetic transport and local owner evidence. Diagnostic
+reports retain false physical self-attestation; the separate human/USB/ADB
+observations establish the physical execution. It does not grant canonical ACK,
+cloud delivery, production extraction/outbox, global stability, power-loss or
+completed G03/G04. Actual cross-client Drive races and durable per-event source
+acknowledgement remain required before production ingestion.
+
 Date: 2026-10-20, America/Sao_Paulo
 Status: implementation in progress; canonical contract adoption verified, runtime and interoperability gates open
 Authority: [pinned Reading Activity contract](../../contracts/quartzo/reading_activity/README.md), [local operational spec](../specs/drive-sync-operational.md), existing sync owners
