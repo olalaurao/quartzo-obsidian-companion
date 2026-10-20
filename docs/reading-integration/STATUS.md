@@ -40,8 +40,19 @@ zero errors / zero pending**; another independent download after that restart
 again verified all five hashes and unique identities. Documentation and
 architecture checks pass; runtime/contract sources are unchanged by this evidence.
 
-Reviewed adoption UI, actual Quartzo/Companion cloud exchange/races and durable
-source ACK remain required. No complete G03/G04 or production effect is claimed.
+The actual reviewed-adoption UI branch subsequently passed too. The existing
+Obsidian plugin manager temporarily unloaded only this sandbox plugin while an
+83-byte opaque fixture was seeded, then restored it with Manual/pairing and the
+five persisted baselines. Manual sync reported zero synced/errors/conflicts and
+one `adoption_required` path. Review adoption displayed the exact path and paired
+test target; Adopt file produced persistent **File adopted / attempted 1 / applied
+1 / failed 0**. Independent inventory/download verified all **six unique files**
+and exact hashes, including the new 83-byte shard, with zero pending/conflicts.
+The plugin enablement file's hash remained unchanged. No baseline was manually
+edited to create this case.
+
+Actual Quartzo/Companion cloud exchange/races and durable source ACK remain
+required. No complete G03/G04 or production effect is claimed.
 
 ## 2026-10-19 — Contract adoption checkpoint before owner integration
 

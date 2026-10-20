@@ -79,7 +79,6 @@
   "complete_g03": false,
   "complete_g04": false,
   "still_required": [
-    "actual reviewed adoption UI",
     "actual Quartzo-to-Companion cloud exchange and races",
     "PW3 authenticated durable receiver proof",
     "production extraction/outbox and later integrated gates"
@@ -210,6 +209,92 @@
           "remoteSha256": "5e4b982ec84332afd5453b7bd48642eaa047d4075b5a32a14e1eb16a8881c8d4",
           "localSha256": "5e4b982ec84332afd5453b7bd48642eaa047d4075b5a32a14e1eb16a8881c8d4",
           "expectedSha256": "5e4b982ec84332afd5453b7bd48642eaa047d4075b5a32a14e1eb16a8881c8d4",
+          "match": true
+        }
+      ],
+      "allMatch": true
+    }
+  },
+  "reviewed_adoption": {
+    "actual_plugin_manager_unload_and_reload_in_sandbox": true,
+    "original_five_hashes_verified_before_new_fixture": true,
+    "plugin_enablement_config_unchanged": true,
+    "manual_and_pairing_restored": true,
+    "actual_ui_preconfirmation_report": {
+      "synced": 0,
+      "conflicts": 0,
+      "errors": 0,
+      "pending": 1,
+      "reason": "adoption_required"
+    },
+    "actual_ui_review_and_adopt_file": true,
+    "persistent_ui_result": {
+      "title": "File adopted",
+      "attempted": 1,
+      "applied": 1,
+      "failed": 0
+    },
+    "independent_download_observation": {
+      "observedAt": "2026-10-20T13:56:58.774Z",
+      "assetSha256": "ffb75be60cbcf9e3e8c6c042d2fedec921b463fbbc0822fac3b2a2f551c8160c",
+      "mode": "manual",
+      "status": "synced",
+      "pending": 0,
+      "conflicts": 0,
+      "remoteFileCount": 6,
+      "files": [
+        {
+          "name": "b9fdf7c9bf3a6cd58a467680cef77a8ee72ca72c196a475c72dbc58e760bbab5.jsonl",
+          "remoteBytes": 382,
+          "localBytes": 382,
+          "remoteSha256": "b9fdf7c9bf3a6cd58a467680cef77a8ee72ca72c196a475c72dbc58e760bbab5",
+          "localSha256": "b9fdf7c9bf3a6cd58a467680cef77a8ee72ca72c196a475c72dbc58e760bbab5",
+          "expectedSha256": "b9fdf7c9bf3a6cd58a467680cef77a8ee72ca72c196a475c72dbc58e760bbab5",
+          "match": true
+        },
+        {
+          "name": "1a6d510fee4b641af6b9f6c5ade879a0999065bf95a24fdd3d2fbee2905848d1.jsonl",
+          "remoteBytes": 43,
+          "localBytes": 43,
+          "remoteSha256": "1a6d510fee4b641af6b9f6c5ade879a0999065bf95a24fdd3d2fbee2905848d1",
+          "localSha256": "1a6d510fee4b641af6b9f6c5ade879a0999065bf95a24fdd3d2fbee2905848d1",
+          "expectedSha256": "1a6d510fee4b641af6b9f6c5ade879a0999065bf95a24fdd3d2fbee2905848d1",
+          "match": true
+        },
+        {
+          "name": "ordinary-control.txt",
+          "remoteBytes": 38,
+          "localBytes": 38,
+          "remoteSha256": "dfc09194931f4f2556a5229ecafda698b63b7903d69aa6386a760bda761bd1e7",
+          "localSha256": "dfc09194931f4f2556a5229ecafda698b63b7903d69aa6386a760bda761bd1e7",
+          "expectedSha256": "dfc09194931f4f2556a5229ecafda698b63b7903d69aa6386a760bda761bd1e7",
+          "match": true
+        },
+        {
+          "name": "e2c55c1e696a0bed8db40befe8e64e993b31a138099e25269ee990a97f103442.jsonl",
+          "remoteBytes": 90,
+          "localBytes": 90,
+          "remoteSha256": "e2c55c1e696a0bed8db40befe8e64e993b31a138099e25269ee990a97f103442",
+          "localSha256": "e2c55c1e696a0bed8db40befe8e64e993b31a138099e25269ee990a97f103442",
+          "expectedSha256": "e2c55c1e696a0bed8db40befe8e64e993b31a138099e25269ee990a97f103442",
+          "match": true
+        },
+        {
+          "name": "ordinary-create-control.bin",
+          "remoteBytes": 32,
+          "localBytes": 32,
+          "remoteSha256": "5e4b982ec84332afd5453b7bd48642eaa047d4075b5a32a14e1eb16a8881c8d4",
+          "localSha256": "5e4b982ec84332afd5453b7bd48642eaa047d4075b5a32a14e1eb16a8881c8d4",
+          "expectedSha256": "5e4b982ec84332afd5453b7bd48642eaa047d4075b5a32a14e1eb16a8881c8d4",
+          "match": true
+        },
+        {
+          "name": "d664c32f6c763d257a60650338cbde42a9f62539d76eadade3ca8e167a5f163d.jsonl",
+          "remoteBytes": 83,
+          "localBytes": 83,
+          "remoteSha256": "d664c32f6c763d257a60650338cbde42a9f62539d76eadade3ca8e167a5f163d",
+          "localSha256": "d664c32f6c763d257a60650338cbde42a9f62539d76eadade3ca8e167a5f163d",
+          "expectedSha256": "d664c32f6c763d257a60650338cbde42a9f62539d76eadade3ca8e167a5f163d",
           "match": true
         }
       ],
