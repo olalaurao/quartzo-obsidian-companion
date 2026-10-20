@@ -37,7 +37,17 @@ its explicit reviewed operation. No new state/transport/mutation owner is added.
 
 After correction: **27 targeted tests PASS**; full suite **989 PASS / two opt-in
 exchange skips**, 88 files (61.16s). Typecheck, lint, architecture, documentation
-and whitespace checks pass. Committed-source build/hosted CI follow separately.
+and whitespace checks pass. Exact committed source
+**b97d9c609a673a7bc304fb95811a09ba4e057cb1** also passed production build,
+non-release validation, clean-artifact smoke and all nine handler cases again.
+[Build observation](pairing-mode-build-2026-10-20.json) records bundle SHA-256
+`bdd9e9769a7fe44c28d434d70b63ceff352101de6eed11a80fabffd07edcaaf7`
+(1174524 bytes). The initial checkout guard rejected the expected generated
+tracked `main.js` change; only that generated output differed. It was archived,
+the original tracked output restored, and the checkout/input source verified
+clean. This is a local non-release build without OAuth release proof.
+[PR88](https://github.com/olalaurao/quartzo-obsidian-companion/pull/88) is draft;
+final hosted checks and merge authorization remain separate.
 The old preflighted artifact does not contain this fix: a newly approved main
 merge and exact-main official preflight are required before using a corrected
 artifact for live acceptance. G03/cloud/Obsidian/ACK remains open.
