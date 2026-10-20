@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "observed_at_utc": "2026-10-20T05:35:30.849272+00:00",
+  "source_commit": "b97d9c609a673a7bc304fb95811a09ba4e057cb1",
+  "source_tree": "2b116ec5874181ada6219d40dfe598cdc724f423",
+  "runtime_inputs_unchanged": true,
+  "generated_tracked_main_js_archived_then_restored": true,
+  "build": "passed",
+  "release_validation": "passed_non_release",
+  "clean_artifact_smoke": "passed",
+  "oauth_build_environment": "unset_client_id_smoke_skipped",
+  "assets": {
+    "main.js": {
+      "sha256": "bdd9e9769a7fe44c28d434d70b63ceff352101de6eed11a80fabffd07edcaaf7",
+      "bytes": 1174524
+    },
+    "manifest.json": {
+      "sha256": "9dee108e94d84e08d31a6aca746602148be6ac567ce2b825e236d5e3b07d53f2",
+      "bytes": 321
+    },
+    "styles.css": {
+      "sha256": "25c085e918fb2fb62048ef3621073aa4b710f4413c3f7101eab0b52e2714734e",
+      "bytes": 45659
+    }
+  },
+  "initial_checkout_guard": "rejected_expected_generated_main_js_change; no runtime source input changed",
+  "production_installation": false,
+  "real_drive_tested": false,
+  "real_obsidian_tested": false,
+  "canonical_ack": false,
+  "official_preflight": false
+}

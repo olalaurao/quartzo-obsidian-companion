@@ -18,7 +18,7 @@ Canonical local product/UI rules; for cross-client behavior upstream vendorized 
 
 **C-GUID-06 — Sincronização:** Todas as ações de sincronização com o Google Drive devem utilizar "three-way reconciliation" baseado no baseline e nos hashes.
 
-**C-GUID-07 — Modo de sync:** O Companion expõe um único modo local de sincronização: `Manual` ou `Automatic`. `Manual` é o padrão e não pode disparar reconciliação por startup, foco, polling ou evento local; `Sync now`, conflitos e full reconciliation continuam disponíveis. `Automatic` habilita esses gatilhos através do mesmo coordenador canônico.
+**C-GUID-07 — Modo de sync:** O Companion expõe um único modo local de sincronização: `Manual` ou `Automatic`. `Manual` é o padrão e não pode disparar reconciliação por startup, foco, polling ou evento local; `Sync now`, conflitos e full reconciliation continuam disponíveis. Concluir pareamento, inclusive após resolver divergências, preserva a preferência atual; aceitar o snapshot não habilita `Automatic`. Somente a escolha explícita de modo altera essa preferência. `Automatic` habilita esses gatilhos através do mesmo coordenador canônico.
 
 **C-GUID-08 — Companion local-first por padrão:** se o vault do Obsidian já está em Google Drive Desktop ou outra pasta sincronizada pelo sistema de arquivos, o Companion deve funcionar sem pairing do Drive: ler/escrever localmente e deixar o transporte de bytes para esse provedor. Pairing/sync do Drive continuam disponíveis como opção explícita para um vault que não esteja em pasta sincronizada. First-run, Sync Center e Settings devem comunicar esse papel opcional sem sugerir que o usuário precisa parear o Drive para usar o Companion.
 

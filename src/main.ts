@@ -2539,9 +2539,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
             new Notice(pairingResult.errors.join('; '));
             return;
           }
-          if (!this.settings.isPaired) this.settings.syncMode = 'automatic';
-          if (!this.settings.isPaired) this.settings.syncMode = 'automatic';
-      this.settings.isPaired = true;
+          this.settings.isPaired = true;
           this.settings.firstRunCompleted = true;
           this.authState = 'paired';
           await this.saveSettings();
@@ -3085,8 +3083,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
           return;
         }
 
-        if (!this.settings.isPaired) this.settings.syncMode = 'automatic';
-      this.settings.isPaired = true;
+        this.settings.isPaired = true;
         this.settings.firstRunCompleted = true;
         this.authState = 'paired';
         await this.saveSettings();
@@ -3210,7 +3207,6 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
         new Notice(`Pairing incomplete: ${pairingResult.errors.join('; ')}`);
         return;
       }
-      if (!this.settings.isPaired) this.settings.syncMode = 'automatic';
       this.settings.isPaired = true;
       this.settings.firstRunCompleted = true;
       this.authState = 'paired';
