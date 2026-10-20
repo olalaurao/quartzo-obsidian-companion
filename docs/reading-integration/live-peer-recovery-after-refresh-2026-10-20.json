@@ -1,0 +1,61 @@
+{
+  "observedAt": "2026-10-20T19:45:31.161Z",
+  "assetSha256": "ffb75be60cbcf9e3e8c6c042d2fedec921b463fbbc0822fac3b2a2f551c8160c",
+  "sourceData": "synthetic",
+  "proof": "actual_independent_coordinator_remote_recovery_after_explicit_owner_refresh",
+  "explicitOwnerRefreshBeforeRetry": true,
+  "expiredCredentialRecoveryProven": false,
+  "independentAdapter": true,
+  "independentCoordinator": true,
+  "isolatedLocalVaultAndState": true,
+  "result": {
+    "synced": 6,
+    "conflicts": 0,
+    "errors": 0
+  },
+  "peer": {
+    "status": "synced",
+    "pending": 0,
+    "conflicts": 0
+  },
+  "original": {
+    "status": "synced",
+    "pending": 0,
+    "conflicts": 0
+  },
+  "files": [
+    {
+      "name": "b9fdf7c9bf3a6cd58a467680cef77a8ee72ca72c196a475c72dbc58e760bbab5.jsonl",
+      "exists": true,
+      "match": true
+    },
+    {
+      "name": "1a6d510fee4b641af6b9f6c5ade879a0999065bf95a24fdd3d2fbee2905848d1.jsonl",
+      "exists": true,
+      "match": true
+    },
+    {
+      "name": "ordinary-control.txt",
+      "exists": true,
+      "match": true
+    },
+    {
+      "name": "e2c55c1e696a0bed8db40befe8e64e993b31a138099e25269ee990a97f103442.jsonl",
+      "exists": true,
+      "match": true
+    },
+    {
+      "name": "ordinary-create-control.bin",
+      "exists": true,
+      "match": true
+    },
+    {
+      "name": "d664c32f6c763d257a60650338cbde42a9f62539d76eadade3ca8e167a5f163d.jsonl",
+      "exists": true,
+      "match": true
+    }
+  ],
+  "allMatch": true,
+  "canonicalAck": false,
+  "concurrentRaceProven": false
+}

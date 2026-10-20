@@ -657,7 +657,6 @@ export class GoogleDriveAdapter implements DriveAdapter {
   }
 
   private async listNamedChildren(parentId: string, childName: string, foldersOnly: boolean): Promise<DriveFileMetadata[]> {
-    const driveClient = this.getDriveClient();
     const results: DriveFileMetadata[] = [];
     let pageToken: string | undefined;
     const parent = this.escapeQueryParam(parentId);
@@ -666,7 +665,9 @@ export class GoogleDriveAdapter implements DriveAdapter {
       ? "mimeType = 'application/vnd.google-apps.folder'"
       : "mimeType != 'application/vnd.google-apps.folder'";
     do {
-      const response = await this.withRetry(() => driveClient.files.list({
+      // Refresh replaces the SDK client; retry the same page with its current
+      // credentials rather than retaining the pre-refresh client in a closure.
+      const response = await this.withRetry(() => this.getDriveClient().files.list({
         q: `'${parent}' in parents and name = '${name}' and ${mimeClause} and trashed = false`,
         fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum, parents, appProperties, properties, trashed, capabilities(canTrash))',
         pageSize: 100,
