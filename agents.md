@@ -21,6 +21,8 @@ A arquitetura do Companion é dividida nestas camadas:
 
 - **Companion local-first sync model:** quando o vault selecionado já está dentro do Google Drive Desktop ou outra pasta sincronizada pelo sistema de arquivos, o Companion deve operar local-first e não exigir pairing do Google Drive. O sync/pairing Drive do Companion continua suportado como fallback explícito e opcional para um vault que não esteja sincronizado pelo Drive Desktop. UI e settings devem deixar claro que `Use without sync` é o caminho normal nesse cenário, e que `Manual` não dispara reconciliação automática.
 
+- **Pairing preserves sync preference:** all pairing completion paths in the existing plugin keep the current `settings.syncMode`. Accepting the pairing snapshot or resolving divergences does not enroll the vault in background reconciliation. Only explicit mode selection changes that preference; the existing automatic-trigger guards remain authoritative.
+
 
 ## Security and OAuth
 
