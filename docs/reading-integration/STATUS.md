@@ -1,5 +1,14 @@
 # Reading Integration — Companion status
 
+## 2026-10-20 — Actual physical-shard cloud path and canonical Quartzo consumption passed
+
+[Combined source-bound evidence](wire-cloud-canonical-bridge-2026-10-20.json) has byte-identical copies across all three repositories (SHA2568428ade8d85a74e51ee0681e1970fe697888e69cdc82e761093a888089bed8f5). The exact three synthetic shards collected from the physical Android run passed actual official Companion10e840ab SDK/OAuth/HTTP upload, independent fresh-peer download and separate remote byte checks (three unique files /1356bytes). Source and rehydrated-peer replay performed zero sync work; both peers were synced and the original six sandbox hashes plus Manual/pairing remained unchanged. These are separate adapters/coordinators/local roots/state in one renderer, not separate OS-process restart proof. The dedicated child is under the selected sandbox's excluded diagnostics tree; no production target was selected.
+
+The explicit live-input Flutter consumer then passed on **clean committed Quartzo2921191f5c5d1bb7490bb93c80da5f4b35a3efbb**: actual existing ReadingActivityLocalStore discovery, whole observed verification and batch parsing of those actual downloaded bytes yielded **three native facts / three unique events /120 synthetic seconds**, unchanged on replay. Exact file hashes/native IDs were checked, the temporary queue stayed empty, disposable index and owned scratch were removed, and success was published only after queue close/cleanup. Seven exact source fingerprints and both raw observation digests bind the result. The initial input-free test was explicitly skipped, never counted as cloud acceptance. Source artifacts and downloaded history remain preserved. The earlier cloud-only report's semantic-pending field is a historical phase and was not rewritten.
+
+This adds actual cross-client byte/semantic/replay acceptance without canonical source ACK, cursor movement, real Statistics access, Resource effects, production ingestion or complete G03/G04/release claims. The earlier physical source boundaries remain unchanged; the new cloud consumer is source-bound separately. Remaining work is the explicit G03 exit audit and G04 current binding/default-root, production certificate/pairing/lifecycle and trusted per-event ACK composition, followed by gated ingestion/effects and later product/release phases.
+
+
 ## 2026-10-20 — Authorized refresh fix merged and official sandbox 401 recovery passed
 
 The user explicitly authorized PR92 after its final checks. All six final

@@ -1,0 +1,90 @@
+{
+  "evidence_version": 1,
+  "proof": "physical_synthetic_canonical_shards_actual_drive_independent_peer_and_quartzo_semantic_replay",
+  "source_data": "synthetic",
+  "physical_fixture_sha256": "91339da747710bb51bdce51a3cfd79bdf75077c3c964f043b3bde10eaafa0e56",
+  "physical_execution_reference": {
+    "kindle_source": "b18e6f07bd2b4a5e6e48c96692a10faad7412aef",
+    "android_apk_source": "314973aefde1b3fc5ca02a1872fedc1f82dab480",
+    "reference_file": "wire-canonical-physical-2026-10-20.json",
+    "real_statistics_read": false
+  },
+  "cloud": {
+    "observed_at_utc": "2026-10-20T20:48:53.130Z",
+    "raw_observation_sha256": "d314e7a796c5d9183ce4bce81fc35fb5917d7d6b41202b997543570d9074ce6e",
+    "companion_source": "10e840ab09fe98fe2365c3a30a34be4c0eef6b4d",
+    "official_main_js_sha256": "ad9e604339363e6e8d5bdfa5d6700e364f822d9c6242498396119eb3003c09e3",
+    "real_sdk_oauth_http": true,
+    "network_replaced": false,
+    "independent_adapters_coordinators_roots_and_state": true,
+    "same_renderer": true,
+    "isolated_under_excluded_sandbox_diagnostics": true,
+    "uploaded": 3,
+    "fresh_peer_downloaded": 3,
+    "exact_unique_remote_files": 3,
+    "source_and_rehydrated_peer_replay_synced": 0,
+    "all_peers_synced": true,
+    "files": [
+      {
+        "path": "sessions/reading_activity_v1/cb254c555f0ea58518e3ed3a4308dace10d357d8bf36c7aad32f5fd49c1ae977/2aaec03926c3534057bf08b41b403dd3a6a538d5c3e2bdea50ea964283bbec02/2026/10/bc70b85006d54806949d73d1534893edb2bab49c67ff63f940efb9429b2f5757.jsonl",
+        "bytes": 452,
+        "sha256": "bc70b85006d54806949d73d1534893edb2bab49c67ff63f940efb9429b2f5757"
+      },
+      {
+        "path": "sessions/reading_activity_v1/cb254c555f0ea58518e3ed3a4308dace10d357d8bf36c7aad32f5fd49c1ae977/2aaec03926c3534057bf08b41b403dd3a6a538d5c3e2bdea50ea964283bbec02/2026/10/70875342cdc089db0c3a0c915d684c1971510e0c9d7be85565fbf2ca744b346c.jsonl",
+        "bytes": 452,
+        "sha256": "70875342cdc089db0c3a0c915d684c1971510e0c9d7be85565fbf2ca744b346c"
+      },
+      {
+        "path": "sessions/reading_activity_v1/cb254c555f0ea58518e3ed3a4308dace10d357d8bf36c7aad32f5fd49c1ae977/2aaec03926c3534057bf08b41b403dd3a6a538d5c3e2bdea50ea964283bbec02/2026/10/1a47e09cc46a668b01a91797e0630e22bd9a236a477668bc185c868126aaa3bf.jsonl",
+        "bytes": 452,
+        "sha256": "1a47e09cc46a668b01a91797e0630e22bd9a236a477668bc185c868126aaa3bf"
+      }
+    ],
+    "original_six_fixtures_unchanged": true,
+    "original_manual_pairing_retained": true
+  },
+  "quartzo_canonical_consumer": {
+    "observed_at_utc": "2026-10-20T20:55:15.105944Z",
+    "proof": "actual_cloud_download_consumed_by_canonical_quartzo_owner",
+    "source_data": "synthetic",
+    "quartzo_source_git_revision": "2921191f5c5d1bb7490bb93c80da5f4b35a3efbb",
+    "quartzo_source_clean": true,
+    "physical_fixture_sha256": "91339da747710bb51bdce51a3cfd79bdf75077c3c964f043b3bde10eaafa0e56",
+    "cloud_observation_sha256": "d314e7a796c5d9183ce4bce81fc35fb5917d7d6b41202b997543570d9074ce6e",
+    "input_manifest_sha256": "9ebcd8167df5b8efc62a2c75f936a501853cb861c88f4ab98f0e9fb59aaa27d4",
+    "source_sha256": {
+      "lib/services/reading_activity_local_store.dart": "5577f8be22a9807ba4e7cd192ae7a7fbafa084933556d1cc793bb148ad0fe922",
+      "lib/services/reading_activity_codec.dart": "48ae62a69c379ff221102ccef6b2bc64f1b1a6bb2b2526a5cb1294469f64ea0b",
+      "lib/services/reading_activity_shards.dart": "b6646ce1440b18c68af627d31eaef6dcab52f096997366e81a6fdb62a8d13f4c",
+      "lib/services/obsidian_service.dart": "62a585e88c497a3550c07f50193c952bd94c2950e74d7ee97bc0ba491a9d921f",
+      "lib/services/sync_queue_service.dart": "e254cd137b0a28641d538e55c7436e66c1d85d2b3eb73cf063f3d31c028e9185",
+      "lib/models/reading_activity_event.dart": "176ddb26246b2e9f82f222f67370a4ca15bbe9ae62f685cfd08ec436eb05585f",
+      "test/reading_activity_cloud_bridge_test.dart": "c48d6e19bbd0767cf546b040a370e569bded68028344ccf41eb552e22d2c9f70"
+    },
+    "canonical_files": 3,
+    "input_facts": 3,
+    "unique_native_events": 3,
+    "native_seconds": 120,
+    "replay_same_counts": true,
+    "source_bytes_unchanged": true,
+    "pending_queue_empty": true,
+    "scratch_index_removed": true,
+    "canonical_ack": false,
+    "source_cursor_advanced": false,
+    "production_ingestion": false,
+    "expectations_met": true,
+    "raw_report_sha256": "c3d339a2296e360576035b7c09f794926e868d44a95b130cf4aef7c40130d0b0",
+    "raw_source_hash_note": "Actual Windows working-tree bytes at the recorded clean Git source; not LF-normalized Git blob hashes."
+  },
+  "limits": {
+    "original_cloud_report_semantic_pending_flag_is_historical_phase": true,
+    "cloud_phase_flag_not_rewritten": true,
+    "separate_os_process_restart_proven": false,
+    "canonical_source_ack": false,
+    "source_cursor_advanced": false,
+    "production_ingestion": false,
+    "resource_or_automation_effects": false,
+    "complete_g03_g04_or_release_claimed": false
+  }
+}
