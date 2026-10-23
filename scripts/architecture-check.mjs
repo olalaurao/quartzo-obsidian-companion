@@ -1631,7 +1631,7 @@ function checkVaultIndexWaitsForWorkspaceReady() {
 function checkSharedSettingsReloadReindexesVault() {
   const mainPath = path.join(rootDir, 'src/main.ts');
   const main = fs.readFileSync(mainPath, 'utf8');
-  const methodStart = main.indexOf('private async reloadSharedSettingsAndIndex(): Promise<void>');
+  const methodStart = main.indexOf('private async reloadSharedSettingsAndIndex(): Promise<number | undefined>');
   if (methodStart < 0) {
     console.error('FAIL: Shared settings reload owner is missing');
     return false;
@@ -1647,10 +1647,19 @@ function checkSharedSettingsReloadReindexesVault() {
     return false;
   }
 
-  const directHook = "normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { void this.reloadSharedSettingsAndIndex(); return; }";
   const renameHook = "normalizeVaultPath(oldPath) === SHARED_SETTINGS_PATH || normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH";
-  const createModifyDeleteCount = main.split(directHook).length - 1;
-  if (createModifyDeleteCount < 3 || !main.includes(renameHook)) {
+  const registerStart = main.indexOf('private registerVaultEvents()');
+  const registerEnd = main.indexOf('\n  startAutoSync()', registerStart);
+  const registration = main.slice(registerStart, registerEnd);
+  const hookNames = ['oncreate', 'onmodify', 'ondelete', 'onrename', 'onchange'];
+  const everyHookUsesOwner = hookNames.slice(0, 4).every((name, index) => {
+    const start = registration.indexOf(`const ${name} =`);
+    const end = registration.indexOf(`const ${hookNames[index + 1]} =`, start);
+    const hook = registration.slice(start, end);
+    return start >= 0 && end > start && hook.includes('SHARED_SETTINGS_PATH') && hook.includes('reloadIndex();');
+  });
+  if (!everyHookUsesOwner || !registration.includes(renameHook)
+      || !registration.includes('void this.reloadSharedSettingsAndIndex().catch(')) {
     console.error('FAIL: Shared settings create/modify/delete/rename events must route through canonical reindex');
     return false;
   }
