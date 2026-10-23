@@ -1,5 +1,15 @@
 # Reading Integration — Companion status
 
+## 2026-10-23 — Host fixes accepted; authenticated namespace sample observed
+
+Upstream [PR86](https://github.com/olalaurao/aplicativo/pull/86) merged as `df9b6b0b442fcbba81b8f48313ec1cfe58b5f225` after all five exact-head checks passed (hosted 2911 PASS/eight skips; Windows 2882 PASS/37 skips). Its tree equals tested source `81a616fa1fed2a15c4d2856579409ca4bc5f81e0`. Dependent [Companion PR94](https://github.com/olalaurao/quartzo-obsidian-companion/pull/94) then merged as `1f04c9b49bfefe0cde3f343e828086e5eceac060` after all six checks passed; its tree equals tested `cc70cf21f430174c8208dc68373e8bcb2871fd18`. Local Companion validation passed 1044 tests/two skips and 399 contract tests, plus typecheck, lint, docs, architecture, build, artifact validation/smoke/packaging and production dependency audit (zero reported vulnerabilities). The earlier candidate entries below remain historical observations.
+
+A separate [sanitized live API observation](readwise-authenticated-observation-2026-10-23.json) verifies the 120 distinct numeric book IDs in the selected local export scope against authenticated Readwise Books LIST. The local writer map has 145 rows, not 145 distinct books: 22 IDs have multiple path entries and 25 map paths are not in the selected snapshot. The 120 current marked files have distinct IDs. Missing snapshot entries do not authorize cleanup or determine the exclusive owner.
+
+For three sampled Reader-source books, Readwise Highlight EXPORT returned an `external_id` that exact Reader Document LIST queries resolved to the same document ID. This uses the separate namespaces and service-provided bridge, never title/URL matching or interpreting `book_id` as a Reader ID. The [Readwise API](https://readwise.io/api_deets) describes the export source reference; the [Reader API](https://readwise.io/reader_api) describes exact-ID lookup. Eight total GETs were made across the two observations, with no HTTP mutation methods, source/vault writes, retained credential or persisted API bodies. Source configuration and original/frozen input hashes remained unchanged.
+
+This is finite point-in-time account/API evidence. Public aggregates cannot independently replay the private payloads. Stable account binding, whole-vault completeness, exclusive export ownership, local Reader artifact provenance, native Obsidian export/reexport, safe template migration and physical/release acceptance remain unproven. No canonical binding, automatic Resource promotion, status change, habit or KPI effect is enabled. Current physical Gate4/source-generation and the complete Reading release DoD remain open.
+
 ## 2026-10-23 — Bare prose is not a Tag marker (host candidate)
 
 The private actual-file replay exposed a second concrete mismatch after the missing-ID correction: two files parsed as Ideas only because a body word equaled a tag signature configured without `#`. Both also matched Resource; no corresponding hashtag/frontmatter tag existed. The existing migration owner in both clients already requires a hashtag in body and emits it for a shorthand configured name.
