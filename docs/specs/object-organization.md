@@ -1388,6 +1388,8 @@ Não misturar semânticas.
 
 # 45. Issues projection
 
+Arquivos legados que tenham tipo reconhecido, mas não tenham `id` textual não vazio, continuam no inventário de arquivos do `VaultIndexEngine` e na projeção existente `Unidentified`. Não compartilham um objeto de ID vazio, não recebem identidade derivada de caminho e não entram em pickers/relações/edição comum. Abertura do Markdown e classificação explícita usam os owners existentes; a indexação não altera o documento. Um evento de modificação que remova ou troque o ID também remove a identidade anterior daquele caminho do índice.
+
 Criar uma projeção reconstruível, não persisted database.
 
 Categorias V1:

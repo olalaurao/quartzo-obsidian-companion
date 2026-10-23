@@ -1,5 +1,13 @@
 # Reading Integration — Companion status
 
+## 2026-10-23 — ID-less exports remain available for explicit review
+
+A private, frozen local copy of 121 actual Readwise exports reproduced a canonical index defect: 101 files parsed (99 Resources and two Ideas under the copied shared settings), all without IDs, but only one survived in `objects`. Reversing input order selected a different file. Twenty other files failed YAML parsing. These are file/parser observations, not authenticated export ownership, Reader identity or successful reexport evidence.
+
+The existing `VaultIndexEngine` now retains every file in `files` and admits only non-empty string identities to `objects`. The existing Issues projection exposes unidentified files by path for Open Markdown and explicit Organization review. No fallback UUID, path-derived object identity, second index, template change or automatic source rewrite is introduced. Incremental ID removal/replacement removes the old identity at that path; ordinary safe editing rejects an empty expected identity.
+
+Focused tests: 33 PASS, including canonical shared-settings parsing, index, query, Issues and scope resolution on synthetic documents, invalid identity values, incremental identity removal and mutation rejection. A private replay accounts for all 121 exports as unidentified review subjects in both input orders, with snapshot hashes unchanged. Full-suite/CI validation of the final candidate is recorded with its PR; native Obsidian review, actual export/reexport and production migration remain open. Conflicting non-empty IDs are outside this narrowly scoped correction.
+
 ## 2026-10-20 — Expired credential during fresh peer recovery
 
 An actual isolated second adapter/coordinator using the official sandbox artifact

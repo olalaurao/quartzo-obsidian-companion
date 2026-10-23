@@ -149,6 +149,7 @@ Established by the Object Organization & Obsidian-native Organization V1 spec. T
 - **Vault lifecycle** → `VaultNotifier` / Companion vault adapter. Merge losers exit through this lifecycle.
 - **Sync** → existing `DriveSyncCoordinator`. Targeted `syncSharedSettingsNow()` must extend this coordinator only.
 - **Queries** → `queryVaultObjects` / `VaultIndex` / `object-query`. No second index. Object picker uses this owner.
+- **Unidentified Markdown** → `VaultIndexEngine` retains every readable file in `files`, but only non-empty string IDs enter `objects`. Existing `projectOrganizationIssues` and scope resolution expose other files by path for review/explicit classification. Incremental replacement removes a previous identity at that path before indexing the new parse; safe field mutation rejects an empty expected ID. No fallback ID, second index or automatic classification.
 - **Scope resolution** → `src/core/object-organization/scope-resolver.ts`. Not persisted; not an identification rule.
 - **Issues projection** → `src/core/object-organization/issues-projection.ts`. Non-persisted, reconstructible.
 - **Operation IDs** → `src/core/object-organization/operation-id.ts`. Deterministic, not timestamp-based.

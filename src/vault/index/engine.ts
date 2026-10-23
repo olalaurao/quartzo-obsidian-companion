@@ -3,6 +3,10 @@ import { VaultFile, IndexedObject, VaultIndex, IndexChange } from './types';
 import type { ParseResult } from '../../core/objects/types';
 import { searchVaultObjects } from '../../core/object-query';
 
+function hasObjectIdentity(id: unknown): id is string {
+  return typeof id === 'string' && id.trim().length > 0;
+}
+
 export class VaultIndexEngine {
   private index: VaultIndex | null = null;
 
@@ -42,7 +46,11 @@ export class VaultIndexEngine {
           body: result.object.body || '',
           identification: result.identification,
         };
-        index.objects.set(result.object.id, indexedObject);
+        // Keep unidentified Markdown in files for the existing Issues projection.
+        // An empty/invalid ID is not a shared identity for unrelated files.
+        if (hasObjectIdentity(indexedObject.id)) {
+          index.objects.set(indexedObject.id, indexedObject);
+        }
       } catch {
         // Not a valid object, skip
       }
@@ -58,6 +66,12 @@ export class VaultIndexEngine {
       lastModified: Date.now()
     };
 
+    const removeObjectAtPath = (path: string): void => {
+      for (const [id, object] of newIndex.objects) {
+        if (object.path === path) newIndex.objects.delete(id);
+      }
+    };
+
     for (const change of changes) {
       switch (change.type) {
         case 'added':
@@ -70,21 +84,15 @@ export class VaultIndexEngine {
               size: change.object.body.length
             };
             newIndex.files.set(change.object.path, file);
-            newIndex.objects.set(change.object.id, change.object);
+            removeObjectAtPath(change.path);
+            if (hasObjectIdentity(change.object.id)) {
+              newIndex.objects.set(change.object.id, change.object);
+            }
           }
           break;
         case 'deleted':
-          const file = newIndex.files.get(change.path);
-          if (file) {
-            newIndex.files.delete(change.path);
-            // Find and remove associated object
-            for (const [objId, obj] of newIndex.objects.entries()) {
-              if (obj.path === change.path) {
-                newIndex.objects.delete(objId);
-                break;
-              }
-            }
-          }
+          newIndex.files.delete(change.path);
+          removeObjectAtPath(change.path);
           break;
       }
     }
