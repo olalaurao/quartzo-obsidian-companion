@@ -247,7 +247,8 @@ export function applyTypeSignature(
     }
   }
   if (signature.markerType === 'tag') {
-    const marker = signature.markerValue.trim();
+    const tag = signature.markerValue.trim().replace(/^#+/, '');
+    const marker = tag ? `#${tag}` : '';
     if (marker && !body.split(/\s+/).includes(marker)) {
       body = body.trimEnd() + (body.trim() ? '\n\n' : '') + marker;
     }
@@ -277,7 +278,7 @@ function tagSignatureMatches(frontmatter: Record<string, unknown>, body: string,
   const tags = frontmatter.tags;
   if (Array.isArray(tags) && tags.some(tag => String(tag).replace(/^#/, '') === normalized)) return true;
   const token = marker.startsWith('#') ? marker : `#${marker}`;
-  return body.split(/\s+/).includes(token) || body.split(/\s+/).includes(marker);
+  return body.split(/\s+/).includes(token);
 }
 
 export function identifyTypeFromSignatures(

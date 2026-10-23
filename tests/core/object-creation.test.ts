@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildQuickAddDocument } from '../../src/core/object-creation';
 import { ObjectParser } from '../../src/core/objects';
 import type { QuartzoSharedSettings } from '../../src/core/shared-settings';
+import { parseObjectWithSharedSettings } from '../../src/core/shared-settings';
 
 const settings: QuartzoSharedSettings = {
   schemaVersion: 1,
@@ -27,6 +28,20 @@ const settings: QuartzoSharedSettings = {
 };
 
 describe('buildQuickAddDocument', () => {
+  it('creates a shorthand Tag object that the canonical shared-settings parser recognizes', () => {
+    const tagged = {
+      ...settings,
+      typeSignatures: { note: { objectType: 'note', markerType: 'tag' as const, markerValue: 'ideia' } },
+    };
+    const created = buildQuickAddDocument(tagged, 'note', {
+      title: 'Synthetic note', body: 'An ordinary ideia in prose.',
+    }, 'note-created');
+    expect(created.content).toContain('An ordinary ideia in prose.\n\n#ideia');
+    const parsed = parseObjectWithSharedSettings(created.content, created.path, tagged);
+    expect(parsed.object.id).toBe('note-created');
+    expect(parsed.object.type).toBe('note');
+    expect(parsed.identification?.matchedSignatures.map(match => match.markerType)).toEqual(['tag']);
+  });
   it('creates a Resource in the canonical configured folder with links and categories', () => {
     const created = buildQuickAddDocument(
       settings,

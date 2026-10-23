@@ -1,5 +1,13 @@
 # Reading Integration — Companion status
 
+## 2026-10-23 — Bare prose is not a Tag marker (host candidate)
+
+The private actual-file replay exposed a second concrete mismatch after the missing-ID correction: two files parsed as Ideas only because a body word equaled a tag signature configured without `#`. Both also matched Resource; no corresponding hashtag/frontmatter tag existed. The existing migration owner in both clients already requires a hashtag in body and emits it for a shorthand configured name.
+
+This candidate removes the bare-word match in the existing shared-settings parser and normalizes ordinary creation to the established hashtag syntax. Upstream PR86 supplies explicit migration vectors and fixes the corresponding ordinary creation helper; dependency acceptance and the normal vendor/lock workflow remain required before merging this candidate. No type priority, alias, template, original Markdown, persisted status, automatic classification or promotion policy changes.
+
+Before-fix Companion regressions failed twice; the initial corrected focused suite passed 41 cases before vendoring the new vectors and adding a full Quick Add-to-parser regression. A private corrected replay parses 101 Resources with 20 YAML failures; all 121 files remain available for explicit review with unchanged hashes. These are parser observations only. Actual export/reexport, native review and ownership/migration acceptance remain open.
+
 ## 2026-10-23 — ID-less exports remain available for explicit review
 
 A private, frozen local copy of 121 actual Readwise exports reproduced a canonical index defect: 101 files parsed (99 Resources and two Ideas under the copied shared settings), all without IDs, but only one survived in `objects`. Reversing input order selected a different file. Twenty other files failed YAML parsing. These are file/parser observations, not authenticated export ownership, Reader identity or successful reexport evidence.

@@ -109,6 +109,8 @@ Não criar:
 
 ## 2.1 Shared Object Identification
 
+A assinatura Tag aceita nome configurado com ou sem `#`, mas no corpo exige o hashtag; uma palavra comum igual ao nome não identifica o objeto. O helper de criação existente emite o hashtag, conforme os vectors canônicos de migration. Tags no frontmatter continuam suportadas. Corrigir a interpretação não executa migration, altera prioridade ou reescreve arquivos existentes.
+
 A fonte cross-client existente é:
 
 ```text
