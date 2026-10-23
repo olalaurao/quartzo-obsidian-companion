@@ -1,5 +1,47 @@
 # Reading Integration — Companion status
 
+## 2026-10-23 — Selected local Readwise bridge observed; four document kinds remain unavailable
+
+The [expanded API observation](readwise-selected-local-bridge-observation-2026-10-23.json)
+checks all 100 eligible Reader-source books in the intersection of the frozen local
+markers, local writer map and authenticated Books LIST. Three Highlight EXPORT
+pages returned 100 live records with 100 distinct external IDs; exact Reader ID
+queries matched all 100. The successful observation made 105 GETs in 320.05s
+(one HTTP 204, 104 HTTP 200), without HTTP mutations or vault writes. Source configuration,
+original inputs and frozen snapshot hashes were checked unchanged before/after.
+
+Only 96 matches meet the diagnostic's known document category plus explicit null
+parent criterion. Four have an unrecognized category bucket; their actual category
+values and parent details were not retained. They remain unavailable/review, not
+classified as nested, invalid or eligible for promotion. No title/URL matching or
+reinterpretation of a numeric export book ID as a Reader ID was used.
+
+The temporary diagnostic now accepts bounded opaque integer/string export cursors;
+the actual three-page response used two integer cursors. Earlier failed/stopped
+attempts and exact sources are preserved privately, never relabeled PASS. Their
+total request count was not retained and is not reconstructed from the successful
+105-request observation. Observed IPv6 connection stalls led to IPv4 DNS only within this
+sequential diagnostic, preserving the HTTPS hostname and default TLS validation.
+Reader queries explicitly disabled HTML/raw-source URLs and were spaced 3.2s apart.
+This changes no product API client, store, schema, contract, vendor lock or owner.
+The existing official credential was read into RAM without persisting a copy;
+response bodies were not persisted. Earlier sample reports remain byte-identical with their original source snapshot preserved.
+
+Coverage is the selected local intersection, not the full vault/Reader catalog.
+The local map still has 145 rows / 120 distinct IDs, 22 IDs with multiple paths and 25
+paths outside the selected manifest; this authorizes neither cleanup nor ownership.
+Stable account/local artifact binding, exclusive writer, native Official Obsidian
+export/reexport, template migration and manual/terminal status preservation remain
+OPEN. Fresh desktop inventory found Obsidian closed; no launch or UI input occurred.
+No canonical link, Resource promotion, Reading receipt/cursor, habit or KPI effect.
+
+Previous Companion PR98 merged as acb73ec9cbbb7f7b3e038b96f8ddf5f3cca53259
+after all six exact 9c5ea99 checks; main CI 40009129719 passed all three platforms.
+KOReader PR5 remains draft 336a7a8 with 400 native host cases/no skips. A fresh
+offline synthetic outbox bundle was prepared/verified from its nine committed
+sources on the computer only, not installed. No device, timed session, release or
+production installation. Source generation/physical Gate4 and the full DoD stay OPEN.
+
 ## 2026-10-23 — Full index rebuild preserves current observations (local validation completed)
 
 Previous goal turn made concrete progress: PR97 merged as2a05496860495dad1abc3f911f75d10068f4a39b

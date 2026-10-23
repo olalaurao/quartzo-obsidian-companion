@@ -1,0 +1,89 @@
+{
+  "kind": "sanitized_point_in_time_selected_local_bridge_observation_not_product_identity",
+  "status": "SELECTED_API_BRIDGE_OBSERVED_WITH_DOCUMENT_KIND_REVIEW",
+  "observed_at_utc": "2026-10-23T19:40:11.210958+00:00",
+  "documentation": [
+    "https://readwise.io/api_deets",
+    "https://readwise.io/reader_api"
+  ],
+  "http_successful_observation": {
+    "method": "GET",
+    "requests": 105,
+    "status_counts": {
+      "204": 1,
+      "200": 104
+    },
+    "write_requests": 0,
+    "elapsed_seconds": 320.05,
+    "earlier_attempt_total_request_count": "unknown_not_reconstructed"
+  },
+  "selected_scope": {
+    "selection": "all_eligible_local_marked_mapped_reader_source_books",
+    "frozen_export_files": 121,
+    "distinct_local_marker_and_map_book_ids": 120,
+    "all_local_map_ids_seen_in_authenticated_books": true,
+    "eligible_reader_source_books": 100,
+    "whole_vault_or_entire_reader_catalog_proven": false,
+    "writer_map_rows": 145,
+    "distinct_numeric_map_book_ids": 120,
+    "map_ids_with_multiple_paths": 22,
+    "map_paths_outside_selected_manifest": 25
+  },
+  "bridge": {
+    "returned_export_books": 100,
+    "live_reader_source_records_with_external_id": 100,
+    "distinct_external_ids": 100,
+    "exact_authenticated_v3_id_matches": 100,
+    "exact_top_level_document_matches": 96,
+    "exact_match_categories_whitelisted": {
+      "article": 55,
+      "epub": 32,
+      "other": 4,
+      "video": 4,
+      "pdf": 5
+    },
+    "export_pages": 3,
+    "export_pagination_exhausted": true,
+    "export_nonterminal_cursor_types_observed": {
+      "int": 2
+    },
+    "selected_books_not_returned": 0,
+    "returned_books_without_eligible_live_reader_external_id": 0,
+    "external_ids_referenced_by_multiple_selected_books": 0,
+    "coverage": "complete_selected_local_intersection_only",
+    "title_or_url_matching_used": false
+  },
+  "document_kind_limit": {
+    "exact_matches_not_accepted_as_known_top_level_documents": 4,
+    "unrecognized_category_bucket": 4,
+    "unknown_values_and_parent_details_not_retained": true,
+    "nested_or_invalid_document_inference_granted": false
+  },
+  "diagnostic_only_transport": {
+    "ipv4_dns_used_after_observed_ipv6_connect_stall": true,
+    "default_tls_hostname_and_certificate_validation_preserved": true,
+    "minimum_reader_request_start_interval_seconds": 3.2,
+    "reader_query_withHtmlContent": false,
+    "reader_query_withRawSourceUrl": false,
+    "production_transport_changed": false
+  },
+  "preservation": {
+    "source_configuration_and_original_and_frozen_file_hashes_rechecked_before_and_after": true,
+    "vault_writes": 0,
+    "credential_persisted": false,
+    "api_response_bodies_persisted": false,
+    "private_paths_titles_passages_ids_in_public_artifact": false
+  },
+  "limits": {
+    "stable_account_identity_established": false,
+    "local_reader_artifact_provenance_proven": false,
+    "exclusive_export_ownership_proven": false,
+    "native_obsidian_export_reexport_executed": false,
+    "safe_template_migration_accepted": false,
+    "canonical_binding_or_promotion_enabled": false,
+    "status_habit_kpi_effects_enabled": false,
+    "physical_or_release_gate_accepted": false
+  },
+  "private_envelope_sha256": "4a16e3fcef175617fc823da6edf3b1e78526288f14b8bed51c2138ad636a2ce3",
+  "digest_purpose": "evidence_traceability_only_never_account_or_resource_identity"
+}
