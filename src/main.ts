@@ -1284,11 +1284,11 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
       identification: parsed.identification,
     };
     const type = index.objects.has(object.id) ? 'modified' as const : 'added' as const;
-    engine.setIndex(VaultIndexEngine.updateIndex(index, [{
+    engine.applyChanges([{
       type,
       path: normalizeVaultPath(filePath),
       object,
-    }]));
+    }]);
     return object;
   }
 
@@ -2017,7 +2017,18 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
   }
 
   private registerVaultEvents() {
+    const indexReads = new WeakMap<TFile, object>();
+    const beginIndexRead = (file: TFile): (() => boolean) => {
+      const marker = {};
+      const engine = this.vaultIndexEngine;
+      const path = file.path;
+      indexReads.set(file, marker);
+      return () => !this.unloaded && this.vaultIndexEngine === engine
+        && indexReads.get(file) === marker && file.path === path
+        && this.app.vault.getAbstractFileByPath(path) === file;
+    };
     const oncreate = this.app.vault.on('create', (file: TAbstractFile) => {
+      if (file instanceof TFile) indexReads.delete(file);
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { void this.reloadSharedSettingsAndIndex(); return; }
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_OCCURRENCE_STATE_PATH) { void this.reloadOccurrenceResponses(); return; }
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_PLANNING_STATE_PATH) { void this.reloadOccurrenceOverrides(); return; }
@@ -2030,8 +2041,9 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
       if (file instanceof TFile && this.vaultIndexEngine && this.shouldIndexPath(file.path)) {
         const idx = this.vaultIndexEngine.getIndex();
         if (idx) {
+          const isCurrent = beginIndexRead(file);
           this.app.vault.read(file).then(content => {
-            if (this.unloaded || !this.vaultIndexEngine) return;
+            if (!isCurrent() || !this.vaultIndexEngine) return;
             try {
               const result = parseObjectWithSharedSettings(content, file.path, this.sharedSettings);
               const object = {
@@ -2042,13 +2054,11 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
                 body: (result.object as { body?: string }).body || '',
                 identification: result.identification,
               };
-              this.vaultIndexEngine!.setIndex(
-                VaultIndexEngine.updateIndex(idx, [{
+              this.vaultIndexEngine.applyChanges([{
                   type: 'added',
                   path: normalizeVaultPath(file.path),
                   object
-                }])
-              );
+              }]);
             } catch { /* not a valid quartzo object */ }
           }).catch(() => {});
         }
@@ -2057,6 +2067,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     this.eventRefs.push(oncreate);
 
     const onmodify = this.app.vault.on('modify', (file: TAbstractFile) => {
+      if (file instanceof TFile) indexReads.delete(file);
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { void this.reloadSharedSettingsAndIndex(); return; }
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_OCCURRENCE_STATE_PATH) { void this.reloadOccurrenceResponses(); return; }
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_PLANNING_STATE_PATH) { void this.reloadOccurrenceOverrides(); return; }
@@ -2069,8 +2080,9 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
       if (file instanceof TFile && this.vaultIndexEngine && this.shouldIndexPath(file.path)) {
         const idx = this.vaultIndexEngine.getIndex();
         if (idx) {
+          const isCurrent = beginIndexRead(file);
           this.app.vault.read(file).then(content => {
-            if (this.unloaded || !this.vaultIndexEngine) return;
+            if (!isCurrent() || !this.vaultIndexEngine) return;
             try {
               const result = parseObjectWithSharedSettings(content, file.path, this.sharedSettings);
               const object = {
@@ -2081,13 +2093,11 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
                 body: (result.object as { body?: string }).body || '',
                 identification: result.identification,
               };
-              this.vaultIndexEngine!.setIndex(
-                VaultIndexEngine.updateIndex(idx, [{
+              this.vaultIndexEngine.applyChanges([{
                   type: 'modified',
                   path: normalizeVaultPath(file.path),
                   object
-                }])
-              );
+              }]);
             } catch { /* not a valid quartzo object */ }
           }).catch(() => {});
         }
@@ -2096,6 +2106,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     this.eventRefs.push(onmodify);
 
     const ondelete = this.app.vault.on('delete', (file: TAbstractFile) => {
+      if (file instanceof TFile) indexReads.delete(file);
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) {
         void this.reloadSharedSettingsAndIndex();
         return;
@@ -2121,18 +2132,17 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
       if (file instanceof TFile && this.vaultIndexEngine && this.shouldIndexPath(file.path)) {
         const idx = this.vaultIndexEngine.getIndex();
         if (idx) {
-          this.vaultIndexEngine.setIndex(
-            VaultIndexEngine.updateIndex(idx, [{
+          this.vaultIndexEngine.applyChanges([{
               type: 'deleted',
               path: normalizeVaultPath(file.path)
-            }])
-          );
+          }]);
         }
       }
     });
     this.eventRefs.push(ondelete);
 
     const onrename = this.app.vault.on('rename', (file: TAbstractFile, oldPath: string) => {
+      if (file instanceof TFile) indexReads.delete(file);
       if (normalizeVaultPath(oldPath) === SHARED_SETTINGS_PATH || normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { void this.reloadSharedSettingsAndIndex(); return; }
       if (normalizeVaultPath(oldPath) === SHARED_OCCURRENCE_STATE_PATH || normalizeVaultPath(file.path) === SHARED_OCCURRENCE_STATE_PATH) {
         void this.reloadOccurrenceResponses();
@@ -2154,17 +2164,16 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
       if (!(file instanceof TFile) || !this.vaultIndexEngine) return;
       const idx = this.vaultIndexEngine.getIndex();
       if (!idx) return;
-      const changes: Array<{ type: 'deleted'; path: string } | { type: 'added'; path: string; object: IndexedObject }> = [];
-      if (this.shouldIndexPath(oldPath)) changes.push({ type: 'deleted', path: normalizeVaultPath(oldPath) });
-      if (!this.shouldIndexPath(file.path)) {
-        if (changes.length > 0) this.vaultIndexEngine.setIndex(VaultIndexEngine.updateIndex(idx, changes));
-        return;
+      if (this.shouldIndexPath(oldPath)) {
+        this.vaultIndexEngine.applyChanges([{ type: 'deleted', path: normalizeVaultPath(oldPath) }]);
       }
+      if (!this.shouldIndexPath(file.path)) return;
+      const isCurrent = beginIndexRead(file);
       this.app.vault.read(file).then(content => {
-        if (this.unloaded || !this.vaultIndexEngine) return;
+        if (!isCurrent() || !this.vaultIndexEngine) return;
         try {
           const result = parseObjectWithSharedSettings(content, file.path, this.sharedSettings);
-          changes.push({
+          this.vaultIndexEngine.applyChanges([{
             type: 'added',
             path: normalizeVaultPath(file.path),
             object: {
@@ -2175,15 +2184,9 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
               body: (result.object as { body?: string }).body || '',
               identification: result.identification,
             }
-          });
-          this.vaultIndexEngine!.setIndex(VaultIndexEngine.updateIndex(idx, changes));
-        } catch {
-          if (changes.length > 0) this.vaultIndexEngine!.setIndex(VaultIndexEngine.updateIndex(idx, changes));
-        }
-      }).catch(() => {
-        if (this.unloaded || !this.vaultIndexEngine) return;
-        if (changes.length > 0) this.vaultIndexEngine!.setIndex(VaultIndexEngine.updateIndex(idx, changes));
-      });
+          }]);
+        } catch { /* not a valid quartzo object */ }
+      }).catch(() => {});
     });
     this.eventRefs.push(onrename);
 

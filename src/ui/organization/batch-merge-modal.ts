@@ -13,7 +13,6 @@ import {
 import { ObjectParser } from '../../core/objects';
 import { ObjectOrganizationRepository } from '../../vault/object-organization';
 import { SharedSettingsRepository, parseObjectWithSharedSettings } from '../../vault/shared-settings';
-import { VaultIndexEngine } from '../../vault/index';
 import type { IndexChange, IndexedObject } from '../../vault/index/types';
 import { isOrganizationIssuePathExcluded } from '../../core/object-organization/issues-projection';
 import { reviewVaultIdentityCandidates } from '../../core/object-query';
@@ -353,7 +352,7 @@ export class ObjectBatchMergeModal extends Modal {
       };
       changes.push({ type: 'added', path: plan.action.survivorPath, object });
     }
-    engine.setIndex(VaultIndexEngine.updateIndex(currentIndex, changes));
+    engine.applyChanges(changes);
   }
 
   private parseAliases(value: string): string[] {

@@ -13,7 +13,6 @@ import {
 import { createCanonicalObjectId } from '../../platform/object-id';
 import { ObjectOrganizationRepository } from '../../vault/object-organization';
 import { SharedSettingsRepository, parseObjectWithSharedSettings } from '../../vault/shared-settings';
-import { VaultIndexEngine } from '../../vault/index';
 import type { IndexChange, IndexedObject } from '../../vault/index/types';
 import { resourceMediaTypeSuggestions, resourceStatusLabel, type ResourceStatus } from '../../core/resource-capture/policy';
 import { renderActionReport } from '../action-report';
@@ -285,7 +284,7 @@ export class ObjectBatchCreateModal extends Modal {
       changes.push({ type: 'added', path: action.path, object });
     }
     if (changes.length > 0) {
-      engine.setIndex(VaultIndexEngine.updateIndex(currentIndex, changes));
+      engine.applyChanges(changes);
     }
   }
 }

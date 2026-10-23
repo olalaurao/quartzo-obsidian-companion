@@ -8,7 +8,6 @@ import {
   type CanonicalRetirementRequest,
 } from '../../vault/object-organization';
 import { SharedSettingsRepository } from '../../vault/shared-settings';
-import { VaultIndexEngine } from '../../vault/index';
 import type { CanonicalRetirePreflightBlocker } from '../../sync/coordinator';
 
 export interface ObjectBulkDeleteModalOptions {
@@ -250,10 +249,9 @@ export class ObjectBulkDeleteModal extends Modal {
       const engine = this.context.vaultIndexEngine ?? this.context.plugin.vaultIndexEngine;
       const currentIndex = engine?.getIndex() ?? null;
       if (engine && currentIndex && result.retired.length > 0) {
-        engine.setIndex(VaultIndexEngine.updateIndex(
-          currentIndex,
+        engine.applyChanges(
           result.retired.map(retired => ({ type: 'deleted' as const, path: retired.sourcePath })),
-        ));
+        );
       }
 
       for (const retired of result.retired) {

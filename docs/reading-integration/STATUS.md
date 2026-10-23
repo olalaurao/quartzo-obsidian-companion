@@ -1,5 +1,44 @@
 # Reading Integration — Companion status
 
+## 2026-10-23 — Concurrent index-read correction (local validation completed)
+
+Previous goal turn made concrete progress: Companion PR96 merged as52ce189 after
+all six exact0890815 checks; main CI40002464078 also passed all three platforms.
+KOReader PR5/source336a7a8 remains draft for source enrollment and physical Gate4.
+The user cannot operate devices; no install, account/vault access or timed session.
+
+Actual existing registerVaultEvents callbacks were executed from their TypeScript
+AST with controlled synthetic Vault/TFile/read dependencies and the actual index/
+shared-settings parser owners. Eleven regressions failed on accepted52ce189:
+concurrent creates lost an entry/collision, delayed modification restored another
+file's deletion, older reads won, rename success/failure replaced intervening
+changes, and replaced-engine/file scope accepted stale work. These are real host
+callback executions with SDK models, not full plugin/Obsidian/native evidence.
+
+The same VaultIndexEngine now applies completed incremental changes against its
+CURRENT snapshot synchronously. Current main callbacks and organization index
+updates use that method instead of a pre-await snapshot. Event-local weak markers
+and current engine/path/TFile identity reject stale completions without another
+store, queue, parser, service or persisted generation. Ordinary rename immediately
+retires only the old in-memory path; failed/superseded reads cannot publish it
+again. Full initial/shared-settings rebuilds retain their existing implementation;
+this does not certify their global consistency or complete-vault authority.
+
+Initial34 focused index/collision tests passed. The final full suite, including
+13 actual-callback cases and the missing-index case, passed1065 tests/two existing
+explicit skips across93 files (67.68s). Typecheck, lint, architecture/docs, build,
+release validation, clean-artifact smoke, packaging and production audit passed
+(zero vulnerabilities). One earlier full run failed the existing remote-ID edit
+case:1064 passed/two skipped/one failed. Nine matching sync cases then passed in
+isolation and the unchanged full suite passed on repetition; cause is unconfirmed,
+with the original failure retained rather than relabeled or its criteria changed.
+
+Branch `fix/vault-index-read-races` starts at accepted52ce1896a2c4886471e6f50ddff476431b31b271.
+The PR associated with this branch records the exact final source SHA, platform
+CI and merge; all final checks must pass before the standing authorized merge.
+Device/Obsidian proof and remaining Reading gates stay OPEN. No Markdown/file mutation, transport/sync
+policy, shared contract/vendor lock, source enrollment or Reading effect changed.
+
 ## 2026-10-23 — Conflicting object IDs remain reviewable (host accepted)
 
 Exact24d490b41dc5bc93dc0d3d47a2882a48d4062ece passed all six Linux/Windows/macOS
