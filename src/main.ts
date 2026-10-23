@@ -225,6 +225,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
   private unloaded = false;
   private sharedSettingsReloadInFlight = false;
   private sharedSettingsReloadRequested = false;
+  private vaultIndexEventsVersion = 0;
   private readonly calendarCache = new Map<string, CalendarCacheEntry>();
   private readonly browserOpener = new ElectronBrowserOpener();
   calendarStatus: GoogleCalendarStatus = 'disconnected';
@@ -300,6 +301,10 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     ribbonIconEl.addClass('quartzo-ribbon-icon');
 
     this.addCommand({ id: 'quartzo-open', name: 'Quartzo: Open', callback: () => { void this.activateQuartzo('home'); } });
+    this.addCommand({
+      id: 'quartzo-reload-vault-index', name: 'Quartzo: Reload vault index',
+      callback: () => { void this.reloadVaultIndexFromCommand(); },
+    });
     this.addCommand({ id: 'quartzo-open-today', name: 'Quartzo: Open Today', callback: () => { void this.activateQuartzo('home'); } });
     this.addCommand({ id: 'quartzo-planner', name: 'Quartzo: Planner', callback: () => { void this.activateQuartzo('planner'); } });
     this.addCommand({ id: 'quartzo-day-dial', name: 'Quartzo: Day Dial', callback: () => { void this.activateQuartzo('home'); } });
@@ -1964,8 +1969,10 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
       await this.initializeVaultIndex();
     } catch (error) {
       console.error('Failed to initialize Quartzo vault index:', error);
-      this.vaultIndexEngine?.setIndex(VaultIndexEngine.createInitialIndex([]));
-      new Notice('Quartzo loaded with an empty vault index. Check the developer console for details.');
+      if (!this.vaultIndexEngine?.getIndex()) {
+        this.vaultIndexEngine?.setIndex(VaultIndexEngine.createInitialIndex([]));
+      }
+      new Notice('Quartzo could not finish indexing. Existing entries were kept. Run Quartzo: Reload vault index to retry.');
     }
     if (this.unloaded) return;
 
@@ -1986,38 +1993,83 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     }
   }
 
-  private async initializeVaultIndex() {
+  private async reloadVaultIndexFromCommand(): Promise<void> {
+    if (this.unloaded) return;
+    if (!this.vaultRuntimeReady) {
+      new Notice('Quartzo is still loading. Try again when the workspace is ready.');
+      return;
+    }
+    if (this.sharedSettingsReloadInFlight) {
+      new Notice('Quartzo vault index reload is already in progress.');
+      return;
+    }
+    try {
+      const failedReads = await this.reloadSharedSettingsAndIndex();
+      if (this.unloaded) return;
+      if (failedReads === undefined) new Notice('Quartzo index reload did not finish. Run Quartzo: Reload vault index to retry.');
+      else if (failedReads > 0) new Notice('Quartzo index reloaded with unreadable files. Some entries may be missing.');
+      else new Notice('Quartzo vault index reloaded.');
+    } catch {
+      if (!this.unloaded) new Notice('Quartzo index reload failed. Existing entries were kept. Run Quartzo: Reload vault index to retry.');
+    }
+  }
+
+  private async initializeVaultIndex(): Promise<number | undefined> {
     if (this.unloaded || !this.vaultIndexEngine) return;
-    const files = this.app.vault.getMarkdownFiles().filter(file => this.shouldIndexPath(file.path));
-    const settled = await Promise.allSettled(files.map(async (file): Promise<VaultFile> => ({
-      path: file.path,
-      content: await this.app.vault.read(file),
-      modified: file.stat.mtime,
-      size: file.stat.size
-    })));
-    const vaultFiles: VaultFile[] = [];
-    let failedReads = 0;
-    for (const result of settled) {
-      if (result.status === 'fulfilled') {
-        vaultFiles.push(result.value);
-      } else {
-        failedReads += 1;
-        console.warn('Quartzo skipped an unreadable vault file while indexing:', result.reason);
+    const engine = this.vaultIndexEngine;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const previous = engine.getIndex();
+      const settings = this.sharedSettings;
+      const eventsVersion = this.vaultIndexEventsVersion;
+      const sources = this.app.vault.getMarkdownFiles().filter(file => this.shouldIndexPath(file.path))
+        .map(file => ({ file, path: file.path, modified: file.stat.mtime, size: file.stat.size }));
+      const settled = await Promise.allSettled(sources.map(async ({ file, path, modified, size }): Promise<VaultFile> => ({
+        path, content: await this.app.vault.read(file), modified, size,
+      })));
+      if (this.unloaded || this.vaultIndexEngine !== engine) return;
+      const current = this.app.vault.getMarkdownFiles().filter(file => this.shouldIndexPath(file.path));
+      const byPath = new Map(current.map(file => [file.path, file]));
+      if (engine.getIndex() !== previous || this.sharedSettings !== settings
+        || this.vaultIndexEventsVersion !== eventsVersion
+        || current.length !== sources.length || sources.some(source =>
+          byPath.get(source.path) !== source.file || source.file.path !== source.path
+          || source.file.stat.mtime !== source.modified || source.file.stat.size !== source.size)) continue;
+
+      const vaultFiles: VaultFile[] = [];
+      let failedReads = 0;
+      for (const result of settled) {
+        if (result.status === 'fulfilled') vaultFiles.push(result.value);
+        else {
+          failedReads++;
+          console.warn('Quartzo skipped an unreadable vault file while indexing.');
+        }
       }
+      if (failedReads > 0) {
+        new Notice(`Quartzo skipped ${failedReads} unreadable vault file${failedReads === 1 ? '' : 's'} while indexing.`);
+      }
+      const index = VaultIndexEngine.createInitialIndex(
+        vaultFiles,
+        (content, filePath) => parseObjectWithSharedSettings(content, filePath, settings),
+      );
+      engine.setIndex(index);
+      return failedReads;
     }
-    if (failedReads > 0) {
-      new Notice(`Quartzo skipped ${failedReads} unreadable vault file${failedReads === 1 ? '' : 's'} while indexing.`);
-    }
-    if (this.unloaded || !this.vaultIndexEngine) return;
-    const index = VaultIndexEngine.createInitialIndex(
-      vaultFiles,
-      (content, filePath) => parseObjectWithSharedSettings(content, filePath, this.sharedSettings),
-    );
-    this.vaultIndexEngine.setIndex(index);
+    throw new Error('The vault changed while indexing. Run Quartzo: Reload vault index after local edits finish.');
   }
 
   private registerVaultEvents() {
+    const reloadIndex = () => {
+      void this.reloadSharedSettingsAndIndex().catch(() => {
+        if (!this.unloaded) new Notice('Quartzo index reload failed. Existing entries were kept. Run Quartzo: Reload vault index to retry.');
+      });
+    };
     const indexReads = new WeakMap<TFile, object>();
+    const invalidateRead = (file: TAbstractFile, oldPath?: string) => {
+      if (!(file instanceof TFile)) return;
+      const relevant = (path: string) => /\.md$/i.test(path) && this.shouldIndexPath(path);
+      if (relevant(file.path) || oldPath && relevant(oldPath)) this.vaultIndexEventsVersion++;
+      indexReads.delete(file);
+    };
     const beginIndexRead = (file: TFile): (() => boolean) => {
       const marker = {};
       const engine = this.vaultIndexEngine;
@@ -2028,8 +2080,8 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
         && this.app.vault.getAbstractFileByPath(path) === file;
     };
     const oncreate = this.app.vault.on('create', (file: TAbstractFile) => {
-      if (file instanceof TFile) indexReads.delete(file);
-      if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { void this.reloadSharedSettingsAndIndex(); return; }
+      invalidateRead(file);
+      if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { reloadIndex(); return; }
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_OCCURRENCE_STATE_PATH) { void this.reloadOccurrenceResponses(); return; }
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_PLANNING_STATE_PATH) { void this.reloadOccurrenceOverrides(); return; }
       if (file instanceof TFile && normalizeVaultPath(file.path) === FOCUS_RUNTIME_PATH) {
@@ -2067,8 +2119,8 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     this.eventRefs.push(oncreate);
 
     const onmodify = this.app.vault.on('modify', (file: TAbstractFile) => {
-      if (file instanceof TFile) indexReads.delete(file);
-      if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { void this.reloadSharedSettingsAndIndex(); return; }
+      invalidateRead(file);
+      if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { reloadIndex(); return; }
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_OCCURRENCE_STATE_PATH) { void this.reloadOccurrenceResponses(); return; }
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_PLANNING_STATE_PATH) { void this.reloadOccurrenceOverrides(); return; }
       if (file instanceof TFile && normalizeVaultPath(file.path) === FOCUS_RUNTIME_PATH) {
@@ -2106,9 +2158,9 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     this.eventRefs.push(onmodify);
 
     const ondelete = this.app.vault.on('delete', (file: TAbstractFile) => {
-      if (file instanceof TFile) indexReads.delete(file);
+      invalidateRead(file);
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) {
-        void this.reloadSharedSettingsAndIndex();
+        reloadIndex();
         return;
       }
       if (file instanceof TFile && normalizeVaultPath(file.path) === SHARED_OCCURRENCE_STATE_PATH) {
@@ -2142,8 +2194,8 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     this.eventRefs.push(ondelete);
 
     const onrename = this.app.vault.on('rename', (file: TAbstractFile, oldPath: string) => {
-      if (file instanceof TFile) indexReads.delete(file);
-      if (normalizeVaultPath(oldPath) === SHARED_SETTINGS_PATH || normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { void this.reloadSharedSettingsAndIndex(); return; }
+      invalidateRead(file, oldPath);
+      if (normalizeVaultPath(oldPath) === SHARED_SETTINGS_PATH || normalizeVaultPath(file.path) === SHARED_SETTINGS_PATH) { reloadIndex(); return; }
       if (normalizeVaultPath(oldPath) === SHARED_OCCURRENCE_STATE_PATH || normalizeVaultPath(file.path) === SHARED_OCCURRENCE_STATE_PATH) {
         void this.reloadOccurrenceResponses();
         return;
@@ -3310,7 +3362,7 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
     if (leaf?.view instanceof QuartzoView) await leaf.view.refresh();
   }
 
-  private async reloadSharedSettingsAndIndex(): Promise<void> {
+  private async reloadSharedSettingsAndIndex(): Promise<number | undefined> {
     if (this.unloaded) return;
     if (this.sharedSettingsReloadInFlight) {
       this.sharedSettingsReloadRequested = true;
@@ -3319,15 +3371,17 @@ export default class QuartzoCompanionPlugin extends Plugin implements FocusRunti
 
     this.sharedSettingsReloadInFlight = true;
     try {
+      let failedReads: number | undefined;
       do {
         this.sharedSettingsReloadRequested = false;
         const sharedSettings = await this.sharedSettingsRepository?.load() ?? null;
         if (this.unloaded) return;
         this.sharedSettings = sharedSettings;
-        await this.initializeVaultIndex();
+        failedReads = await this.initializeVaultIndex();
         if (this.unloaded) return;
         await this.refreshQuartzoView();
       } while (this.sharedSettingsReloadRequested && !this.unloaded);
+      return failedReads;
     } finally {
       this.sharedSettingsReloadInFlight = false;
     }

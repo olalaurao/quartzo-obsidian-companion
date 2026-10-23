@@ -1398,6 +1398,8 @@ A projeção existente de Issues usa os candidatos de revisão do owner `object-
 
 A publicação incremental usa `VaultIndexEngine.applyChanges` sobre o snapshot atual, depois dos awaits. Não substituir o índice com uma cópia capturada antes da leitura. Os callbacks existentes de arquivos suprimem respostas de eventos ultrapassados, arquivos substituídos, rename/delete, troca do engine e unload, usando apenas marcadores fracos transitórios e o `TFile` atual do Vault. Rename comum retira o caminho antigo da projeção imediatamente; leitura posterior válida pode adicionar o novo caminho. Não há escrita no arquivo, fila de indexação nova, estado persistido, ACK ou prova de completude. O rebuild inicial/de shared settings continua com suas obrigações próprias.
 
+O rebuild completo captura engine/snapshot, shared settings e o inventário observado de Markdown (caminho, identidade TFile, mtime e tamanho). Eventos relevantes invalidam a observação já no dispatch, mesmo antes do callback de leitura terminar. Revalidar antes da publicação e limitar a três tentativas; falha mantém o último índice utilizável, inclusive no bootstrap. O contador de eventos é transitório no composition root existente, nunca um epoch de Statistics ou prova de identidade. `Quartzo: Reload vault index` usa o mesmo owner de shared settings/rebuild depois da prontidão do workspace; mensagens distinguem operação em curso, falha, resultado não publicado e arquivos ilegíveis. Sucesso de leitura sem falhas não comprova completude global ou exclusividade. Motivos brutos de erro de filesystem não entram nos avisos de arquivo ilegível. Nenhum serviço, índice, store, fila, credencial ou schema persistido é criado.
+
 Criar uma projeção reconstruível, não persisted database.
 
 Categorias V1:

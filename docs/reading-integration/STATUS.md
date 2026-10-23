@@ -1,5 +1,46 @@
 # Reading Integration — Companion status
 
+## 2026-10-23 — Full index rebuild preserves current observations (local validation completed)
+
+Previous goal turn made concrete progress: PR97 merged as2a05496860495dad1abc3f911f75d10068f4a39b
+with six exact719afae checks and main CI40005201773/all three platforms successful.
+Devices remain unavailable; KOReader/source-generation/physical Gate4 stay OPEN.
+
+The actual full initializeVaultIndex method was added to the existing TS-AST
+callback harness with controlled synthetic SDK reads and the actual parser/index.
+Five baseline scenarios on accepted2a05496 exposed stale full publication after
+incremental edits, deletion, file-object replacement, new roster entries and
+engine replacement. A new retry-bound case also failed because no retry existed.
+The first settings-change fixture failed for its own missing frontmatter closing
+newline, not a production regression; the corrected case now exercises settings
+capture/revalidation. Initial narrow Object.assign fixture typing was corrected;
+no production criterion or source parser was changed for those harness errors.
+
+The same owner now revalidates engine/index, settings, observed file roster,
+TFile identity and metadata before replacing its full projection. Relevant event
+dispatch invalidates pending observations via a transient counter; it is not a
+source/database-generation ID. Up to three attempts handle observed churn; then
+failure preserves the prior usable index instead of clearing it. The existing
+shared-settings owner backs a manual Reload vault index command, guarded by
+workspace readiness/in-flight state. It reports partial/unpublished/error results
+separately and never prints raw unreadable-file error paths. No new service,
+index/store, queue, schema, contract/vendor lock, file mutation or sync policy.
+
+Final local suite passed1081 tests/two existing explicit skips across93 files
+(70.04s), including29 actual-method/callback cases. The earlier70 focused cases
+also passed. Typecheck, lint, architecture/docs, build, release validation,
+clean-artifact smoke, packaging and production audit passed (zero vulnerabilities).
+The architecture guard was updated for the same reload owner's returned read
+count and now checks create/modify/delete/rename routing individually through
+its fixed-error helper, preserving load→assign→rebuild→refresh ordering.
+
+Branch `fix/vault-index-rebuild-races` starts at accepted2a05496. The associated
+PR records the exact final source SHA, platform CI and merge. All final checks
+must pass before the standing authorized merge. These are host method executions with SDK models,
+not the whole plugin, actual Obsidian rendering/readiness or complete-vault/writer
+proof. No Reader link, promotion, Reading ingestion/effect, device operation,
+account API/token/vault access, release or installation is enabled by this work.
+
 ## 2026-10-23 — Concurrent index-read correction (local validation completed)
 
 Previous goal turn made concrete progress: Companion PR96 merged as52ce189 after
