@@ -19,6 +19,8 @@ export interface IndexedObject {
 export interface VaultIndex {
   files: Map<string, VaultFile>;
   objects: Map<string, IndexedObject>;
+  /** Rebuildable collisions in this same index; never a canonical ID lookup. */
+  identityConflicts?: Map<string, readonly IndexedObject[]>;
   lastModified: number;
 }
 

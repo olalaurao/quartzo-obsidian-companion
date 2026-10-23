@@ -35,7 +35,8 @@ describe('Organization Workbench UI contract', () => {
     expect(batchMergeSource).toContain('createAliases = true');
     expect(batchMergeSource).toContain('aliasesToAdd: this.createAliases ? aliases : []');
     expect(batchMergeSource).toContain('Create aliases from previous names');
-    expect(batchMergeSource).toContain('index.files.values()');
+    expect(batchMergeSource).toContain('reviewVaultIdentityCandidates(index)');
+    expect(batchMergeSource).not.toContain('index.objects.has(objectId)');
   });
 
   it('offers editable aliases in individual merges and repairs references before retirement', () => {

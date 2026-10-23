@@ -140,6 +140,11 @@ function compareObjects(
   return compareTime(frontmatterTime(leftObject, keys), frontmatterTime(rightObject, keys), direction) || fallback;
 }
 
+/** Includes ambiguous entries only for explicit identity review, never selection. */
+export function reviewVaultIdentityCandidates(index: VaultIndex): IndexedObject[] {
+  return [...index.objects.values(), ...Array.from(index.identityConflicts?.values() ?? []).flat()];
+}
+
 /**
  * Canonical read-only query projection over the existing VaultIndex.
  * No second index/cache is created here.

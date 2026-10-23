@@ -1392,6 +1392,10 @@ Não misturar semânticas.
 
 Arquivos legados que tenham tipo reconhecido, mas não tenham `id` textual não vazio, continuam no inventário de arquivos do `VaultIndexEngine` e na projeção existente `Unidentified`. Não compartilham um objeto de ID vazio, não recebem identidade derivada de caminho e não entram em pickers/relações/edição comum. Abertura do Markdown e classificação explícita usam os owners existentes; a indexação não altera o documento. Um evento de modificação que remova ou troque o ID também remove a identidade anterior daquele caminho do índice.
 
+IDs textuais não vazios compartilhados por arquivos distintos também não autorizam escolher um objeto por ordem de leitura. O mesmo `VaultIndexEngine` mantém as colisões em `VaultIndex.identityConflicts`, como metadados reconstruíveis do índice existente, e remove o ID ambíguo de `objects`. Busca, pickers e lookup por ID não selecionam um vencedor. Todos os arquivos e projeções em conflito permanecem disponíveis para revisão explícita; não há outro índice, banco, identidade substituta ou escrita de Markdown.
+
+A projeção existente de Issues usa os candidatos de revisão do owner `object-query`, apresenta os caminhos em ordem estável e encaminha a revisão de merge aos mesmos owners e preflights atuais. Ignorar um caminho remove-o de Issues, não comprova unicidade global nem autoriza escolher sua outra cópia. Add/modify/delete/invalidation atualizam as colisões no mesmo índice e restauram o lookup normal somente quando resta um candidato. Snapshots anteriores permanecem intactos. Esta correção local não concede completude do vault, vínculo Reader, exclusividade entre clientes ou autoridade de mutação.
+
 Criar uma projeção reconstruível, não persisted database.
 
 Categorias V1:

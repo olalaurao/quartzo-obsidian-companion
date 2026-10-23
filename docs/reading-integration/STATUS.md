@@ -1,5 +1,40 @@
 # Reading Integration — Companion status
 
+## 2026-10-23 — Conflicting object IDs remain reviewable (host candidate)
+
+The previous goal turn made concrete PhaseD recovery-UI progress: KOReader PR5
+exact336a7a8 passed400 cases/no skips. Devices remain unavailable; physical Gate4,
+source generation and later ingestion/effects stay OPEN. The complete Reader
+catalog was already observed through the actual Dart owner (1423 normalized
+external documents,28 successful responses), so this block did not repeat API calls.
+
+Review found a separate identity gap in Companion's canonical index: two parsed
+files with the same non-empty ID selected the last encountered file in `objects`,
+while the existing duplicate-Issues calculation could never see both. Five new
+synthetic baseline regressions failed against accepted4170fff. This is not a
+claim that the user's actual exports contain colliding non-empty IDs.
+
+The same index now retains only ambiguous candidates in reconstructible
+`identityConflicts` metadata and excludes their ID from ordinary lookup/query/
+pickers. Files and candidate projections are preserved without new IDs, another
+index/store, parser, persisted schema or Markdown rewrite. The existing query
+owner exposes review candidates to Issues and current explicit merge UI only.
+Add/modify/delete/invalidation retain old snapshots and recover the unique
+remaining candidate. Ignored/system paths remain excluded from ordinary Issues;
+that exclusion does not grant global uniqueness or permit an arbitrary survivor.
+
+Focused43 cases passed, including seven new collision/re-identification cases,
+existing unidentified files and Issues/query owner behavior. Full local suite:
+1051 PASS/two existing explicit skips over92 files (62.44s). Typecheck, lint,
+architecture/docs, build, release validation, clean-artifact smoke, packaging and
+production audit passed (zero vulnerabilities). The first full suite passed1050
+and failed one old source-shape assertion requiring duplicate review to iterate
+raw files. That assertion now enforces the existing query owner's review path
+and rejects the old unique-lookup filter; production criteria are unchanged.
+Exact-source CI is still required; no host result is native Obsidian acceptance. This local safety correction grants no Reader link,
+complete-vault proof, automatic promotion/status effect or physical acceptance.
+No device, Obsidian, source vault, token, API, release or installation was touched.
+
 ## 2026-10-23 — Host fixes accepted; authenticated namespace sample observed
 
 Upstream [PR86](https://github.com/olalaurao/aplicativo/pull/86) merged as `df9b6b0b442fcbba81b8f48313ec1cfe58b5f225` after all five exact-head checks passed (hosted 2911 PASS/eight skips; Windows 2882 PASS/37 skips). Its tree equals tested source `81a616fa1fed2a15c4d2856579409ca4bc5f81e0`. Dependent [Companion PR94](https://github.com/olalaurao/quartzo-obsidian-companion/pull/94) then merged as `1f04c9b49bfefe0cde3f343e828086e5eceac060` after all six checks passed; its tree equals tested `cc70cf21f430174c8208dc68373e8bcb2871fd18`. Local Companion validation passed 1044 tests/two skips and 399 contract tests, plus typecheck, lint, docs, architecture, build, artifact validation/smoke/packaging and production dependency audit (zero reported vulnerabilities). The earlier candidate entries below remain historical observations.

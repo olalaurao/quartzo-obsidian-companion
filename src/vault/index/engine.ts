@@ -7,6 +7,41 @@ function hasObjectIdentity(id: unknown): id is string {
   return typeof id === 'string' && id.trim().length > 0;
 }
 
+function removeObjectAtPath(index: VaultIndex, path: string): void {
+  for (const [id, object] of index.objects) {
+    if (object.path === path) index.objects.delete(id);
+  }
+  for (const [id, candidates] of index.identityConflicts ?? []) {
+    const remaining = candidates.filter(object => object.path !== path);
+    if (remaining.length === candidates.length) continue;
+    if (remaining.length > 1) index.identityConflicts!.set(id, remaining);
+    else {
+      index.identityConflicts!.delete(id);
+      if (remaining.length === 1) index.objects.set(id, remaining[0]!);
+    }
+  }
+}
+
+function addObject(index: VaultIndex, object: IndexedObject): void {
+  if (!hasObjectIdentity(object.id)) return;
+  const conflicts = index.identityConflicts ??= new Map();
+  const prior = index.objects.get(object.id);
+  const candidates = conflicts.get(object.id);
+  if (candidates) conflicts.set(object.id, [...candidates, object]);
+  else if (prior) {
+    index.objects.delete(object.id);
+    conflicts.set(object.id, [prior, object]);
+  } else index.objects.set(object.id, object);
+}
+
+function copyIndex(index: VaultIndex): VaultIndex {
+  return {
+    files: new Map(index.files), objects: new Map(index.objects),
+    identityConflicts: new Map(index.identityConflicts),
+    lastModified: Date.now(),
+  };
+}
+
 export class VaultIndexEngine {
   private index: VaultIndex | null = null;
 
@@ -29,10 +64,12 @@ export class VaultIndexEngine {
     const index: VaultIndex = {
       files: new Map(),
       objects: new Map(),
+      identityConflicts: new Map(),
       lastModified: Date.now()
     };
 
     for (const file of files) {
+      if (index.files.has(file.path)) removeObjectAtPath(index, file.path);
       index.files.set(file.path, file);
       
       // Try to parse as object
@@ -48,9 +85,7 @@ export class VaultIndexEngine {
         };
         // Keep unidentified Markdown in files for the existing Issues projection.
         // An empty/invalid ID is not a shared identity for unrelated files.
-        if (hasObjectIdentity(indexedObject.id)) {
-          index.objects.set(indexedObject.id, indexedObject);
-        }
+        addObject(index, indexedObject);
       } catch {
         // Not a valid object, skip
       }
@@ -60,17 +95,7 @@ export class VaultIndexEngine {
   }
 
   static updateIndex(index: VaultIndex, changes: IndexChange[]): VaultIndex {
-    const newIndex: VaultIndex = {
-      files: new Map(index.files),
-      objects: new Map(index.objects),
-      lastModified: Date.now()
-    };
-
-    const removeObjectAtPath = (path: string): void => {
-      for (const [id, object] of newIndex.objects) {
-        if (object.path === path) newIndex.objects.delete(id);
-      }
-    };
+    const newIndex = copyIndex(index);
 
     for (const change of changes) {
       switch (change.type) {
@@ -84,15 +109,14 @@ export class VaultIndexEngine {
               size: change.object.body.length
             };
             newIndex.files.set(change.object.path, file);
-            removeObjectAtPath(change.path);
-            if (hasObjectIdentity(change.object.id)) {
-              newIndex.objects.set(change.object.id, change.object);
-            }
+            removeObjectAtPath(newIndex, change.path);
+            if (change.object.path !== change.path) removeObjectAtPath(newIndex, change.object.path);
+            addObject(newIndex, change.object);
           }
           break;
         case 'deleted':
           newIndex.files.delete(change.path);
-          removeObjectAtPath(change.path);
+          removeObjectAtPath(newIndex, change.path);
           break;
       }
     }
@@ -113,23 +137,14 @@ export class VaultIndexEngine {
   }
 
   static invalidateCache(index: VaultIndex, paths: string[]): VaultIndex {
-    const newIndex: VaultIndex = {
-      files: new Map(index.files),
-      objects: new Map(index.objects),
-      lastModified: Date.now()
-    };
+    const newIndex = copyIndex(index);
 
     for (const path of paths) {
       const file = newIndex.files.get(path);
       if (file) {
         // Remove file and associated object
         newIndex.files.delete(path);
-        for (const [objId, obj] of newIndex.objects.entries()) {
-          if (obj.path === path) {
-            newIndex.objects.delete(objId);
-            break;
-          }
-        }
+        removeObjectAtPath(newIndex, path);
       }
     }
 
