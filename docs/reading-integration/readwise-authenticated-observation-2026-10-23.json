@@ -1,0 +1,73 @@
+{
+  "kind": "sanitized_point_in_time_observation_not_a_product_identity_contract",
+  "status": "READ_ONLY_SAMPLE_OBSERVED",
+  "observed_at_utc": [
+    "2026-10-23T14:08:10.813968+00:00",
+    "2026-10-23T14:12:20.036409+00:00"
+  ],
+  "documentation": [
+    "https://readwise.io/api_deets",
+    "https://readwise.io/reader_api"
+  ],
+  "http": {
+    "methods": [
+      "GET"
+    ],
+    "baseline_statuses": [
+      204,
+      200
+    ],
+    "bridge_statuses": [
+      204,
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "total_requests": 8,
+    "write_requests": 0
+  },
+  "selected_local_export_scope": {
+    "frozen_files": 121,
+    "writer_map_rows": 145,
+    "distinct_numeric_book_ids": 120,
+    "ids_referenced_by_multiple_map_paths": 22,
+    "map_paths_not_in_selected_snapshot": 25,
+    "current_distinct_marker_ids": 120,
+    "repeated_current_marker_ids": 0,
+    "all_observed_numeric_book_ids_present_in_authenticated_books": true,
+    "whole_vault_or_exclusive_writer_proven": false
+  },
+  "bridge_sample": {
+    "book_namespace": "readwise_export",
+    "reader_namespace": "readwise_reader_document",
+    "selection": "three_lowest_numeric_book_ids_present_in_local_markers_and_authenticated_reader_source_books",
+    "sampled_books": 3,
+    "live_reader_source_export_records": 3,
+    "distinct_external_ids": 3,
+    "exact_authenticated_v3_id_matches": 3,
+    "title_or_url_matching_used": false,
+    "book_id_reinterpreted_as_reader_id": false,
+    "coverage": "finite_sample_not_complete_mapping"
+  },
+  "preservation": {
+    "source_configuration_and_input_hashes_rechecked_unchanged": true,
+    "vault_writes": 0,
+    "credentials_copied_or_persisted": false,
+    "api_response_bodies_persisted": false,
+    "private_paths_titles_passages_ids_in_public_artifact": false
+  },
+  "limits": {
+    "payloads_independently_replayable_from_public_artifact": false,
+    "stable_account_identity_established": false,
+    "local_reader_artifact_provenance_proven": false,
+    "native_obsidian_export_reexport_executed": false,
+    "safe_template_migration_accepted": false,
+    "canonical_binding_or_resource_promotion_enabled": false,
+    "status_or_habit_kpi_effects_enabled": false,
+    "physical_or_release_gate_accepted": false
+  },
+  "private_observation_envelope_sha256": "cc0131e576ed4857d3e4ec14f5485be9f2533efddc3cbdf457260e40d905cc2d",
+  "digest_purpose": "evidence_traceability_only_never_account_or_resource_identity"
+}
