@@ -10,7 +10,6 @@ import {
   type QuartzoSharedSettings,
 } from '../../vault/shared-settings';
 import { createCanonicalObjectId } from '../../platform/object-id';
-import { VaultIndexEngine } from '../../vault/index';
 import type { IndexChange, IndexedObject } from '../../vault/index/types';
 
 export interface ObjectOrganizationAppliedResult {
@@ -194,7 +193,7 @@ export class ObjectOrganizationModal extends Modal {
       changes.push({ type: 'added', path: destinationPath, object });
     }
 
-    engine.setIndex(VaultIndexEngine.updateIndex(currentIndex, changes));
+    engine.applyChanges(changes);
   }
 
   private updateSelectedPaths(plan: OrganizePlan, appliedCount: number): void {

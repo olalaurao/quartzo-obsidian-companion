@@ -3,6 +3,11 @@ import { VaultIndexEngine } from '../../src/vault/index';
 import { VaultFile, IndexChange } from '../../src/vault/index/types';
 
 describe('Vault Index Engine', () => {
+  it('does not initialize an unavailable index from completed incremental work', () => {
+    const engine = new VaultIndexEngine();
+    expect(engine.applyChanges([{ type: 'deleted', path: 'resources/old.md' }])).toBeNull();
+    expect(engine.getIndex()).toBeNull();
+  });
   it('should create initial index from files', () => {
     const files: VaultFile[] = [
       {

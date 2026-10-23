@@ -1396,6 +1396,8 @@ IDs textuais não vazios compartilhados por arquivos distintos também não auto
 
 A projeção existente de Issues usa os candidatos de revisão do owner `object-query`, apresenta os caminhos em ordem estável e encaminha a revisão de merge aos mesmos owners e preflights atuais. Ignorar um caminho remove-o de Issues, não comprova unicidade global nem autoriza escolher sua outra cópia. Add/modify/delete/invalidation atualizam as colisões no mesmo índice e restauram o lookup normal somente quando resta um candidato. Snapshots anteriores permanecem intactos. Esta correção local não concede completude do vault, vínculo Reader, exclusividade entre clientes ou autoridade de mutação.
 
+A publicação incremental usa `VaultIndexEngine.applyChanges` sobre o snapshot atual, depois dos awaits. Não substituir o índice com uma cópia capturada antes da leitura. Os callbacks existentes de arquivos suprimem respostas de eventos ultrapassados, arquivos substituídos, rename/delete, troca do engine e unload, usando apenas marcadores fracos transitórios e o `TFile` atual do Vault. Rename comum retira o caminho antigo da projeção imediatamente; leitura posterior válida pode adicionar o novo caminho. Não há escrita no arquivo, fila de indexação nova, estado persistido, ACK ou prova de completude. O rebuild inicial/de shared settings continua com suas obrigações próprias.
+
 Criar uma projeção reconstruível, não persisted database.
 
 Categorias V1:

@@ -57,6 +57,13 @@ export class VaultIndexEngine {
     this.index = index;
   }
 
+  /** Apply completed incremental work to the current snapshot, without an await. */
+  applyChanges(changes: IndexChange[]): VaultIndex | null {
+    if (!this.index) return null;
+    this.index = VaultIndexEngine.updateIndex(this.index, changes);
+    return this.index;
+  }
+
   static createInitialIndex(
     files: VaultFile[],
     parseFile: (content: string, path: string) => ParseResult = (content) => ObjectParser.parse(content),
