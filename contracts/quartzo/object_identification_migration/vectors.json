@@ -201,6 +201,38 @@
         "applyNewMarker": false,
         "move": false
       }
+    },
+    {
+      "name": "tag_without_hash_does_not_match_plain_prose",
+      "objectType": "idea",
+      "oldSignature": {"objectType": "idea", "markerType": "tag", "markerValue": "idea"},
+      "newSignature": {"objectType": "idea", "markerType": "property", "markerValue": "type: idea"},
+      "candidate": {
+        "path": "exports/resource.md",
+        "frontmatter": {"id": "resource-1", "type": "resource"},
+        "body": "An ordinary idea in an exported passage."
+      },
+      "expected": {"eligible": false}
+    },
+    {
+      "name": "property_to_tag_without_hash_emits_hashtag",
+      "objectType": "task",
+      "oldSignature": {"objectType": "task", "markerType": "property", "markerValue": "type: task"},
+      "newSignature": {"objectType": "task", "markerType": "tag", "markerValue": "task"},
+      "candidate": {
+        "path": "tasks/created.md",
+        "frontmatter": {"id": "task-1", "type": "task", "future": "keep"},
+        "body": "An ordinary task in prose."
+      },
+      "expected": {
+        "eligible": true,
+        "path": "tasks/created.md",
+        "frontmatter": {"id": "task-1", "future": "keep"},
+        "body": "An ordinary task in prose.\n\n#task",
+        "removeOldMarker": true,
+        "applyNewMarker": true,
+        "move": false
+      }
     }
   ],
   "preflightCases": [

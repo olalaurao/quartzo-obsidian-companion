@@ -125,6 +125,49 @@ calendar:
     expect(taggedInFrontmatter.object.type).toBe('idea');
   });
 
+  it('does not reinterpret ordinary prose as a tag, even with higher tag priority', () => {
+    const tagSettings = {
+      ...settings,
+      typePriority: ['idea', 'resource'],
+      typeSignatures: {
+        idea: settings.typeSignatures.idea,
+        resource: { objectType: 'resource', markerType: 'property' as const, markerValue: 'type: resource' },
+      },
+    };
+    const markdown = '---\nid: resource-prose\ntype: resource\ntitle: Synthetic export\n---\nAn ordinary ideia in a passage.';
+    const parsed = parseObjectWithSharedSettings(markdown, 'exports/prose.md', tagSettings);
+    expect(parsed.object.type).toBe('resource');
+    expect(parsed.identification?.matchedSignatures.map(match => match.objectType)).toEqual(['resource']);
+    expect(parsed.identification?.hasConflict).toBe(false);
+    const index = VaultIndexEngine.createInitialIndex([
+      { path: 'exports/prose.md', content: markdown, modified: 1, size: markdown.length },
+    ], (content, filePath) => parseObjectWithSharedSettings(content, filePath, tagSettings));
+    expect(index.objects.get('resource-prose')?.type).toBe('resource');
+    expect(index.files.get('exports/prose.md')?.content).toBe(markdown);
+  });
+
+  it.each(['ideia', '#ideia'])('requires a hashtag in body for tag signature %s', markerValue => {
+    const tagSettings = {
+      ...settings,
+      typeSignatures: { idea: { ...settings.typeSignatures.idea, markerValue } },
+    };
+    expect(identifyTypeFromSignatures(tagSettings, 'exports/prose.md', {}, 'An ordinary ideia in prose.')).toBeNull();
+    expect(identifyTypeFromSignatures(tagSettings, 'exports/prose.md', {}, 'A real #ideia marker.')).toBe('idea');
+    expect(identifyTypeFromSignatures(tagSettings, 'exports/prose.md', { tags: ['ideia'] }, 'Plain prose.')).toBe('idea');
+    expect(identifyTypeFromSignatures(tagSettings, 'exports/prose.md', { tags: ['#ideia'] }, 'Plain prose.')).toBe('idea');
+  });
+
+  it.each(['ideia', '#ideia'])('creates an identifiable hashtag for configured marker %s', markerValue => {
+    const signature = { ...settings.typeSignatures.idea, markerValue };
+    const body = 'An ordinary ideia in prose.';
+    const signed = applyTypeSignature({ id: 'idea-created' }, body, signature);
+    expect(signed.body).toBe(`${body}\n\n#ideia`);
+    const tagSettings = { ...settings, typeSignatures: { idea: signature } };
+    expect(identifyTypeFromSignatures(tagSettings, 'ideas/created.md', signed.frontmatter, signed.body)).toBe('idea');
+    expect(applyTypeSignature(signed.frontmatter, signed.body, signature)).toEqual(signed);
+    expect(signed.frontmatter).toEqual({ id: 'idea-created' });
+  });
+
   it('consumes the canonical upstream shared-settings fixture byte-for-byte', () => {
     const fixturePath = path.join(process.cwd(), 'contracts', 'quartzo', 'shared_settings', 'v1.md');
     const fixture = fs.readFileSync(fixturePath, 'utf8');
