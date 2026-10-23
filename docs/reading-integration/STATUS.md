@@ -1,6 +1,15 @@
 # Reading Integration — Companion status
 
-## 2026-10-23 — Conflicting object IDs remain reviewable (host candidate)
+## 2026-10-23 — Conflicting object IDs remain reviewable (host accepted)
+
+Exact24d490b41dc5bc93dc0d3d47a2882a48d4062ece passed all six Linux/Windows/macOS
+checks across [PR CI40001517712](https://github.com/olalaurao/quartzo-obsidian-companion/actions/runs/40001517712)
+and [push CI40001458992](https://github.com/olalaurao/quartzo-obsidian-companion/actions/runs/40001458992).
+PR CI Linux/macOS each passed1050 tests/three explicit skips,399 contracts and
+393 sync/two platform skips plus the CI-only bounded audit skip; Windows sync
+passed394/two skips. Follow-up documentation commits require their own exact-head
+checks; [PR96](https://github.com/olalaurao/quartzo-obsidian-companion/pull/96) records
+the final acceptance/merge. No release, installation or physical acceptance.
 
 The previous goal turn made concrete PhaseD recovery-UI progress: KOReader PR5
 exact336a7a8 passed400 cases/no skips. Devices remain unavailable; physical Gate4,
@@ -31,7 +40,8 @@ production audit passed (zero vulnerabilities). The first full suite passed1050
 and failed one old source-shape assertion requiring duplicate review to iterate
 raw files. That assertion now enforces the existing query owner's review path
 and rejects the old unique-lookup filter; production criteria are unchanged.
-Exact-source CI is still required; no host result is native Obsidian acceptance. This local safety correction grants no Reader link,
+Exact-source CI results are recorded above; no host result is native Obsidian
+acceptance. This local safety correction grants no Reader link,
 complete-vault proof, automatic promotion/status effect or physical acceptance.
 No device, Obsidian, source vault, token, API, release or installation was touched.
 
