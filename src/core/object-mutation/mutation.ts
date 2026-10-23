@@ -42,6 +42,9 @@ export function applySafeObjectMutation(
   expected: ObjectMutationIdentity,
   patch: SafeObjectMutation,
 ): string {
+  if (typeof expected.id !== 'string' || expected.id.trim().length === 0) {
+    throw new Error('Safe editing requires a non-empty object identity. Review the file in Issues first.');
+  }
   if (!hasFullObjectMutationSupport(expected.type)) {
     throw new Error(`Safe Companion editing is not supported for ${expected.type}.`);
   }

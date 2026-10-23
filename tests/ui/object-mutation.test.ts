@@ -7,6 +7,11 @@ import {
 import { ObjectParser } from '../../src/core/objects';
 
 describe('safe object mutation', () => {
+  it.each(['', '   '])('rejects a missing identity before editing an unidentified file (%s)', id => {
+    const current = '---\ntype: resource\nfuture_field: preserve\n---\nSynthetic highlight';
+    expect(() => applySafeObjectMutation(current, { id, type: 'resource' }, { set: { title: 'Changed' } }))
+      .toThrow(/non-empty object identity/);
+  });
   it('derives full mutation support from vendored contract coverage', () => {
     expect(hasFullObjectMutationSupport('task')).toBe(true);
     expect(hasFullObjectMutationSupport('habit')).toBe(true);

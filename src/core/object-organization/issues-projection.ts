@@ -96,7 +96,7 @@ export function projectOrganizationIssues(input: IssuesProjectionInput): Organiz
         category: 'unidentified',
         subjectPath: path,
         title: 'Unidentified File',
-        why: 'This Markdown file does not match any known Object Identification rule.',
+        why: 'This Markdown file has no indexed Quartzo identity. Review its ID, Object Identification rules and frontmatter before classifying it.',
         actionable: true,
       });
     }
