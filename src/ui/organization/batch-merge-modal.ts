@@ -16,6 +16,7 @@ import { SharedSettingsRepository, parseObjectWithSharedSettings } from '../../v
 import { VaultIndexEngine } from '../../vault/index';
 import type { IndexChange, IndexedObject } from '../../vault/index/types';
 import { isOrganizationIssuePathExcluded } from '../../core/object-organization/issues-projection';
+import { reviewVaultIdentityCandidates } from '../../core/object-query';
 
 export interface ObjectBatchMergeModalOptions {
   selectedPaths?: string[];
@@ -147,15 +148,11 @@ export class ObjectBatchMergeModal extends Modal {
     const selected = new Set((this.options.selectedPaths ?? []).map(normalizePath));
     const ignored = this.options.ignoredFolderPaths ?? [];
     const byId = new Map<string, string[]>();
-    for (const file of index.files.values()) {
-      const path = normalizePath(file.path);
+    for (const object of reviewVaultIdentityCandidates(index)) {
+      const path = normalizePath(object.path);
       if (!/\.md$/i.test(path) || path.startsWith('_deleted/')) continue;
       if (isOrganizationIssuePathExcluded(path, ignored)) continue;
-      const parsed = ObjectParser.parseMarkdown(file.content);
-      const objectId = typeof parsed.frontmatter.id === 'string'
-        ? parsed.frontmatter.id.trim()
-        : '';
-      if (!objectId || !index.objects.has(objectId)) continue;
+      const objectId = object.id;
       const paths = byId.get(objectId) ?? [];
       paths.push(path);
       byId.set(objectId, paths);

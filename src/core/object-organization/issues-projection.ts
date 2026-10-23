@@ -8,6 +8,7 @@
 
 import type { VaultIndex } from '../../vault/index/types';
 import type { QuartzoSharedSettings } from '../shared-settings';
+import { reviewVaultIdentityCandidates } from '../object-query';
 
 export type IssueCategory =
   | 'unidentified'
@@ -82,7 +83,8 @@ export function projectOrganizationIssues(input: IssuesProjectionInput): Organiz
     isSystemIssuePath(path) || isPathInsideIssueIgnoredFolder(path, normalizedIgnoredFolders);
 
   const indexedPaths = new Set<string>();
-  for (const obj of index.objects.values()) {
+  const candidates = reviewVaultIdentityCandidates(index);
+  for (const obj of candidates) {
     indexedPaths.add(normalizeIssueFolderPath(obj.path));
   }
 
@@ -102,7 +104,7 @@ export function projectOrganizationIssues(input: IssuesProjectionInput): Organiz
     }
   }
 
-  const issueEligibleObjects = Array.from(index.objects.values()).filter(
+  const issueEligibleObjects = candidates.filter(
     obj => !isExcludedOrdinarySubject(obj.path),
   );
   const idCounts = new Map<string, number>();
@@ -131,7 +133,7 @@ export function projectOrganizationIssues(input: IssuesProjectionInput): Organiz
         const match = /^\[\[(.*?)\]\]$/.exec(String(link));
         if (match) {
           const target = match[1].toLowerCase();
-          const found = Array.from(index.objects.values()).some(o => o.path.toLowerCase().includes(target));
+          const found = candidates.some(o => o.path.toLowerCase().includes(target));
           if (!found) {
             issues.push({
               id: `broken_rel:${obj.path}:${target}`,
@@ -162,7 +164,7 @@ export function projectOrganizationIssues(input: IssuesProjectionInput): Organiz
 
   for (const [id, count] of idCounts.entries()) {
     if (count > 1) {
-      const paths = issueEligibleObjects.filter(o => o.id === id).map(o => o.path);
+      const paths = issueEligibleObjects.filter(o => o.id === id).map(o => o.path).sort();
       if (paths.length === 0) continue;
       issues.push({
         id: `duplicate:${id}`,
@@ -170,7 +172,7 @@ export function projectOrganizationIssues(input: IssuesProjectionInput): Organiz
         subjectPath: paths[0],
         subjectId: id,
         title: 'Duplicate Object ID',
-        why: `The ID "${id}" is shared by ${count} files. Quartzo requires IDs to be unique.`,
+        why: `The ID "${id}" is shared by ${count} files. Quartzo requires IDs to be unique. Files: ${paths.join(', ')}`,
         actionable: true,
       });
     }

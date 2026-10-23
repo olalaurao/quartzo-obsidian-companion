@@ -104,6 +104,8 @@ The identification editor keeps separate transient drafts for Property, Tag and 
 
 Um Markdown cujo parser não fornece `id` textual não vazio permanece no inventário de arquivos e em `Issues → Unidentified`, com abertura do Markdown pelo caminho. Não usar a identidade vazia para indexar vários documentos, gerar IDs de apresentação ou habilitar edição/relações como se fossem objetos identificados. A classificação explícita continua com o owner de Organization; indexar ou revisar nunca reescreve o arquivo.
 
+Dois arquivos com o mesmo ID textual não devem fazer Browse, pickers ou relações escolherem o último arquivo lido. O ID ambíguo fica fora do lookup normal; Issues mostra a colisão e os caminhos para revisão explícita pelos mesmos owners. A indexação não escolhe survivor, reescreve IDs ou executa merge. Pastas ignoradas filtram Issues sem comprovar que um ID é único.
+
 **C-GUID-50 — Bulk delete de Organization Issues usa retirement canônico e nunca raw delete:** excluir um ou vários subjects de Issues deve converter cada Markdown em tombstone `type: _deleted` sob `_deleted/<id>.md` através do mesmo lifecycle usado por Merge; UI não chama `vault.delete()` nem cria delete/sync paralelo. `_deleted/**` é escopo de sync, mas nunca volta como Organization Issue. Em vault pareado, o `DriveSyncCoordinator` faz preflight e revalidação imediatamente antes do rename remoto: remoto ainda igual ao baseline pode ser movido preservando `remoteFileId`; remoto concorrente/ambíguo/movido bloqueia ou vira conflito explícito. Em modo Manual, o rename pendente fica persistido até `Sync now`; em local-first, o provedor de filesystem transporta o rename. Stale remote nunca autoriza ressurreição automática do path original.
 
 

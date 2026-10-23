@@ -8,6 +8,7 @@ import type { SyncResult } from '../../sync/coordinator/types';
 import { formatSyncProgress } from '../../sync/progress';
 import {
   queryVaultObjects,
+  reviewVaultIdentityCandidates,
   type ObjectQueryArchiveFilter,
   type ObjectQueryConflictFilter,
   type ObjectQuerySort,
@@ -1248,7 +1249,7 @@ export class QuartzoView extends ItemView {
         } else if (issue.category === 'duplicate') {
           const mergeBtn = actionsTd.createEl('button', { text: 'Resolve merge…', cls: 'qz-btn qz-btn-secondary qz-btn-sm' });
           mergeBtn.addEventListener('click', () => {
-            const duplicatePaths = Array.from(index.objects.values())
+            const duplicatePaths = reviewVaultIdentityCandidates(index)
               .filter(object => object.id === issue.subjectId && !isOrganizationIssuePathExcluded(object.path, ignoredFolderPaths))
               .map(object => object.path);
             const { ObjectMergeModal } = require('../organization/merge-modal');
